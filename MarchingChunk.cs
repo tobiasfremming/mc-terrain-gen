@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using static MarchingCubesTables;
 using TransitionNeeds = MCChunkManager.TransitionNeeds;
+using static TransVoxelTables;
+
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public class MarchingChunk : MonoBehaviour
@@ -62,8 +64,7 @@ public class MarchingChunk : MonoBehaviour
     public void Generate(TransitionNeeds needs){
         GenerateRegularMesh();
 
-        // if (this chunk borders lower-detail neighbors):
-        //     GenerateTransitionMesh(transitionNeeds); or just transition needs lookup here?
+
         if (needs.Any)
         {
             GenerateTransitionMesh(needs);
@@ -72,8 +73,239 @@ public class MarchingChunk : MonoBehaviour
 
     public void GenerateTransitionMesh(TransitionNeeds needs)
     {
-        Console.WriteLine("Transition mesh generation not implemented yet.");
+        if (!needs.Any) return;
+
+        // === grid info ===
+        int nx = Mathf.Max(1, Mathf.FloorToInt(cells.x / (float)densitySampling));
+        int ny = Mathf.Max(1, Mathf.FloorToInt(cells.y / (float)densitySampling));
+        int nz = Mathf.Max(1, Mathf.FloorToInt(cells.z / (float)densitySampling));
+
+        float fineStep = cellSize * densitySampling;
+
+        Vector3 origin = transform.position;
+
+        // Get existing mesh data to APPEND to
+        var verts = new List<Vector3>(_mesh.vertices);
+        var norms = new List<Vector3>(_mesh.normals);
+        var tris = new List<int>(_mesh.triangles);
+
+        float gradStep = densityField
+            ? densityField.GradientStep(fineStep)
+            : fineStep * 0.1f;
+
+        // Generate transition mesh for each face that needs it
+        if (needs.px) GenerateTransitionFace(ref verts, ref norms, ref tris, origin, nx, ny, nz, fineStep, gradStep, 0);
+        if (needs.nx) GenerateTransitionFace(ref verts, ref norms, ref tris, origin, nx, ny, nz, fineStep, gradStep, 1);
+        if (needs.py) GenerateTransitionFace(ref verts, ref norms, ref tris, origin, nx, ny, nz, fineStep, gradStep, 2);
+        if (needs.ny) GenerateTransitionFace(ref verts, ref norms, ref tris, origin, nx, ny, nz, fineStep, gradStep, 3);
+        if (needs.pz) GenerateTransitionFace(ref verts, ref norms, ref tris, origin, nx, ny, nz, fineStep, gradStep, 4);
+        if (needs.nz) GenerateTransitionFace(ref verts, ref norms, ref tris, origin, nx, ny, nz, fineStep, gradStep, 5);
+
+        // Update mesh with combined regular + transition geometry
+        _mesh.Clear();
+        _mesh.SetVertices(verts);
+        _mesh.SetNormals(norms);
+        _mesh.SetTriangles(tris, 0);
+        _mesh.RecalculateBounds();
     }
+
+    void GenerateTransitionFace(
+        ref List<Vector3> verts,
+        ref List<Vector3> norms,
+        ref List<int> tris,
+        Vector3 origin,
+        int nx, int ny, int nz,
+        float fineStep,
+        float gradStep,
+        int face)
+    {
+        // face: 0=+X, 1=-X, 2=+Y, 3=-Y, 4=+Z, 5=-Z
+        
+        // Determine iteration bounds based on face
+        int u1, u2, v1, v2;
+        switch (face)
+        {
+            case 0: case 1: u1 = ny; u2 = nz; v1 = ny - 1; v2 = nz - 1; break; // X faces: iterate over Y,Z
+            case 2: case 3: u1 = nx; u2 = nz; v1 = nx - 1; v2 = nz - 1; break; // Y faces: iterate over X,Z
+            case 4: case 5: u1 = nx; u2 = ny; v1 = nx - 1; v2 = ny - 1; break; // Z faces: iterate over X,Y
+            default: return;
+        }
+
+        // Iterate in coarse-sized steps (2x2 blocks)
+        for (int u = 0; u < v1; u += 2)
+        for (int v = 0; v < v2; v += 2)
+        {
+            // Get cell base positions for fine and coarse faces
+            Vector3 cellBaseFine = GetTransitionCellBase(face, u, v, origin, fineStep, true, nx, ny, nz);
+            Vector3 cellBaseCoarse = GetTransitionCellBase(face, u, v, origin, fineStep, false, nx, ny, nz);
+            
+            // Sample all 13 positions: 9 fine + 4 coarse
+            float[] cellSamples = new float[13];
+            for (int i = 0; i < 13; i++)
+            {
+                Vector3 samplePos = GetTransitionSamplePos(i, cellBaseFine, cellBaseCoarse, fineStep, face);
+                cellSamples[i] = DensityWorld(samplePos) - isoLevel;
+            }
+            
+            // Build 9-bit case index from fine face samples
+            int caseIndex = 0;
+            for (int i = 0; i < 9; i++)
+            {
+                if (cellSamples[i] < 0f) caseIndex |= (1 << i);
+            }
+            
+            // Get per-case vertex definitions
+            ushort[] vtxData = TransVoxelTables.TransitionVertexData[caseIndex];
+            
+            // Map to equivalence class for triangulation
+            int transClass = TransVoxelTables.TransitionCellClass[caseIndex];
+            bool invertWinding = (transClass & 0x80) != 0;
+            int cellDataIndex = transClass & 0x7F;
+            
+            var cellData = TransVoxelTables.TransitionCellDataTable[cellDataIndex];
+            int triCount = cellData.TriangleCount;
+            
+            // Generate triangles
+            for (int t = 0; t < triCount; t++)
+            {
+                int[] triVerts = new int[3];
+                for (int v_idx = 0; v_idx < 3; v_idx++)
+                {
+                    // Get index into the per-case vertex list
+                    byte vertexIndex = cellData.VertexIndex[t * 3 + v_idx];
+                    ushort packed = vtxData[vertexIndex];
+                    
+                    // Extract endpoint indices from low byte
+                    int edge0 = packed & 0x0F;
+                    int edge1 = (packed >> 4) & 0x0F;
+                    
+                    float da = cellSamples[edge0];
+                    float db = cellSamples[edge1];
+                    
+                    Vector3 pa = GetTransitionSamplePos(edge0, cellBaseFine, cellBaseCoarse, fineStep, face);
+                    Vector3 pb = GetTransitionSamplePos(edge1, cellBaseFine, cellBaseCoarse, fineStep, face);
+                    
+                    float tt = da / (da - db + 1e-8f);
+                    Vector3 vertPos = Vector3.Lerp(pa, pb, Mathf.Clamp01(tt));
+                    
+                    int vi = verts.Count;
+                    verts.Add(vertPos - origin);
+                    
+                    Vector3 n = -GradientWorld(vertPos, gradStep).normalized;
+                    norms.Add(n);
+                    
+                    triVerts[v_idx] = vi;
+                }
+                
+                // Add triangle (reverse winding if needed)
+                if (invertWinding)
+                {
+                    tris.Add(triVerts[2]);
+                    tris.Add(triVerts[1]);
+                    tris.Add(triVerts[0]);
+                }
+                else
+                {
+                    tris.Add(triVerts[0]);
+                    tris.Add(triVerts[1]);
+                    tris.Add(triVerts[2]);
+                }
+            }
+        }
+    }
+    
+    Vector3 GetTransitionCellBase(int face, int u, int v, Vector3 origin, float fineStep, bool isFine, int nx, int ny, int nz)
+    {
+        // face: 0=+X, 1=-X, 2=+Y, 3=-Y, 4=+Z, 5=-Z
+        // u, v are the 2D coordinates on the face
+        // Returns the base position for a transition cell
+        // Fine base: last layer inside chunk
+        // Coarse base: one step outside chunk (on neighbor's side)
+        
+        switch (face)
+        {
+            case 0: // +X face
+                if (isFine)
+                    return origin + new Vector3((nx - 1) * fineStep, u * fineStep, v * fineStep);
+                else
+                    return origin + new Vector3(nx * fineStep, u * fineStep, v * fineStep);
+            case 1: // -X face
+                if (isFine)
+                    return origin + new Vector3(0, u * fineStep, v * fineStep);
+                else
+                    return origin + new Vector3(-fineStep, u * fineStep, v * fineStep);
+            case 2: // +Y face
+                if (isFine)
+                    return origin + new Vector3(u * fineStep, (ny - 1) * fineStep, v * fineStep);
+                else
+                    return origin + new Vector3(u * fineStep, ny * fineStep, v * fineStep);
+            case 3: // -Y face
+                if (isFine)
+                    return origin + new Vector3(u * fineStep, 0, v * fineStep);
+                else
+                    return origin + new Vector3(u * fineStep, -fineStep, v * fineStep);
+            case 4: // +Z face
+                if (isFine)
+                    return origin + new Vector3(u * fineStep, v * fineStep, (nz - 1) * fineStep);
+                else
+                    return origin + new Vector3(u * fineStep, v * fineStep, nz * fineStep);
+            case 5: // -Z face
+                if (isFine)
+                    return origin + new Vector3(u * fineStep, v * fineStep, 0);
+                else
+                    return origin + new Vector3(u * fineStep, v * fineStep, -fineStep);
+            default:
+                return origin;
+        }
+    }
+    
+    Vector3 GetTransitionSamplePos(int i, Vector3 baseFine, Vector3 baseCoarse, float fineStep, int face)
+    {
+        // i: 0-8 are fine face (3x3), 9-12 are coarse face (2x2)
+        // Returns world position for sample i
+        
+        if (i < 9)
+        {
+            // Fine face: 3x3 grid
+            int fy = i / 3;
+            int fz = i % 3;
+            Vector3 offset = GetFaceOffset(face, fy, fz, fineStep);
+            return baseFine + offset;
+        }
+        else
+        {
+            // Coarse face: 2x2 grid
+            int ci = i - 9;
+            int cy = ci / 2;
+            int cz = ci % 2;
+            Vector3 offset = GetFaceOffset(face, cy * 2, cz * 2, fineStep);
+            return baseCoarse + offset;
+        }
+    }
+    
+    Vector3 GetFaceOffset(int face, int u, int v, float step)
+    {
+        // Maps 2D coordinates (u,v) to 3D offset based on face orientation
+        switch (face)
+        {
+            case 0: // +X face (YZ plane)
+                return new Vector3(0, u * step, v * step);
+            case 1: // -X face (YZ plane)
+                return new Vector3(0, u * step, v * step);
+            case 2: // +Y face (XZ plane)
+                return new Vector3(u * step, 0, v * step);
+            case 3: // -Y face (XZ plane)
+                return new Vector3(u * step, 0, v * step);
+            case 4: // +Z face (XY plane)
+                return new Vector3(u * step, v * step, 0);
+            case 5: // -Z face (XY plane)
+                return new Vector3(u * step, v * step, 0);
+            default:
+                return Vector3.zero;
+        }
+    }
+
+
 
     public void GenerateRegularMesh()
     {
