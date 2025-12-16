@@ -74,7 +74,8 @@ public class MCChunkManager : MonoBehaviour
             c.cells = CellsPerChunk;
             c.cellSize = CellSize;
             c.densitySampling = DensitySampling;
-            TransitionNeeds needs = GetTransitionNeeds(Vector3Int.RoundToInt(c.transform.position));
+            var cc = WorldToChunkCoord(c.transform.position);
+            TransitionNeeds needs = GetTransitionNeeds(cc);
             c.Generate(needs);
         }
     }
@@ -89,7 +90,8 @@ public class MCChunkManager : MonoBehaviour
             chunk.cells = CellsPerChunk;
             chunk.cellSize = CellSize;
             chunk.densitySampling = DensitySampling;
-            TransitionNeeds needs = GetTransitionNeeds(Vector3Int.RoundToInt(chunk.transform.position));
+            var cc = WorldToChunkCoord(chunk.transform.position);
+            TransitionNeeds needs = GetTransitionNeeds(cc);
             chunk.Generate(needs);
         }
     }
@@ -261,8 +263,8 @@ public class MCChunkManager : MonoBehaviour
             chunk.cells = LodCellCounts[lodLevel];
             chunk.cellSize = ChunkWorldSize / chunk.cells.x; // keeps world size constant
         }
-
-        TransitionNeeds needs = GetTransitionNeeds(Vector3Int.RoundToInt(chunk.transform.position));
+        var cc = WorldToChunkCoord(chunk.transform.position);
+        TransitionNeeds needs = GetTransitionNeeds(cc);
         chunk.Generate(needs);
 
         chunk.autoRegenerate = prevAuto; // restore
@@ -372,8 +374,6 @@ public class MCChunkManager : MonoBehaviour
             // Override with LOD-specific settings BEFORE enabling auto-regeneration
             go.autoRegenerate = false; // ensure it's off while configuring
             ApplyLODSettingsToChunk(go, lodLevel);
-            TransitionNeeds needs = GetTransitionNeeds(cc);
-            go.Generate(needs);
         }
 
         //go.autoRegenerate = true; // Set this AFTER LOD is applied
@@ -417,14 +417,25 @@ public class MCChunkManager : MonoBehaviour
                     needed.Add(cc);
                 }
 
-        // Create missing chunks
+        // PASS 1: Create and register all missing chunks (without generating)
         foreach (var cc in needed)
         {
             if (_chunks.ContainsKey(cc)) continue;
 
-            // Use CreateChunk which applies LOD settings
+            // Create chunk with LOD settings but don't generate yet
             var go = CreateChunk(cc);
             _chunks.Add(cc, go);
+        }
+
+        // PASS 2: Generate all chunks with correct transition needs
+        // (now all neighbors are registered in _chunks)
+        foreach (var cc in needed)
+        {
+            if (!_chunks.ContainsKey(cc)) continue; // shouldn't happen but safety check
+            
+            var ch = _chunks[cc];
+            TransitionNeeds needs = GetTransitionNeeds(cc);
+            ch.Generate(needs);
         }
 
         // remove far chunks
@@ -462,7 +473,7 @@ public class MCChunkManager : MonoBehaviour
         {
             if (!_chunks.ContainsKey(nCoord)) return false;
             int nLod = _chunkLodLevels.TryGetValue(nCoord, out var nl) ? nl : myLod;
-            return nLod == myLod + 1; // neighbor is coarser by exactly one level
+            return nLod > myLod; // neighbor is coarser by exactly one level
         }
 
         n.px = Need(cc + new Vector3Int(1, 0, 0));

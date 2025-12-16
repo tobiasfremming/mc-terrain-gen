@@ -14,7 +14,7 @@
 // https://transvoxel.org/
 using UnityEngine;
 
-public class TransVoxelTables : MonoBehaviour
+public static class TransVoxelTables
 {
     // The RegularCellData structure holds information about the triangulation
     // used for a single equivalence class in the modified Marching Cubes algorithm,
