@@ -52,6 +52,7 @@ public class MarchingChunk : MonoBehaviour
         if (_mesh == null)
         {
             _mesh = new Mesh { indexFormat = UnityEngine.Rendering.IndexFormat.UInt32, name = "MC_Chunk" };
+            _mesh.MarkDynamic();
             GetComponent<MeshFilter>().sharedMesh = _mesh;
         }
     }
@@ -64,10 +65,22 @@ public class MarchingChunk : MonoBehaviour
         
         EnsureMesh();
 
-        int nx = Mathf.Max(1, cells.x / densitySampling);
-        int ny = Mathf.Max(1, cells.y / densitySampling);
-        int nz = Mathf.Max(1, cells.z / densitySampling);
-        float effectiveCellSize = cellSize * densitySampling;
+        // Keep mesh extent equal to the chunk's world size no matter the combo.
+        float worldSizeX = cells.x * cellSize;   // == chunk world size on X
+        float worldSizeY = cells.y * cellSize;
+        float worldSizeZ = cells.z * cellSize;
+
+        int nx = Mathf.Max(1, Mathf.FloorToInt(cells.x / (float)densitySampling));
+        int ny = Mathf.Max(1, Mathf.FloorToInt(cells.y / (float)densitySampling));
+        int nz = Mathf.Max(1, Mathf.FloorToInt(cells.z / (float)densitySampling));
+
+        // derive step so that nx * step == worldSizeX, etc.
+        float stepX = worldSizeX / nx;
+        float stepY = worldSizeY / ny;
+        float stepZ = worldSizeZ / nz;
+        // if you require cubic cells, pick one step (e.g., step = Mathf.Max(stepX, stepY, stepZ)) and recompute n*.
+        float effectiveCellSize = stepX; // assuming cubic and cells are same per axis
+
 
         Debug.Log($"[{name}] Generate: cells={cells}, densitySampling={densitySampling}, effective grid=({nx},{ny},{nz}), effectiveCellSize={effectiveCellSize}");
 
@@ -91,13 +104,11 @@ public class MarchingChunk : MonoBehaviour
 
         float gradStep = densityField ? densityField.GradientStep(effectiveCellSize)
                                     : (effectiveCellSize * 0.1f); // reduced from 0.5f for better accuracy
-
-
+        float[] c = new float[8]; 
         for (int z = 0; z < nz; z++)
             for (int y = 0; y < ny; y++)
                 for (int x = 0; x < nx; x++)
                 {
-                    float[] c = new float[8];
                     for (int i = 0; i < 8; i++)
                     {
                         var co = Corner[i];
@@ -139,6 +150,15 @@ public class MarchingChunk : MonoBehaviour
         _isGenerating = false; // allow future generation
     }
 
+    public struct TransitionNeeds {
+    public bool px, nx, py, ny, pz, nz;
+    public bool Any => px||nx||py||ny||pz||nz;
+}
+
+
+
+
+
     Vector3 InterpEdgeLocal(int edgeId, int x, int y, int z, float[] c, float cell)
     {
         int aIdx = EdgeToCorners[edgeId, 0];
@@ -163,9 +183,10 @@ public class MarchingChunk : MonoBehaviour
 
         float DensityWorld(Vector3 p)
     {
-        if (densityField != null) return densityField.SampleMinusIso(p);
+        // if (densityField != null) return densityField.SampleMinusIso(p);
+        return densityField.Sample(p);
         // Fallback: sphere test (so old scenes still work)
-        return Vector3.Distance(p, worldCenter) - sphereRadius - isoLevel;
+        //return Vector3.Distance(p, worldCenter) - sphereRadius - isoLevel;
     }
 
     
@@ -207,6 +228,7 @@ public class MarchingChunk : MonoBehaviour
         
         GUI.Label(new Rect(10, 10, 200, 40), debugText, style);
     }
+    
 
 
 }

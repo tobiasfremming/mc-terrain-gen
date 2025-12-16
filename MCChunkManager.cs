@@ -23,7 +23,7 @@ public class MCChunkManager : MonoBehaviour
     // Properties that read from worldConfig
     Vector3Int CellsPerChunk => worldConfig ? worldConfig.cellsPerChunk : new Vector3Int(32, 32, 32);
     float CellSize => worldConfig ? worldConfig.cellSize : 0.5f;
-    
+
     int ViewRadius => worldConfig ? worldConfig.viewRadius : 4;
     bool RegenOnMove => worldConfig ? true : true; // worldConfig doesn't have regenOnMove yet
     int DensitySampling => worldConfig ? worldConfig.densitySampling : 1;
@@ -66,7 +66,7 @@ public class MCChunkManager : MonoBehaviour
         {
             if (DefaultDensity != null) c.densityField = DefaultDensity;
             c.cells = CellsPerChunk;
-            c.cellSize = ChunkWorldSize / CellsPerChunk.x; // keep world size constant
+            c.cellSize = CellSize;
             c.densitySampling = DensitySampling;
             c.Generate();
         }
@@ -137,7 +137,7 @@ public class MCChunkManager : MonoBehaviour
             if (chunk != null)
             {
 #if UNITY_EDITOR
-                    DestroyImmediate(chunk.gameObject);
+                DestroyImmediate(chunk.gameObject);
 #else
                 Destroy(chunk.gameObject);
 #endif
@@ -220,32 +220,68 @@ public class MCChunkManager : MonoBehaviour
     }
 
     int CalculateLODLevel(float distance)
+
     {
+        // basic hysteresis: cache last level and expand its band
         for (int i = 0; i < LodDistances.Length; i++)
         {
-            if (distance <= LodDistances[i])
-                return i;
+            float threshold = LodDistances[i];
+            float band = threshold * 0.1f; // 10% band
+
+            int current = i;
+            if (_lastCenter != default && _chunkLodLevels.TryGetValue(_lastCenter, out var last))
+            {
+                if (i == last)
+                {
+                    if (distance <= threshold + band) return i;
+                }
+            }
+            if (distance <= threshold) return i;
         }
-        return LodDistances.Length; // Furthest LOD
+        return LodDistances.Length;
     }
+
+
+
+    // TODO: remove
+    // void ApplyLODToChunk(MarchingChunk chunk, int lodLevel)
+    // {
+    //     // Clamp LOD level to available settings
+    //     lodLevel = Mathf.Clamp(lodLevel, 0, LodSamplings.Length - 1);
+
+    //     // Apply LOD settings
+    //     chunk.densitySampling = LodSamplings[lodLevel];
+
+    //     // Optionally adjust cell count per LOD
+    //     if (LodCellCounts.Length > lodLevel)
+    //     {
+    //         chunk.cells = LodCellCounts[lodLevel];
+    //         chunk.cellSize = ChunkWorldSize / chunk.cells.x;
+    //     }
+
+    //     // Regenerate the chunk with new LOD settings
+    //     chunk.Generate();
+    // }
 
     void ApplyLODToChunk(MarchingChunk chunk, int lodLevel)
     {
-        // Clamp LOD level to available settings
         lodLevel = Mathf.Clamp(lodLevel, 0, LodSamplings.Length - 1);
 
-        // Apply LOD settings
-        chunk.densitySampling = LodSamplings[lodLevel];
+        // Temporarily suppress auto
+        bool prevAuto = chunk.autoRegenerate;
+        chunk.autoRegenerate = false;
 
-        // Optionally adjust cell count per LOD
+        chunk.densitySampling = LodSamplings[lodLevel];
         if (LodCellCounts.Length > lodLevel)
         {
             chunk.cells = LodCellCounts[lodLevel];
-            chunk.cellSize = ChunkWorldSize / chunk.cells.x;
+            chunk.cellSize = ChunkWorldSize / chunk.cells.x; // keeps world size constant
         }
 
-        // Regenerate the chunk with new LOD settings
         chunk.Generate();
+
+        chunk.autoRegenerate = prevAuto; // restore
+
     }
 
 
@@ -303,7 +339,7 @@ public class MCChunkManager : MonoBehaviour
         else
         {
 #if UNITY_EDITOR
-                        DestroyImmediate(ch.gameObject);
+            DestroyImmediate(ch.gameObject);
 #else
             Destroy(ch.gameObject);
 #endif
@@ -370,7 +406,7 @@ public class MCChunkManager : MonoBehaviour
             chunk.cells = LodCellCounts[lodLevel];
             chunk.cellSize = ChunkWorldSize / chunk.cells.x;
         }
-        
+
         Debug.Log($"Applied LOD {lodLevel} to chunk {chunk.name}: cells={chunk.cells}, sampling={chunk.densitySampling}");
         Debug.Log($"  LodCellCounts[{lodLevel}]={LodCellCounts[lodLevel]}, LodSamplings[{lodLevel}]={LodSamplings[lodLevel]}");
     }
@@ -388,7 +424,7 @@ public class MCChunkManager : MonoBehaviour
         // mark which should stay
         var needed = new HashSet<Vector3Int>();
         for (int z = -ViewRadius; z <= ViewRadius; z++)
-            for (int y = -ViewRadius; y <= ViewRadius; y++)
+            for (int y = -ViewRadius/3; y <= ViewRadius/3; y++)
                 for (int x = -ViewRadius; x <= ViewRadius; x++)
                 {
                     var cc = center + new Vector3Int(x, y, z);
@@ -416,54 +452,40 @@ public class MCChunkManager : MonoBehaviour
             _chunks.Remove(key);
         }
     }
+
+
+   
+
+
+    // Which of the 6 faces need transitions (neighbor is exactly one level coarser)?
+    // Order: +X, -X, +Y, -Y, +Z, -Z
+    struct TransitionNeeds
+    {
+        public bool px, nx, py, ny, pz, nz;
+        public bool Any => px || nx || py || ny || pz || nz;
+    }
+
+    TransitionNeeds GetTransitionNeeds(Vector3Int cc)
+    {
+        int myLod = _chunkLodLevels.TryGetValue(cc, out var l) ? l : 0;
+        TransitionNeeds n = new TransitionNeeds();
+
+        bool Need(Vector3Int nCoord)
+        {
+            if (!_chunks.ContainsKey(nCoord)) return false;
+            int nLod = _chunkLodLevels.TryGetValue(nCoord, out var nl) ? nl : myLod;
+            return nLod == myLod + 1; // neighbor is coarser by exactly one level
+        }
+
+        n.px = Need(cc + new Vector3Int(1, 0, 0));
+        n.nx = Need(cc + new Vector3Int(-1, 0, 0));
+        n.py = Need(cc + new Vector3Int(0, 1, 0));
+        n.ny = Need(cc + new Vector3Int(0, -1, 0));
+        n.pz = Need(cc + new Vector3Int(0, 0, 1));
+        n.nz = Need(cc + new Vector3Int(0, 0, -1));
+        return n;
+    }
     
 
-    // Add to MCChunkManager
-    void OnGUI()
-    {
-        if (!worldConfig || !worldConfig.showDebugInfo) return;
-        
-        var style = new GUIStyle(GUI.skin.label) { normal = { textColor = Color.white } };
-        
-        string lodInfo = $"Active Chunks: {_chunks.Count}\n";
-        lodInfo += $"LOD Levels Tracked: {_chunkLodLevels.Count}\n";
-        
-        // Count chunks per LOD level
-        var lodCounts = new Dictionary<int, int>();
-        foreach (var lod in _chunkLodLevels.Values)
-        {
-            lodCounts[lod] = lodCounts.ContainsKey(lod) ? lodCounts[lod] + 1 : 1;
-        }
-        
-        foreach (var kvp in lodCounts)
-        {
-            lodInfo += $"LOD {kvp.Key}: {kvp.Value} chunks\n";
-        }
-        
-        GUI.Label(new Rect(10, 100, 200, 100), lodInfo, style);
-    }
 
-    [ContextMenu("Debug LOD Configuration")]
-    public void DebugLODConfiguration()
-    {
-        Debug.Log($"=== LOD CONFIGURATION DEBUG ===");
-        Debug.Log($"UseAdaptiveLOD: {UseAdaptiveLOD}");
-        Debug.Log($"LodDistances: [{string.Join(", ", LodDistances)}]");
-        Debug.Log($"LodSamplings: [{string.Join(", ", LodSamplings)}]");
-        
-        if (LodCellCounts != null)
-        {
-            Debug.Log($"LodCellCounts: [{string.Join(", ", System.Array.ConvertAll(LodCellCounts, x => x.ToString()))}]");
-        }
-        
-        Debug.Log($"Current chunks with LOD levels:");
-        foreach (var kvp in _chunkLodLevels)
-        {
-            if (_chunks.ContainsKey(kvp.Key))
-            {
-                var chunk = _chunks[kvp.Key];
-                Debug.Log($"  Chunk {kvp.Key}: LOD {kvp.Value}, cells={chunk.cells}, sampling={chunk.densitySampling}");
-            }
-        }
-    }
 }
