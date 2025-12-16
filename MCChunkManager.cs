@@ -30,7 +30,7 @@ public class MCChunkManager : MonoBehaviour
     DensityField DefaultDensity => worldConfig ? worldConfig.defaultDensity : null;
     float IsoLevel => worldConfig ? worldConfig.isoLevel : 0f;
 
-    float ChunkWorldSize => CellsPerChunk.x * CellSize; // assume cubic chunks
+    float ChunkWorldSize => CellsPerChunk.x * CellSize;
 
     private float _lastLodUpdate;
     private Dictionary<Vector3Int, int> _chunkLodLevels = new Dictionary<Vector3Int, int>();
@@ -39,7 +39,13 @@ public class MCChunkManager : MonoBehaviour
     float[] LodDistances => worldConfig ? worldConfig.lodDistances : new float[] { 6f, 12f, 24f, 48f };
     int[] LodSamplings => worldConfig ? worldConfig.lodSamplings : new int[] { 1, 2, 4, 8 };
     Vector3Int[] LodCellCounts => worldConfig ? worldConfig.lodCellCounts :
-        new Vector3Int[] { new Vector3Int(32, 32, 32), new Vector3Int(24, 24, 24), new Vector3Int(16, 16, 16), new Vector3Int(8, 8, 8) };
+        new Vector3Int[] 
+        { 
+            new Vector3Int(32, 32, 32), 
+            new Vector3Int(24, 24, 24), 
+            new Vector3Int(16, 16, 16), 
+            new Vector3Int(8, 8, 8) 
+        };
     bool UseAdaptiveLOD => worldConfig ? worldConfig.useAdaptiveLOD : true;
     float LodUpdateInterval => worldConfig ? worldConfig.lodUpdateInterval : 0.5f;
 
@@ -68,7 +74,8 @@ public class MCChunkManager : MonoBehaviour
             c.cells = CellsPerChunk;
             c.cellSize = CellSize;
             c.densitySampling = DensitySampling;
-            c.Generate();
+            TransitionNeeds needs = GetTransitionNeeds(Vector3Int.RoundToInt(c.transform.position));
+            c.Generate(needs);
         }
     }
 
@@ -82,7 +89,8 @@ public class MCChunkManager : MonoBehaviour
             chunk.cells = CellsPerChunk;
             chunk.cellSize = CellSize;
             chunk.densitySampling = DensitySampling;
-            chunk.Generate();
+            TransitionNeeds needs = GetTransitionNeeds(Vector3Int.RoundToInt(chunk.transform.position));
+            chunk.Generate(needs);
         }
     }
 
@@ -97,10 +105,9 @@ public class MCChunkManager : MonoBehaviour
 
         if (Application.isPlaying)
         {
-            // Clear existing chunks first
+
             ClearAllChunks();
 
-            // Force regenerate visible chunks around target
             UpdateVisibleChunks(force: true);
         }
         else
@@ -193,7 +200,6 @@ public class MCChunkManager : MonoBehaviour
 
             if (!chunk) continue;
 
-            // Calculate distance from target to chunk center
             Vector3 chunkWorldPos = ChunkOrigin(chunkCoord) + Vector3.one * (ChunkWorldSize * 0.5f);
             float distance = Vector3.Distance(targetPos, chunkWorldPos);
 
@@ -228,7 +234,6 @@ public class MCChunkManager : MonoBehaviour
             float threshold = LodDistances[i];
             float band = threshold * 0.1f; // 10% band
 
-            int current = i;
             if (_lastCenter != default && _chunkLodLevels.TryGetValue(_lastCenter, out var last))
             {
                 if (i == last)
@@ -241,27 +246,6 @@ public class MCChunkManager : MonoBehaviour
         return LodDistances.Length;
     }
 
-
-
-    // TODO: remove
-    // void ApplyLODToChunk(MarchingChunk chunk, int lodLevel)
-    // {
-    //     // Clamp LOD level to available settings
-    //     lodLevel = Mathf.Clamp(lodLevel, 0, LodSamplings.Length - 1);
-
-    //     // Apply LOD settings
-    //     chunk.densitySampling = LodSamplings[lodLevel];
-
-    //     // Optionally adjust cell count per LOD
-    //     if (LodCellCounts.Length > lodLevel)
-    //     {
-    //         chunk.cells = LodCellCounts[lodLevel];
-    //         chunk.cellSize = ChunkWorldSize / chunk.cells.x;
-    //     }
-
-    //     // Regenerate the chunk with new LOD settings
-    //     chunk.Generate();
-    // }
 
     void ApplyLODToChunk(MarchingChunk chunk, int lodLevel)
     {
@@ -278,7 +262,8 @@ public class MCChunkManager : MonoBehaviour
             chunk.cellSize = ChunkWorldSize / chunk.cells.x; // keeps world size constant
         }
 
-        chunk.Generate();
+        TransitionNeeds needs = GetTransitionNeeds(Vector3Int.RoundToInt(chunk.transform.position));
+        chunk.Generate(needs);
 
         chunk.autoRegenerate = prevAuto; // restore
 
@@ -387,7 +372,8 @@ public class MCChunkManager : MonoBehaviour
             // Override with LOD-specific settings BEFORE enabling auto-regeneration
             go.autoRegenerate = false; // ensure it's off while configuring
             ApplyLODSettingsToChunk(go, lodLevel);
-            go.Generate();
+            TransitionNeeds needs = GetTransitionNeeds(cc);
+            go.Generate(needs);
         }
 
         //go.autoRegenerate = true; // Set this AFTER LOD is applied
@@ -459,11 +445,13 @@ public class MCChunkManager : MonoBehaviour
 
     // Which of the 6 faces need transitions (neighbor is exactly one level coarser)?
     // Order: +X, -X, +Y, -Y, +Z, -Z
-    struct TransitionNeeds
+    public struct TransitionNeeds
     {
         public bool px, nx, py, ny, pz, nz;
         public bool Any => px || nx || py || ny || pz || nz;
     }
+
+    
 
     TransitionNeeds GetTransitionNeeds(Vector3Int cc)
     {
@@ -485,6 +473,9 @@ public class MCChunkManager : MonoBehaviour
         n.nz = Need(cc + new Vector3Int(0, 0, -1));
         return n;
     }
+
+
+    
     
 
 

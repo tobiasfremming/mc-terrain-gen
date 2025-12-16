@@ -1,9 +1,10 @@
 
 
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using static MarchingCubesTables;
-
+using TransitionNeeds = MCChunkManager.TransitionNeeds;
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public class MarchingChunk : MonoBehaviour
@@ -31,11 +32,11 @@ public class MarchingChunk : MonoBehaviour
     Mesh _mesh;
     bool _isGenerating = false; // prevent double generation
 
-    void OnEnable()
-    {
-        EnsureMesh();
-        if (autoRegenerate) Generate();
-    }
+    // void OnEnable()
+    // {
+    //     EnsureMesh();
+    //     if (autoRegenerate) Generate();
+    // }
 
     void OnValidate()
     {
@@ -44,7 +45,7 @@ public class MarchingChunk : MonoBehaviour
             Mathf.Max(1, cells.y),
             Mathf.Max(1, cells.z));
         cellSize = Mathf.Max(0.001f, cellSize);
-        if (autoRegenerate && isActiveAndEnabled) Generate();
+        // if (autoRegenerate && isActiveAndEnabled) Generate();
     }
 
     void EnsureMesh()
@@ -58,7 +59,23 @@ public class MarchingChunk : MonoBehaviour
     }
 
     [ContextMenu("Generate")]
-    public void Generate()
+    public void Generate(TransitionNeeds needs){
+        GenerateRegularMesh();
+
+        // if (this chunk borders lower-detail neighbors):
+        //     GenerateTransitionMesh(transitionNeeds); or just transition needs lookup here?
+        if (needs.Any)
+        {
+            GenerateTransitionMesh(needs);
+        }
+    }
+
+    public void GenerateTransitionMesh(TransitionNeeds needs)
+    {
+        Console.WriteLine("Transition mesh generation not implemented yet.");
+    }
+
+    public void GenerateRegularMesh()
     {
         if (_isGenerating) return; // prevent double generation
         _isGenerating = true;
@@ -150,10 +167,7 @@ public class MarchingChunk : MonoBehaviour
         _isGenerating = false; // allow future generation
     }
 
-    public struct TransitionNeeds {
-    public bool px, nx, py, ny, pz, nz;
-    public bool Any => px||nx||py||ny||pz||nz;
-}
+    
 
 
 
