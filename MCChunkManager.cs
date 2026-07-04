@@ -56,8 +56,22 @@ public class MCChunkManager : MonoBehaviour
 
     void Start()
     {
-        if (Application.isPlaying && usePooling) PrewarmPool();
+        if (Application.isPlaying)
+        {
+            CleanupStaleChildren();
+            if (usePooling) PrewarmPool();
+        }
         UpdateVisibleChunks(force: true);
+    }
+
+    // Chunks that were generated in edit mode get serialized into the scene but
+    // aren't tracked in _chunks at play start; destroy them so they don't
+    // overlap the freshly generated terrain.
+    void CleanupStaleChildren()
+    {
+        var stale = GetComponentsInChildren<MarchingChunk>(true);
+        foreach (var ch in stale)
+            if (ch) Destroy(ch.gameObject);
     }
 
     void OnValidate()
@@ -264,6 +278,10 @@ public class MCChunkManager : MonoBehaviour
             Mathf.Max(1, baseCells.z >> lodLevel));
         chunk.cellSize = ChunkWorldSize / chunk.cells.x;
         chunk.densitySampling = 1;
+
+        // Only full-detail chunks need physics; the player can't reach coarser
+        // rings before they are re-generated at LOD 0.
+        chunk.generateCollider = lodLevel == 0;
     }
 
     MarchingChunk CreateChunk(Vector3Int cc)

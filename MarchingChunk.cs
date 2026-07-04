@@ -19,6 +19,9 @@ public class MarchingChunk : MonoBehaviour
     public bool autoRegenerate = false;
     public bool gizmoBounds = true;
 
+    [Header("Physics")]
+    public bool generateCollider = false; // set by MCChunkManager for LOD0 chunks
+
     [Header("Debug")]
     public bool showDebugInfo = false;
 
@@ -29,6 +32,7 @@ public class MarchingChunk : MonoBehaviour
     const float kTransitionWidthFraction = 0.25f;
 
     Mesh _mesh;
+    MeshCollider _collider;
     bool _isGenerating = false; // prevent double generation
 
     void OnValidate()
@@ -74,7 +78,33 @@ public class MarchingChunk : MonoBehaviour
         _mesh.SetTriangles(tris, 0);
         _mesh.RecalculateBounds();
 
+        UpdateCollider(tris.Count > 0);
+
         _isGenerating = false;
+    }
+
+    void UpdateCollider(bool hasGeometry)
+    {
+        if (generateCollider && hasGeometry)
+        {
+            if (_collider == null)
+            {
+                _collider = GetComponent<MeshCollider>();
+                if (_collider == null) _collider = gameObject.AddComponent<MeshCollider>();
+            }
+            _collider.sharedMesh = null; // force PhysX re-cook after mesh change
+            _collider.sharedMesh = _mesh;
+            _collider.enabled = true;
+        }
+        else
+        {
+            if (_collider == null) _collider = GetComponent<MeshCollider>();
+            if (_collider != null)
+            {
+                _collider.sharedMesh = null;
+                _collider.enabled = false;
+            }
+        }
     }
 
     // Effective grid after densitySampling, plus the step that keeps the chunk's
