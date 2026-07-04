@@ -1,11 +1,8 @@
-
-
 using System;
 using System.Collections.Generic;
 using UnityEngine;
 using static MarchingCubesTables;
 using TransitionNeeds = MCChunkManager.TransitionNeeds;
-using static TransVoxelTables;
 
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
@@ -15,12 +12,8 @@ public class MarchingChunk : MonoBehaviour
     public Vector3Int cells = new(32, 32, 32);  // cells per axis
     public float cellSize = 0.5f;               // world units per cell
     public float isoLevel = 0f;
-   
-    public int densitySampling = 1;             // 1=full resolution, higher=lower poly
 
-    [Header("Test shape")]
-    public Vector3 worldCenter = Vector3.zero;  // could be (chunkOrigin + chunkSize * 0.5);
-    public float sphereRadius = 6f;             // sphere radius
+    public int densitySampling = 1;             // 1=full resolution, higher=lower poly
 
     [Header("Generation")]
     public bool autoRegenerate = false;
@@ -31,14 +24,12 @@ public class MarchingChunk : MonoBehaviour
 
     public DensityField densityField;
 
+    // Transvoxel: width of a transition cell as a fraction of this chunk's cell
+    // size. The paper (Eq. 4.2, w(k) = 2^(k-2)) uses a quarter cell.
+    const float kTransitionWidthFraction = 0.25f;
+
     Mesh _mesh;
     bool _isGenerating = false; // prevent double generation
-
-    // void OnEnable()
-    // {
-    //     EnsureMesh();
-    //     if (autoRegenerate) Generate();
-    // }
 
     void OnValidate()
     {
@@ -47,7 +38,6 @@ public class MarchingChunk : MonoBehaviour
             Mathf.Max(1, cells.y),
             Mathf.Max(1, cells.z));
         cellSize = Mathf.Max(0.001f, cellSize);
-        // if (autoRegenerate && isActiveAndEnabled) Generate();
     }
 
     void EnsureMesh()
@@ -60,300 +50,70 @@ public class MarchingChunk : MonoBehaviour
         }
     }
 
-    [ContextMenu("Generate")]
-    public void Generate(TransitionNeeds needs){
-        GenerateRegularMesh();
+    public void Generate(TransitionNeeds needs)
+    {
+        if (_isGenerating) return;
+        _isGenerating = true;
 
+        EnsureMesh();
+
+        var verts = new List<Vector3>();
+        var norms = new List<Vector3>();
+        var tris = new List<int>();
+
+        GenerateRegularMeshData(needs, verts, norms, tris);
 
         if (needs.Any)
         {
-            GenerateTransitionMesh(needs);
+            GenerateTransitionMeshData(needs, verts, norms, tris);
         }
-    }
 
-    public void GenerateTransitionMesh(TransitionNeeds needs)
-    {
-        if (!needs.Any) return;
-
-        // === grid info ===
-        int nx = Mathf.Max(1, Mathf.FloorToInt(cells.x / (float)densitySampling));
-        int ny = Mathf.Max(1, Mathf.FloorToInt(cells.y / (float)densitySampling));
-        int nz = Mathf.Max(1, Mathf.FloorToInt(cells.z / (float)densitySampling));
-
-        float fineStep = cellSize * densitySampling;
-
-        Vector3 origin = transform.position;
-
-        // Get existing mesh data to APPEND to
-        var verts = new List<Vector3>(_mesh.vertices);
-        var norms = new List<Vector3>(_mesh.normals);
-        var tris = new List<int>(_mesh.triangles);
-
-        float gradStep = densityField
-            ? densityField.GradientStep(fineStep)
-            : fineStep * 0.1f;
-
-        // Generate transition mesh for each face that needs it
-        if (needs.px) GenerateTransitionFace(ref verts, ref norms, ref tris, origin, nx, ny, nz, fineStep, gradStep, 0);
-        if (needs.nx) GenerateTransitionFace(ref verts, ref norms, ref tris, origin, nx, ny, nz, fineStep, gradStep, 1);
-        if (needs.py) GenerateTransitionFace(ref verts, ref norms, ref tris, origin, nx, ny, nz, fineStep, gradStep, 2);
-        if (needs.ny) GenerateTransitionFace(ref verts, ref norms, ref tris, origin, nx, ny, nz, fineStep, gradStep, 3);
-        if (needs.pz) GenerateTransitionFace(ref verts, ref norms, ref tris, origin, nx, ny, nz, fineStep, gradStep, 4);
-        if (needs.nz) GenerateTransitionFace(ref verts, ref norms, ref tris, origin, nx, ny, nz, fineStep, gradStep, 5);
-
-        // Update mesh with combined regular + transition geometry
         _mesh.Clear();
         _mesh.SetVertices(verts);
         _mesh.SetNormals(norms);
         _mesh.SetTriangles(tris, 0);
         _mesh.RecalculateBounds();
+
+        _isGenerating = false;
     }
 
-    void GenerateTransitionFace(
-        ref List<Vector3> verts,
-        ref List<Vector3> norms,
-        ref List<int> tris,
-        Vector3 origin,
-        int nx, int ny, int nz,
-        float fineStep,
-        float gradStep,
-        int face)
+    // Effective grid after densitySampling, plus the step that keeps the chunk's
+    // world extent constant.
+    void GetEffectiveGrid(out int nx, out int ny, out int nz, out float step)
     {
-        // face: 0=+X, 1=-X, 2=+Y, 3=-Y, 4=+Z, 5=-Z
-        
-        // Determine iteration bounds based on face
-        int u1, u2, v1, v2;
-        switch (face)
-        {
-            case 0: case 1: u1 = ny; u2 = nz; v1 = ny - 1; v2 = nz - 1; break; // X faces: iterate over Y,Z
-            case 2: case 3: u1 = nx; u2 = nz; v1 = nx - 1; v2 = nz - 1; break; // Y faces: iterate over X,Z
-            case 4: case 5: u1 = nx; u2 = ny; v1 = nx - 1; v2 = ny - 1; break; // Z faces: iterate over X,Y
-            default: return;
-        }
-
-        // Iterate in coarse-sized steps (2x2 blocks)
-        for (int u = 0; u < v1; u += 2)
-        for (int v = 0; v < v2; v += 2)
-        {
-            // Get cell base positions for fine and coarse faces
-            Vector3 cellBaseFine = GetTransitionCellBase(face, u, v, origin, fineStep, true, nx, ny, nz);
-            Vector3 cellBaseCoarse = GetTransitionCellBase(face, u, v, origin, fineStep, false, nx, ny, nz);
-            
-            // Sample all 13 positions: 9 fine + 4 coarse
-            float[] cellSamples = new float[13];
-            for (int i = 0; i < 13; i++)
-            {
-                Vector3 samplePos = GetTransitionSamplePos(i, cellBaseFine, cellBaseCoarse, fineStep, face);
-                cellSamples[i] = DensityWorld(samplePos) - isoLevel;
-            }
-            
-            // Build 9-bit case index from fine face samples
-            int caseIndex = 0;
-            for (int i = 0; i < 9; i++)
-            {
-                if (cellSamples[i] < 0f) caseIndex |= (1 << i);
-            }
-            
-            // Get per-case vertex definitions
-            ushort[] vtxData = TransVoxelTables.TransitionVertexData[caseIndex];
-            
-            // Map to equivalence class for triangulation
-            int transClass = TransVoxelTables.TransitionCellClass[caseIndex];
-            bool invertWinding = (transClass & 0x80) != 0;
-            int cellDataIndex = transClass & 0x7F;
-            
-            var cellData = TransVoxelTables.TransitionCellDataTable[cellDataIndex];
-            int triCount = cellData.TriangleCount;
-            
-            // Generate triangles
-            for (int t = 0; t < triCount; t++)
-            {
-                int[] triVerts = new int[3];
-                for (int v_idx = 0; v_idx < 3; v_idx++)
-                {
-                    // Get index into the per-case vertex list
-                    byte vertexIndex = cellData.VertexIndex[t * 3 + v_idx];
-                    ushort packed = vtxData[vertexIndex];
-                    
-                    // Extract endpoint indices from low byte
-                    int edge0 = packed & 0x0F;
-                    int edge1 = (packed >> 4) & 0x0F;
-                    
-                    float da = cellSamples[edge0];
-                    float db = cellSamples[edge1];
-                    
-                    Vector3 pa = GetTransitionSamplePos(edge0, cellBaseFine, cellBaseCoarse, fineStep, face);
-                    Vector3 pb = GetTransitionSamplePos(edge1, cellBaseFine, cellBaseCoarse, fineStep, face);
-                    
-                    float tt = da / (da - db + 1e-8f);
-                    Vector3 vertPos = Vector3.Lerp(pa, pb, Mathf.Clamp01(tt));
-                    
-                    int vi = verts.Count;
-                    verts.Add(vertPos - origin);
-                    
-                    Vector3 n = -GradientWorld(vertPos, gradStep).normalized;
-                    norms.Add(n);
-                    
-                    triVerts[v_idx] = vi;
-                }
-                
-                // Add triangle (reverse winding if needed)
-                if (invertWinding)
-                {
-                    tris.Add(triVerts[2]);
-                    tris.Add(triVerts[1]);
-                    tris.Add(triVerts[0]);
-                }
-                else
-                {
-                    tris.Add(triVerts[0]);
-                    tris.Add(triVerts[1]);
-                    tris.Add(triVerts[2]);
-                }
-            }
-        }
-    }
-    
-    Vector3 GetTransitionCellBase(int face, int u, int v, Vector3 origin, float fineStep, bool isFine, int nx, int ny, int nz)
-    {
-        // face: 0=+X, 1=-X, 2=+Y, 3=-Y, 4=+Z, 5=-Z
-        // u, v are the 2D coordinates on the face
-        // Returns the base position for a transition cell
-        // Fine base: last layer inside chunk
-        // Coarse base: one step outside chunk (on neighbor's side)
-        
-        switch (face)
-        {
-            case 0: // +X face
-                if (isFine)
-                    return origin + new Vector3((nx - 1) * fineStep, u * fineStep, v * fineStep);
-                else
-                    return origin + new Vector3(nx * fineStep, u * fineStep, v * fineStep);
-            case 1: // -X face
-                if (isFine)
-                    return origin + new Vector3(0, u * fineStep, v * fineStep);
-                else
-                    return origin + new Vector3(-fineStep, u * fineStep, v * fineStep);
-            case 2: // +Y face
-                if (isFine)
-                    return origin + new Vector3(u * fineStep, (ny - 1) * fineStep, v * fineStep);
-                else
-                    return origin + new Vector3(u * fineStep, ny * fineStep, v * fineStep);
-            case 3: // -Y face
-                if (isFine)
-                    return origin + new Vector3(u * fineStep, 0, v * fineStep);
-                else
-                    return origin + new Vector3(u * fineStep, -fineStep, v * fineStep);
-            case 4: // +Z face
-                if (isFine)
-                    return origin + new Vector3(u * fineStep, v * fineStep, (nz - 1) * fineStep);
-                else
-                    return origin + new Vector3(u * fineStep, v * fineStep, nz * fineStep);
-            case 5: // -Z face
-                if (isFine)
-                    return origin + new Vector3(u * fineStep, v * fineStep, 0);
-                else
-                    return origin + new Vector3(u * fineStep, v * fineStep, -fineStep);
-            default:
-                return origin;
-        }
-    }
-    
-    Vector3 GetTransitionSamplePos(int i, Vector3 baseFine, Vector3 baseCoarse, float fineStep, int face)
-    {
-        // i: 0-8 are fine face (3x3), 9-12 are coarse face (2x2)
-        // Returns world position for sample i
-        
-        if (i < 9)
-        {
-            // Fine face: 3x3 grid
-            int fy = i / 3;
-            int fz = i % 3;
-            Vector3 offset = GetFaceOffset(face, fy, fz, fineStep);
-            return baseFine + offset;
-        }
-        else
-        {
-            // Coarse face: 2x2 grid
-            int ci = i - 9;
-            int cy = ci / 2;
-            int cz = ci % 2;
-            Vector3 offset = GetFaceOffset(face, cy * 2, cz * 2, fineStep);
-            return baseCoarse + offset;
-        }
-    }
-    
-    Vector3 GetFaceOffset(int face, int u, int v, float step)
-    {
-        // Maps 2D coordinates (u,v) to 3D offset based on face orientation
-        switch (face)
-        {
-            case 0: // +X face (YZ plane)
-                return new Vector3(0, u * step, v * step);
-            case 1: // -X face (YZ plane)
-                return new Vector3(0, u * step, v * step);
-            case 2: // +Y face (XZ plane)
-                return new Vector3(u * step, 0, v * step);
-            case 3: // -Y face (XZ plane)
-                return new Vector3(u * step, 0, v * step);
-            case 4: // +Z face (XY plane)
-                return new Vector3(u * step, v * step, 0);
-            case 5: // -Z face (XY plane)
-                return new Vector3(u * step, v * step, 0);
-            default:
-                return Vector3.zero;
-        }
+        nx = Mathf.Max(1, cells.x / Mathf.Max(1, densitySampling));
+        ny = Mathf.Max(1, cells.y / Mathf.Max(1, densitySampling));
+        nz = Mathf.Max(1, cells.z / Mathf.Max(1, densitySampling));
+        step = (cells.x * cellSize) / nx; // assumes cubic cells
     }
 
-
-
-    public void GenerateRegularMesh()
+    // ========================================================================
+    // Regular cells (modified Marching Cubes) with Transvoxel secondary vertex
+    // positions: on faces that border a finer neighbor, vertices in the
+    // outermost cell layer are shifted inward to make room for the transition
+    // cells (Lengyel Eq. 4.2 + tangent-plane projection Eq. 4.3).
+    // ========================================================================
+    public void GenerateRegularMeshData(TransitionNeeds needs, List<Vector3> verts, List<Vector3> norms, List<int> tris)
     {
-        if (_isGenerating) return; // prevent double generation
-        _isGenerating = true;
-        
-        EnsureMesh();
+        GetEffectiveGrid(out int nx, out int ny, out int nz, out float step);
 
-        // Keep mesh extent equal to the chunk's world size no matter the combo.
-        float worldSizeX = cells.x * cellSize;   // == chunk world size on X
-        float worldSizeY = cells.y * cellSize;
-        float worldSizeZ = cells.z * cellSize;
-
-        int nx = Mathf.Max(1, Mathf.FloorToInt(cells.x / (float)densitySampling));
-        int ny = Mathf.Max(1, Mathf.FloorToInt(cells.y / (float)densitySampling));
-        int nz = Mathf.Max(1, Mathf.FloorToInt(cells.z / (float)densitySampling));
-
-        // derive step so that nx * step == worldSizeX, etc.
-        float stepX = worldSizeX / nx;
-        float stepY = worldSizeY / ny;
-        float stepZ = worldSizeZ / nz;
-        // if you require cubic cells, pick one step (e.g., step = Mathf.Max(stepX, stepY, stepZ)) and recompute n*.
-        float effectiveCellSize = stepX; // assuming cubic and cells are same per axis
-
-
-        Debug.Log($"[{name}] Generate: cells={cells}, densitySampling={densitySampling}, effective grid=({nx},{ny},{nz}), effectiveCellSize={effectiveCellSize}");
+        Vector3 chunkSize = new Vector3(nx, ny, nz) * step;
+        Vector3 origin = transform.position;
 
         var samples = new float[(nx + 1) * (ny + 1) * (nz + 1)];
-
-        Vector3 origin = transform.position;
         int Idx(int x, int y, int z) => (z * (ny + 1) + y) * (nx + 1) + x;
 
-        // SAMPLE IN WORLD SPACE (correct)
         for (int z = 0; z <= nz; z++)
             for (int y = 0; y <= ny; y++)
                 for (int x = 0; x <= nx; x++)
                 {
-                    Vector3 pWorld = origin + new Vector3(x, y, z) * effectiveCellSize;
+                    Vector3 pWorld = origin + new Vector3(x, y, z) * step;
                     samples[Idx(x, y, z)] = DensityWorld(pWorld) - isoLevel;
                 }
 
-        var verts = new List<Vector3>(nx * ny * nz * 12);
-        var norms = new List<Vector3>(nx * ny * nz * 12);
-        var tris  = new List<int>(nx * ny * nz * 12);
+        float gradStep = densityField ? densityField.GradientStep(step) : step * 0.1f;
 
-        float gradStep = densityField ? densityField.GradientStep(effectiveCellSize)
-                                    : (effectiveCellSize * 0.1f); // reduced from 0.5f for better accuracy
-        float[] c = new float[8]; 
+        float[] c = new float[8];
         for (int z = 0; z < nz; z++)
             for (int y = 0; y < ny; y++)
                 for (int x = 0; x < nx; x++)
@@ -370,52 +130,209 @@ public class MarchingChunk : MonoBehaviour
 
                     for (int t = 0; triTable[caseIdx, t] != -1; t += 3)
                     {
-                        Vector3 v0L = InterpEdgeLocal(triTable[caseIdx, t + 0], x, y, z, c, effectiveCellSize);
-                        Vector3 v1L = InterpEdgeLocal(triTable[caseIdx, t + 1], x, y, z, c, effectiveCellSize);
-                        Vector3 v2L = InterpEdgeLocal(triTable[caseIdx, t + 2], x, y, z, c, effectiveCellSize);
+                        int baseIndex = verts.Count;
+                        for (int k = 0; k < 3; k++)
+                        {
+                            Vector3 vL = InterpEdgeLocal(triTable[caseIdx, t + k], x, y, z, c, step);
+                            Vector3 n = -GradientWorld(origin + vL, gradStep).normalized;
+                            vL = ApplySecondaryOffset(vL, n, needs, step, chunkSize);
+                            verts.Add(vL);
+                            norms.Add(n);
+                        }
+                        tris.Add(baseIndex); tris.Add(baseIndex + 1); tris.Add(baseIndex + 2);
+                    }
+                }
+    }
 
-                        int i0 = verts.Count; verts.Add(v0L);
-                        int i1 = verts.Count; verts.Add(v1L);
-                        int i2 = verts.Count; verts.Add(v2L);
+    // Lengyel Eq. 4.2/4.3. pLocal is the primary (undeformed) vertex position in
+    // chunk-local space, n the vertex normal. Offsets vertices within one cell
+    // of each face that has a transition; if the vertex is near ANY face without
+    // a transition (same-LOD or coarser neighbor), the primary position must be
+    // kept so that seams with those neighbors stay closed.
+    Vector3 ApplySecondaryOffset(Vector3 pLocal, Vector3 n, in TransitionNeeds needs, float step, Vector3 chunkSize)
+    {
+        float h = step;
+        float eps = h * 1e-4f;
 
-                        // normals from WORLD positions of those verts
-                        Vector3 w0 = origin + v0L;
-                        Vector3 w1 = origin + v1L;
-                        Vector3 w2 = origin + v2L;
-                        norms.Add(-GradientWorld(w0, gradStep).normalized);
-                        norms.Add(-GradientWorld(w1, gradStep).normalized);
-                        norms.Add(-GradientWorld(w2, gradStep).normalized);
+        float dpx = chunkSize.x - pLocal.x, dnx = pLocal.x;
+        float dpy = chunkSize.y - pLocal.y, dny = pLocal.y;
+        float dpz = chunkSize.z - pLocal.z, dnz = pLocal.z;
 
+        bool nearPX = dpx < h - eps, nearNX = dnx < h - eps;
+        bool nearPY = dpy < h - eps, nearNY = dny < h - eps;
+        bool nearPZ = dpz < h - eps, nearNZ = dnz < h - eps;
+
+        if (!(nearPX || nearNX || nearPY || nearNY || nearPZ || nearNZ)) return pLocal;
+
+        // Force primary position near faces that have no transition.
+        if ((nearPX && !needs.px) || (nearNX && !needs.nx) ||
+            (nearPY && !needs.py) || (nearNY && !needs.ny) ||
+            (nearPZ && !needs.pz) || (nearNZ && !needs.nz))
+            return pLocal;
+
+        float w = kTransitionWidthFraction * h;
+        Vector3 delta = Vector3.zero;
+        if (needs.px && nearPX) delta.x -= w * (1f - dpx / h);
+        if (needs.nx && nearNX) delta.x += w * (1f - dnx / h);
+        if (needs.py && nearPY) delta.y -= w * (1f - dpy / h);
+        if (needs.ny && nearNY) delta.y += w * (1f - dny / h);
+        if (needs.pz && nearPZ) delta.z -= w * (1f - dpz / h);
+        if (needs.nz && nearNZ) delta.z += w * (1f - dnz / h);
+
+        if (delta == Vector3.zero) return pLocal;
+
+        // Project the offset onto the tangent plane (Eq. 4.3) to avoid flattening.
+        delta -= Vector3.Dot(n, delta) * n;
+        return pLocal + delta;
+    }
+
+    // ========================================================================
+    // Transvoxel transition cells.
+    //
+    // This chunk is the COARSE side. For each face that borders a finer
+    // neighbor we march a sheet of transition cells: the full-resolution face
+    // (9 samples at half our cell size) lies exactly on the chunk boundary and
+    // matches the fine neighbor's mesh; the half-resolution face (4 samples,
+    // values identical to the corner samples of the full-res face) is pushed
+    // inward by the secondary-offset transform and matches our own deformed
+    // regular cells.
+    // ========================================================================
+    public void GenerateTransitionMeshData(TransitionNeeds needs, List<Vector3> verts, List<Vector3> norms, List<int> tris)
+    {
+        for (int face = 0; face < 6; face++)
+        {
+            if (needs.Face(face))
+                GenerateTransitionFace(face, needs, verts, norms, tris);
+        }
+    }
+
+    // Per full-res corner 0..8 (Fig. 4.16a: row-major, bottom row first), the
+    // contribution to the 9-bit case index (Fig. 4.17).
+    static readonly int[] kTransitionCaseBit = { 0x01, 0x02, 0x04, 0x80, 0x100, 0x08, 0x40, 0x20, 0x10 };
+
+    // Half-res corners 9,A,B,C map onto full-res corners 0,2,6,8 (same values,
+    // same primary positions).
+    static readonly int[] kHalfToFullCorner = { 0, 2, 6, 8 };
+
+    // Face basis: local-space face origin, U and V tangents and the axis counts.
+    // All bases satisfy U x V = outward normal so the table winding is
+    // consistent for all six faces (verified against the regular mesh winding).
+    void GetFaceBasis(int face, int nx, int ny, int nz, float step,
+                      out Vector3 faceOrigin, out Vector3 U, out Vector3 V,
+                      out int nU, out int nV)
+    {
+        float sx = nx * step, sy = ny * step, sz = nz * step;
+        switch (face)
+        {
+            case 0: faceOrigin = new Vector3(sx, 0, 0); U = Vector3.up;      V = Vector3.forward; nU = ny; nV = nz; break; // +X
+            case 1: faceOrigin = Vector3.zero;          U = Vector3.forward; V = Vector3.up;      nU = nz; nV = ny; break; // -X
+            case 2: faceOrigin = new Vector3(0, sy, 0); U = Vector3.forward; V = Vector3.right;   nU = nz; nV = nx; break; // +Y
+            case 3: faceOrigin = Vector3.zero;          U = Vector3.right;   V = Vector3.forward; nU = nx; nV = nz; break; // -Y
+            case 4: faceOrigin = new Vector3(0, 0, sz); U = Vector3.right;   V = Vector3.up;      nU = nx; nV = ny; break; // +Z
+            case 5: faceOrigin = Vector3.zero;          U = Vector3.up;      V = Vector3.right;   nU = ny; nV = nx; break; // -Z
+            default: throw new ArgumentOutOfRangeException(nameof(face));
+        }
+    }
+
+    void GenerateTransitionFace(int face, TransitionNeeds needs, List<Vector3> verts, List<Vector3> norms, List<int> tris)
+    {
+        GetEffectiveGrid(out int nx, out int ny, out int nz, out float step);
+        GetFaceBasis(face, nx, ny, nz, step, out Vector3 faceOrigin, out Vector3 U, out Vector3 V, out int nU, out int nV);
+
+        Vector3 chunkSize = new Vector3(nx, ny, nz) * step;
+        Vector3 origin = transform.position;
+        float s = 0.5f * step; // fine (neighbor) sample spacing
+        float gradStep = densityField ? densityField.GradientStep(step) : step * 0.1f;
+
+        var pos = new Vector3[13]; // primary positions, chunk-local, all on the boundary plane
+        var d = new float[13];
+
+        for (int j = 0; j < nV; j++)
+            for (int i = 0; i < nU; i++)
+            {
+                // Full-resolution face: 3x3 samples at fine spacing.
+                for (int c = 0; c < 9; c++)
+                {
+                    int a = 2 * i + (c % 3);
+                    int b = 2 * j + (c / 3);
+                    Vector3 p = faceOrigin + U * (a * s) + V * (b * s);
+                    pos[c] = p;
+                    d[c] = DensityWorld(origin + p) - isoLevel;
+                }
+                // Half-resolution face: same values/primary positions as corners.
+                for (int hc = 0; hc < 4; hc++)
+                {
+                    pos[9 + hc] = pos[kHalfToFullCorner[hc]];
+                    d[9 + hc] = d[kHalfToFullCorner[hc]];
+                }
+
+                int caseCode = 0;
+                for (int c = 0; c < 9; c++)
+                    if (d[c] < 0f) caseCode |= kTransitionCaseBit[c];
+                if (caseCode == 0 || caseCode == 511) continue;
+
+                byte cellClass = Tables.TransitionCellClass[caseCode];
+                bool invert = (cellClass & 0x80) != 0;
+                Tables.RegularCell cellData = Tables.TransitionRegularCellData[cellClass & 0x7F];
+                ushort[] vertexData = Tables.TransitionVertexData[caseCode];
+
+                long triCount = cellData.GetTriangleCount();
+                if (triCount == 0) continue;
+
+                // Build the cell's vertices (one per entry in vertexData; the
+                // triangulation indexes straight into this list).
+                int baseIndex = verts.Count;
+                for (int v = 0; v < vertexData.Length; v++)
+                {
+                    ushort packed = vertexData[v];
+                    int c0 = (packed >> 4) & 0x0F; // corner indices live in the LOW byte
+                    int c1 = packed & 0x0F;
+
+                    float d0 = d[c0], d1 = d[c1];
+                    float t = (d0 != d1) ? Mathf.Clamp01(d0 / (d0 - d1)) : 0.5f;
+                    Vector3 p = Vector3.Lerp(pos[c0], pos[c1], t);
+
+                    Vector3 n = -GradientWorld(origin + p, gradStep).normalized;
+
+                    // Vertices on the half-resolution face get the same secondary
+                    // transform as the regular-cell boundary vertices so the two
+                    // meshes stay sealed. Full-res face vertices are never moved.
+                    if (c0 >= 9 && c1 >= 9)
+                        p = ApplySecondaryOffset(p, n, needs, step, chunkSize);
+
+                    verts.Add(p);
+                    norms.Add(n);
+                }
+
+                byte[] indices = cellData.Indizes();
+                for (int t = 0; t < triCount; t++)
+                {
+                    int i0 = baseIndex + indices[t * 3 + 0];
+                    int i1 = baseIndex + indices[t * 3 + 1];
+                    int i2 = baseIndex + indices[t * 3 + 2];
+                    if (invert)
+                    {
+                        tris.Add(i2); tris.Add(i1); tris.Add(i0);
+                    }
+                    else
+                    {
                         tris.Add(i0); tris.Add(i1); tris.Add(i2);
                     }
                 }
-
-        _mesh.Clear();
-        _mesh.SetVertices(verts);     // local-space verts
-        _mesh.SetNormals(norms);
-        _mesh.SetTriangles(tris, 0);
-        _mesh.RecalculateBounds();
-        
-        _isGenerating = false; // allow future generation
+            }
     }
-
-    
-
-
-
-
 
     Vector3 InterpEdgeLocal(int edgeId, int x, int y, int z, float[] c, float cell)
     {
         int aIdx = EdgeToCorners[edgeId, 0];
         int bIdx = EdgeToCorners[edgeId, 1];
 
-        Vector3 paL = (new Vector3(x, y, z) + (Vector3)Corner[aIdx]) * cell; // LOCAL
-        Vector3 pbL = (new Vector3(x, y, z) + (Vector3)Corner[bIdx]) * cell; // LOCAL
+        Vector3 paL = (new Vector3(x, y, z) + (Vector3)Corner[aIdx]) * cell;
+        Vector3 pbL = (new Vector3(x, y, z) + (Vector3)Corner[bIdx]) * cell;
 
         float da = c[aIdx], db = c[bIdx];
-        float t = da / (da - db + 1e-8f);
-        return Vector3.Lerp(paL, pbL, Mathf.Clamp01(t));
+        float t = (da != db) ? Mathf.Clamp01(da / (da - db)) : 0.5f;
+        return Vector3.Lerp(paL, pbL, t);
     }
 
     Vector3 GradientWorld(Vector3 pWorld, float step)
@@ -426,29 +343,9 @@ public class MarchingChunk : MonoBehaviour
         return new Vector3(dx, dy, dz) / (2f * step);
     }
 
-
-        float DensityWorld(Vector3 p)
+    float DensityWorld(Vector3 p)
     {
-        // if (densityField != null) return densityField.SampleMinusIso(p);
         return densityField.Sample(p);
-        // Fallback: sphere test (so old scenes still work)
-        //return Vector3.Distance(p, worldCenter) - sphereRadius - isoLevel;
-    }
-
-    
-
-    Vector3 InterpEdge(int edgeId, int x, int y, int z, float[] c, Vector3 origin, float cellSizeToUse)
-    {
-        int aIdx = EdgeToCorners[edgeId, 0];
-        int bIdx = EdgeToCorners[edgeId, 1];
-
-        Vector3 pa = origin + (new Vector3(x, y, z) + (Vector3)Corner[aIdx]) * cellSizeToUse;
-        Vector3 pb = origin + (new Vector3(x, y, z) + (Vector3)Corner[bIdx]) * cellSizeToUse;
-
-        float da = c[aIdx];
-        float db = c[bIdx];
-        float t = da / (da - db + 1e-8f);
-        return Vector3.Lerp(pa, pb, Mathf.Clamp01(t));
     }
 
     void OnDrawGizmosSelected()
@@ -462,19 +359,16 @@ public class MarchingChunk : MonoBehaviour
     void OnGUI()
     {
         if (!showDebugInfo) return;
-        
+
         var style = new GUIStyle(GUI.skin.label)
         {
             normal = { textColor = Color.white },
             fontSize = 12
         };
-        
+
         string configInfo = densityField ? densityField.name : "No DensityField";
         string debugText = $"Config: {configInfo}\nDensity Sampling: {densitySampling}";
-        
+
         GUI.Label(new Rect(10, 10, 200, 40), debugText, style);
     }
-    
-
-
 }
