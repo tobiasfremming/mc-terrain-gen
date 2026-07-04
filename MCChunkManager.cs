@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -14,21 +13,32 @@ public class MCChunkManager : MonoBehaviour
     public int prewarm = 16;             // how many chunks to create up-front
     public int maxPoolSize = 256;        // safety cap
 
+    [Header("Streaming")]
+    [Tooltip("Max milliseconds per frame spent (re)generating chunk meshes. At least one chunk is processed per frame while work is queued.")]
+    public float generationBudgetMs = 6f;
+
     readonly Dictionary<Vector3Int, MarchingChunk> _chunks = new();
     readonly Stack<MarchingChunk> _pool = new();
 
-    // LOD level per active chunk (0 = finest). Adjacent chunks never differ by
-    // more than one level so that Transvoxel transition cells can stitch them.
+    // Target LOD level per chunk coordinate (0 = finest). Derived purely from
+    // CHUNK-GRID distance to the player's chunk, so it only ever changes when
+    // the player crosses a chunk boundary. Adjacent chunks never differ by more
+    // than one level so Transvoxel transition cells can stitch them.
     readonly Dictionary<Vector3Int, int> _chunkLodLevels = new();
 
     // What each chunk was last generated with, so we only regenerate on change.
     struct GeneratedState { public int lod; public byte needsMask; }
     readonly Dictionary<Vector3Int, GeneratedState> _generatedState = new();
 
+    // Chunks needing (re)generation, sorted near-to-far, drained a few per frame.
+    readonly HashSet<Vector3Int> _needed = new();
+    readonly List<Vector3Int> _jobs = new();
+    readonly List<Vector3Int> _removeScratch = new();
+    int _jobCursor;
+
     Vector3Int _lastCenter;
-    bool _hasCenter = false;
-    bool _pendingRefresh = false;
-    float _lastLodUpdate;
+    bool _hasCenter;
+    bool _pendingRefresh;
 
     // Properties that read from worldConfig
     Vector3Int CellsPerChunk => worldConfig ? worldConfig.cellsPerChunk : new Vector3Int(32, 32, 32);
@@ -37,8 +47,6 @@ public class MCChunkManager : MonoBehaviour
     DensityField DefaultDensity => worldConfig ? worldConfig.defaultDensity : null;
     float IsoLevel => worldConfig ? worldConfig.isoLevel : 0f;
     float[] LodDistances => worldConfig ? worldConfig.lodDistances : new float[] { 6f, 12f, 24f, 48f };
-    bool UseAdaptiveLOD => worldConfig ? worldConfig.useAdaptiveLOD : true;
-    float LodUpdateInterval => worldConfig ? worldConfig.lodUpdateInterval : 0.5f;
 
     float ChunkWorldSize => CellsPerChunk.x * CellSize;
 
@@ -61,7 +69,15 @@ public class MCChunkManager : MonoBehaviour
             CleanupStaleChildren();
             if (usePooling) PrewarmPool();
         }
-        UpdateVisibleChunks(force: true);
+
+        RecomputeTargets();
+
+        // Generate the player's immediate surroundings synchronously so there
+        // is ground (and a collider) to stand on; the rest streams in.
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                    ExecuteJob(_lastCenter + new Vector3Int(dx, dy, dz));
     }
 
     // Chunks that were generated in edit mode get serialized into the scene but
@@ -81,41 +97,31 @@ public class MCChunkManager : MonoBehaviour
 
     void Update()
     {
+        if (!target) return;
+
         if (_pendingRefresh)
         {
             _pendingRefresh = false;
-            if (Application.isPlaying && _chunks.Count > 0)
-            {
-                UpdateVisibleChunks(force: true);
-            }
-            else if (!Application.isPlaying)
-            {
-                StartCoroutine(DeferredRefresh());
-            }
-            return;
+            _generatedState.Clear(); // settings may have changed: regenerate all (streamed)
+            RecomputeTargets();
         }
-
-        if (!target) return;
-
-        var center = WorldToChunkCoord(target.position);
-        bool moved = !_hasCenter || center != _lastCenter;
-        bool lodTick = UseAdaptiveLOD && Time.time - _lastLodUpdate > LodUpdateInterval;
-
-        if (moved || lodTick)
+        else
         {
-            _lastLodUpdate = Time.time;
-            UpdateVisibleChunks(force: false);
+            var center = WorldToChunkCoord(target.position);
+            if (!_hasCenter || center != _lastCenter)
+                RecomputeTargets(); // only when the player crosses a chunk border
         }
-    }
 
-    IEnumerator DeferredRefresh()
-    {
-        yield return null; // wait one frame (edit mode safety)
-        UpdateVisibleChunks(force: true);
+        ProcessJobs();
     }
 
     [ContextMenu("Refresh All Chunks")]
-    void RefreshExistingChunks() => UpdateVisibleChunks(force: true);
+    void RefreshExistingChunks()
+    {
+        _generatedState.Clear();
+        RecomputeTargets();
+        ProcessAllJobsNow();
+    }
 
     [ContextMenu("Generate All Chunks")]
     public void GenerateAllChunks()
@@ -125,23 +131,9 @@ public class MCChunkManager : MonoBehaviour
             Debug.LogWarning("No target set for chunk generation!");
             return;
         }
-
-        if (Application.isPlaying)
-        {
-            ClearAllChunks();
-            UpdateVisibleChunks(force: true);
-        }
-        else
-        {
-            StartCoroutine(DeferredGenerateAllChunks());
-        }
-    }
-
-    IEnumerator DeferredGenerateAllChunks()
-    {
-        yield return null;
         ClearAllChunks();
-        UpdateVisibleChunks(force: true);
+        RecomputeTargets();
+        ProcessAllJobsNow();
     }
 
     [ContextMenu("Clear All Chunks")]
@@ -154,6 +146,9 @@ public class MCChunkManager : MonoBehaviour
         _chunks.Clear();
         _chunkLodLevels.Clear();
         _generatedState.Clear();
+        _jobs.Clear();
+        _jobCursor = 0;
+        _hasCenter = false;
 
         // Also destroy any stray child chunks not in the dictionary.
         var allChildChunks = GetComponentsInChildren<MarchingChunk>();
@@ -168,15 +163,14 @@ public class MCChunkManager : MonoBehaviour
 #endif
             }
         }
-        _hasCenter = false;
     }
 
     // ========================================================================
-    // Core update: decide which chunks exist, assign LOD levels (clamped so
-    // neighbors differ by at most one level), and (re)generate every chunk
-    // whose LOD or transition needs changed.
+    // Target computation. Runs only when the player enters a different chunk
+    // (or settings change): decides which chunks should exist and at what LOD,
+    // releases out-of-range chunks and queues the ones whose state changed.
     // ========================================================================
-    void UpdateVisibleChunks(bool force)
+    void RecomputeTargets()
     {
         if (!worldConfig || !chunkPrefab || !target) return;
 
@@ -184,18 +178,20 @@ public class MCChunkManager : MonoBehaviour
         _lastCenter = center;
         _hasCenter = true;
 
-        var needed = new HashSet<Vector3Int>();
+        _needed.Clear();
         for (int z = -ViewRadius; z <= ViewRadius; z++)
             for (int y = -ViewRadius / 3; y <= ViewRadius / 3; y++)
                 for (int x = -ViewRadius; x <= ViewRadius; x++)
-                    needed.Add(center + new Vector3Int(x, y, z));
+                    _needed.Add(center + new Vector3Int(x, y, z));
 
-        // 1) Desired LOD per chunk from distance.
+        // 1) Desired LOD per chunk from chunk-grid distance (quantized: stable
+        //    while the player stays inside one chunk).
         _chunkLodLevels.Clear();
-        foreach (var cc in needed)
+        float chunkSize = ChunkWorldSize;
+        foreach (var cc in _needed)
         {
-            Vector3 chunkCenter = ChunkOrigin(cc) + Vector3.one * (ChunkWorldSize * 0.5f);
-            _chunkLodLevels[cc] = CalculateLODLevel(Vector3.Distance(target.position, chunkCenter));
+            float dist = Vector3Int.Distance(cc, center) * chunkSize;
+            _chunkLodLevels[cc] = CalculateLODLevel(dist);
         }
 
         // 2) Relax so adjacent chunks never differ by more than one level
@@ -204,7 +200,7 @@ public class MCChunkManager : MonoBehaviour
         while (changed)
         {
             changed = false;
-            foreach (var cc in needed)
+            foreach (var cc in _needed)
             {
                 int lod = _chunkLodLevels[cc];
                 foreach (var dir in FaceDirs)
@@ -219,42 +215,77 @@ public class MCChunkManager : MonoBehaviour
             }
         }
 
-        // 3) Create missing chunks (configured but not generated yet).
-        foreach (var cc in needed)
-        {
-            if (!_chunks.ContainsKey(cc))
-                _chunks.Add(cc, CreateChunk(cc));
-        }
-
-        // 4) (Re)generate chunks whose LOD or transition needs changed.
-        foreach (var cc in needed)
-        {
-            var chunk = _chunks[cc];
-            int lod = _chunkLodLevels[cc];
-            TransitionNeeds needs = GetTransitionNeeds(cc);
-
-            var state = new GeneratedState { lod = lod, needsMask = needs.Mask };
-            if (!force &&
-                _generatedState.TryGetValue(cc, out var prev) &&
-                prev.lod == state.lod && prev.needsMask == state.needsMask)
-                continue;
-
-            ApplyLODSettingsToChunk(chunk, lod);
-            chunk.Generate(needs);
-            _generatedState[cc] = state;
-        }
-
-        // 5) Remove chunks that fell out of range.
-        var toRemove = new List<Vector3Int>();
+        // 3) Release chunks that fell out of range.
+        _removeScratch.Clear();
         foreach (var kv in _chunks)
-            if (!needed.Contains(kv.Key)) toRemove.Add(kv.Key);
-
-        foreach (var key in toRemove)
+            if (!_needed.Contains(kv.Key)) _removeScratch.Add(kv.Key);
+        foreach (var key in _removeScratch)
         {
             ReleaseChunk(_chunks[key]);
             _chunks.Remove(key);
             _generatedState.Remove(key);
         }
+
+        // 4) Queue chunks whose desired state differs from what they have,
+        //    nearest first so the terrain settles around the player.
+        _jobs.Clear();
+        _jobCursor = 0;
+        foreach (var cc in _needed)
+            if (NeedsWork(cc)) _jobs.Add(cc);
+        _jobs.Sort((a, b) => (a - center).sqrMagnitude.CompareTo((b - center).sqrMagnitude));
+    }
+
+    bool NeedsWork(Vector3Int cc)
+    {
+        if (!_chunks.ContainsKey(cc)) return true;
+        if (!_generatedState.TryGetValue(cc, out var prev)) return true;
+        int lod = _chunkLodLevels[cc];
+        return prev.lod != lod || prev.needsMask != GetTransitionNeeds(cc).Mask;
+    }
+
+    // ========================================================================
+    // Streaming: drain the job queue under a per-frame time budget.
+    // ========================================================================
+    void ProcessJobs()
+    {
+        if (_jobCursor >= _jobs.Count) return;
+
+        float t0 = Time.realtimeSinceStartup;
+        int done = 0;
+        while (_jobCursor < _jobs.Count)
+        {
+            if (done > 0 && (Time.realtimeSinceStartup - t0) * 1000f >= generationBudgetMs)
+                break;
+            ExecuteJob(_jobs[_jobCursor++]);
+            done++;
+        }
+    }
+
+    void ProcessAllJobsNow()
+    {
+        while (_jobCursor < _jobs.Count)
+            ExecuteJob(_jobs[_jobCursor++]);
+    }
+
+    void ExecuteJob(Vector3Int cc)
+    {
+        if (!_needed.Contains(cc)) return; // dropped out of range meanwhile
+        if (!_chunkLodLevels.TryGetValue(cc, out int lod)) return;
+
+        if (!_chunks.TryGetValue(cc, out var chunk) || chunk == null)
+        {
+            chunk = CreateChunk(cc);
+            _chunks[cc] = chunk;
+        }
+
+        TransitionNeeds needsNow = GetTransitionNeeds(cc);
+        if (_generatedState.TryGetValue(cc, out var prev) &&
+            prev.lod == lod && prev.needsMask == needsNow.Mask)
+            return; // already up to date (e.g. generated synchronously at Start)
+
+        ApplyLODSettingsToChunk(chunk, lod);
+        chunk.Generate(needsNow);
+        _generatedState[cc] = new GeneratedState { lod = lod, needsMask = needsNow.Mask };
     }
 
     int CalculateLODLevel(float distance)

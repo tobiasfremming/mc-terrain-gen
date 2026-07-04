@@ -42,9 +42,10 @@ public class SimpleHeightfield : DensityField
         return r * r;
     }
 
-    public override float Sample(Vector3 w)
+    // The (expensive) 2D terrain height at world (x, z).
+    public float HeightAt(float wx, float wz)
     {
-        Vector2 xz = new Vector2(w.x, w.z);
+        Vector2 xz = new Vector2(wx, wz);
 
         float h = baseHeight;
 
@@ -69,7 +70,43 @@ public class SimpleHeightfield : DensityField
             h += r * ridgeAmp;
         }
 
-        // Signed density for a height surface: negative = below surface (solid), positive = above (air)
-        return h - w.y;
+        return h;
+    }
+
+    public override float Sample(Vector3 w)
+    {
+        // Signed density for a height surface: positive = below surface (solid),
+        // negative = above (air).
+        return HeightAt(w.x, w.z) - w.y;
+    }
+
+    // Height only depends on (x, z), so evaluate it once per column instead of
+    // once per sample: countY x fewer noise evaluations than the default.
+    public override void SampleGrid(Vector3 origin, int countX, int countY, int countZ, float step, float[] dest)
+    {
+        float[] row = new float[countX];
+        for (int z = 0; z < countZ; z++)
+        {
+            float wz = origin.z + z * step;
+            for (int x = 0; x < countX; x++)
+                row[x] = HeightAt(origin.x + x * step, wz);
+
+            for (int y = 0; y < countY; y++)
+            {
+                float wy = origin.y + y * step;
+                int baseIdx = (z * countY + y) * countX;
+                for (int x = 0; x < countX; x++)
+                    dest[baseIdx + x] = row[x] - wy;
+            }
+        }
+    }
+
+    // Identical values to the base central-difference gradient (d/dy of h - y is
+    // exactly -1, and x/z differences only involve the height), ~3x cheaper.
+    public override Vector3 Gradient(Vector3 p, float eps)
+    {
+        float dx = HeightAt(p.x + eps, p.z) - HeightAt(p.x - eps, p.z);
+        float dz = HeightAt(p.x, p.z + eps) - HeightAt(p.x, p.z - eps);
+        return new Vector3(dx / (2f * eps), -1f, dz / (2f * eps));
     }
 }

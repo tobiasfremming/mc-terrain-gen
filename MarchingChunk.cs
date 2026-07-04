@@ -22,9 +22,6 @@ public class MarchingChunk : MonoBehaviour
     [Header("Physics")]
     public bool generateCollider = false; // set by MCChunkManager for LOD0 chunks
 
-    [Header("Debug")]
-    public bool showDebugInfo = false;
-
     public DensityField densityField;
 
     // Transvoxel: width of a transition cell as a fraction of this chunk's cell
@@ -34,6 +31,16 @@ public class MarchingChunk : MonoBehaviour
     Mesh _mesh;
     MeshCollider _collider;
     bool _isGenerating = false; // prevent double generation
+
+    // Scratch buffers shared by all chunks (generation is main-thread only).
+    // Reusing them avoids per-chunk allocations and GC spikes.
+    static float[] s_samples;
+    static float[] s_faceSamples;
+    static readonly List<Vector3> s_verts = new();
+    static readonly List<Vector3> s_norms = new();
+    static readonly List<int> s_tris = new();
+    static readonly Dictionary<long, int> s_vertexCache = new();
+    static readonly int[] s_cellVerts = new int[12];
 
     void OnValidate()
     {
@@ -61,24 +68,24 @@ public class MarchingChunk : MonoBehaviour
 
         EnsureMesh();
 
-        var verts = new List<Vector3>();
-        var norms = new List<Vector3>();
-        var tris = new List<int>();
+        s_verts.Clear();
+        s_norms.Clear();
+        s_tris.Clear();
 
-        GenerateRegularMeshData(needs, verts, norms, tris);
+        GenerateRegularMeshData(needs, s_verts, s_norms, s_tris);
 
         if (needs.Any)
         {
-            GenerateTransitionMeshData(needs, verts, norms, tris);
+            GenerateTransitionMeshData(needs, s_verts, s_norms, s_tris);
         }
 
         _mesh.Clear();
-        _mesh.SetVertices(verts);
-        _mesh.SetNormals(norms);
-        _mesh.SetTriangles(tris, 0);
+        _mesh.SetVertices(s_verts);
+        _mesh.SetNormals(s_norms);
+        _mesh.SetTriangles(s_tris, 0);
         _mesh.RecalculateBounds();
 
-        UpdateCollider(tris.Count > 0);
+        UpdateCollider(s_tris.Count > 0);
 
         _isGenerating = false;
     }
@@ -122,6 +129,10 @@ public class MarchingChunk : MonoBehaviour
     // positions: on faces that border a finer neighbor, vertices in the
     // outermost cell layer are shifted inward to make room for the transition
     // cells (Lengyel Eq. 4.2 + tangent-plane projection Eq. 4.3).
+    //
+    // Vertices are deduplicated with an edge-keyed cache: each surface vertex
+    // lies on a unique grid edge shared by up to four cells, so caching cuts
+    // both vertex count and (expensive) gradient evaluations ~4x.
     // ========================================================================
     public void GenerateRegularMeshData(TransitionNeeds needs, List<Vector3> verts, List<Vector3> norms, List<int> tris)
     {
@@ -130,46 +141,69 @@ public class MarchingChunk : MonoBehaviour
         Vector3 chunkSize = new Vector3(nx, ny, nz) * step;
         Vector3 origin = transform.position;
 
-        var samples = new float[(nx + 1) * (ny + 1) * (nz + 1)];
-        int Idx(int x, int y, int z) => (z * (ny + 1) + y) * (nx + 1) + x;
+        int countX = nx + 1, countY = ny + 1, countZ = nz + 1;
+        int sampleCount = countX * countY * countZ;
+        if (s_samples == null || s_samples.Length < sampleCount) s_samples = new float[sampleCount];
 
-        for (int z = 0; z <= nz; z++)
-            for (int y = 0; y <= ny; y++)
-                for (int x = 0; x <= nx; x++)
-                {
-                    Vector3 pWorld = origin + new Vector3(x, y, z) * step;
-                    samples[Idx(x, y, z)] = DensityWorld(pWorld) - isoLevel;
-                }
+        densityField.SampleGrid(origin, countX, countY, countZ, step, s_samples);
+        if (isoLevel != 0f)
+            for (int i = 0; i < sampleCount; i++) s_samples[i] -= isoLevel;
 
-        float gradStep = densityField ? densityField.GradientStep(step) : step * 0.1f;
+        float gradStep = densityField.GradientStep(step);
 
-        float[] c = new float[8];
+        int Idx(int x, int y, int z) => (z * countY + y) * countX + x;
+
+        s_vertexCache.Clear();
+
+        // Creates (or reuses) the vertex on the edge of cell (x,y,z) with the
+        // given Marching Cubes edge id. Cache key: the two sample-grid indices.
+        int GetOrCreateVertex(int edgeId, int x, int y, int z)
+        {
+            int aIdx = EdgeToCorners[edgeId, 0];
+            int bIdx = EdgeToCorners[edgeId, 1];
+            var ca = Corner[aIdx];
+            var cb = Corner[bIdx];
+            int ia = Idx(x + ca.x, y + ca.y, z + ca.z);
+            int ib = Idx(x + cb.x, y + cb.y, z + cb.z);
+            long key = ia < ib ? ((long)ia << 32) | (uint)ib : ((long)ib << 32) | (uint)ia;
+
+            if (s_vertexCache.TryGetValue(key, out int vi)) return vi;
+
+            float da = s_samples[ia], db = s_samples[ib];
+            Vector3 pa = new Vector3(x + ca.x, y + ca.y, z + ca.z) * step;
+            Vector3 pb = new Vector3(x + cb.x, y + cb.y, z + cb.z) * step;
+            float t = (da != db) ? Mathf.Clamp01(da / (da - db)) : 0.5f;
+            Vector3 pL = Vector3.Lerp(pa, pb, t);
+
+            Vector3 n = -densityField.Gradient(origin + pL, gradStep).normalized;
+            pL = ApplySecondaryOffset(pL, n, needs, step, chunkSize);
+
+            vi = verts.Count;
+            verts.Add(pL);
+            norms.Add(n);
+            s_vertexCache.Add(key, vi);
+            return vi;
+        }
+
         for (int z = 0; z < nz; z++)
             for (int y = 0; y < ny; y++)
                 for (int x = 0; x < nx; x++)
                 {
+                    int caseIdx = 0;
                     for (int i = 0; i < 8; i++)
                     {
                         var co = Corner[i];
-                        c[i] = samples[Idx(x + co.x, y + co.y, z + co.z)];
+                        if (s_samples[Idx(x + co.x, y + co.y, z + co.z)] < 0f) caseIdx |= (1 << i);
                     }
-
-                    int caseIdx = 0;
-                    for (int i = 0; i < 8; i++) if (c[i] < 0f) caseIdx |= (1 << i);
                     if (caseIdx == 0 || caseIdx == 255) continue;
 
                     for (int t = 0; triTable[caseIdx, t] != -1; t += 3)
                     {
-                        int baseIndex = verts.Count;
-                        for (int k = 0; k < 3; k++)
-                        {
-                            Vector3 vL = InterpEdgeLocal(triTable[caseIdx, t + k], x, y, z, c, step);
-                            Vector3 n = -GradientWorld(origin + vL, gradStep).normalized;
-                            vL = ApplySecondaryOffset(vL, n, needs, step, chunkSize);
-                            verts.Add(vL);
-                            norms.Add(n);
-                        }
-                        tris.Add(baseIndex); tris.Add(baseIndex + 1); tris.Add(baseIndex + 2);
+                        int i0 = GetOrCreateVertex(triTable[caseIdx, t + 0], x, y, z);
+                        int i1 = GetOrCreateVertex(triTable[caseIdx, t + 1], x, y, z);
+                        int i2 = GetOrCreateVertex(triTable[caseIdx, t + 2], x, y, z);
+                        if (i0 == i1 || i1 == i2 || i0 == i2) continue; // zero-area
+                        tris.Add(i0); tris.Add(i1); tris.Add(i2);
                     }
                 }
     }
@@ -272,29 +306,41 @@ public class MarchingChunk : MonoBehaviour
         Vector3 chunkSize = new Vector3(nx, ny, nz) * step;
         Vector3 origin = transform.position;
         float s = 0.5f * step; // fine (neighbor) sample spacing
-        float gradStep = densityField ? densityField.GradientStep(step) : step * 0.1f;
+        float gradStep = densityField.GradientStep(step);
 
-        var pos = new Vector3[13]; // primary positions, chunk-local, all on the boundary plane
+        // Pre-sample the whole fine face grid in one batch (adjacent cells share
+        // sample columns; doing it per cell would sample everything ~2-4 times).
+        int W = 2 * nU + 1, H = 2 * nV + 1;
+        int ux = (int)U.x, uy = (int)U.y, uz = (int)U.z;
+        int vx = (int)V.x, vy = (int)V.y, vz = (int)V.z;
+        int countX = ux * (W - 1) + vx * (H - 1) + 1;
+        int countY = uy * (W - 1) + vy * (H - 1) + 1;
+        int countZ = uz * (W - 1) + vz * (H - 1) + 1;
+        int total = countX * countY * countZ;
+        if (s_faceSamples == null || s_faceSamples.Length < total) s_faceSamples = new float[total];
+        densityField.SampleGrid(origin + faceOrigin, countX, countY, countZ, s, s_faceSamples);
+        if (isoLevel != 0f)
+            for (int i = 0; i < total; i++) s_faceSamples[i] -= isoLevel;
+
+        float FaceSample(int a, int b)
+        {
+            int ix = ux * a + vx * b;
+            int iy = uy * a + vy * b;
+            int iz = uz * a + vz * b;
+            return s_faceSamples[(iz * countY + iy) * countX + ix];
+        }
+
+        s_vertexCache.Clear(); // reused as (cornerA, cornerB, halfResFlag) -> vertex index
+
         var d = new float[13];
 
         for (int j = 0; j < nV; j++)
             for (int i = 0; i < nU; i++)
             {
-                // Full-resolution face: 3x3 samples at fine spacing.
                 for (int c = 0; c < 9; c++)
-                {
-                    int a = 2 * i + (c % 3);
-                    int b = 2 * j + (c / 3);
-                    Vector3 p = faceOrigin + U * (a * s) + V * (b * s);
-                    pos[c] = p;
-                    d[c] = DensityWorld(origin + p) - isoLevel;
-                }
-                // Half-resolution face: same values/primary positions as corners.
+                    d[c] = FaceSample(2 * i + (c % 3), 2 * j + (c / 3));
                 for (int hc = 0; hc < 4; hc++)
-                {
-                    pos[9 + hc] = pos[kHalfToFullCorner[hc]];
                     d[9 + hc] = d[kHalfToFullCorner[hc]];
-                }
 
                 int caseCode = 0;
                 for (int c = 0; c < 9; c++)
@@ -309,37 +355,56 @@ public class MarchingChunk : MonoBehaviour
                 long triCount = cellData.GetTriangleCount();
                 if (triCount == 0) continue;
 
-                // Build the cell's vertices (one per entry in vertexData; the
-                // triangulation indexes straight into this list).
-                int baseIndex = verts.Count;
+                // Build/reuse the cell's vertices. Vertices on shared full-res
+                // face edges are deduplicated across neighboring cells.
                 for (int v = 0; v < vertexData.Length; v++)
                 {
                     ushort packed = vertexData[v];
                     int c0 = (packed >> 4) & 0x0F; // corner indices live in the LOW byte
                     int c1 = packed & 0x0F;
+                    bool halfRes = c0 >= 9 && c1 >= 9;
 
-                    float d0 = d[c0], d1 = d[c1];
-                    float t = (d0 != d1) ? Mathf.Clamp01(d0 / (d0 - d1)) : 0.5f;
-                    Vector3 p = Vector3.Lerp(pos[c0], pos[c1], t);
+                    int f0 = c0 >= 9 ? kHalfToFullCorner[c0 - 9] : c0;
+                    int f1 = c1 >= 9 ? kHalfToFullCorner[c1 - 9] : c1;
+                    int a0 = 2 * i + (f0 % 3), b0 = 2 * j + (f0 / 3);
+                    int a1 = 2 * i + (f1 % 3), b1 = 2 * j + (f1 / 3);
+                    int g0 = b0 * W + a0;
+                    int g1 = b1 * W + a1;
+                    long key = (halfRes ? 1L << 62 : 0L) |
+                               (g0 < g1 ? ((long)g0 << 24) | (uint)g1 : ((long)g1 << 24) | (uint)g0);
 
-                    Vector3 n = -GradientWorld(origin + p, gradStep).normalized;
+                    if (!s_vertexCache.TryGetValue(key, out int vi))
+                    {
+                        float d0 = d[c0], d1 = d[c1];
+                        Vector3 p0 = faceOrigin + U * (a0 * s) + V * (b0 * s);
+                        Vector3 p1 = faceOrigin + U * (a1 * s) + V * (b1 * s);
+                        float t = (d0 != d1) ? Mathf.Clamp01(d0 / (d0 - d1)) : 0.5f;
+                        Vector3 p = Vector3.Lerp(p0, p1, t);
 
-                    // Vertices on the half-resolution face get the same secondary
-                    // transform as the regular-cell boundary vertices so the two
-                    // meshes stay sealed. Full-res face vertices are never moved.
-                    if (c0 >= 9 && c1 >= 9)
-                        p = ApplySecondaryOffset(p, n, needs, step, chunkSize);
+                        Vector3 n = -densityField.Gradient(origin + p, gradStep).normalized;
 
-                    verts.Add(p);
-                    norms.Add(n);
+                        // Vertices on the half-resolution face get the same
+                        // secondary transform as the regular-cell boundary
+                        // vertices so the two meshes stay sealed. Full-res face
+                        // vertices are never moved.
+                        if (halfRes)
+                            p = ApplySecondaryOffset(p, n, needs, step, chunkSize);
+
+                        vi = verts.Count;
+                        verts.Add(p);
+                        norms.Add(n);
+                        s_vertexCache.Add(key, vi);
+                    }
+                    s_cellVerts[v] = vi;
                 }
 
                 byte[] indices = cellData.Indizes();
                 for (int t = 0; t < triCount; t++)
                 {
-                    int i0 = baseIndex + indices[t * 3 + 0];
-                    int i1 = baseIndex + indices[t * 3 + 1];
-                    int i2 = baseIndex + indices[t * 3 + 2];
+                    int i0 = s_cellVerts[indices[t * 3 + 0]];
+                    int i1 = s_cellVerts[indices[t * 3 + 1]];
+                    int i2 = s_cellVerts[indices[t * 3 + 2]];
+                    if (i0 == i1 || i1 == i2 || i0 == i2) continue; // zero-area
                     if (invert)
                     {
                         tris.Add(i2); tris.Add(i1); tris.Add(i0);
@@ -352,53 +417,11 @@ public class MarchingChunk : MonoBehaviour
             }
     }
 
-    Vector3 InterpEdgeLocal(int edgeId, int x, int y, int z, float[] c, float cell)
-    {
-        int aIdx = EdgeToCorners[edgeId, 0];
-        int bIdx = EdgeToCorners[edgeId, 1];
-
-        Vector3 paL = (new Vector3(x, y, z) + (Vector3)Corner[aIdx]) * cell;
-        Vector3 pbL = (new Vector3(x, y, z) + (Vector3)Corner[bIdx]) * cell;
-
-        float da = c[aIdx], db = c[bIdx];
-        float t = (da != db) ? Mathf.Clamp01(da / (da - db)) : 0.5f;
-        return Vector3.Lerp(paL, pbL, t);
-    }
-
-    Vector3 GradientWorld(Vector3 pWorld, float step)
-    {
-        float dx = DensityWorld(pWorld + new Vector3(step, 0, 0)) - DensityWorld(pWorld - new Vector3(step, 0, 0));
-        float dy = DensityWorld(pWorld + new Vector3(0, step, 0)) - DensityWorld(pWorld - new Vector3(0, step, 0));
-        float dz = DensityWorld(pWorld + new Vector3(0, 0, step)) - DensityWorld(pWorld - new Vector3(0, 0, step));
-        return new Vector3(dx, dy, dz) / (2f * step);
-    }
-
-    float DensityWorld(Vector3 p)
-    {
-        return densityField.Sample(p);
-    }
-
     void OnDrawGizmosSelected()
     {
         if (!gizmoBounds) return;
         Gizmos.color = new Color(1, 0.6f, 0, 0.25f);
         var size = Vector3.Scale((Vector3)cells, new Vector3(cellSize, cellSize, cellSize));
         Gizmos.DrawWireCube(transform.position + size * 0.5f, size);
-    }
-
-    void OnGUI()
-    {
-        if (!showDebugInfo) return;
-
-        var style = new GUIStyle(GUI.skin.label)
-        {
-            normal = { textColor = Color.white },
-            fontSize = 12
-        };
-
-        string configInfo = densityField ? densityField.name : "No DensityField";
-        string debugText = $"Config: {configInfo}\nDensity Sampling: {densitySampling}";
-
-        GUI.Label(new Rect(10, 10, 200, 40), debugText, style);
     }
 }
