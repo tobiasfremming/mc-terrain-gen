@@ -56,6 +56,21 @@ public class MCChunkManager : MonoBehaviour
     readonly List<ChunkKey> _removeScratch = new();
     int _jobCursor, _dirtyCursor;
 
+    // Staged LOD swap: chunks replaced by a different level are NOT released
+    // immediately (that would show a hole until the replacement streams in).
+    // They keep rendering while their replacements generate hidden; when a
+    // retiring chunk's whole covering set is ready, it is released and the
+    // replacements are shown in the same frame.
+    class RetiringChunk
+    {
+        public ChunkKey key;
+        public byte needsMask;
+        public MarchingChunk chunk;
+        public readonly List<ChunkKey> required = new();
+    }
+    readonly List<RetiringChunk> _retiring = new();
+    readonly Dictionary<ChunkKey, int> _showBlockers = new(); // key -> #retiring chunks waiting on it
+
     Vector3Int[] _boxMin;      // per level, min corner in level-k chunk units
     Vector3Int[] _boxScratch;
     bool _boxesValid;
@@ -159,6 +174,7 @@ public class MCChunkManager : MonoBehaviour
             RecomputeTargets(); // only when the player crosses a clipmap boundary
 
         ProcessJobs();
+        SweepRetiring();
 
         if (_modSystem != null && Time.time - _lastFlush > modFlushInterval)
         {
@@ -298,17 +314,43 @@ public class MCChunkManager : MonoBehaviour
                             _needed.Add(new ChunkKey { level = k, coord = q });
                     }
 
-        // Release chunks that fell out of the clipmap.
+        // Retire chunks that fell out of the target set. They stay visible
+        // until their replacements are generated (see SweepRetiring).
         _removeScratch.Clear();
         foreach (var kv in _chunks)
             if (!_needed.Contains(kv.Key)) _removeScratch.Add(kv.Key);
         foreach (var key in _removeScratch)
         {
-            ReleaseChunk(_chunks[key]);
+            var e = new RetiringChunk { key = key, chunk = _chunks[key] };
+            _generatedNeeds.TryGetValue(key, out e.needsMask);
+            _retiring.Add(e);
             _chunks.Remove(key);
             _generatedNeeds.Remove(key);
             _dirty.Remove(key);
             _dirtyPhysics.Remove(key);
+        }
+
+        // Resurrect retiring chunks whose key became desired again (fast
+        // back-and-forth movement): they still hold valid geometry.
+        for (int i = _retiring.Count - 1; i >= 0; i--)
+        {
+            var e = _retiring[i];
+            if (!_needed.Contains(e.key) || _chunks.ContainsKey(e.key)) continue;
+            _chunks[e.key] = e.chunk;
+            _generatedNeeds[e.key] = e.needsMask;
+            e.chunk.SetVisible(true);
+            _retiring.RemoveAt(i);
+        }
+
+        // Re-resolve each retiring chunk's covering set against the new boxes
+        // (a previous recompute's requirements may no longer be desired).
+        _showBlockers.Clear();
+        foreach (var e in _retiring)
+        {
+            e.required.Clear();
+            ResolveCovering(e.key.level, e.key.coord, e.required);
+            foreach (var k in e.required)
+                _showBlockers[k] = _showBlockers.TryGetValue(k, out int b) ? b + 1 : 1;
         }
 
         // Queue chunks whose desired state differs from what they have,
@@ -338,6 +380,73 @@ public class MCChunkManager : MonoBehaviour
         if (_dirty.Contains(key)) return true;
         if (!_generatedNeeds.TryGetValue(key, out byte prev)) return true;
         return prev != ComputeNeeds(key).Mask;
+    }
+
+    // Which desired chunks cover the volume of cell (level, q)? Either the cell
+    // itself, its finer children (recursively, if that region was refined), or
+    // a coarser ancestor (if it left this level's box). An empty result means
+    // nothing will cover it (fell off the world's far edge) -> release at once.
+    // Recursion is bounded: downward descent only happens inside CoveredByFiner
+    // regions, which are capped by each level's hole size, so a covering set is
+    // at most ~(Extent/2)^3 keys per level. Truncating instead (e.g. a depth
+    // guard) would leave required-lists incomplete and cause visible overlaps.
+    void ResolveCovering(int level, Vector3Int q, List<ChunkKey> output)
+    {
+        if (level >= Levels || level < 0) return;
+
+        if (InBox(level, q))
+        {
+            if (!CoveredByFiner(level, q))
+            {
+                output.Add(new ChunkKey { level = level, coord = q });
+                return;
+            }
+            for (int dz = 0; dz <= 1; dz++)
+                for (int dy = 0; dy <= 1; dy++)
+                    for (int dx = 0; dx <= 1; dx++)
+                        ResolveCovering(level - 1, q * 2 + new Vector3Int(dx, dy, dz), output);
+        }
+        else
+        {
+            // outside this level's box: a coarser chunk covers this volume
+            // (arithmetic shift floors correctly for negative coords)
+            ResolveCovering(level + 1, new Vector3Int(q.x >> 1, q.y >> 1, q.z >> 1), output);
+        }
+    }
+
+    bool IsReady(ChunkKey key) => _chunks.ContainsKey(key) && _generatedNeeds.ContainsKey(key);
+
+    bool IsShowBlocked(ChunkKey key) => _showBlockers.TryGetValue(key, out int b) && b > 0;
+
+    // Release retiring chunks whose replacements are all generated, and reveal
+    // those replacements in the same frame — no visible hole, no overlap.
+    void SweepRetiring()
+    {
+        if (_retiring.Count == 0) return;
+
+        for (int i = _retiring.Count - 1; i >= 0; i--)
+        {
+            var e = _retiring[i];
+
+            bool ready = true;
+            for (int r = 0; r < e.required.Count && ready; r++)
+                ready = IsReady(e.required[r]);
+            if (!ready) continue;
+
+            ReleaseChunk(e.chunk);
+            _retiring.RemoveAt(i);
+
+            foreach (var k in e.required)
+            {
+                if (!_showBlockers.TryGetValue(k, out int b)) continue;
+                if (b <= 1)
+                {
+                    _showBlockers.Remove(k);
+                    if (_chunks.TryGetValue(k, out var c) && c) c.SetVisible(true);
+                }
+                else _showBlockers[k] = b - 1;
+            }
+        }
     }
 
     public TransitionNeeds ComputeNeeds(ChunkKey key)
@@ -389,6 +498,7 @@ public class MCChunkManager : MonoBehaviour
         while (_jobCursor < _jobs.Count) ExecuteJob(_jobs[_jobCursor++]);
         _dirtyJobs.Clear();
         _dirtyCursor = 0;
+        SweepRetiring();
     }
 
     void ExecuteJob(ChunkKey key)
@@ -416,6 +526,10 @@ public class MCChunkManager : MonoBehaviour
         _generatedNeeds[key] = needs.Mask;
         _dirty.Remove(key);
         _dirtyPhysics.Remove(key);
+
+        // Stay hidden while a retiring chunk still renders this volume; the
+        // swap in SweepRetiring reveals it. (Collider is active regardless.)
+        chunk.SetVisible(!IsShowBlocked(key));
     }
 
     void ApplyLevelSettings(MarchingChunk chunk, ChunkKey key)
@@ -473,7 +587,11 @@ public class MCChunkManager : MonoBehaviour
     {
         foreach (var chunk in _chunks.Values)
             if (chunk != null) ReleaseChunk(chunk);
+        foreach (var e in _retiring)
+            if (e.chunk != null) ReleaseChunk(e.chunk);
         _chunks.Clear();
+        _retiring.Clear();
+        _showBlockers.Clear();
         _generatedNeeds.Clear();
         _dirty.Clear();
         _dirtyPhysics.Clear();

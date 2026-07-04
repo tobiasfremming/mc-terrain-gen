@@ -36,7 +36,17 @@ public class MarchingChunk : MonoBehaviour
     Mesh _mesh;
     Mesh _colliderMesh;
     MeshCollider _collider;
+    MeshRenderer _renderer;
     bool _isGenerating = false; // prevent double generation
+
+    // Rendering visibility only — colliders stay active. Used by the manager's
+    // staged LOD swap: freshly generated replacement chunks stay hidden until
+    // the chunk they replace can be removed in the same frame.
+    public void SetVisible(bool visible)
+    {
+        if (_renderer == null) _renderer = GetComponent<MeshRenderer>();
+        if (_renderer != null) _renderer.enabled = visible;
+    }
 
     // Scratch buffers shared by all chunks (generation is main-thread only).
     // Reusing them avoids per-chunk allocations and GC spikes.
