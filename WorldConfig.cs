@@ -13,13 +13,20 @@ public class WorldConfig : ScriptableObject
     public bool showDebugInfo = true;
 
     [Header("Level of Detail")]
-    public float[] lodDistances = { 6f, 12f, 24f, 48f };   // VERY strict distance thresholds
-    public int[] lodSamplings = { 1, 2, 4, 4 };            // Density sampling per LOD
-    public Vector3Int[] lodCellCounts = {                   // Cells per LOD (optional)
-        new Vector3Int(32, 32, 32),  // LOD 0: Full detail (center chunk only)
-        new Vector3Int(16, 16, 16),  // LOD 1: Medium detail (middle ring)
-        new Vector3Int(8, 8, 8),      // LOD 2: Low detail (outer ring)
-        new Vector3Int(4, 4, 4),      // LOD 3: Very low detail (far ring)
+    public float[] lodDistances = { 6f, 12f, 24f, 48f };   // distance threshold per LOD level
+
+    // NOTE: lodSamplings/lodCellCounts are no longer used. Each LOD level now
+    // simply halves cellsPerChunk (computed in MCChunkManager) so that adjacent
+    // LODs always have the exact 2:1 resolution ratio the Transvoxel
+    // transition cells require.
+    [System.Obsolete("Unused - LOD resolution is derived from cellsPerChunk >> lodLevel")]
+    public int[] lodSamplings = { 1, 2, 4, 4 };
+    [System.Obsolete("Unused - LOD resolution is derived from cellsPerChunk >> lodLevel")]
+    public Vector3Int[] lodCellCounts = {
+        new Vector3Int(32, 32, 32),
+        new Vector3Int(16, 16, 16),
+        new Vector3Int(8, 8, 8),
+        new Vector3Int(4, 4, 4),
     };
 public bool useAdaptiveLOD = true;
 public float lodUpdateInterval = 0.5f; // How often to recalculate LOD
