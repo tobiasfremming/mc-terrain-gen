@@ -24,11 +24,17 @@ public class MarchingChunk : MonoBehaviour
 
     public DensityField densityField;
 
+    // Optional separate field for collision. When set, the collider is meshed
+    // from THIS field instead of sharing the render mesh — used to keep
+    // visual-only terrain edits (footprints) out of physics.
+    public DensityField physicsDensityField;
+
     // Transvoxel: width of a transition cell as a fraction of this chunk's cell
     // size. The paper (Eq. 4.2, w(k) = 2^(k-2)) uses a quarter cell.
     const float kTransitionWidthFraction = 0.25f;
 
     Mesh _mesh;
+    Mesh _colliderMesh;
     MeshCollider _collider;
     bool _isGenerating = false; // prevent double generation
 
@@ -61,7 +67,12 @@ public class MarchingChunk : MonoBehaviour
         }
     }
 
-    public void Generate(TransitionNeeds needs)
+    public void Generate(TransitionNeeds needs) => Generate(needs, refreshCollider: true);
+
+    // refreshCollider: pass false when only visual-layer terrain edits changed —
+    // the render mesh is rebuilt but the collider (and its PhysX cook) is left
+    // untouched, so e.g. footprints never disturb the character controller.
+    public void Generate(TransitionNeeds needs, bool refreshCollider)
     {
         if (_isGenerating) return;
         _isGenerating = true;
@@ -85,33 +96,125 @@ public class MarchingChunk : MonoBehaviour
         _mesh.SetTriangles(s_tris, 0);
         _mesh.RecalculateBounds();
 
-        UpdateCollider(s_tris.Count > 0);
+        if (!generateCollider) DisableCollider();
+        else if (refreshCollider) RebuildCollider(s_tris.Count > 0);
 
         _isGenerating = false;
     }
 
-    void UpdateCollider(bool hasGeometry)
+    void RebuildCollider(bool renderHasGeometry)
     {
-        if (generateCollider && hasGeometry)
+        if (_collider == null)
         {
-            if (_collider == null)
-            {
-                _collider = GetComponent<MeshCollider>();
-                if (_collider == null) _collider = gameObject.AddComponent<MeshCollider>();
-            }
-            _collider.sharedMesh = null; // force PhysX re-cook after mesh change
-            _collider.sharedMesh = _mesh;
-            _collider.enabled = true;
+            _collider = GetComponent<MeshCollider>();
+            if (_collider == null) _collider = gameObject.AddComponent<MeshCollider>();
+        }
+
+        Mesh colliderMesh;
+        if (physicsDensityField == null || physicsDensityField == densityField)
+        {
+            // No separate physics field: collision shares the render mesh.
+            colliderMesh = renderHasGeometry ? _mesh : null;
         }
         else
         {
-            if (_collider == null) _collider = GetComponent<MeshCollider>();
-            if (_collider != null)
+            // Lean collision-only meshing over the physics field: regular cells
+            // only, no normals, no transition sheets, no secondary offsets.
+            s_verts.Clear();
+            s_tris.Clear();
+            GenerateCollisionMeshData(physicsDensityField, s_verts, s_tris);
+
+            if (_colliderMesh == null)
             {
-                _collider.sharedMesh = null;
-                _collider.enabled = false;
+                _colliderMesh = new Mesh { indexFormat = UnityEngine.Rendering.IndexFormat.UInt32, name = "MC_Collider" };
+                _colliderMesh.MarkDynamic();
             }
+            _colliderMesh.Clear();
+            _colliderMesh.SetVertices(s_verts);
+            _colliderMesh.SetTriangles(s_tris, 0);
+            _colliderMesh.RecalculateBounds();
+            colliderMesh = s_tris.Count > 0 ? _colliderMesh : null;
         }
+
+        _collider.sharedMesh = null; // force PhysX re-cook after mesh change
+        _collider.sharedMesh = colliderMesh;
+        _collider.enabled = colliderMesh != null;
+    }
+
+    void DisableCollider()
+    {
+        if (_collider == null) _collider = GetComponent<MeshCollider>();
+        if (_collider != null)
+        {
+            _collider.sharedMesh = null;
+            _collider.enabled = false;
+        }
+    }
+
+    // Marching cubes for collision only: no normals/gradients, no Transvoxel
+    // deformation. Adjacent same-level chunks share boundary samples, so their
+    // collision meshes stay sealed; colliders exist only on level-0 chunks.
+    void GenerateCollisionMeshData(DensityField field, List<Vector3> verts, List<int> tris)
+    {
+        GetEffectiveGrid(out int nx, out int ny, out int nz, out float step);
+        Vector3 origin = transform.position;
+
+        int countX = nx + 1, countY = ny + 1, countZ = nz + 1;
+        int sampleCount = countX * countY * countZ;
+        if (s_samples == null || s_samples.Length < sampleCount) s_samples = new float[sampleCount];
+
+        field.SampleGrid(origin, countX, countY, countZ, step, s_samples);
+        if (isoLevel != 0f)
+            for (int i = 0; i < sampleCount; i++) s_samples[i] -= isoLevel;
+
+        int Idx(int x, int y, int z) => (z * countY + y) * countX + x;
+
+        s_vertexCache.Clear();
+
+        int GetOrCreateVertex(int edgeId, int x, int y, int z)
+        {
+            int aIdx = EdgeToCorners[edgeId, 0];
+            int bIdx = EdgeToCorners[edgeId, 1];
+            var ca = Corner[aIdx];
+            var cb = Corner[bIdx];
+            int ia = Idx(x + ca.x, y + ca.y, z + ca.z);
+            int ib = Idx(x + cb.x, y + cb.y, z + cb.z);
+            long key = ia < ib ? ((long)ia << 32) | (uint)ib : ((long)ib << 32) | (uint)ia;
+
+            if (s_vertexCache.TryGetValue(key, out int vi)) return vi;
+
+            float da = s_samples[ia], db = s_samples[ib];
+            Vector3 pa = new Vector3(x + ca.x, y + ca.y, z + ca.z) * step;
+            Vector3 pb = new Vector3(x + cb.x, y + cb.y, z + cb.z) * step;
+            float t = (da != db) ? Mathf.Clamp01(da / (da - db)) : 0.5f;
+
+            vi = verts.Count;
+            verts.Add(Vector3.Lerp(pa, pb, t));
+            s_vertexCache.Add(key, vi);
+            return vi;
+        }
+
+        for (int z = 0; z < nz; z++)
+            for (int y = 0; y < ny; y++)
+                for (int x = 0; x < nx; x++)
+                {
+                    int caseIdx = 0;
+                    for (int i = 0; i < 8; i++)
+                    {
+                        var co = Corner[i];
+                        if (s_samples[Idx(x + co.x, y + co.y, z + co.z)] < 0f) caseIdx |= (1 << i);
+                    }
+                    if (caseIdx == 0 || caseIdx == 255) continue;
+
+                    for (int t = 0; triTable[caseIdx, t] != -1; t += 3)
+                    {
+                        int i0 = GetOrCreateVertex(triTable[caseIdx, t + 0], x, y, z);
+                        int i1 = GetOrCreateVertex(triTable[caseIdx, t + 1], x, y, z);
+                        int i2 = GetOrCreateVertex(triTable[caseIdx, t + 2], x, y, z);
+                        if (i0 == i1 || i1 == i2 || i0 == i2) continue;
+                        tris.Add(i0); tris.Add(i1); tris.Add(i2);
+                    }
+                }
     }
 
     // Effective grid after densitySampling, plus the step that keeps the chunk's

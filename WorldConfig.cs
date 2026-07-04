@@ -12,8 +12,14 @@ public class WorldConfig : ScriptableObject
 
     public bool showDebugInfo = true;
 
-    [Header("Level of Detail")]
-    public float[] lodDistances = { 6f, 12f, 24f, 48f };   // distance threshold per LOD level
+    [Header("Clipmap LOD")]
+    [Tooltip("Number of LOD rings. Each ring's chunks cover 2x the world size of the previous; view distance is roughly chunk size * chunksPerLevel * 2^(levels-1) / 2.")]
+    [Range(1, 12)] public int clipmapLevels = 6;
+    [Tooltip("Chunks per axis in each ring's box. Must be even and >= 6 (box alignment math). 6 => 189 chunks per ring.")]
+    public int chunksPerLevel = 6;
+
+    [Header("Level of Detail (legacy, unused)")]
+    public float[] lodDistances = { 6f, 12f, 24f, 48f };   // superseded by the clipmap
 
     // NOTE: lodSamplings/lodCellCounts are no longer used. Each LOD level now
     // simply halves cellsPerChunk (computed in MCChunkManager) so that adjacent
