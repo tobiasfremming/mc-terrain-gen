@@ -33,10 +33,12 @@ public class MCChunkManager : MonoBehaviour
 
     [Header("Terrain modification")]
     [Tooltip("Maximum accumulated lowering per voxel, in meters.")]
-    public float modMaxDepth = 2.35f;
+    public float modMaxDepth = 30.35f;
     [Tooltip("Seconds an edited voxel stays in the short-term cache after its last touch before moving to the persistent (run-lifetime) cache.")]
     public float modShortTermSeconds = 20f;
     public float modFlushInterval = 5f;
+    [Tooltip("Min seconds between rebuilds of a chunk dirtied by VISUAL-only edits (footprints). Coalesces the stamp stream while sprinting; physical edits rebuild immediately.")]
+    public float visualEditRebuildInterval = 0.25f;
 
     public struct ChunkKey : IEquatable<ChunkKey>
     {
@@ -69,9 +71,16 @@ public class MCChunkManager : MonoBehaviour
         public byte needsMask;
         public ChunkMeshJob job;
         public Task task;
+        public bool fromDirty;
     }
     readonly List<InFlight> _inFlight = new();
     readonly Stack<ChunkMeshJob> _meshJobPool = new();
+    int _inFlightDirty;
+
+    // Coalescing for edit-driven rebuilds: earliest allowed dispatch per key,
+    // and when each key last dispatched a dirty rebuild.
+    readonly Dictionary<ChunkKey, float> _dirtyNotBefore = new();
+    readonly Dictionary<ChunkKey, float> _lastDirtyDispatch = new();
 
     // Staged LOD swap: chunks replaced by a different level are NOT released
     // immediately (that would show a hole until the replacement streams in).
@@ -139,6 +148,7 @@ public class MCChunkManager : MonoBehaviour
             _modSystem = new TerrainModificationSystem(CellSize, modShortTermSeconds) { maxDepth = modMaxDepth };
             _modSystem.RegionModified += OnRegionModified;
         }
+        if (_modSystem.baseField == null) _modSystem.baseField = BaseField;
         if (_renderField == null && BaseField != null)
         {
             _renderField = ModifiedDensityField.Create(BaseField, _modSystem.visual, _modSystem.physical);
@@ -246,9 +256,28 @@ public class MCChunkManager : MonoBehaviour
                     for (int x = qMin.x; x <= qMax.x; x++)
                     {
                         var key = new ChunkKey { level = k, coord = new Vector3Int(x, y, z) };
-                        if (!_generatedNeeds.ContainsKey(key)) continue;
+                        // Generated chunks need a remesh; so do chunks whose
+                        // FIRST build is currently in flight (it may have
+                        // sampled pre-edit data — without this, the edit is
+                        // silently lost for that chunk: a permanent crack).
+                        if (!_generatedNeeds.ContainsKey(key) && !IsInFlight(key)) continue;
                         if (affectsPhysics) _dirtyPhysics.Add(key);
-                        if (_dirty.Add(key)) _dirtyJobs.Add(key);
+                        if (_dirty.Add(key))
+                        {
+                            _dirtyJobs.Add(key);
+                            // Visual-only edits coalesce: rebuild at most every
+                            // visualEditRebuildInterval per chunk, so a sprint's
+                            // stamp stream (30+/s) batches instead of flooding
+                            // the workers. Physical edits rebuild immediately.
+                            float notBefore = 0f;
+                            if (!affectsPhysics && _lastDirtyDispatch.TryGetValue(key, out float last))
+                                notBefore = last + visualEditRebuildInterval;
+                            _dirtyNotBefore[key] = notBefore;
+                        }
+                        else if (affectsPhysics)
+                        {
+                            _dirtyNotBefore[key] = 0f; // upgrade pending visual to immediate
+                        }
                     }
         }
     }
@@ -363,6 +392,8 @@ public class MCChunkManager : MonoBehaviour
             _generatedNeeds.Remove(key);
             _dirty.Remove(key);
             _dirtyPhysics.Remove(key);
+            _dirtyNotBefore.Remove(key);
+            _lastDirtyDispatch.Remove(key);
         }
 
         // Resurrect retiring chunks whose key became desired again (fast
@@ -533,16 +564,42 @@ public class MCChunkManager : MonoBehaviour
     void DispatchBuilds()
     {
         int max = WorkerCount;
+        // Edit rebuilds may not crowd out streaming work (new terrain, LOD
+        // swaps): while regular jobs are pending, dirty jobs get half the
+        // slots at most. Without this, sprinting (a continuous footprint
+        // stream) starves streaming completely and the world stops updating.
+        int maxDirty = Mathf.Max(1, max / 2);
+
         while (_inFlight.Count < max)
         {
+            bool dirtyReady = _dirtyCursor < _dirtyJobs.Count &&
+                              (!_dirtyNotBefore.TryGetValue(_dirtyJobs[_dirtyCursor], out float nb) || Time.time >= nb);
+            bool regularPending = _jobCursor < _jobs.Count;
+
             ChunkKey key;
-            if (_dirtyCursor < _dirtyJobs.Count) key = _dirtyJobs[_dirtyCursor++];
-            else if (_jobCursor < _jobs.Count) key = _jobs[_jobCursor++];
+            bool fromDirty;
+            if (dirtyReady && (_inFlightDirty < maxDirty || !regularPending))
+            {
+                key = _dirtyJobs[_dirtyCursor++];
+                fromDirty = true;
+            }
+            else if (regularPending)
+            {
+                key = _jobs[_jobCursor++];
+                fromDirty = false;
+            }
             else break;
 
             if (IsInFlight(key)) continue;
             var inflight = PrepareBuild(key);
             if (inflight == null) continue;
+
+            inflight.fromDirty = fromDirty;
+            if (fromDirty)
+            {
+                _inFlightDirty++;
+                _lastDirtyDispatch[key] = Time.time;
+            }
 
             var job = inflight.job;
             inflight.task = Task.Run(() => ChunkMesher.Build(job));
@@ -580,9 +637,15 @@ public class MCChunkManager : MonoBehaviour
         // Colliders re-cook only when the chunk itself changed (new/LOD/needs)
         // or a physics-affecting edit touched it — never for visual-only edits.
         job.refreshCollider = structural || !exists || physicsDirty;
-        job.physicsDiffersNearby = job.buildCollider &&
-            _modSystem.visual.OverlapsBounds(job.origin - Vector3.one * CellSize,
-                                             job.origin + Vector3.one * (S + CellSize));
+
+        Vector3 padVec = Vector3.one * (CellSize + 0.5f * job.cellSize);
+        Vector3 bMin = job.origin - padVec;
+        Vector3 bMax = job.origin + Vector3.one * S + padVec;
+        job.physicsDiffersNearby = job.buildCollider && _modSystem.visual.OverlapsBounds(bMin, bMax);
+        // Edits near this chunk disable the all-air/all-solid skip (a carved
+        // cave inside "solid" rock must still be meshed).
+        job.modsOverlapChunk = _modSystem.visual.OverlapsBounds(bMin, bMax) ||
+                               _modSystem.physical.OverlapsBounds(bMin, bMax);
 
         return new InFlight { key = key, needsMask = needs.Mask, job = job };
     }
@@ -591,15 +654,21 @@ public class MCChunkManager : MonoBehaviour
     {
         if (_inFlight.Count == 0) return;
 
+        // OLDEST-FIRST (FIFO). New dispatches append at the end, so iterating
+        // from the back would apply the newest completions first — with a tight
+        // budget and a steady stream of fast dirty-rebuilds (footprints while
+        // walking), the oldest entry starves and its chunk stays stale for a
+        // long time. Forward iteration guarantees fairness.
         float t0 = Time.realtimeSinceStartup;
         int done = 0;
-        for (int i = _inFlight.Count - 1; i >= 0; i--)
+        int i = 0;
+        while (i < _inFlight.Count)
         {
             var f = _inFlight[i];
-            if (f.task == null || !f.task.IsCompleted) continue;
+            if (f.task == null || !f.task.IsCompleted) { i++; continue; }
             if (done > 0 && (Time.realtimeSinceStartup - t0) * 1000f >= generationBudgetMs) break;
 
-            _inFlight.RemoveAt(i);
+            _inFlight.RemoveAt(i); // don't advance: next entry slides into i
             ApplyBuildResult(f);
             done++;
         }
@@ -607,6 +676,8 @@ public class MCChunkManager : MonoBehaviour
 
     void ApplyBuildResult(InFlight f)
     {
+        if (f.fromDirty) _inFlightDirty = Mathf.Max(0, _inFlightDirty - 1);
+
         var job = f.job;
         bool ok = job.error == null;
         if (!ok) Debug.LogException(job.error);
@@ -626,9 +697,19 @@ public class MCChunkManager : MonoBehaviour
             _generatedNeeds[f.key] = f.needsMask;
             chunk.SetVisible(!IsShowBlocked(f.key));
         }
+        else if (!ok && IsDesired(f.key))
+        {
+            // Build threw: force a retry (the dirty claim was consumed at
+            // dispatch, so without this the chunk would stay stale forever).
+            if (job.refreshCollider) _dirtyPhysics.Add(f.key);
+            if (_dirty.Add(f.key)) _dirtyJobs.Add(f.key);
+        }
         else if (ok && stale && IsDesired(f.key) && NeedsWork(f.key))
         {
-            _jobs.Add(f.key); // rebuild later with fresh inputs
+            // Rebuild with fresh inputs — at the FRONT of the remaining queue.
+            // These are usually swap-critical chunks near LOD boundaries;
+            // appending at the end would park them behind far-away work.
+            _jobs.Insert(Mathf.Min(_jobCursor, _jobs.Count), f.key);
         }
 
         job.ResetOutputs();
@@ -722,6 +803,9 @@ public class MCChunkManager : MonoBehaviour
         _generatedNeeds.Clear();
         _dirty.Clear();
         _dirtyPhysics.Clear();
+        _dirtyNotBefore.Clear();
+        _lastDirtyDispatch.Clear();
+        _inFlightDirty = 0;
         _jobs.Clear();
         _dirtyJobs.Clear();
         _jobCursor = _dirtyCursor = 0;
