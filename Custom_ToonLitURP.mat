@@ -42,7 +42,7 @@ Material:
     - _OutlineThickness: 3
     - _ShadowDarkening: 0.5
     - _SlopeInfluence: 0.4
-    - _SpecIntensity: 0.1
+    - _SpecIntensity: 0.03
     - _SpecSize: 0.02
     - _Steps: 4
     m_Colors:
