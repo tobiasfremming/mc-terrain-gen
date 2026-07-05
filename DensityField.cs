@@ -28,6 +28,16 @@ public abstract class DensityField : ScriptableObject
                     dest[i++] = Sample(origin + new Vector3(x, y, z) * step);
     }
 
+    // Conservative world-space bounds of the surface height, if the field can
+    // provide them: the surface never goes below minH or above maxH. Lets the
+    // mesher skip chunks that are entirely air or entirely solid without
+    // sampling them (most chunks in a tall clipmap column are).
+    public virtual bool TryGetHeightBounds(out float minH, out float maxH)
+    {
+        minH = maxH = 0f;
+        return false;
+    }
+
     // Density gradient via central differences. Overrides must return exactly
     // the same values as this default (just computed cheaper), because vertex
     // normals feed the Transvoxel secondary-offset projection and any deviation

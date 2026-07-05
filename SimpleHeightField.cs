@@ -42,6 +42,14 @@ public class SimpleHeightfield : HeightDensityField
         return r * r;
     }
 
+    public override bool TryGetHeightBounds(out float minH, out float maxH)
+    {
+        float spread = amplitude + duneAmp + ridgeAmp + 2f;
+        minH = baseHeight - spread;
+        maxH = baseHeight + spread;
+        return true;
+    }
+
     public override float HeightAt(float wx, float wz)
     {
         Vector2 xz = new Vector2(wx, wz);

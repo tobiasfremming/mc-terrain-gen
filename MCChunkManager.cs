@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 
 
@@ -10,6 +11,9 @@ using UnityEngine;
 //   Boxes are built bottom-up with even alignment and >= 1-chunk margins, which
 //   guarantees every LOD interface is exactly 2:1 and lies on whole chunk faces
 //   of both levels -- the configuration the Transvoxel transition cells stitch.
+//
+// Chunk meshes are BUILT ON WORKER THREADS (ChunkMesher); the main thread only
+// dispatches jobs, uploads finished mesh data and swaps LOD rings atomically.
 public class MCChunkManager : MonoBehaviour
 {
     public Transform target;              // usually the player/camera
@@ -22,8 +26,10 @@ public class MCChunkManager : MonoBehaviour
     public int maxPoolSize = 2048;       // safety cap
 
     [Header("Streaming")]
-    [Tooltip("Max milliseconds per frame spent (re)generating chunk meshes. At least one chunk is processed per frame while work is queued.")]
+    [Tooltip("Max milliseconds per frame spent uploading finished chunk meshes (colliders included). At least one is applied per frame while results are pending.")]
     public float generationBudgetMs = 6f;
+    [Tooltip("Background mesh-building threads. 0 = auto (cores - 2, clamped 1..6).")]
+    [Range(0, 8)] public int workerThreads = 0;
 
     [Header("Terrain modification")]
     [Tooltip("Maximum accumulated lowering per voxel, in meters.")]
@@ -56,6 +62,17 @@ public class MCChunkManager : MonoBehaviour
     readonly List<ChunkKey> _removeScratch = new();
     int _jobCursor, _dirtyCursor;
 
+    // Async build pipeline.
+    class InFlight
+    {
+        public ChunkKey key;
+        public byte needsMask;
+        public ChunkMeshJob job;
+        public Task task;
+    }
+    readonly List<InFlight> _inFlight = new();
+    readonly Stack<ChunkMeshJob> _meshJobPool = new();
+
     // Staged LOD swap: chunks replaced by a different level are NOT released
     // immediately (that would show a hole until the replacement streams in).
     // They keep rendering while their replacements generate hidden; when a
@@ -70,6 +87,11 @@ public class MCChunkManager : MonoBehaviour
     }
     readonly List<RetiringChunk> _retiring = new();
     readonly Dictionary<ChunkKey, int> _showBlockers = new(); // key -> #retiring chunks waiting on it
+
+    // Replacement chunks for retiring chunks near the player. These jump the
+    // job queue: until they generate, the player is looking at (and leaving
+    // footprints "under") a stale retired mesh that never remeshes.
+    readonly HashSet<ChunkKey> _priorityKeys = new();
 
     Vector3Int[] _boxMin;      // per level, min corner in level-k chunk units
     Vector3Int[] _boxScratch;
@@ -94,6 +116,8 @@ public class MCChunkManager : MonoBehaviour
 
     float ChunkWorldSize => CellsPerChunk.x * CellSize;
     float LevelChunkSize(int k) => ChunkWorldSize * (1 << k);
+
+    int WorkerCount => Mathf.Clamp(workerThreads > 0 ? workerThreads : SystemInfo.processorCount - 2, 1, 8);
 
     DensityField BaseField
     {
@@ -141,8 +165,18 @@ public class MCChunkManager : MonoBehaviour
             for (int dz = -1; dz <= 1; dz++)
                 for (int dy = -1; dy <= 1; dy++)
                     for (int dx = -1; dx <= 1; dx++)
-                        ExecuteJob(new ChunkKey { level = 0, coord = c + new Vector3Int(dx, dy, dz) });
+                        BuildSync(new ChunkKey { level = 0, coord = c + new Vector3Int(dx, dy, dz) });
         }
+    }
+
+    void OnDestroy()
+    {
+        // Let in-flight tasks finish so pooled jobs aren't mutated mid-build.
+        foreach (var f in _inFlight)
+        {
+            try { f.task?.Wait(1000); } catch { }
+        }
+        _inFlight.Clear();
     }
 
     void CleanupStaleChildren()
@@ -173,7 +207,8 @@ public class MCChunkManager : MonoBehaviour
         if (BoxesChanged())
             RecomputeTargets(); // only when the player crosses a clipmap boundary
 
-        ProcessJobs();
+        ApplyCompletedBuilds();
+        DispatchBuilds();
         SweepRetiring();
 
         if (_modSystem != null && Time.time - _lastFlush > modFlushInterval)
@@ -353,14 +388,32 @@ public class MCChunkManager : MonoBehaviour
                 _showBlockers[k] = _showBlockers.TryGetValue(k, out int b) ? b + 1 : 1;
         }
 
-        // Queue chunks whose desired state differs from what they have,
-        // nearest first so the terrain settles around the player.
+        // Swap groups the player can see up close must finish first: collect
+        // the replacement keys of retiring chunks near the player.
+        Vector3 p = target.position;
+        _priorityKeys.Clear();
+        float prioDist = ChunkWorldSize * 1.5f;
+        foreach (var e in _retiring)
+        {
+            float S = LevelChunkSize(e.key.level);
+            Vector3 mn = (Vector3)e.key.coord * S;
+            Vector3 closest = Vector3.Max(mn, Vector3.Min(p, mn + Vector3.one * S));
+            if ((closest - p).sqrMagnitude <= prioDist * prioDist)
+                foreach (var k in e.required) _priorityKeys.Add(k);
+        }
+
+        // Queue chunks whose desired state differs from what they have:
+        // player-adjacent swap completions first, then nearest first.
         _jobs.Clear();
         _jobCursor = 0;
-        Vector3 p = target.position;
         foreach (var key in _needed)
             if (NeedsWork(key)) _jobs.Add(key);
-        _jobs.Sort((a, b) => ChunkDistSq(a, p).CompareTo(ChunkDistSq(b, p)));
+        _jobs.Sort((a, b) =>
+        {
+            bool pa = _priorityKeys.Contains(a), pb = _priorityKeys.Contains(b);
+            if (pa != pb) return pa ? -1 : 1;
+            return ChunkDistSq(a, p).CompareTo(ChunkDistSq(b, p));
+        });
 
         // dirty jobs get folded into the regular queue on recompute
         _dirtyJobs.Clear();
@@ -376,6 +429,7 @@ public class MCChunkManager : MonoBehaviour
 
     bool NeedsWork(ChunkKey key)
     {
+        if (IsInFlight(key)) return false;
         if (!_chunks.ContainsKey(key)) return true;
         if (_dirty.Contains(key)) return true;
         if (!_generatedNeeds.TryGetValue(key, out byte prev)) return true;
@@ -387,9 +441,7 @@ public class MCChunkManager : MonoBehaviour
     // a coarser ancestor (if it left this level's box). An empty result means
     // nothing will cover it (fell off the world's far edge) -> release at once.
     // Recursion is bounded: downward descent only happens inside CoveredByFiner
-    // regions, which are capped by each level's hole size, so a covering set is
-    // at most ~(Extent/2)^3 keys per level. Truncating instead (e.g. a depth
-    // guard) would leave required-lists incomplete and cause visible overlaps.
+    // regions, which are capped by each level's hole size.
     void ResolveCovering(int level, Vector3Int q, List<ChunkKey> output)
     {
         if (level >= Levels || level < 0) return;
@@ -465,71 +517,140 @@ public class MCChunkManager : MonoBehaviour
     }
 
     // ========================================================================
-    // Streaming: drain queues under a per-frame time budget. Terrain edits
-    // (dirty) are handled before regular streaming work.
+    // Async build pipeline: worker threads run ChunkMesher.Build; the main
+    // thread uploads finished results under a time budget. Ordering only
+    // affects latency, never correctness (validated at apply time).
     // ========================================================================
-    void ProcessJobs()
+    bool IsInFlight(ChunkKey key)
     {
-        bool pendingDirty = _dirtyCursor < _dirtyJobs.Count;
-        bool pendingJobs = _jobCursor < _jobs.Count;
-        if (!pendingDirty && !pendingJobs) return;
+        for (int i = 0; i < _inFlight.Count; i++)
+            if (_inFlight[i].key.Equals(key)) return true;
+        return false;
+    }
 
-        float t0 = Time.realtimeSinceStartup;
-        int done = 0;
-        while (true)
+    ChunkMeshJob GetMeshJob() => _meshJobPool.Count > 0 ? _meshJobPool.Pop() : new ChunkMeshJob();
+
+    void DispatchBuilds()
+    {
+        int max = WorkerCount;
+        while (_inFlight.Count < max)
         {
-            if (done > 0 && (Time.realtimeSinceStartup - t0) * 1000f >= generationBudgetMs) break;
-            if (_dirtyCursor < _dirtyJobs.Count) ExecuteJob(_dirtyJobs[_dirtyCursor++]);
-            else if (_jobCursor < _jobs.Count) ExecuteJob(_jobs[_jobCursor++]);
+            ChunkKey key;
+            if (_dirtyCursor < _dirtyJobs.Count) key = _dirtyJobs[_dirtyCursor++];
+            else if (_jobCursor < _jobs.Count) key = _jobs[_jobCursor++];
             else break;
-            done++;
-        }
 
-        if (_dirtyCursor >= _dirtyJobs.Count && _dirtyJobs.Count > 0)
-        {
-            _dirtyJobs.Clear();
-            _dirtyCursor = 0;
+            if (IsInFlight(key)) continue;
+            var inflight = PrepareBuild(key);
+            if (inflight == null) continue;
+
+            var job = inflight.job;
+            inflight.task = Task.Run(() => ChunkMesher.Build(job));
+            _inFlight.Add(inflight);
         }
     }
 
-    void ProcessAllJobsNow()
+    // Validates the key still needs work and snapshots all build inputs.
+    InFlight PrepareBuild(ChunkKey key)
     {
-        while (_dirtyCursor < _dirtyJobs.Count) ExecuteJob(_dirtyJobs[_dirtyCursor++]);
-        while (_jobCursor < _jobs.Count) ExecuteJob(_jobs[_jobCursor++]);
-        _dirtyJobs.Clear();
-        _dirtyCursor = 0;
-        SweepRetiring();
-    }
-
-    void ExecuteJob(ChunkKey key)
-    {
-        if (!_boxesValid || !IsDesired(key)) return;
-
-        if (!_chunks.TryGetValue(key, out var chunk) || chunk == null)
-        {
-            chunk = CreateChunk(key);
-            _chunks[key] = chunk;
-        }
+        if (!_boxesValid || !IsDesired(key)) return null;
 
         TransitionNeeds needs = ComputeNeeds(key);
         bool dirty = _dirty.Contains(key);
         bool structural = !_generatedNeeds.TryGetValue(key, out byte prev) || prev != needs.Mask;
-        if (!dirty && !structural)
-            return; // already up to date
+        bool exists = _chunks.ContainsKey(key);
+        if (!dirty && !structural && exists) return null; // up to date
 
+        // Claim the dirty flags now; edits landing during the build re-add
+        // them (and re-queue), so nothing is lost.
+        _dirty.Remove(key);
+        bool physicsDirty = _dirtyPhysics.Remove(key);
+
+        float S = LevelChunkSize(key.level);
+        var job = GetMeshJob();
+        job.origin = (Vector3)key.coord * S;
+        job.cells = CellsPerChunk;
+        job.cellSize = S / CellsPerChunk.x;
+        job.isoLevel = IsoLevel;
+        job.densitySampling = 1;
+        job.renderField = _renderField;
+        job.physicsField = _physicsField;
+        job.needs = needs;
+        job.buildCollider = key.level == 0;
         // Colliders re-cook only when the chunk itself changed (new/LOD/needs)
         // or a physics-affecting edit touched it — never for visual-only edits.
-        bool refreshCollider = structural || _dirtyPhysics.Contains(key);
+        job.refreshCollider = structural || !exists || physicsDirty;
+        job.physicsDiffersNearby = job.buildCollider &&
+            _modSystem.visual.OverlapsBounds(job.origin - Vector3.one * CellSize,
+                                             job.origin + Vector3.one * (S + CellSize));
 
-        ApplyLevelSettings(chunk, key);
-        chunk.Generate(needs, refreshCollider);
-        _generatedNeeds[key] = needs.Mask;
-        _dirty.Remove(key);
-        _dirtyPhysics.Remove(key);
+        return new InFlight { key = key, needsMask = needs.Mask, job = job };
+    }
 
-        // Stay hidden while a retiring chunk still renders this volume; the
-        // swap in SweepRetiring reveals it. (Collider is active regardless.)
-        chunk.SetVisible(!IsShowBlocked(key));
+    void ApplyCompletedBuilds()
+    {
+        if (_inFlight.Count == 0) return;
+
+        float t0 = Time.realtimeSinceStartup;
+        int done = 0;
+        for (int i = _inFlight.Count - 1; i >= 0; i--)
+        {
+            var f = _inFlight[i];
+            if (f.task == null || !f.task.IsCompleted) continue;
+            if (done > 0 && (Time.realtimeSinceStartup - t0) * 1000f >= generationBudgetMs) break;
+
+            _inFlight.RemoveAt(i);
+            ApplyBuildResult(f);
+            done++;
+        }
+    }
+
+    void ApplyBuildResult(InFlight f)
+    {
+        var job = f.job;
+        bool ok = job.error == null;
+        if (!ok) Debug.LogException(job.error);
+
+        // Stale? (boxes moved or needs changed while building) -> drop; the
+        // queue rebuild / NeedsWork picks it up again with fresh inputs.
+        bool stale = !_boxesValid || !IsDesired(f.key) || ComputeNeeds(f.key).Mask != f.needsMask;
+        if (ok && !stale)
+        {
+            if (!_chunks.TryGetValue(f.key, out var chunk) || chunk == null)
+            {
+                chunk = CreateChunk(f.key);
+                _chunks[f.key] = chunk;
+            }
+            ApplyLevelSettings(chunk, f.key);
+            chunk.ApplyBuild(job);
+            _generatedNeeds[f.key] = f.needsMask;
+            chunk.SetVisible(!IsShowBlocked(f.key));
+        }
+        else if (ok && stale && IsDesired(f.key) && NeedsWork(f.key))
+        {
+            _jobs.Add(f.key); // rebuild later with fresh inputs
+        }
+
+        job.ResetOutputs();
+        _meshJobPool.Push(job);
+    }
+
+    // Synchronous build+apply for the initial ground under the player.
+    void BuildSync(ChunkKey key)
+    {
+        var inflight = PrepareBuild(key);
+        if (inflight == null) return;
+        ChunkMesher.Build(inflight.job);
+        ApplyBuildResult(inflight);
+    }
+
+    void ProcessAllJobsNow()
+    {
+        while (_dirtyCursor < _dirtyJobs.Count) BuildSync(_dirtyJobs[_dirtyCursor++]);
+        while (_jobCursor < _jobs.Count) BuildSync(_jobs[_jobCursor++]);
+        _dirtyJobs.Clear();
+        _dirtyCursor = 0;
+        SweepRetiring();
     }
 
     void ApplyLevelSettings(MarchingChunk chunk, ChunkKey key)
@@ -585,6 +706,12 @@ public class MCChunkManager : MonoBehaviour
     [ContextMenu("Clear All Chunks")]
     public void ClearAllChunks()
     {
+        foreach (var f in _inFlight)
+        {
+            try { f.task?.Wait(1000); } catch { }
+        }
+        _inFlight.Clear();
+
         foreach (var chunk in _chunks.Values)
             if (chunk != null) ReleaseChunk(chunk);
         foreach (var e in _retiring)
