@@ -59,6 +59,8 @@ public class MarchingChunk : MonoBehaviour
         _mesh.Clear();
         _mesh.SetVertices(job.verts);
         _mesh.SetNormals(job.norms);
+        if (job.colors.Count == job.verts.Count && job.colors.Count > 0)
+            _mesh.SetColors(job.colors); // biome weights for the shader
         _mesh.SetTriangles(job.tris, 0);
         _mesh.RecalculateBounds();
 

@@ -28,6 +28,12 @@ public abstract class DensityField : ScriptableObject
                     dest[i++] = Sample(origin + new Vector3(x, y, z) * step);
     }
 
+    // Per-vertex data baked at meshing time (e.g. biome weights the shader
+    // blends palettes with). Must be a pure function of position so all LODs
+    // agree at seams.
+    public virtual bool HasVertexColors => false;
+    public virtual Color GetVertexColor(Vector3 worldPos) => new Color(0, 0, 0, 1);
+
     // Conservative world-space bounds of the surface height, if the field can
     // provide them: the surface never goes below minH or above maxH. Lets the
     // mesher skip chunks that are entirely air or entirely solid without

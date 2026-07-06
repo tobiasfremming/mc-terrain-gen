@@ -149,11 +149,35 @@ public class MCChunkManager : MonoBehaviour
             _modSystem.RegionModified += OnRegionModified;
         }
         if (_modSystem.baseField == null) _modSystem.baseField = BaseField;
+
+        // Wrappers can survive a domain reload (recompile / play transition)
+        // with their non-serialized cache references lost, or point at an old
+        // base field. Detect and rebuild instead of crashing mid-mesh.
+        bool stale = _renderField != null &&
+                     (!_renderField.IsValid || _renderField.source != BaseField);
+        if (stale || (_physicsField != null && !_physicsField.IsValid))
+        {
+            DestroyField(ref _renderField);
+            DestroyField(ref _physicsField);
+        }
+
         if (_renderField == null && BaseField != null)
         {
             _renderField = ModifiedDensityField.Create(BaseField, _modSystem.visual, _modSystem.physical);
             _physicsField = ModifiedDensityField.Create(BaseField, _modSystem.physical);
         }
+    }
+
+    static void DestroyField(ref ModifiedDensityField f)
+    {
+        if (f == null) { return; }
+#if UNITY_EDITOR
+        if (!Application.isPlaying) DestroyImmediate(f);
+        else Destroy(f);
+#else
+        Destroy(f);
+#endif
+        f = null;
     }
 
     void Start()
@@ -187,6 +211,9 @@ public class MCChunkManager : MonoBehaviour
             try { f.task?.Wait(1000); } catch { }
         }
         _inFlight.Clear();
+
+        DestroyField(ref _renderField);
+        DestroyField(ref _physicsField);
     }
 
     void CleanupStaleChildren()
