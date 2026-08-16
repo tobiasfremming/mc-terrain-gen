@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: MarchingCubes_Sand Terrain
+  m_Shader: {fileID: 4800000, guid: 327e2bf6d6fb49d5b638b22b28178984, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs: []
+    m_Ints: []
+    m_Floats:
+    - _BackfaceDarken: 0.55
+    - _GrainScale: 2.5
+    - _GrainStrength: 0.22
+    - _SlopeEnd: 31
+    - _SlopeStart: 16
+    m_Colors:
+    - _ColorFlat: {r: 0.87, g: 0.72, b: 0.50999993, a: 1}
+    - _ColorSteep: {r: 0.65999997, g: 0.45999992, b: 0.28999996, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1
