@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a4edf0ea2e4cde99314411c2dbf5ee, type: 3}
+  m_Name: CanyonField
+  m_EditorClassIdentifier: 
+  isoLevel: 0
+  seed: 777
+  floorHeight: 2.51
+  thScale: 926.2
+  thLo: 0.47
+  thHi: 0.52
+  peakScale: 420
+  peakBase: 15
+  peakRange: 140
+  detailScale: 90
+  detailAmp: 22
+  rrScale: 30
+  rrAmp: 6
+  disScale: 26
+  disSquash: 3
+  disAmp: 13
+  enableSpires: 1
+  spireCellSize: 130
+  spireChance: 0.3
+  spireRadius: 11
+  spireHeight: 55
+  spireIrregularity: 0.35
+  spireMaxBaseHeight: 45
+  spireBaseFadeBand: 15
+  enableBridges: 0
+  bridgeCellSize: 260
+  bridgeChance: 0.329
+  bridgeMaxCenterHeight: 40
+  bridgeHalfSpanMin: 15
+  bridgeHalfSpanMax: 30
+  bridgeTubeRadiusMin: 2.5
+  bridgeTubeRadiusMax: 4.5
+  bridgeWalkwayHalfWidth: 3.5
+  bridgeLegEmbedMargin: 3
+  bridgeSmoothing: 3

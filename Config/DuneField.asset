@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1bffbff962ab4b78aa4f00aef75ff51c, type: 3}
+  m_Name: DuneField
+  m_EditorClassIdentifier: 
+  isoLevel: 0
+  seed: 1337
+  windDegrees: 25
+  baseHeight: 0
+  megaWavelength: 320
+  megaHeight: 54.9
+  megaSinuosity: 0.95
+  megaSegmentation: 0.55
+  secondaryWavelength: 62
+  secondaryHeight: 8.76
+  secondaryWindOffset: 9
+  secondarySinuosity: 1.15
+  secondarySegmentation: 0.9
+  secondaryPatchScale: 260
+  rippleWavelength: 5
+  rippleHeight: 0.4
+  supplyScale: 950
+  sizeVariationScale: 1500
+  plainScale: 420
+  plainAmplitude: 30

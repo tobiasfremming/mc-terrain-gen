@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b3fbd777630b4533bc0bdbd0291ce18b, type: 3}
+  m_Name: AlienBiome
+  m_EditorClassIdentifier: 
+  displayName: Alien Rocky Wastes
+  terrain: {fileID: 11400000, guid: f15bd196447743f2930ee8dbf2442048, type: 2}
+  bias: 0.2
+  hardness: 1
+  colorFlat: {r: 0.8396226, g: 0.6870675, b: 0.53070486, a: 1}
+  colorSteep: {r: 0.32, g: 0.3, b: 0.32, a: 1}
+  albedo: {fileID: 2800000, guid: 038aa889fbfbf6743be103d1f5fbc85d, type: 3}
+  normalMap: {fileID: 2800000, guid: 02621c78701e41d99933cdf46a2b0233, type: 3}
