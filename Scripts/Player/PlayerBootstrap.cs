@@ -5,14 +5,16 @@ using UnityEngine;
 // the "Player" object (creating one if missing), parents the camera to it,
 // points the chunk manager's target at it and spawns it on the terrain surface.
 //
-// It does nothing if the scene already contains a SimplePlayerController, so
-// you can wire things up by hand in the editor later and this steps aside.
+// It does nothing if the scene already contains a SimplePlayerController or a
+// TerrainTarget (e.g. on your own player controller), so you can wire things
+// up by hand -- in the editor, or with your own character -- and this steps aside.
 public static class PlayerBootstrap
 {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void EnsurePlayer()
     {
         if (Object.FindFirstObjectByType<SimplePlayerController>() != null) return;
+        if (Object.FindFirstObjectByType<TerrainTarget>() != null) return;
 
         var manager = Object.FindFirstObjectByType<MCChunkManager>();
         if (manager == null) return; // not a terrain scene
