@@ -1,0 +1,15 @@
+*.cs text eol=lf
+*.shader text eol=lf
+
+*.prefab -text
+*.mat -text
+*.asset -text
+*.meta -text
+*.unity -text
+*.lighting -text
+
+*.png binary
+*.jpg binary
+*.tga binary
+*.psd binary
+*.exr binary
