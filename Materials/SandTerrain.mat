@@ -1,0 +1,85 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: SandTerrain
+  m_Shader: {fileID: 4800000, guid: 327e2bf6d6fb49d5b638b22b28178984, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 1
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _MainTex:
+        m_Texture: {fileID: 2800000, guid: 67eb7a3ca22d4ba08f41264a03b161f3, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NormalTex:
+        m_Texture: {fileID: 2800000, guid: 011e801778644347bf1dca23794c2241, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _PebbleNormal:
+        m_Texture: {fileID: 2800000, guid: 02621c78701e41d99933cdf46a2b0233, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _PebbleTex:
+        m_Texture: {fileID: 2800000, guid: c94d425b4feb4da1b29a3c7ae6c2ecc8, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _RockNormal:
+        m_Texture: {fileID: 2800000, guid: ff4ef11d868a42a484a5aa35d565d339, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _RockTex:
+        m_Texture: {fileID: 2800000, guid: 8a959ebf6ea84b239374698572afaa43, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _BackfaceDarken: 0.55
+    - _GlitterStrength: 0.3
+    - _LayerDistortion: 1.5
+    - _LayerNoiseScale: 15
+    - _LayerScale: 0.6
+    - _LayerSharpness: 1.6
+    - _NormalStrength: 1
+    - _PebbleTexScale: 1.7
+    - _RockTexScale: 6
+    - _ShadowWarmth: 0.55
+    - _SheenPower: 4.69
+    - _SheenStrength: 0.69
+    - _SlopeEnd: 33
+    - _SlopeStart: 21
+    - _SubLayerIntensity: 0.25
+    - _SubLayerScale: 30
+    - _TexBrightness: 1.22
+    - _TexScale: 3.5
+    - _TintScale: 13
+    - _TintStrength: 0.06
+    - _VertexAO: 0.75
+    m_Colors:
+    - _AlienFlat: {r: 0.4699999, g: 0.45, b: 0.43999997, a: 1}
+    - _AlienSteep: {r: 0.31999996, g: 0.29999998, b: 0.31999996, a: 1}
+    - _CanyonFloorColor: {r: 0.627451, g: 0.4156863, b: 0.21960786, a: 1}
+    - _ColorFlat: {r: 0.83, g: 0.54999995, b: 0.25999996, a: 1}
+    - _ColorSteep: {r: 0.68, g: 0.39999998, b: 0.16999996, a: 1}
+    - _Layer1Color: {r: 0.6, g: 0.29999998, b: 0.19999996, a: 1}
+    - _Layer2Color: {r: 0.7, g: 0.5, b: 0.29999998, a: 1}
+    - _Layer3Color: {r: 0.8, g: 0.6, b: 0.39999998, a: 1}
+    - _Layer4Color: {r: 0.9, g: 0.8, b: 0.7, a: 1}
+    - _SheenColor: {r: 0.8066038, g: 0.6646359, b: 0.38047346, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1
