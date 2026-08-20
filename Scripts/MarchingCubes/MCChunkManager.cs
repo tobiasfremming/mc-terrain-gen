@@ -166,35 +166,57 @@ public class MCChunkManager : MonoBehaviour
             _pendingRefresh = true;
     }
 
-    // Push per-biome material data (palette, detail textures) from the Biome
-    // assets into the terrain material via a property block — no asset
+    // Push per-biome material data (palette, style, detail textures) from the
+    // Biome assets into the terrain material via a property block — no asset
     // mutation, applied to every chunk renderer.
+    //
+    // DATA-DRIVEN by design: biomes[i] maps to vertex-color CHANNEL i (0 =
+    // implicit remainder, 1 = R, 2 = G, 3 = B) — that mapping is fixed and
+    // just reflects how BiomeDensityField.GetVertexColor bakes weights. But
+    // WHICH SHADER MODULE renders channel i is read from that biome's own
+    // Biome.surfaceStyle, not hardcoded per channel. Swap which Biome asset
+    // sits at an index and its style follows it to whatever channel it lands
+    // on — SandTerrain.shader's EVALUATE_CHANNEL macro dispatches on this
+    // per-channel style tag at runtime.
     MaterialPropertyBlock _biomeProps;
+    static readonly string[] ChannelSuffix = { "0", "1", "2", "3" };
     void BuildBiomeMaterialProps()
     {
         if (BaseField is not BiomeDensityField world || world.biomes == null) { _biomeProps = null; return; }
         _biomeProps = new MaterialPropertyBlock();
-        if (world.biomes.Length > 0 && world.biomes[0] != null)
+
+        int n = Mathf.Min(world.biomes.Length, ChannelSuffix.Length);
+        for (int i = 0; i < n; i++)
         {
-            var b0 = world.biomes[0];
-            _biomeProps.SetColor("_ColorFlat", b0.colorFlat);
-            _biomeProps.SetColor("_ColorSteep", b0.colorSteep);
-            if (b0.albedo != null) _biomeProps.SetTexture("_MainTex", b0.albedo);
-            if (b0.normalMap != null) _biomeProps.SetTexture("_NormalTex", b0.normalMap);
-        }
-        if (world.biomes.Length > 1 && world.biomes[1] != null)
-        {
-            // biome 1 (canyon-style): flat color drives the sandy floors; the
-            // sediment wall palette stays on the material for now.
-            _biomeProps.SetColor("_CanyonFloorColor", world.biomes[1].colorFlat);
-        }
-        if (world.biomes.Length > 2 && world.biomes[2] != null)
-        {
-            var b2 = world.biomes[2];
-            _biomeProps.SetColor("_AlienFlat", b2.colorFlat);
-            _biomeProps.SetColor("_AlienSteep", b2.colorSteep);
-            if (b2.albedo != null) _biomeProps.SetTexture("_PebbleTex", b2.albedo);
-            if (b2.normalMap != null) _biomeProps.SetTexture("_PebbleNormal", b2.normalMap);
+            var b = world.biomes[i];
+            if (b == null) continue;
+            string suf = ChannelSuffix[i];
+
+            _biomeProps.SetFloat("_Chan" + suf + "Style", (float)b.surfaceStyle);
+            _biomeProps.SetFloat("_Chan" + suf + "Sharpness", Mathf.Max(0.01f, b.blendSharpness));
+            _biomeProps.SetColor("_Chan" + suf + "Flat", b.colorFlat);
+            _biomeProps.SetColor("_Chan" + suf + "Steep", b.colorSteep);
+
+            // Style-specific extras that stay global material properties
+            // (only one active source per style — see Biome.albedo's tooltip).
+            switch (b.surfaceStyle)
+            {
+                case Biome.SurfaceStyle.Sand:
+                    if (b.albedo != null) _biomeProps.SetTexture("_MainTex", b.albedo);
+                    if (b.normalMap != null) _biomeProps.SetTexture("_NormalTex", b.normalMap);
+                    break;
+                case Biome.SurfaceStyle.Canyon:
+                    _biomeProps.SetColor("_CanyonFloorColor", b.colorFlat);
+                    break;
+                case Biome.SurfaceStyle.Alien:
+                    if (b.albedo != null) _biomeProps.SetTexture("_PebbleTex", b.albedo);
+                    if (b.normalMap != null) _biomeProps.SetTexture("_PebbleNormal", b.normalMap);
+                    break;
+                case Biome.SurfaceStyle.Frost:
+                    // fully procedural (BiomeFrost.hlsl) -- _Chan{i}Flat/Steep
+                    // above already cover its ice palette.
+                    break;
+            }
         }
     }
 
@@ -203,6 +225,16 @@ public class MCChunkManager : MonoBehaviour
         if (_biomeProps == null) return;
         var r = chunk.GetComponent<MeshRenderer>();
         if (r != null) r.SetPropertyBlock(_biomeProps);
+    }
+
+    // Lets a BiomeWorld asset pick which material (and therefore shader) the
+    // whole world renders with, instead of that being fixed on the chunk
+    // prefab. Falls back to the prefab's own material when unset.
+    void ApplyTerrainMaterial(MarchingChunk chunk)
+    {
+        if (BaseField is not BiomeDensityField world || world.terrainMaterial == null) return;
+        var r = chunk.GetComponent<MeshRenderer>();
+        if (r != null) r.sharedMaterial = world.terrainMaterial;
     }
 
     void EnsureField()
@@ -848,6 +880,7 @@ public class MCChunkManager : MonoBehaviour
         go.gameObject.name = $"Chunk_L{key.level}_{key.coord.x}_{key.coord.y}_{key.coord.z}";
         go.autoRegenerate = false;
         ApplyLevelSettings(go, key);
+        ApplyTerrainMaterial(go);
         ApplyBiomeProps(go);
         go.gameObject.SetActive(true);
         return go;

@@ -33,6 +33,10 @@ public class BiomeDensityField : DensityField
     [Tooltip("Higher = narrower biome transition bands.")]
     public float sharpness = 12f;
 
+    [Header("Rendering")]
+    [Tooltip("Material every chunk in this world renders with (e.g. SandTerrain.mat). All biomes here are shaded by ONE material/shader, cross-faded by vertex-baked weights -- swap this to point the whole world at a different terrain shader. Leave unset to fall back to whatever material is on the chunk prefab.")]
+    public Material terrainMaterial;
+
     const int kMaxBiomes = 8;
 
     DensityField Field(int i) => biomes[i] != null ? biomes[i].terrain : null;

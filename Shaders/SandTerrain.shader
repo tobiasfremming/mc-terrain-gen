@@ -6,13 +6,38 @@
 //   dunes.
 // - Double-sided with normal flip so carved caves are lit correctly inside.
 // - Fog-aware (works with the linear fog set up by DesertAtmosphere).
+// - Each biome's shading lives in its own module under Biomes/ (BiomeSand,
+//   BiomeCanyon, BiomeAlien, BiomeFrost) so they can be authored/iterated
+//   independently; this shader composes them into one pass/one draw call,
+//   weighted by the vertex-baked biome weights from BiomeDensityField.
 Shader "MarchingCubes/Sand Terrain"
 {
     Properties
     {
-        // Palette sampled from Sahara (Merzouga) reference photography
-        _ColorFlat  ("Sand - flat / windward", Color) = (0.83, 0.55, 0.26, 1)
-        _ColorSteep ("Sand - slip face",       Color) = (0.68, 0.40, 0.17, 1)
+        // --- Per vertex-color CHANNEL identity -------------------------------
+        // Channel 0 = implicit remainder weight, 1 = vertex R, 2 = G, 3 = B
+        // (fixed by BiomeDensityField.GetVertexColor). WHICH biome asset landed
+        // on a channel, and therefore its style/colors/sharpness, is pushed at
+        // runtime by MCChunkManager from that Biome asset's own fields — these
+        // defaults just mirror the original Desert/Canyon/Alien/Frost setup.
+        // Style: 0 = Sand, 1 = Canyon, 2 = Alien, 3 = Frost (Biome.SurfaceStyle).
+        _Chan0Style ("Channel 0 (implicit) style", Float) = 0
+        _Chan0Flat  ("Channel 0 flat color",  Color) = (0.83, 0.55, 0.26, 1)
+        _Chan0Steep ("Channel 0 steep color", Color) = (0.68, 0.40, 0.17, 1)
+        _Chan0Sharpness ("Channel 0 blend sharpness", Range(0.2, 6)) = 1
+        _Chan1Style ("Channel 1 (vertex R) style", Float) = 1
+        _Chan1Flat  ("Channel 1 flat color",  Color) = (0.84, 0.58, 0.34, 1)
+        _Chan1Steep ("Channel 1 steep color", Color) = (0.60, 0.35, 0.22, 1)
+        _Chan1Sharpness ("Channel 1 blend sharpness", Range(0.2, 6)) = 1
+        _Chan2Style ("Channel 2 (vertex G) style", Float) = 2
+        _Chan2Flat  ("Channel 2 flat color",  Color) = (0.47, 0.45, 0.44, 1)
+        _Chan2Steep ("Channel 2 steep color", Color) = (0.32, 0.30, 0.32, 1)
+        _Chan2Sharpness ("Channel 2 blend sharpness", Range(0.2, 6)) = 1
+        _Chan3Style ("Channel 3 (vertex B) style", Float) = 3
+        _Chan3Flat  ("Channel 3 flat color",  Color) = (0.80, 0.90, 0.96, 1)
+        _Chan3Steep ("Channel 3 steep color", Color) = (0.55, 0.70, 0.82, 1)
+        _Chan3Sharpness ("Channel 3 blend sharpness", Range(0.2, 6)) = 1
+
         _SlopeStart ("Slope tint start (deg)", Range(0, 90)) = 21
         _SlopeEnd   ("Slope tint full (deg)",  Range(0, 90)) = 33
         _ShadowWarmth ("Shadow warmth (bounced sand light)", Range(0, 1)) = 0.55
@@ -20,8 +45,9 @@ Shader "MarchingCubes/Sand Terrain"
         _SheenStrength ("Grazing sheen strength", Range(0, 1)) = 0.18
         _SheenPower    ("Grazing sheen tightness", Range(1, 8)) = 3.5
         _GlitterStrength ("Sun glitter strength", Range(0, 1)) = 0.25
-        // Canyon biome (blended in by vertex color R = biome 1 weight).
-        // Sediment layering adapted from the user's MountainLayers shader.
+        // --- Style-specific tuning (shared globally by whichever channel(s)
+        // use that style; see Biome.albedo's tooltip for the tradeoff) ------
+        // Canyon: sediment layering adapted from the user's MountainLayers shader.
         _CanyonFloorColor ("Canyon floor sand", Color) = (0.84, 0.58, 0.34, 1)
         _Layer1Color ("Sediment 1 (bottom)", Color) = (0.60, 0.30, 0.20, 1)
         _Layer2Color ("Sediment 2", Color) = (0.70, 0.50, 0.30, 1)
@@ -36,12 +62,21 @@ Shader "MarchingCubes/Sand Terrain"
         _RockTex    ("Canyon rock albedo (triplanar)", 2D) = "white" {}
         _RockNormal ("Canyon rock normal", 2D) = "bump" {}
         _RockTexScale ("Rock texture scale (m)", Float) = 6.0
-        // Alien biome (vertex color G = biome 2 weight)
-        _AlienFlat  ("Alien rock - flat", Color)  = (0.47, 0.45, 0.44, 1)
-        _AlienSteep ("Alien rock - steep", Color) = (0.32, 0.30, 0.32, 1)
+        // Alien: pebble textures (flat/steep color comes from the per-channel properties above)
         _PebbleTex    ("Alien pebble albedo (triplanar)", 2D) = "white" {}
         _PebbleNormal ("Alien pebble normal", 2D) = "bump" {}
         _PebbleTexScale ("Pebble texture scale (m)", Float) = 1.7
+        // Frost: fully procedural, no textures needed (flat/steep color also
+        // comes from the per-channel properties above)
+        _FrostCrackColor ("Frost crack color", Color) = (0.14, 0.24, 0.32, 1)
+        _FrostGlowColor  ("Frost crack glow color", Color) = (0.35, 0.75, 1.0, 1)
+        _FrostGlowStrength ("Frost crack glow strength", Range(0, 2)) = 0.6
+        _FrostScale      ("Frost pattern scale (m)", Float) = 9
+        _FrostCrackFreq  ("Frost crack density", Range(1, 20)) = 6
+        _FrostCrackWidth ("Frost crack width", Range(0.01, 0.5)) = 0.08
+        _FrostWarpStrength ("Frost crack warp (organic wiggle)", Range(0, 3)) = 1.2
+        _FrostBumpStrength ("Frost bump strength", Range(0, 5)) = 1.5
+        _FrostSparkleStrength ("Frost sparkle strength", Range(0, 1)) = 0.35
         _VertexAO ("Baked vertex AO strength", Range(0, 1)) = 0.75
         _MainTex   ("Sand albedo (triplanar)", 2D) = "white" {}
         _NormalTex ("Sand normal (triplanar)", 2D) = "bump" {}
@@ -73,16 +108,58 @@ Shader "MarchingCubes/Sand Terrain"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
-            TEXTURE2D(_MainTex);   SAMPLER(sampler_MainTex);
-            TEXTURE2D(_NormalTex); SAMPLER(sampler_NormalTex);
-            TEXTURE2D(_RockTex);      SAMPLER(sampler_RockTex);
-            TEXTURE2D(_RockNormal);   SAMPLER(sampler_RockNormal);
-            TEXTURE2D(_PebbleTex);    SAMPLER(sampler_PebbleTex);
-            TEXTURE2D(_PebbleNormal); SAMPLER(sampler_PebbleNormal);
+            #include "Biomes/BiomeCommon.hlsl"
+            #include "Biomes/BiomeSand.hlsl"
+            #include "Biomes/BiomeCanyon.hlsl"
+            #include "Biomes/BiomeAlien.hlsl"
+            #include "Biomes/BiomeFrost.hlsl"
+
+            // Dispatches ONE vertex-color channel's weight to whichever
+            // shading module its STYLE (read from the Biome asset that
+            // landed on this channel, via MCChunkManager) selects. This is
+            // what makes rendering data-driven: style travels with the Biome
+            // asset, not with a fixed channel/array-index assumption.
+            // Style values must match Biome.SurfaceStyle: 0=Sand,1=Canyon,2=Alien,3=Frost.
+            #define EVALUATE_CHANNEL(STYLE, FLATCOL, STEEPCOL, CHW) \
+                if ((CHW) > 0.003h) \
+                { \
+                    int _style = (int)round(STYLE); \
+                    if (_style == 0) \
+                        EvaluateSand(uvX, uvY, uvZ, mX, mY, mZ, texAlb, FLATCOL, STEEPCOL, steep, _NormalStrength, \
+                                     CHW, albedo, tnX, tnY, tnZ); \
+                    else if (_style == 1) \
+                        EvaluateCanyon(i.positionWS, w, texAlb, _CanyonFloorColor.rgb, \
+                                       _Layer1Color.rgb, _Layer2Color.rgb, _Layer3Color.rgb, _Layer4Color.rgb, \
+                                       _LayerScale, _LayerDistortion, _LayerSharpness, _LayerNoiseScale, \
+                                       _SubLayerScale, _SubLayerIntensity, _RockTexScale, steep, _NormalStrength, \
+                                       CHW, albedo, tnX, tnY, tnZ); \
+                    else if (_style == 2) \
+                        EvaluateAlien(i.positionWS, w, FLATCOL, STEEPCOL, _PebbleTexScale, steep, _NormalStrength, \
+                                      CHW, albedo, tnX, tnY, tnZ); \
+                    else \
+                        EvaluateFrost(i.positionWS, w, steep, FLATCOL, STEEPCOL, _FrostCrackColor.rgb, \
+                                      _FrostGlowColor.rgb, _FrostGlowStrength, _FrostScale, _FrostCrackFreq, _FrostCrackWidth, \
+                                      _FrostWarpStrength, _FrostBumpStrength, _FrostSparkleStrength, \
+                                      CHW, albedo, emissive, tnX, tnY, tnZ); \
+                }
 
             CBUFFER_START(UnityPerMaterial)
-                half4 _ColorFlat;
-                half4 _ColorSteep;
+                half _Chan0Style;
+                half4 _Chan0Flat;
+                half4 _Chan0Steep;
+                half _Chan0Sharpness;
+                half _Chan1Style;
+                half4 _Chan1Flat;
+                half4 _Chan1Steep;
+                half _Chan1Sharpness;
+                half _Chan2Style;
+                half4 _Chan2Flat;
+                half4 _Chan2Steep;
+                half _Chan2Sharpness;
+                half _Chan3Style;
+                half4 _Chan3Flat;
+                half4 _Chan3Steep;
+                half _Chan3Sharpness;
                 half4 _SheenColor;
                 half4 _CanyonFloorColor;
                 half4 _Layer1Color;
@@ -96,9 +173,16 @@ Shader "MarchingCubes/Sand Terrain"
                 float _SubLayerScale;
                 half _SubLayerIntensity;
                 float _RockTexScale;
-                half4 _AlienFlat;
-                half4 _AlienSteep;
                 float _PebbleTexScale;
+                half4 _FrostCrackColor;
+                half4 _FrostGlowColor;
+                half _FrostGlowStrength;
+                float _FrostScale;
+                float _FrostCrackFreq;
+                half _FrostCrackWidth;
+                float _FrostWarpStrength;
+                half _FrostBumpStrength;
+                half _FrostSparkleStrength;
                 half _VertexAO;
                 half _SlopeStart;
                 half _SlopeEnd;
@@ -118,7 +202,7 @@ Shader "MarchingCubes/Sand Terrain"
             {
                 float4 positionOS : POSITION;
                 float3 normalOS   : NORMAL;
-                float4 color      : COLOR;   // biome weights (R = biome 1)
+                float4 color      : COLOR;   // channel weights: R/G/B = channels 1/2/3, A = baked AO
             };
 
             struct Varyings
@@ -141,75 +225,6 @@ Shader "MarchingCubes/Sand Terrain"
                 return o;
             }
 
-            // --- cheap 2D value noise for the grain ---
-            float Hash21(float2 p)
-            {
-                p = frac(p * float2(123.34, 345.45));
-                p += dot(p, p + 34.345);
-                return frac(p.x * p.y);
-            }
-
-            float VNoise(float2 p)
-            {
-                float2 i = floor(p);
-                float2 f = frac(p);
-                f = f * f * (3.0 - 2.0 * f);
-                float a = Hash21(i);
-                float b = Hash21(i + float2(1, 0));
-                float c = Hash21(i + float2(0, 1));
-                float d = Hash21(i + float2(1, 1));
-                return lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y);
-            }
-
-            float FbmN(float2 p, int octaves)
-            {
-                float v = 0.0;
-                float amp = 0.5;
-                float freq = 1.0;
-                for (int k = 0; k < octaves; k++)
-                {
-                    v += amp * VNoise(p * freq);
-                    freq *= 2.0;
-                    amp *= 0.5;
-                }
-                return v;
-            }
-
-            // --- anti-tiling: blend two samples of the same texture, the
-            // second rotated + rescaled, switched by low-frequency noise so
-            // the repeat pattern never lines up over distance ---
-            #define DETILE_ROT_C 0.7986
-            #define DETILE_ROT_S 0.6018
-
-            float2 DetileUV(float2 uv)
-            {
-                float2 r = float2(DETILE_ROT_C * uv.x - DETILE_ROT_S * uv.y,
-                                  DETILE_ROT_S * uv.x + DETILE_ROT_C * uv.y);
-                return r * 1.37 + float2(7.31, 3.17);
-            }
-
-            half DetileMask(float2 uv)
-            {
-                return (half)smoothstep(0.35, 0.65, VNoise(uv * 0.31 + 11.7));
-            }
-
-            half3 SampleAlbedo(float2 uv, half m)
-            {
-                half3 a = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, uv).rgb;
-                half3 b = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, DetileUV(uv)).rgb;
-                return lerp(a, b, m);
-            }
-
-            half3 SampleNormalTS(float2 uv, half m)
-            {
-                half3 a = UnpackNormalScale(SAMPLE_TEXTURE2D(_NormalTex, sampler_NormalTex, uv), _NormalStrength);
-                half3 b = UnpackNormalScale(SAMPLE_TEXTURE2D(_NormalTex, sampler_NormalTex, DetileUV(uv)), _NormalStrength);
-                // counter-rotate the rotated sample's tangent-plane component
-                b.xy = half2(DETILE_ROT_C * b.x + DETILE_ROT_S * b.y,
-                             -DETILE_ROT_S * b.x + DETILE_ROT_C * b.y);
-                return lerp(a, b, m);
-            }
-
             half4 Frag(Varyings i, bool isFront : SV_IsFrontFace) : SV_Target
             {
                 float3 n = normalize(i.normalWS);
@@ -226,33 +241,42 @@ Shader "MarchingCubes/Sand Terrain"
                 half mY = DetileMask(uvY);
                 half mZ = DetileMask(uvZ);
 
-                // biome weights (vertex-baked; A holds baked ambient occlusion)
-                half canyonW = i.biome.r;
-                half alienW  = i.biome.g;
-                half sandW   = saturate(1.0h - canyonW - alienW);
+                // slope tint from the GEOMETRIC normal: slip faces (near the
+                // angle of repose) read darker/warmer than flat windward
+                // sand. Shared by every biome module below.
+                half cosStart = cos(radians(_SlopeStart));
+                half cosEnd = cos(radians(_SlopeEnd));
+                half steep = 1.0h - smoothstep(cosEnd, cosStart, (half)saturate(n.y));
 
-                half3 texAlb = SampleAlbedo(uvX, mX) * w.x
-                             + SampleAlbedo(uvY, mY) * w.y
-                             + SampleAlbedo(uvZ, mZ) * w.z;
+                // vertex-baked channel weights (partition of unity): channel 0
+                // is the implicit remainder, 1/2/3 are vertex R/G/B. Each is
+                // independently re-sharpened using ITS OWN biome's sharpness,
+                // then renormalized so they still sum to 1.
+                half w1raw = i.biome.r;
+                half w2raw = i.biome.g;
+                half w3raw = i.biome.b;
+                half w0raw = saturate(1.0h - w1raw - w2raw - w3raw);
+                half w0s = BiomeSharpen(w0raw, _Chan0Sharpness);
+                half w1s = BiomeSharpen(w1raw, _Chan1Sharpness);
+                half w2s = BiomeSharpen(w2raw, _Chan2Sharpness);
+                half w3s = BiomeSharpen(w3raw, _Chan3Sharpness);
+                half wSum = max(w0s + w1s + w2s + w3s, 1e-4h);
+                half chan0W = w0s / wSum;
+                half chan1W = w1s / wSum;
+                half chan2W = w2s / wSum;
+                half chan3W = w3s / wSum;
 
-                // per-biome detail normals, blended in tangent space per plane
-                half3 tnX = SampleNormalTS(uvX, mX) * sandW;
-                half3 tnY = SampleNormalTS(uvY, mY) * sandW;
-                half3 tnZ = SampleNormalTS(uvZ, mZ) * sandW;
-                if (canyonW > 0.003h)
-                {
-                    float rS = 1.0 / max(_RockTexScale, 0.01);
-                    tnX += UnpackNormalScale(SAMPLE_TEXTURE2D(_RockNormal, sampler_RockNormal, i.positionWS.zy * rS), _NormalStrength) * canyonW;
-                    tnY += UnpackNormalScale(SAMPLE_TEXTURE2D(_RockNormal, sampler_RockNormal, i.positionWS.xz * rS), _NormalStrength) * canyonW;
-                    tnZ += UnpackNormalScale(SAMPLE_TEXTURE2D(_RockNormal, sampler_RockNormal, i.positionWS.xy * rS), _NormalStrength) * canyonW;
-                }
-                if (alienW > 0.003h)
-                {
-                    float pS = 1.0 / max(_PebbleTexScale, 0.01);
-                    tnX += UnpackNormalScale(SAMPLE_TEXTURE2D(_PebbleNormal, sampler_PebbleNormal, i.positionWS.zy * pS), _NormalStrength) * alienW;
-                    tnY += UnpackNormalScale(SAMPLE_TEXTURE2D(_PebbleNormal, sampler_PebbleNormal, i.positionWS.xz * pS), _NormalStrength) * alienW;
-                    tnZ += UnpackNormalScale(SAMPLE_TEXTURE2D(_PebbleNormal, sampler_PebbleNormal, i.positionWS.xy * pS), _NormalStrength) * alienW;
-                }
+                half3 texAlb = SandDetailAlbedo(uvX, uvY, uvZ, mX, mY, mZ, w);
+
+                half3 albedo = 0;
+                half3 emissive = 0;
+                half3 tnX = 0, tnY = 0, tnZ = 0;
+
+                EVALUATE_CHANNEL(_Chan0Style, _Chan0Flat.rgb, _Chan0Steep.rgb, chan0W)
+                EVALUATE_CHANNEL(_Chan1Style, _Chan1Flat.rgb, _Chan1Steep.rgb, chan1W)
+                EVALUATE_CHANNEL(_Chan2Style, _Chan2Flat.rgb, _Chan2Steep.rgb, chan2W)
+                EVALUATE_CHANNEL(_Chan3Style, _Chan3Flat.rgb, _Chan3Steep.rgb, chan3W)
+
                 tnX = half3(tnX.xy + (half2)n.zy, abs(tnX.z) * (half)n.x);
                 tnY = half3(tnY.xy + (half2)n.xz, abs(tnY.z) * (half)n.y);
                 tnZ = half3(tnZ.xy + (half2)n.xy, abs(tnZ.z) * (half)n.z);
@@ -261,77 +285,6 @@ Shader "MarchingCubes/Sand Terrain"
                 // large-scale brightness variation to break texture tiling
                 float tv = VNoise(i.positionWS.xz / max(_TintScale, 0.5));
                 half tintVar = 1.0h + (half)(tv - 0.5) * 2.0h * _TintStrength;
-
-                // slope tint from the GEOMETRIC normal: slip faces (near the
-                // angle of repose) read darker/warmer than flat windward sand
-                half cosStart = cos(radians(_SlopeStart));
-                half cosEnd = cos(radians(_SlopeEnd));
-                half steep = 1.0h - smoothstep(cosEnd, cosStart, (half)saturate(n.y));
-
-                // each biome contributes its own colors x its own texture
-                half3 albedo = lerp(_ColorFlat.rgb, _ColorSteep.rgb, steep) * texAlb * sandW;
-
-                // canyon biome: warped sediment layers modulated by the rock
-                // texture on the walls, sandy floors/plateau tops; cross-faded
-                // by the vertex-baked biome weight — no hard color borders
-                if (canyonW > 0.003h)
-                {
-                    float rS = 1.0 / max(_RockTexScale, 0.01);
-                    half3 rockTex = SAMPLE_TEXTURE2D(_RockTex, sampler_RockTex, i.positionWS.zy * rS).rgb * w.x
-                                  + SAMPLE_TEXTURE2D(_RockTex, sampler_RockTex, i.positionWS.xz * rS).rgb * w.y
-                                  + SAMPLE_TEXTURE2D(_RockTex, sampler_RockTex, i.positionWS.xy * rS).rgb * w.z;
-                    // --- sediment layers (adapted from MountainLayers) ---
-                    float height = i.positionWS.y;
-                    float2 largeUV = i.positionWS.xz * 0.005;
-                    float lwx = FbmN(largeUV + float2(100, 200), 4) * 2.0 - 1.0;
-                    float lwy = FbmN(largeUV + float2(300, 400), 4) * 2.0 - 1.0;
-                    float2 warpedPos = i.positionWS.yz + float2(lwx, lwy) * _LayerDistortion * 20.0;
-                    float tectonic = FbmN(i.positionWS.yx * 0.02, 2) * _LayerDistortion * 15.0;
-                    height += tectonic;
-                    float distortion = FbmN(warpedPos * _LayerNoiseScale * 0.01, 3) * 2.0 - 1.0;
-                    float dh = height + distortion * _LayerDistortion;
-
-                    float cycle = dh * _LayerScale * 0.1;
-                    float layerValue = frac(cycle);
-                    float layerIndex = floor(frac(cycle + 0.00001) * 4.0);
-                    float edgeNoise = FbmN(warpedPos * _LayerNoiseScale * 0.05, 2) * 0.5;
-                    layerValue = saturate(layerValue + edgeNoise * 0.2);
-                    layerValue = pow(layerValue, _LayerSharpness);
-
-                    half3 rock;
-                    if (layerIndex < 1.0)      rock = lerp(_Layer1Color.rgb, _Layer2Color.rgb, (half)layerValue);
-                    else if (layerIndex < 2.0) rock = lerp(_Layer2Color.rgb, _Layer3Color.rgb, (half)layerValue);
-                    else if (layerIndex < 3.0) rock = lerp(_Layer3Color.rgb, _Layer4Color.rgb, (half)layerValue);
-                    else                       rock = lerp(_Layer4Color.rgb, _Layer1Color.rgb, (half)layerValue);
-
-                    // thin sub-layer striations
-                    if (_SubLayerScale > 0.0)
-                    {
-                        float2 subUV = i.positionWS.xz * _SubLayerScale * 0.01;
-                        subUV += float2(FbmN(subUV * 0.5 + float2(700, 800), 2),
-                                        FbmN(subUV * 0.5 + float2(900, 1000), 2)) * 0.5;
-                        float sp = FbmN(subUV, 4);
-                        sp = sin(sp * 20.0 + dh * _SubLayerScale * 0.5) * 0.5 + 0.5;
-                        rock = lerp(rock, rock * 0.7h, (half)step(0.6, sp) * _SubLayerIntensity);
-                    }
-
-                    // sediment colors modulated by the rock texture on walls;
-                    // sandy floors & plateau tops keep the sand texture
-                    rock *= rockTex * 1.7h; // rock tex mean ~0.55 -> renormalize
-                    half3 canyonAlb = lerp(_CanyonFloorColor.rgb * texAlb, rock, steep);
-                    albedo += canyonAlb * canyonW;
-                }
-
-                // alien biome: cold rock colors x packed-pebble texture
-                if (alienW > 0.003h)
-                {
-                    float pS = 1.0 / max(_PebbleTexScale, 0.01);
-                    half3 pebTex = SAMPLE_TEXTURE2D(_PebbleTex, sampler_PebbleTex, i.positionWS.zy * pS).rgb * w.x
-                                 + SAMPLE_TEXTURE2D(_PebbleTex, sampler_PebbleTex, i.positionWS.xz * pS).rgb * w.y
-                                 + SAMPLE_TEXTURE2D(_PebbleTex, sampler_PebbleTex, i.positionWS.xy * pS).rgb * w.z;
-                    half3 alienAlb = lerp(_AlienFlat.rgb, _AlienSteep.rgb, steep) * pebTex * 1.9h;
-                    albedo += alienAlb * alienW;
-                }
 
                 albedo *= _TexBrightness * tintVar;
                 if (!isFront) albedo *= 1.0h - _BackfaceDarken;
@@ -357,14 +310,22 @@ Shader "MarchingCubes/Sand Terrain"
                 ambient *= occ;
                 lighting *= lerp(1.0h, occ, 0.35h);
 
-                half3 color = albedo * (lighting + ambient);
+                half3 color = albedo * (lighting + ambient) + emissive;
 
                 // grazing-angle sheen: quartz grains scatter toward the eye at
                 // low view angles (bright rims on lit crests)
                 float3 V = normalize(_WorldSpaceCameraPos - i.positionWS);
                 half fres = pow(1.0h - (half)saturate(dot(n, V)), _SheenPower);
                 half sunlit = saturate(dot(nDetail, mainLight.direction)) * mainLight.shadowAttenuation;
-                half sandy = saturate(1.0h - 0.7h * canyonW - 0.85h * alienW); // rock doesn't sheen/glitter like quartz sand
+                // Sheen/glitter is a Sand-style-only effect: sum the weight of
+                // whichever channel(s) actually are Sand-styled right now
+                // (data-driven -- not tied to a fixed channel index).
+                half sandy = 0.0h;
+                sandy += (round(_Chan0Style) < 0.5h) ? chan0W : 0.0h;
+                sandy += (round(_Chan1Style) < 0.5h) ? chan1W : 0.0h;
+                sandy += (round(_Chan2Style) < 0.5h) ? chan2W : 0.0h;
+                sandy += (round(_Chan3Style) < 0.5h) ? chan3W : 0.0h;
+                sandy = saturate(sandy);
                 color += _SheenColor.rgb * mainLight.color *
                          (fres * _SheenStrength * sandy * (0.25h + 0.75h * sunlit));
 

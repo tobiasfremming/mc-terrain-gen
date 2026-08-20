@@ -15,7 +15,9 @@ MonoBehaviour:
   displayName: Alien Rocky Wastes
   terrain: {fileID: 11400000, guid: f15bd196447743f2930ee8dbf2442048, type: 2}
   bias: 0.2
+  surfaceStyle: 2
   hardness: 1
+  blendSharpness: 1
   colorFlat: {r: 0.8396226, g: 0.6870675, b: 0.53070486, a: 1}
   colorSteep: {r: 0.32, g: 0.3, b: 0.32, a: 1}
   albedo: {fileID: 2800000, guid: 038aa889fbfbf6743be103d1f5fbc85d, type: 3}
