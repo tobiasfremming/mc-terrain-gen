@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   isoLevel: 0
   biomes:
-  - {fileID: 11400000, guid: 0cefd04ec5a24c7fbaab5487fb114eb9, type: 2}
   - {fileID: 11400000, guid: af0705236a0543c0a817c648feb768ad, type: 2}
+  - {fileID: 11400000, guid: 0cefd04ec5a24c7fbaab5487fb114eb9, type: 2}
   - {fileID: 11400000, guid: 99593ba9132c43a68259a4f6e92848d7, type: 2}
   seed: 99
   regionScale: 1000

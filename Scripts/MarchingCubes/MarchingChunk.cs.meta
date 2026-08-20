@@ -1,2 +1,13 @@
 fileFormatVersion: 2
 guid: b90ac954706c92f40ba0aab861c20667
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - densityField: {instanceID: 0}
+  - physicsDensityField: {instanceID: 0}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

@@ -18,6 +18,8 @@ MonoBehaviour:
   densitySampling: 1
   viewRadius: 8
   showDebugInfo: 1
+  clipmapLevels: 6
+  chunksPerLevel: 6
   lodDistances:
   - 30
   - 60
