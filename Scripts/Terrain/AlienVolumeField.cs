@@ -146,4 +146,38 @@ public class AlienVolumeField : DensityField
         maxH = hillSpread + tunnelSpread;
         return true;
     }
+
+    // GPU acceleration hook -- see Shaders/Compute/DensityAlien.hlsl's
+    // EvaluateAlienDensity, a 1:1 port of DensityAt above. Field order here
+    // must match AlienGpuParams / the HLSL AlienParams struct exactly.
+    public override GpuFieldType GpuType => GpuFieldType.Alien;
+
+    public override LeafGpuParams ToGpuLeafParams()
+    {
+        var p = new LeafGpuParams();
+        p.alien = new AlienGpuParams
+        {
+            seed = seed,
+            latticeFreq = latticeFreq,
+            lattice1Amp = lattice1Amp,
+            lattice2Amp = lattice2Amp,
+            hillAmp = hillAmp,
+            wallDetailFreq = wallDetailFreq,
+            enableTunnel = enableTunnel ? 1f : 0f,
+            pathAmpA = pathAmpA,
+            pathFreqA = pathFreqA,
+            pathAmpB = pathAmpB,
+            pathFreqB = pathFreqB,
+            pathDriftAmp = pathDriftAmp,
+            pathDriftFreq = pathDriftFreq,
+            tunnelRadiusX = tunnelRadiusX,
+            tunnelRadiusY = tunnelRadiusY,
+            tunnelBlend = tunnelBlend,
+            pebbleScale = pebbleScale,
+            pebbleAmp = pebbleAmp,
+            tnlPebbleOffset = tnlPebbleOffset,
+            tunnelReinforce = tunnelReinforce,
+        };
+        return p;
+    }
 }

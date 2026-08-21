@@ -1,0 +1,102 @@
+#ifndef MC_DENSITY_BIOME_BLEND_INCLUDED
+#define MC_DENSITY_BIOME_BLEND_INCLUDED
+
+#include "TerrainNoiseGPU.hlsl"
+#include "DensityDune.hlsl"
+#include "DensityAlien.hlsl"
+#include "DensityCanyon.hlsl"
+
+// Matches Biome.SurfaceStyle-style dispatch already proven in
+// SandTerrain.shader's EVALUATE_CHANNEL macro -- density's analogue. Values
+// must match whatever C# writes into _BiomeFieldType (see Biome.cs / the
+// leaf DensityField subclasses' GPU-type binding).
+#define MC_FIELDTYPE_DUNE   0
+#define MC_FIELDTYPE_ALIEN  1
+#define MC_FIELDTYPE_CANYON 2
+#define MC_MAX_BIOMES 8
+
+// Union of all 3 leaf types' params in one struct (nested, not flattened, so
+// field names never collide across types). Small in absolute terms (~290
+// bytes/slot x 8 slots) -- the couple of unused sub-structs per slot cost
+// negligible GPU memory.
+struct LeafParams
+{
+    DuneParams dune;
+    AlienParams alien;
+    CanyonParams canyon;
+};
+
+struct BiomeBlendParams
+{
+    float seed;
+    float regionScale;
+    float sharpness;
+    float biomeCount; // n, as float (cast to int at use)
+};
+
+// Persistent world/biome-blend configuration -- rebuilt only when
+// TerrainTuning fires (mirrors MCChunkManager.BuildBiomeMaterialProps'
+// existing dirty-flag pattern), never per-batch/per-dispatch. Bound as
+// StructuredBuffers (rather than loose globals) even for the single-element
+// ones so every persistent param, scalar or array, sets via the same
+// ComputeBuffer.SetData path from C# -- no separate SetFloat-per-field code.
+StructuredBuffer<LeafParams> _LeafParams;        // [MC_MAX_BIOMES]
+StructuredBuffer<int> _BiomeFieldType;           // [MC_MAX_BIOMES]
+StructuredBuffer<float> _BiomeBias;              // [MC_MAX_BIOMES]
+StructuredBuffer<BiomeBlendParams> _BiomeBlendBuf; // [1]
+
+float EvaluateLeafDensity(int fieldType, float3 worldPos, LeafParams p)
+{
+    if (fieldType == MC_FIELDTYPE_DUNE)
+        return EvaluateDuneHeight(worldPos.x, worldPos.z, p.dune) - worldPos.y;
+    if (fieldType == MC_FIELDTYPE_CANYON)
+        return EvaluateCanyonDensity(worldPos, p.canyon);
+    if (fieldType == MC_FIELDTYPE_ALIEN)
+        return EvaluateAlienDensity(worldPos, p.alien);
+    return -worldPos.y; // fallback flat ground, matches BiomeDensityField's n==0 case
+}
+
+// Port of BiomeDensityField.ComputeWeights: softmax over per-biome low-freq
+// noise + bias, numerically stabilized by subtracting the max before exp.
+void MC_ComputeBiomeWeights(float wx, float wz, out float w[MC_MAX_BIOMES], int n)
+{
+    uint s = (uint)(int)_BiomeBlendBuf[0].seed;
+    float maxA = -3.402823e38;
+    float raw[MC_MAX_BIOMES];
+    for (int i = 0; i < n; i++)
+    {
+        float a = MC_Fbm(wx / _BiomeBlendBuf[0].regionScale + i * 13.7, wz / _BiomeBlendBuf[0].regionScale - i * 7.3,
+                          2, s + (uint)(i * 191)) + _BiomeBias[i];
+        raw[i] = a;
+        if (a > maxA) maxA = a;
+    }
+    float sum = 0.0;
+    for (int j = 0; j < n; j++)
+    {
+        w[j] = exp(_BiomeBlendBuf[0].sharpness * (raw[j] - maxA));
+        sum += w[j];
+    }
+    for (int k = 0; k < n; k++) w[k] /= sum;
+}
+
+// Port of BiomeDensityField.Sample: skip negligible biomes (same 0.004
+// threshold), renormalize over the ones that remain.
+float EvaluateBiomeBlend(float3 worldPos)
+{
+    int n = (int)_BiomeBlendBuf[0].biomeCount;
+    if (n <= 0) return -worldPos.y;
+
+    float w[MC_MAX_BIOMES];
+    MC_ComputeBiomeWeights(worldPos.x, worldPos.z, w, n);
+
+    float d = 0.0, used = 0.0;
+    for (int i = 0; i < n; i++)
+    {
+        if (w[i] < 0.004) continue;
+        d += w[i] * EvaluateLeafDensity(_BiomeFieldType[i], worldPos, _LeafParams[i]);
+        used += w[i];
+    }
+    return used > 0.0 ? d / used : -worldPos.y;
+}
+
+#endif

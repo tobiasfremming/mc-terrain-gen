@@ -362,4 +362,54 @@ public class CanyonVolumeField : DensityField
         maxH = floorHeight + peakMax + rrAmp + disAmp + bridgeMax + 2f;
         return true;
     }
+
+    // GPU acceleration hook -- see Shaders/Compute/DensityCanyon.hlsl's
+    // EvaluateCanyonDensity, ported from Sample(p) above (the canonical
+    // per-point definition; AddDensityColumn is a CPU-only optimized
+    // variant of the same math). Field order here must match
+    // CanyonGpuParams / the HLSL CanyonParams struct exactly.
+    public override GpuFieldType GpuType => GpuFieldType.Canyon;
+
+    public override LeafGpuParams ToGpuLeafParams()
+    {
+        var p = new LeafGpuParams();
+        p.canyon = new CanyonGpuParams
+        {
+            seed = seed,
+            floorHeight = floorHeight,
+            thScale = thScale,
+            thLo = thLo,
+            thHi = thHi,
+            peakScale = peakScale,
+            peakBase = peakBase,
+            peakRange = peakRange,
+            detailScale = detailScale,
+            detailAmp = detailAmp,
+            rrScale = rrScale,
+            rrAmp = rrAmp,
+            disScale = disScale,
+            disSquash = disSquash,
+            disAmp = disAmp,
+            enableSpires = enableSpires ? 1f : 0f,
+            spireCellSize = spireCellSize,
+            spireChance = spireChance,
+            spireRadius = spireRadius,
+            spireHeight = spireHeight,
+            spireIrregularity = spireIrregularity,
+            spireMaxBaseHeight = spireMaxBaseHeight,
+            spireBaseFadeBand = spireBaseFadeBand,
+            enableBridges = enableBridges ? 1f : 0f,
+            bridgeCellSize = bridgeCellSize,
+            bridgeChance = bridgeChance,
+            bridgeMaxCenterHeight = bridgeMaxCenterHeight,
+            bridgeHalfSpanMin = bridgeHalfSpanMin,
+            bridgeHalfSpanMax = bridgeHalfSpanMax,
+            bridgeTubeRadiusMin = bridgeTubeRadiusMin,
+            bridgeTubeRadiusMax = bridgeTubeRadiusMax,
+            bridgeWalkwayHalfWidth = bridgeWalkwayHalfWidth,
+            bridgeLegEmbedMargin = bridgeLegEmbedMargin,
+            bridgeSmoothing = bridgeSmoothing,
+        };
+        return p;
+    }
 }

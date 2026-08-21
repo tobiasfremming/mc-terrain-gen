@@ -20,6 +20,10 @@ public class MCChunkManager : MonoBehaviour
     public MarchingChunk chunkPrefab;
     public WorldConfig worldConfig;
 
+    [Header("GPU Acceleration")]
+    [Tooltip("Optional. Shaders/Compute/TerrainDensity.compute -- GPU-accelerates base density sampling (see the 'GPU Compute-Shader Acceleration for Terrain Density Fields' plan). Falls back to the original CPU path entirely if unset, unsupported (SystemInfo.supportsComputeShaders), or the active world doesn't resolve every biome to a known GPU leaf type -- never a per-chunk GPU/CPU mix.")]
+    public ComputeShader densityCompute;
+
     [Header("Pooling")]
     public bool usePooling = true;
     public int prewarm = 16;             // how many chunks to create up-front
@@ -64,7 +68,17 @@ public class MCChunkManager : MonoBehaviour
     readonly List<ChunkKey> _removeScratch = new();
     int _jobCursor, _dirtyCursor;
 
-    // Async build pipeline.
+    // Async build pipeline. Stages, in order:
+    //   _gpuPending         -> admitted (PrepareBuild done), not yet GPU-dispatched
+    //   _gpuInFlightBatches -> dispatched, waiting on AsyncGPUReadback (skipped
+    //                          entirely for GPU-incapable worlds -- those go
+    //                          straight from admission to _readyForMeshing)
+    //   _readyForMeshing    -> density filled (or GPU unavailable), waiting for
+    //                          a free CPU worker slot -- the dirty/regular
+    //                          WorkerCount ratio is enforced HERE, not at
+    //                          admission, since this is the only stage that
+    //                          competes for the genuinely scarce resource
+    //   _inFlight           -> Task.Run(ChunkMesher.Build) in progress (as before)
     class InFlight
     {
         public ChunkKey key;
@@ -72,10 +86,18 @@ public class MCChunkManager : MonoBehaviour
         public ChunkMeshJob job;
         public Task task;
         public bool fromDirty;
+        public bool countedInFlightDirty; // true only once PumpMeshingQueue actually incremented _inFlightDirty for this job -- see ApplyBuildResult's decrement
     }
     readonly List<InFlight> _inFlight = new();
+    readonly List<InFlight> _gpuPending = new();
+    readonly List<InFlight> _readyForMeshing = new();
+    class GpuBatch { public readonly List<InFlight> jobs = new(); }
+    readonly List<GpuBatch> _gpuInFlightBatches = new();
+    const int kMaxConcurrentGpuBatches = 3; // AsyncGPUReadback supports multiple in-flight requests; serializing to 1 would create an artificial bubble
+    const int kAdmissionCap = 64;           // total jobs allowed ahead of _inFlight -- bounds queue memory, not latency (GPU dispatch is cheap; CPU worker slots are the real throttle, enforced in PumpMeshingQueue)
     readonly Stack<ChunkMeshJob> _meshJobPool = new();
     int _inFlightDirty;
+    TerrainGpuSampler _gpuSampler;
 
     // Coalescing for edit-driven rebuilds: earliest allowed dispatch per key,
     // and when each key last dispatched a dirty rebuild.
@@ -304,7 +326,24 @@ public class MCChunkManager : MonoBehaviour
             _renderField = ModifiedDensityField.Create(BaseField, _modSystem.visual, _modSystem.physical);
             _physicsField = ModifiedDensityField.Create(BaseField, _modSystem.physical);
             BuildBiomeMaterialProps();
+            RefreshGpuParams();
         }
+    }
+
+    // Rebuilds the GPU sampler's persistent per-world parameter buffers.
+    // Cheap to call speculatively (no-ops if densityCompute is unset); a
+    // stale buffer would mean the GPU path silently drifts from whatever
+    // the CPU fields' current Inspector values are, so this has to run
+    // whenever those can have changed -- field (re)creation here, and
+    // TerrainTuning changes (see the _pendingRefresh handling in Update()).
+    void RefreshGpuParams()
+    {
+        if (_gpuSampler == null)
+        {
+            if (densityCompute == null) return;
+            _gpuSampler = new TerrainGpuSampler(densityCompute);
+        }
+        _gpuSampler.RefreshWorldParams(BaseField);
     }
 
     static void DestroyField(ref ModifiedDensityField f)
@@ -335,10 +374,12 @@ public class MCChunkManager : MonoBehaviour
         {
             float s0 = LevelChunkSize(0);
             var c = FloorCoord(target.position, s0);
+            var keys = new List<ChunkKey>();
             for (int dz = -1; dz <= 1; dz++)
                 for (int dy = -1; dy <= 1; dy++)
                     for (int dx = -1; dx <= 1; dx++)
-                        BuildSync(new ChunkKey { level = 0, coord = c + new Vector3Int(dx, dy, dz) });
+                        keys.Add(new ChunkKey { level = 0, coord = c + new Vector3Int(dx, dy, dz) });
+            BuildBatchSync(keys);
         }
     }
 
@@ -353,6 +394,7 @@ public class MCChunkManager : MonoBehaviour
 
         DestroyField(ref _renderField);
         DestroyField(ref _physicsField);
+        _gpuSampler?.Dispose();
     }
 
     void CleanupStaleChildren()
@@ -378,6 +420,7 @@ public class MCChunkManager : MonoBehaviour
             _pendingRefresh = false;
             _generatedNeeds.Clear(); // settings may have changed: regenerate all (streamed)
             _boxesValid = false;
+            RefreshGpuParams(); // keep GPU tunables in sync with whatever Inspector edit triggered this
         }
 
         if (BoxesChanged())
@@ -385,6 +428,8 @@ public class MCChunkManager : MonoBehaviour
 
         ApplyCompletedBuilds();
         DispatchBuilds();
+        StageGpuBatch();
+        PumpMeshingQueue();
         SweepRetiring();
 
         if (_modSystem != null && Time.time - _lastFlush > modFlushInterval)
@@ -423,10 +468,13 @@ public class MCChunkManager : MonoBehaviour
                     {
                         var key = new ChunkKey { level = k, coord = new Vector3Int(x, y, z) };
                         // Generated chunks need a remesh; so do chunks whose
-                        // FIRST build is currently in flight (it may have
-                        // sampled pre-edit data — without this, the edit is
-                        // silently lost for that chunk: a permanent crack).
-                        if (!_generatedNeeds.ContainsKey(key) && !IsInFlight(key)) continue;
+                        // FIRST build is currently anywhere in the pipeline
+                        // (GPU-pending, GPU-in-flight, ready-for-meshing, or
+                        // CPU-in-flight) -- it may have already sampled
+                        // pre-edit data at whatever stage it's at, and
+                        // without this the edit is silently lost for that
+                        // chunk: a permanent crack.
+                        if (!_generatedNeeds.ContainsKey(key) && !IsPendingAnywhere(key)) continue;
                         if (affectsPhysics) _dirtyPhysics.Add(key);
                         if (_dirty.Add(key))
                         {
@@ -626,7 +674,7 @@ public class MCChunkManager : MonoBehaviour
 
     bool NeedsWork(ChunkKey key)
     {
-        if (IsInFlight(key)) return false;
+        if (IsPendingAnywhere(key)) return false;
         if (!_chunks.ContainsKey(key)) return true;
         if (_dirty.Contains(key)) return true;
         if (!_generatedNeeds.TryGetValue(key, out byte prev)) return true;
@@ -725,18 +773,40 @@ public class MCChunkManager : MonoBehaviour
         return false;
     }
 
+    // Is this key anywhere in the pipeline -- any of the GPU staging queues,
+    // or already CPU-meshing? Same idea as IsInFlight, extended to the new
+    // intermediate stages the GPU path inserts.
+    bool IsPendingAnywhere(ChunkKey key)
+    {
+        if (IsInFlight(key)) return true;
+        for (int i = 0; i < _gpuPending.Count; i++)
+            if (_gpuPending[i].key.Equals(key)) return true;
+        for (int i = 0; i < _readyForMeshing.Count; i++)
+            if (_readyForMeshing[i].key.Equals(key)) return true;
+        for (int b = 0; b < _gpuInFlightBatches.Count; b++)
+        {
+            var jobs = _gpuInFlightBatches[b].jobs;
+            for (int i = 0; i < jobs.Count; i++)
+                if (jobs[i].key.Equals(key)) return true;
+        }
+        return false;
+    }
+
     ChunkMeshJob GetMeshJob() => _meshJobPool.Count > 0 ? _meshJobPool.Pop() : new ChunkMeshJob();
 
+    // Admission only: pulls keys off the pre-sorted priority/nearest-first
+    // queues (unchanged) and routes each into the pipeline. Deliberately NOT
+    // gated by the dirty/regular WorkerCount ratio here -- GPU dispatch
+    // isn't CPU-thread-scarce, so admission can freely let dirty jobs
+    // through; the ratio is enforced once, at PumpMeshingQueue's promotion
+    // into _inFlight, which is the only stage that actually competes for
+    // the scarce WorkerCount slots.
     void DispatchBuilds()
     {
-        int max = WorkerCount;
-        // Edit rebuilds may not crowd out streaming work (new terrain, LOD
-        // swaps): while regular jobs are pending, dirty jobs get half the
-        // slots at most. Without this, sprinting (a continuous footprint
-        // stream) starves streaming completely and the world stops updating.
-        int maxDirty = Mathf.Max(1, max / 2);
+        int pipelineDepth = _gpuPending.Count + _readyForMeshing.Count + _inFlight.Count;
+        foreach (var batch in _gpuInFlightBatches) pipelineDepth += batch.jobs.Count;
 
-        while (_inFlight.Count < max)
+        while (pipelineDepth < kAdmissionCap)
         {
             bool dirtyReady = _dirtyCursor < _dirtyJobs.Count &&
                               (!_dirtyNotBefore.TryGetValue(_dirtyJobs[_dirtyCursor], out float nb) || Time.time >= nb);
@@ -744,7 +814,7 @@ public class MCChunkManager : MonoBehaviour
 
             ChunkKey key;
             bool fromDirty;
-            if (dirtyReady && (_inFlightDirty < maxDirty || !regularPending))
+            if (dirtyReady)
             {
                 key = _dirtyJobs[_dirtyCursor++];
                 fromDirty = true;
@@ -756,20 +826,163 @@ public class MCChunkManager : MonoBehaviour
             }
             else break;
 
-            if (IsInFlight(key)) continue;
+            if (IsPendingAnywhere(key)) continue;
             var inflight = PrepareBuild(key);
             if (inflight == null) continue;
 
             inflight.fromDirty = fromDirty;
-            if (fromDirty)
-            {
-                _inFlightDirty++;
-                _lastDirtyDispatch[key] = Time.time;
-            }
+            pipelineDepth++;
+
+            // Hoisted empty-chunk skip (used to run only inside
+            // ChunkMesher.Build): finishing here means a provably-empty
+            // chunk never costs a GPU batch slot at all.
+            if (TryFastEmptySkip(inflight))
+                FinishEmptyBuild(inflight);
+            else if (_gpuSampler != null && _gpuSampler.IsWorldGpuCapable)
+                _gpuPending.Add(inflight);
+            else
+                _readyForMeshing.Add(inflight);
+        }
+    }
+
+    bool TryFastEmptySkip(InFlight inflight)
+    {
+        var job = inflight.job;
+        if (job.modsOverlapChunk) return false; // a carved cave inside "solid" rock must still be meshed
+        ChunkMesher.GetEffectiveGrid(job, out int nx, out int ny, out int nz, out float step);
+        Vector3 boxMin = job.origin;
+        Vector3 boxMax = job.origin + new Vector3(nx, ny, nz) * step;
+        return job.renderField.TryGetEmptySkip(boxMin, boxMax);
+    }
+
+    void FinishEmptyBuild(InFlight inflight)
+    {
+        inflight.job.ResetOutputs();
+        inflight.job.colliderSharesRenderMesh = true; // matches ChunkMesher.Build's own skip path exactly
+        ApplyBuildResult(inflight);
+    }
+
+    static void ClearGpuRaw(ChunkMeshJob job)
+    {
+        job.gpuRawRegular = null;
+        for (int i = 0; i < job.gpuRawFaces.Length; i++) job.gpuRawFaces[i] = null;
+        job.gpuRawCollision = null;
+    }
+
+    // Shared staleness handling for the two new pre-CPU-meshing gates (GPU
+    // admission in StageGpuBatch, GPU-done promotion in StageGpuBatch's
+    // readback callback). Deliberately simpler than ApplyBuildResult's own
+    // stale-branch (which also calls NeedsWork): NeedsWork's IsPendingAnywhere
+    // check would see this job still sitting in the very queue we're in the
+    // middle of clearing, which risks a false "already pending" negative --
+    // IsDesired alone is a safe, if slightly less precise, substitute here.
+    // Nothing is ever truly lost either way: RecomputeTargets/OnRegionModified
+    // always repopulate _jobs/_dirtyJobs for anything still desired.
+    void RequeueOrDrop(InFlight f)
+    {
+        var job = f.job;
+        job.ResetOutputs();
+        ClearGpuRaw(job);
+        _meshJobPool.Push(job);
+
+        if (IsDesired(f.key))
+            _jobs.Insert(Mathf.Min(_jobCursor, _jobs.Count), f.key);
+    }
+
+    // Batches every pending job's grid-fill requests into one dispatch (up
+    // to kMaxConcurrentGpuBatches outstanding at once -- AsyncGPUReadback
+    // supports multiple in-flight requests, so this isn't serialized to one
+    // at a time). On completion, jobs move to _readyForMeshing for
+    // PumpMeshingQueue to promote into actual CPU meshing.
+    void StageGpuBatch()
+    {
+        if (_gpuSampler == null || !_gpuSampler.IsWorldGpuCapable) return;
+        if (_gpuPending.Count == 0) return;
+        if (_gpuInFlightBatches.Count >= kMaxConcurrentGpuBatches) return;
+
+        var batch = new GpuBatch();
+        var requests = new List<TerrainGpuSampler.Request>();
+
+        foreach (var inflight in _gpuPending)
+        {
+            // Re-validate: staleness can only have grown since admission.
+            if (!_boxesValid || !IsDesired(inflight.key)) { RequeueOrDrop(inflight); continue; }
 
             var job = inflight.job;
-            inflight.task = Task.Run(() => ChunkMesher.Build(job));
-            _inFlight.Add(inflight);
+            var planned = ChunkMesher.PlanGridRequests(job);
+            foreach (var req in planned)
+            {
+                var dest = new float[req.countX * req.countY * req.countZ];
+                switch (req.kind)
+                {
+                    case ChunkMesher.PlannedRequest.Kind.Regular: job.gpuRawRegular = dest; break;
+                    case ChunkMesher.PlannedRequest.Kind.Face: job.gpuRawFaces[req.face] = dest; break;
+                    case ChunkMesher.PlannedRequest.Kind.Collision: job.gpuRawCollision = dest; break;
+                }
+                requests.Add(new TerrainGpuSampler.Request
+                {
+                    origin = req.origin,
+                    step = req.step,
+                    countX = req.countX,
+                    countY = req.countY,
+                    countZ = req.countZ,
+                    dest = dest,
+                });
+            }
+            batch.jobs.Add(inflight);
+        }
+
+        _gpuPending.Clear();
+        if (batch.jobs.Count == 0) return;
+
+        _gpuInFlightBatches.Add(batch);
+        _gpuSampler.SubmitBatchAsync(requests, ok =>
+        {
+            _gpuInFlightBatches.Remove(batch);
+            foreach (var inflight in batch.jobs)
+            {
+                if (!ok) ClearGpuRaw(inflight.job); // GPU failed for the whole batch -- ChunkMesher falls back to its own CPU SampleGrid since the raw buffers are null
+                if (!_boxesValid || !IsDesired(inflight.key)) { RequeueOrDrop(inflight); continue; }
+                _readyForMeshing.Add(inflight);
+            }
+        });
+    }
+
+    // Promotes _readyForMeshing jobs into actual CPU meshing (_inFlight),
+    // respecting WorkerCount and the dirty/regular ratio -- this is the one
+    // place that still needs that ratio (see DispatchBuilds' comment).
+    void PumpMeshingQueue()
+    {
+        int max = WorkerCount;
+        // Edit rebuilds may not crowd out streaming work (new terrain, LOD
+        // swaps): while regular jobs are pending, dirty jobs get half the
+        // slots at most. Without this, sprinting (a continuous footprint
+        // stream) starves streaming completely and the world stops updating.
+        int maxDirty = Mathf.Max(1, max / 2);
+
+        int i = 0;
+        while (_inFlight.Count < max && i < _readyForMeshing.Count)
+        {
+            var f = _readyForMeshing[i];
+            if (f.fromDirty && _inFlightDirty >= maxDirty)
+            {
+                i++; // leave this dirty job queued; a regular job further down may still go through
+                continue;
+            }
+
+            _readyForMeshing.RemoveAt(i); // don't advance i: next entry slides in
+
+            if (!_boxesValid || !IsDesired(f.key)) { RequeueOrDrop(f); continue; }
+
+            if (f.fromDirty)
+            {
+                f.countedInFlightDirty = true;
+                _inFlightDirty++;
+                _lastDirtyDispatch[f.key] = Time.time;
+            }
+            var job = f.job;
+            f.task = Task.Run(() => ChunkMesher.Build(job));
+            _inFlight.Add(f);
         }
     }
 
@@ -842,7 +1055,11 @@ public class MCChunkManager : MonoBehaviour
 
     void ApplyBuildResult(InFlight f)
     {
-        if (f.fromDirty) _inFlightDirty = Mathf.Max(0, _inFlightDirty - 1);
+        // NOT f.fromDirty: jobs that finished via the hoisted empty-chunk
+        // skip (FinishEmptyBuild) never went through PumpMeshingQueue's
+        // promotion, so _inFlightDirty was never incremented for them --
+        // decrementing based on fromDirty alone would corrupt the count.
+        if (f.countedInFlightDirty) _inFlightDirty = Mathf.Max(0, _inFlightDirty - 1);
 
         var job = f.job;
         bool ok = job.error == null;
@@ -878,23 +1095,94 @@ public class MCChunkManager : MonoBehaviour
             _jobs.Insert(Mathf.Min(_jobCursor, _jobs.Count), f.key);
         }
 
+        ClearGpuRaw(job); // insurance: normally already null (one-shot-consumed inside ChunkMesher.Build), but Build() can exit early on an exception
         job.ResetOutputs();
         _meshJobPool.Push(job);
     }
 
-    // Synchronous build+apply for the initial ground under the player.
-    void BuildSync(ChunkKey key)
+    // Synchronous build+apply for a batch of chunks -- the initial ground
+    // under the player at Start(), and bulk regeneration (ProcessAllJobsNow).
+    // Batches ALL of them through one (or a couple of) blocking GPU dispatch
+    // instead of one per chunk: GetData()/pipeline-flush overhead is
+    // nontrivial per call regardless of payload size, so doing this
+    // per-chunk in a tight loop -- as a naive single-key BuildSync would --
+    // turns bulk regeneration into a stall-per-chunk fest.
+    // Chunk-count cap per GPU sub-batch: bounds how large a single dispatch's
+    // buffers get for a big bulk regen (hundreds of chunks), independent of
+    // TerrainGpuSampler's own 65535-groups-per-axis handling -- that removes
+    // the hard failure, this keeps memory/copy-out cost sane regardless.
+    const int kMaxChunksPerSyncBatch = 32;
+
+    void BuildBatchSync(List<ChunkKey> keys)
     {
-        var inflight = PrepareBuild(key);
-        if (inflight == null) return;
-        ChunkMesher.Build(inflight.job);
-        ApplyBuildResult(inflight);
+        var inflights = new List<InFlight>();
+        foreach (var key in keys)
+        {
+            var f = PrepareBuild(key);
+            if (f != null) inflights.Add(f);
+        }
+
+        for (int start = 0; start < inflights.Count; start += kMaxChunksPerSyncBatch)
+        {
+            int count = Mathf.Min(kMaxChunksPerSyncBatch, inflights.Count - start);
+            var sub = inflights.GetRange(start, count);
+            RunGpuSyncIfAvailable(sub);
+            foreach (var f in sub)
+            {
+                ChunkMesher.Build(f.job);
+                ApplyBuildResult(f);
+            }
+        }
+    }
+
+    // Blocking GPU fill for a batch of already-prepared jobs (BuildBatchSync
+    // only) -- ComputeBuffer.GetData() stalls the calling thread, which is
+    // fine here: these paths (initial spawn, editor "Generate/Refresh All
+    // Chunks") already tolerate it, and GetData() works identically in and
+    // out of Play mode with no player-loop dependency (unlike pumping
+    // AsyncGPUReadback.Update() manually would need).
+    void RunGpuSyncIfAvailable(List<InFlight> inflights)
+    {
+        if (_gpuSampler == null || !_gpuSampler.IsWorldGpuCapable || inflights.Count == 0) return;
+
+        var requests = new List<TerrainGpuSampler.Request>();
+        foreach (var f in inflights)
+        {
+            var job = f.job;
+            var planned = ChunkMesher.PlanGridRequests(job);
+            foreach (var req in planned)
+            {
+                var dest = new float[req.countX * req.countY * req.countZ];
+                switch (req.kind)
+                {
+                    case ChunkMesher.PlannedRequest.Kind.Regular: job.gpuRawRegular = dest; break;
+                    case ChunkMesher.PlannedRequest.Kind.Face: job.gpuRawFaces[req.face] = dest; break;
+                    case ChunkMesher.PlannedRequest.Kind.Collision: job.gpuRawCollision = dest; break;
+                }
+                requests.Add(new TerrainGpuSampler.Request
+                {
+                    origin = req.origin,
+                    step = req.step,
+                    countX = req.countX,
+                    countY = req.countY,
+                    countZ = req.countZ,
+                    dest = dest,
+                });
+            }
+        }
+        if (requests.Count == 0) return;
+
+        bool ok = _gpuSampler.SubmitBatchSync(requests);
+        if (!ok)
+            foreach (var f in inflights) ClearGpuRaw(f.job);
     }
 
     void ProcessAllJobsNow()
     {
-        while (_dirtyCursor < _dirtyJobs.Count) BuildSync(_dirtyJobs[_dirtyCursor++]);
-        while (_jobCursor < _jobs.Count) BuildSync(_jobs[_jobCursor++]);
+        var keys = new List<ChunkKey>();
+        while (_dirtyCursor < _dirtyJobs.Count) keys.Add(_dirtyJobs[_dirtyCursor++]);
+        while (_jobCursor < _jobs.Count) keys.Add(_jobs[_jobCursor++]);
+        BuildBatchSync(keys);
         _dirtyJobs.Clear();
         _dirtyCursor = 0;
         SweepRetiring();
@@ -960,6 +1248,13 @@ public class MCChunkManager : MonoBehaviour
             try { f.task?.Wait(1000); } catch { }
         }
         _inFlight.Clear();
+        // GPU-pipeline jobs never reached Task.Run, so there's nothing to
+        // wait on -- just drop them (their pooled ChunkMeshJobs are simply
+        // not returned to _meshJobPool, which is harmless; GetMeshJob()
+        // allocates fresh ones on demand).
+        _gpuPending.Clear();
+        _readyForMeshing.Clear();
+        _gpuInFlightBatches.Clear();
 
         foreach (var chunk in _chunks.Values)
             if (chunk != null) ReleaseChunk(chunk);
