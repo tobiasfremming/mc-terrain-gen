@@ -67,14 +67,15 @@ public static class ChunkMesher
 
             GetEffectiveGrid(job, out int nx, out int ny, out int nz, out float step);
 
-            // Empty-chunk skip: if the surface can't intersect this chunk's
-            // vertical range, there is nothing to mesh (or collide with).
+            // Empty-chunk skip: if the surface can't possibly cross this
+            // chunk's AABB, there is nothing to mesh (or collide with).
             // Disabled when terrain edits overlap the chunk: a carved cave
             // creates surface deep inside otherwise-solid rock.
-            if (!job.modsOverlapChunk && job.renderField.TryGetHeightBounds(out float minH, out float maxH))
+            if (!job.modsOverlapChunk)
             {
-                float y0 = job.origin.y, y1 = job.origin.y + ny * step;
-                if (y0 > maxH || y1 < minH)
+                Vector3 boxMin = job.origin;
+                Vector3 boxMax = job.origin + new Vector3(nx, ny, nz) * step;
+                if (job.renderField.TryGetEmptySkip(boxMin, boxMax))
                 {
                     job.colliderSharesRenderMesh = true; // both empty
                     return;

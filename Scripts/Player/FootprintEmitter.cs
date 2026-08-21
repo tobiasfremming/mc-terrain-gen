@@ -51,12 +51,16 @@ public class FootprintEmitter : MonoBehaviour
             return;
         }
 
-        delta.y = 0f;
+        // Measure horizontal distance walked: strip out whatever component of
+        // delta points along "up" (world Y normally, planet-radial when the
+        // player is aligned to a globe -- see GravityAligner).
+        Vector3 up = transform.up;
+        delta -= Vector3.Dot(delta, up) * up;
         _accum += delta.magnitude;
         if (_accum < stride) return;
         _accum = 0f;
 
-        Vector3 foot = pos + Vector3.down * (_cc.height * 0.5f);
+        Vector3 foot = pos - up * (_cc.height * 0.5f);
 
         // Soft ground takes footprints; hard rock doesn't. Hardness blends
         // smoothly across biome transitions, so prints fade out gradually.

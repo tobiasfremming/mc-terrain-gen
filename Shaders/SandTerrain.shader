@@ -38,6 +38,15 @@ Shader "MarchingCubes/Sand Terrain"
         _Chan3Steep ("Channel 3 steep color", Color) = (0.55, 0.70, 0.82, 1)
         _Chan3Sharpness ("Channel 3 blend sharpness", Range(0.2, 6)) = 1
 
+        // Planet mode: when enabled, "up" for slope tinting and sediment
+        // banding is radial from a center point instead of world Y. Pushed
+        // automatically by MCChunkManager when the active field is a
+        // PlanetField -- see MCChunkManager.ApplyPlanetShaderParams. 0 (flat
+        // world) with _PlanetCenter at the origin reduces every formula below
+        // to exactly the original flat-world math, so this is fully backward
+        // compatible with non-planet materials.
+        _UseSphericalUp ("Planet-relative up (0=flat world Y, 1=radial from center)", Range(0, 1)) = 0
+        _PlanetCenter ("Planet center (world)", Vector) = (0, 0, 0, 0)
         _SlopeStart ("Slope tint start (deg)", Range(0, 90)) = 21
         _SlopeEnd   ("Slope tint full (deg)",  Range(0, 90)) = 33
         _ShadowWarmth ("Shadow warmth (bounced sand light)", Range(0, 1)) = 0.55
@@ -131,7 +140,7 @@ Shader "MarchingCubes/Sand Terrain"
                         EvaluateCanyon(i.positionWS, w, texAlb, _CanyonFloorColor.rgb, \
                                        _Layer1Color.rgb, _Layer2Color.rgb, _Layer3Color.rgb, _Layer4Color.rgb, \
                                        _LayerScale, _LayerDistortion, _LayerSharpness, _LayerNoiseScale, \
-                                       _SubLayerScale, _SubLayerIntensity, _RockTexScale, steep, _NormalStrength, \
+                                       _SubLayerScale, _SubLayerIntensity, _RockTexScale, steep, _NormalStrength, localHeight, \
                                        CHW, albedo, tnX, tnY, tnZ); \
                     else if (_style == 2) \
                         EvaluateAlien(i.positionWS, w, FLATCOL, STEEPCOL, _PebbleTexScale, steep, _NormalStrength, \
@@ -144,6 +153,8 @@ Shader "MarchingCubes/Sand Terrain"
                 }
 
             CBUFFER_START(UnityPerMaterial)
+                half _UseSphericalUp;
+                float4 _PlanetCenter;
                 half _Chan0Style;
                 half4 _Chan0Flat;
                 half4 _Chan0Steep;
@@ -241,12 +252,22 @@ Shader "MarchingCubes/Sand Terrain"
                 half mY = DetileMask(uvY);
                 half mZ = DetileMask(uvZ);
 
+                // "up" for slope tinting / sediment banding: radial from
+                // _PlanetCenter when in planet mode, otherwise plain world Y.
+                // With _UseSphericalUp=0 and _PlanetCenter=(0,0,0) (the
+                // defaults) this reduces to exactly (0,1,0) and localHeight
+                // reduces to exactly positionWS.y -- the original flat-world
+                // math, unchanged.
+                float3 rel = i.positionWS - _PlanetCenter.xyz;
+                float3 up = lerp(float3(0, 1, 0), rel / max(length(rel), 1e-4), (float)_UseSphericalUp);
+                float localHeight = dot(rel, up);
+
                 // slope tint from the GEOMETRIC normal: slip faces (near the
                 // angle of repose) read darker/warmer than flat windward
                 // sand. Shared by every biome module below.
                 half cosStart = cos(radians(_SlopeStart));
                 half cosEnd = cos(radians(_SlopeEnd));
-                half steep = 1.0h - smoothstep(cosEnd, cosStart, (half)saturate(n.y));
+                half steep = 1.0h - smoothstep(cosEnd, cosStart, (half)saturate(dot(n, up)));
 
                 // vertex-baked channel weights (partition of unity): channel 0
                 // is the implicit remainder, 1/2/3 are vertex R/G/B. Each is

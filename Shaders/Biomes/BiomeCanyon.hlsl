@@ -14,7 +14,7 @@ void EvaluateCanyon(float3 positionWS, float3 w, half3 texAlb, half3 canyonFloor
                      half3 layer1, half3 layer2, half3 layer3, half3 layer4,
                      float layerScale, float layerDistortion, float layerSharpness,
                      float layerNoiseScale, float subLayerScale, half subLayerIntensity,
-                     float rockTexScale, half steep, half normalStrength,
+                     float rockTexScale, half steep, half normalStrength, float localHeight,
                      half weight, inout half3 albedo, inout half3 tnX, inout half3 tnY, inout half3 tnZ)
 {
     float rS = 1.0 / max(rockTexScale, 0.01);
@@ -28,12 +28,16 @@ void EvaluateCanyon(float3 positionWS, float3 w, half3 texAlb, half3 canyonFloor
                   + SAMPLE_TEXTURE2D(_RockTex, sampler_RockTex, positionWS.xy * rS).rgb * w.z;
 
     // --- sediment layers (adapted from MountainLayers) ---
-    float height = positionWS.y;
+    // Uses localHeight (planet-aware "altitude") rather than raw positionWS.y
+    // so sediment bands follow the local ground on a sphere instead of
+    // cutting flat planes through it. On a flat world localHeight == positionWS.y
+    // exactly (see SandTerrain.shader's Frag), so this is a no-op there.
+    float height = localHeight;
     float2 largeUV = positionWS.xz * 0.005;
     float lwx = FbmN(largeUV + float2(100, 200), 4) * 2.0 - 1.0;
     float lwy = FbmN(largeUV + float2(300, 400), 4) * 2.0 - 1.0;
-    float2 warpedPos = positionWS.yz + float2(lwx, lwy) * layerDistortion * 20.0;
-    float tectonic = FbmN(positionWS.yx * 0.02, 2) * layerDistortion * 15.0;
+    float2 warpedPos = float2(localHeight, positionWS.z) + float2(lwx, lwy) * layerDistortion * 20.0;
+    float tectonic = FbmN(float2(localHeight, positionWS.x) * 0.02, 2) * layerDistortion * 15.0;
     height += tectonic;
     float distortion = FbmN(warpedPos * layerNoiseScale * 0.01, 3) * 2.0 - 1.0;
     float dh = height + distortion * layerDistortion;

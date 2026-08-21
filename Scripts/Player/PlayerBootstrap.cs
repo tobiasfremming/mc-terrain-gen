@@ -20,7 +20,7 @@ public static class PlayerBootstrap
         if (manager == null) return; // not a terrain scene
 
         DensityField density =
-            manager.worldConfig && manager.worldConfig.defaultDensity ? manager.worldConfig.defaultDensity :
+            manager.worldConfig && manager.worldConfig.EffectiveDensity ? manager.worldConfig.EffectiveDensity :
             manager.chunkPrefab ? manager.chunkPrefab.densityField : null;
 
         // --- player object ---
@@ -61,9 +61,11 @@ public static class PlayerBootstrap
         cam.nearClipPlane = Mathf.Min(cam.nearClipPlane, 0.1f);
 
         // --- controller + footprint trail + digging ---
-        var ctrl = player.AddComponent<SimplePlayerController>();
+        var ctrl = player.AddComponent<SimplePlayerController>(); // RequireComponent auto-adds GravityAligner
         ctrl.cameraTransform = cam.transform;
         ctrl.densityField = density;
+        var gravity = player.GetComponent<GravityAligner>();
+        gravity.terrain = manager;
         if (!player.GetComponent<FootprintEmitter>())
             player.AddComponent<FootprintEmitter>();
         if (!player.GetComponent<TerrainDigger>())
@@ -72,17 +74,43 @@ public static class PlayerBootstrap
             digger.aimSource = cam.transform;
         }
 
-        // --- spawn on the surface, upright ---
+        // --- spawn ---
+        // Planet mode: drop from well above the tallest possible terrain
+        // instead of trying to find the exact surface -- the wrapped field
+        // isn't necessarily a pure heightfield (canyon/alien carve caves and
+        // overhangs), so landing exactly on "the surface" along one ray risks
+        // spawning inside a mountain's flank or under an overhang. Falling
+        // onto it is simple and robust; SimplePlayerController's existing
+        // "no collider below yet -> hold position" check keeps this safe
+        // even before nearby chunks have streamed in.
+        //
+        // Position AND orientation are set directly here so the player is
+        // correctly oriented from frame one; gravity.ResetOrientation() below
+        // resyncs GravityAligner's persisted forward to match (otherwise its
+        // first Apply() would rebuild rotation from whatever Awake captured
+        // instead of the spawn rotation just set here).
         Vector3 p = player.transform.position;
-        float surfaceY = SimplePlayerController.SampleSurfaceHeight(p.x, p.z, density);
-        player.transform.SetPositionAndRotation(
-            new Vector3(p.x, surfaceY + 2f, p.z),
-            Quaternion.Euler(0f, player.transform.eulerAngles.y, 0f));
+        string surfaceDesc;
+        if (manager.TryGetPlanetSpawnPoint(out Vector3 center, out float spawnRadius))
+        {
+            Vector3 dir = (p - center).sqrMagnitude > 1e-6f ? (p - center).normalized : Vector3.up;
+            player.transform.SetPositionAndRotation(center + dir * spawnRadius, Quaternion.FromToRotation(Vector3.up, dir));
+            surfaceDesc = $"dropping from radius {spawnRadius:F1}";
+        }
+        else
+        {
+            float surfaceY = SimplePlayerController.SampleSurfaceHeight(p.x, p.z, density);
+            player.transform.SetPositionAndRotation(
+                new Vector3(p.x, surfaceY + 2f, p.z),
+                Quaternion.Euler(0f, player.transform.eulerAngles.y, 0f));
+            surfaceDesc = $"surface {surfaceY:F1}";
+        }
+        gravity.ResetOrientation(); // transform.forward was just set directly above; resync GravityAligner to it
 
         // terrain follows the player from now on
         manager.target = player.transform;
 
         Debug.Log($"[PlayerBootstrap] Player ready at {player.transform.position} " +
-                  $"(surface {surfaceY:F1}). WASD move, mouse look, Space jump, Shift sprint, Esc frees cursor.");
+                  $"({surfaceDesc}). WASD move, mouse look, Space jump, Shift sprint, Esc frees cursor.");
     }
 }

@@ -52,6 +52,16 @@ public float lodUpdateInterval = 0.5f; // How often to recalculate LOD
     [Header("Defaults")]
     public DensityField defaultDensity;
 
+    [Header("Planet Mode")]
+    [Tooltip("Render the world as a sphere instead of a flat plane.")]
+    public bool useGlobe = false;
+    [Tooltip("Used when Use Globe is on, instead of defaultDensity. A PlanetField already wraps its own terrain (its Surface field) plus radius/center -- point that at whatever BiomeWorld you want the globe to use (typically the same one defaultDensity points at, but doesn't have to be).")]
+    public PlanetField planetField;
+
+    // What MCChunkManager actually generates from. Kept as one indirection so
+    // toggling useGlobe is the only thing callers need to check.
+    public DensityField EffectiveDensity => (useGlobe && planetField != null) ? (DensityField)planetField : defaultDensity;
+
     [Header("Debug")]
     public bool showChunkBounds = true;
     public int configVersion = 1;
@@ -65,5 +75,6 @@ public float lodUpdateInterval = 0.5f; // How often to recalculate LOD
         cellSize = Mathf.Max(0.0001f, cellSize);
         densitySampling = Mathf.Max(1, densitySampling);
         windDir = (windDir.sqrMagnitude < 1e-6f) ? new Vector3(1,0,0) : windDir.normalized;
+        TerrainTuning.NotifyChanged(); // so flipping Use Globe hot-reloads in Play mode, same as any Biome tweak
     }
 }

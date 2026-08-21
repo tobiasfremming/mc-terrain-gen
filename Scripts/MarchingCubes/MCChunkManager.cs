@@ -132,10 +132,18 @@ public class MCChunkManager : MonoBehaviour
     {
         get
         {
-            if (worldConfig && worldConfig.defaultDensity) return worldConfig.defaultDensity;
+            if (worldConfig && worldConfig.EffectiveDensity) return worldConfig.EffectiveDensity;
             return chunkPrefab ? chunkPrefab.densityField : null;
         }
     }
+
+    // PlanetField wraps a BiomeWorld rather than being one, so anything that
+    // needs to reach the actual biome list (material props, terrain material)
+    // must unwrap it first -- otherwise a straight "BaseField as
+    // BiomeDensityField" check silently finds nothing once a world is
+    // wrapped in a planet.
+    PlanetField ActivePlanet => BaseField as PlanetField;
+    BiomeDensityField ActiveBiomeWorld => BaseField as BiomeDensityField ?? ActivePlanet?.surface as BiomeDensityField;
 
     // Public entry point for all terrain edits (StampSphere / StampLine, with
     // an affectsPhysics flag per edit).
@@ -147,6 +155,28 @@ public class MCChunkManager : MonoBehaviour
     {
         EnsureField();
         return _renderField != null ? _renderField.SurfaceHardness(worldPos) : 0f;
+    }
+
+    // Lets player/gravity code ask "are we on a planet, and if so where's its
+    // center/radius" without needing to know about PlanetField or WorldConfig
+    // itself -- true exactly when WorldConfig.useGlobe is on.
+    public bool TryGetPlanetCenter(out Vector3 center, out float radius)
+    {
+        if (BaseField is PlanetField p) { center = p.center; radius = p.radius; return true; }
+        center = default;
+        radius = 0f;
+        return false;
+    }
+
+    // Where to spawn/drop something onto a planet from: comfortably above
+    // the tallest possible terrain (PlanetField.SafeSpawnRadius), not an
+    // exact surface find -- see PlayerBootstrap for why.
+    public bool TryGetPlanetSpawnPoint(out Vector3 center, out float spawnRadius)
+    {
+        if (BaseField is PlanetField p) { center = p.center; spawnRadius = p.SafeSpawnRadius(); return true; }
+        center = default;
+        spawnRadius = 0f;
+        return false;
     }
 
     void OnEnable()
@@ -182,8 +212,19 @@ public class MCChunkManager : MonoBehaviour
     static readonly string[] ChannelSuffix = { "0", "1", "2", "3" };
     void BuildBiomeMaterialProps()
     {
-        if (BaseField is not BiomeDensityField world || world.biomes == null) { _biomeProps = null; return; }
+        var world = ActiveBiomeWorld;
+        if (world == null || world.biomes == null) { _biomeProps = null; return; }
         _biomeProps = new MaterialPropertyBlock();
+
+        // Planet mode: tell the shader to use radial "up" instead of world Y
+        // for slope tinting / sediment banding (see SandTerrain.shader's
+        // Frag). Left at the shader's defaults (flat world) otherwise.
+        var planet = ActivePlanet;
+        if (planet != null)
+        {
+            _biomeProps.SetFloat("_UseSphericalUp", 1f);
+            _biomeProps.SetVector("_PlanetCenter", new Vector4(planet.center.x, planet.center.y, planet.center.z, 0f));
+        }
 
         int n = Mathf.Min(world.biomes.Length, ChannelSuffix.Length);
         for (int i = 0; i < n; i++)
@@ -232,7 +273,8 @@ public class MCChunkManager : MonoBehaviour
     // prefab. Falls back to the prefab's own material when unset.
     void ApplyTerrainMaterial(MarchingChunk chunk)
     {
-        if (BaseField is not BiomeDensityField world || world.terrainMaterial == null) return;
+        var world = ActiveBiomeWorld;
+        if (world == null || world.terrainMaterial == null) return;
         var r = chunk.GetComponent<MeshRenderer>();
         if (r != null) r.sharedMaterial = world.terrainMaterial;
     }

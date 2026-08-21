@@ -85,4 +85,11 @@ public class ModifiedDensityField : DensityField
         if (source == null) { minH = maxH = 0f; return false; }
         return source.TryGetHeightBounds(out minH, out maxH);
     }
+
+    // Delegate directly rather than relying on the base default (which would
+    // call THIS class's own TryGetHeightBounds) -- fields like PlanetField
+    // override TryGetEmptySkip directly instead of TryGetHeightBounds, and
+    // that override must be reached.
+    public override bool TryGetEmptySkip(Vector3 boxMin, Vector3 boxMax) =>
+        source != null && source.TryGetEmptySkip(boxMin, boxMax);
 }

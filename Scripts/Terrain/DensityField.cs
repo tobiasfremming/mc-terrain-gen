@@ -50,6 +50,20 @@ public abstract class DensityField : ScriptableObject
         return false;
     }
 
+    // General empty-chunk test: can this world-space AABB be skipped because
+    // it's provably entirely air or entirely solid (no possible surface
+    // crossing inside it)? Default implementation reproduces the original
+    // flat-world check (chunk's Y range vs TryGetHeightBounds) so every
+    // existing height-based field keeps working with zero changes. Fields
+    // whose "up" isn't world Y (PlanetField) override this directly instead
+    // of TryGetHeightBounds, since a single flat Y range can't describe a
+    // sphere's solid/air shell.
+    public virtual bool TryGetEmptySkip(Vector3 boxMin, Vector3 boxMax)
+    {
+        if (!TryGetHeightBounds(out float minH, out float maxH)) return false;
+        return boxMin.y > maxH || boxMax.y < minH;
+    }
+
     // Adds weight * density into a vertical column of samples:
     // dest[destIndex + i*destStride] += weight * Sample(wx, yStart+i*yStep, wz).
     // The default just loops Sample; subclasses override to cache their per-
