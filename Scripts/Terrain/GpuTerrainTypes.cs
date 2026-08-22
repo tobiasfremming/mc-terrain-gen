@@ -3,7 +3,7 @@ using UnityEngine;
 
 // GPU-side counterparts of the density field hierarchy -- see the "GPU
 // Compute-Shader Acceleration for Terrain Density Fields" plan. Struct
-// layouts here MUST match Shaders/Compute/Density{Dune,Alien,Canyon}.hlsl's
+// layouts here MUST match Shaders/Compute/Density{Dune,Alien,Canyon,Frost}.hlsl's
 // structs field-for-field (same order, same count) -- StructuredBuffer
 // layout is positional, not name-matched. If you add/remove/reorder a field
 // on one side, mirror it on the other immediately.
@@ -17,6 +17,7 @@ public enum GpuFieldType
     Dune = 0,
     Alien = 1,
     Canyon = 2,
+    Frost = 3,
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -107,9 +108,40 @@ public struct CanyonGpuParams
     public float bridgeSmoothing;
 }
 
-// Union of all 3 leaf types (mirrors LeafParams in DensityBiomeBlend.hlsl) --
+[StructLayout(LayoutKind.Sequential)]
+public struct FrostGpuParams
+{
+    public float seed;
+    public float baseHeight;
+    public float windDegrees;
+    public float plainScale;
+    public float plainAmplitude;
+    public float peakScale;
+    public float peakOctaves;
+    public float peakAmp;
+    public float sastrugiEnabled;
+    public float sastrugiWavelengthAcross;
+    public float sastrugiWavelengthAlong;
+    public float sastrugiOctaves;
+    public float sastrugiAmp;
+    public float sastrugiAsymmetry;
+    public float permafrostEnabled;
+    public float polygonScale;
+    public float polygonTroughDepth;
+    public float polygonEdgeWidth;
+    public float crevassesEnabled;
+    public float crevasseScale;
+    public float crevasseDepth;
+    public float crevasseEdgeWidth;
+    public float crevassePatchScale;
+    public float hummocksEnabled;
+    public float hummockScale;
+    public float hummockAmp;
+}
+
+// Union of all 4 leaf types (mirrors LeafParams in DensityBiomeBlend.hlsl) --
 // nested, not flattened, so field names never collide across types. Every
-// biome slot's buffer entry carries all three sub-structs; only the one
+// biome slot's buffer entry carries all four sub-structs; only the one
 // matching that slot's GpuFieldType is ever read on the GPU side.
 [StructLayout(LayoutKind.Sequential)]
 public struct LeafGpuParams
@@ -117,6 +149,7 @@ public struct LeafGpuParams
     public DuneGpuParams dune;
     public AlienGpuParams alien;
     public CanyonGpuParams canyon;
+    public FrostGpuParams frost;
 }
 
 // Mirrors BiomeBlendParams in DensityBiomeBlend.hlsl.

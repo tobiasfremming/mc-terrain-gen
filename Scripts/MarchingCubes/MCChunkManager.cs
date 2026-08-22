@@ -86,18 +86,48 @@ public class MCChunkManager : MonoBehaviour
         public ChunkMeshJob job;
         public Task task;
         public bool fromDirty;
+        public bool structural; // true if the chunk itself changed (new/LOD/needs) -- false means this rebuild is edit-only, base terrain unchanged; see _densityCache
         public bool countedInFlightDirty; // true only once PumpMeshingQueue actually incremented _inFlightDirty for this job -- see ApplyBuildResult's decrement
     }
     readonly List<InFlight> _inFlight = new();
     readonly List<InFlight> _gpuPending = new();
     readonly List<InFlight> _readyForMeshing = new();
-    class GpuBatch { public readonly List<InFlight> jobs = new(); }
+    class GpuBatch { public readonly List<InFlight> jobs = new(); public int generation; }
     readonly List<GpuBatch> _gpuInFlightBatches = new();
+    // Bumped by ClearAllChunks and by the _pendingRefresh (TerrainTuning/
+    // Inspector) path -- both rebuild/rebind the GPU world-param buffers a
+    // dispatch was recorded against. A batch's AsyncGPUReadback completion
+    // callback fires on whatever later frame the GPU finishes on, entirely
+    // outside this class's own queue-clearing (SubmitBatchAsync captures the
+    // buffer/callback directly, not via _gpuInFlightBatches), so without this
+    // check a stale callback can still land and apply density computed under
+    // a world config that's since changed. Compared at completion; a
+    // mismatch means "drop it, the data may not reflect the current world."
+    int _gpuGeneration;
     const int kMaxConcurrentGpuBatches = 3; // AsyncGPUReadback supports multiple in-flight requests; serializing to 1 would create an artificial bubble
     const int kAdmissionCap = 64;           // total jobs allowed ahead of _inFlight -- bounds queue memory, not latency (GPU dispatch is cheap; CPU worker slots are the real throttle, enforced in PumpMeshingQueue)
     readonly Stack<ChunkMeshJob> _meshJobPool = new();
     int _inFlightDirty;
     TerrainGpuSampler _gpuSampler;
+
+    // Per-chunk raw (pre-edit) base density, cached across rebuilds so an
+    // EDIT-ONLY rebuild (footprints/digging -- the chunk itself didn't move
+    // in the clipmap, its needsMask didn't change) never has to re-dispatch
+    // to the GPU just to re-apply a delta on top of terrain that hasn't
+    // actually changed: edits are always re-applied fresh on CPU regardless
+    // (see ModifiedDensityField.SampleGridWithRawBase), only the expensive
+    // base-noise evaluation is what this avoids repeating. Without this, an
+    // edit-driven rebuild still pays the full AsyncGPUReadback round-trip
+    // (several frames of latency) for a value that was already computed
+    // moments earlier and hasn't changed -- which is what made footprint
+    // updates feel slow once base density moved to GPU.
+    class DensityCacheEntry
+    {
+        public byte needsMask; // which shape (regular + which faces) this was computed for; must match exactly to be reusable
+        public float[] regular;
+        public readonly float[][] faces = new float[6][];
+    }
+    readonly Dictionary<ChunkKey, DensityCacheEntry> _densityCache = new();
 
     // Coalescing for edit-driven rebuilds: earliest allowed dispatch per key,
     // and when each key last dispatched a dirty rebuild.
@@ -421,6 +451,8 @@ public class MCChunkManager : MonoBehaviour
             _generatedNeeds.Clear(); // settings may have changed: regenerate all (streamed)
             _boxesValid = false;
             RefreshGpuParams(); // keep GPU tunables in sync with whatever Inspector edit triggered this
+            _densityCache.Clear(); // base density itself may have changed -- every cached entry is now potentially stale
+            _gpuGeneration++; // any already-dispatched batch's readback now reflects the pre-refresh params -- see field comment
         }
 
         if (BoxesChanged())
@@ -732,6 +764,7 @@ public class MCChunkManager : MonoBehaviour
 
             ReleaseChunk(e.chunk);
             _retiring.RemoveAt(i);
+            _densityCache.Remove(e.key); // chunk is truly gone (not just retired-but-resurrectable); stop holding its cached density
 
             foreach (var k in e.required)
             {
@@ -837,12 +870,55 @@ public class MCChunkManager : MonoBehaviour
             // ChunkMesher.Build): finishing here means a provably-empty
             // chunk never costs a GPU batch slot at all.
             if (TryFastEmptySkip(inflight))
+            {
                 FinishEmptyBuild(inflight);
-            else if (_gpuSampler != null && _gpuSampler.IsWorldGpuCapable)
-                _gpuPending.Add(inflight);
-            else
+            }
+            else if (!inflight.structural && !inflight.job.refreshCollider &&
+                     _densityCache.TryGetValue(key, out var cached) && cached.needsMask == inflight.needsMask)
+            {
+                // Edit-only rebuild (footprint/dig) with a matching cached
+                // base density already in hand -- skip the GPU dispatch
+                // entirely. (refreshCollider excluded deliberately: a
+                // physics-affecting edit needs a fresh collider grid we
+                // haven't cached, so those still go through GPU as normal --
+                // they're already exempt from the visual-edit throttle and
+                // rarer than the footprint stream this exists for.)
+                ApplyDensityCache(inflight.job, cached);
                 _readyForMeshing.Add(inflight);
+            }
+            else if (_gpuSampler != null && _gpuSampler.IsWorldGpuCapable)
+            {
+                _gpuPending.Add(inflight);
+            }
+            else
+            {
+                _readyForMeshing.Add(inflight);
+            }
         }
+    }
+
+    static void ApplyDensityCache(ChunkMeshJob job, DensityCacheEntry cached)
+    {
+        // Clone rather than hand out the cache's own arrays: ChunkMesher
+        // one-shot-consumes (nulls) job.gpuRaw* after use, which must not
+        // reach into and destroy the cached copy.
+        job.gpuRawRegular = (float[])cached.regular.Clone();
+        for (int i = 0; i < 6; i++)
+            job.gpuRawFaces[i] = cached.faces[i] != null ? (float[])cached.faces[i].Clone() : null;
+    }
+
+    // Snapshots a job's freshly GPU-filled raw density into the cache, for
+    // future edit-only rebuilds of this same chunk to reuse. Call right
+    // after a successful GPU fill, before ChunkMesher.Build consumes (nulls)
+    // the job's own gpuRaw* buffers.
+    void SaveDensityCache(InFlight inflight)
+    {
+        var job = inflight.job;
+        if (job.gpuRawRegular == null) return; // GPU wasn't used/failed for this job
+        var entry = new DensityCacheEntry { needsMask = inflight.needsMask, regular = (float[])job.gpuRawRegular.Clone() };
+        for (int i = 0; i < 6; i++)
+            if (job.gpuRawFaces[i] != null) entry.faces[i] = (float[])job.gpuRawFaces[i].Clone();
+        _densityCache[inflight.key] = entry;
     }
 
     bool TryFastEmptySkip(InFlight inflight)
@@ -900,7 +976,7 @@ public class MCChunkManager : MonoBehaviour
         if (_gpuPending.Count == 0) return;
         if (_gpuInFlightBatches.Count >= kMaxConcurrentGpuBatches) return;
 
-        var batch = new GpuBatch();
+        var batch = new GpuBatch { generation = _gpuGeneration };
         var requests = new List<TerrainGpuSampler.Request>();
 
         foreach (var inflight in _gpuPending)
@@ -939,9 +1015,25 @@ public class MCChunkManager : MonoBehaviour
         _gpuSampler.SubmitBatchAsync(requests, ok =>
         {
             _gpuInFlightBatches.Remove(batch);
+
+            // The world was cleared/regenerated or its GPU params were
+            // rebuilt after this batch was dispatched -- the buffers this
+            // readback reflects may no longer match the current world.
+            // Drop it rather than risk applying stale density.
+            if (batch.generation != _gpuGeneration)
+            {
+                foreach (var inflight in batch.jobs)
+                {
+                    ClearGpuRaw(inflight.job);
+                    RequeueOrDrop(inflight);
+                }
+                return;
+            }
+
             foreach (var inflight in batch.jobs)
             {
                 if (!ok) ClearGpuRaw(inflight.job); // GPU failed for the whole batch -- ChunkMesher falls back to its own CPU SampleGrid since the raw buffers are null
+                else SaveDensityCache(inflight); // let future edit-only rebuilds of this chunk skip GPU entirely
                 if (!_boxesValid || !IsDesired(inflight.key)) { RequeueOrDrop(inflight); continue; }
                 _readyForMeshing.Add(inflight);
             }
@@ -1026,7 +1118,7 @@ public class MCChunkManager : MonoBehaviour
         job.modsOverlapChunk = _modSystem.visual.OverlapsBounds(bMin, bMax) ||
                                _modSystem.physical.OverlapsBounds(bMin, bMax);
 
-        return new InFlight { key = key, needsMask = needs.Mask, job = job };
+        return new InFlight { key = key, needsMask = needs.Mask, job = job, structural = structural };
     }
 
     void ApplyCompletedBuilds()
@@ -1173,8 +1265,11 @@ public class MCChunkManager : MonoBehaviour
         if (requests.Count == 0) return;
 
         bool ok = _gpuSampler.SubmitBatchSync(requests);
-        if (!ok)
-            foreach (var f in inflights) ClearGpuRaw(f.job);
+        foreach (var f in inflights)
+        {
+            if (!ok) ClearGpuRaw(f.job);
+            else SaveDensityCache(f); // let future edit-only rebuilds of this chunk skip GPU entirely
+        }
     }
 
     void ProcessAllJobsNow()
@@ -1255,6 +1350,8 @@ public class MCChunkManager : MonoBehaviour
         _gpuPending.Clear();
         _readyForMeshing.Clear();
         _gpuInFlightBatches.Clear();
+        _densityCache.Clear();
+        _gpuGeneration++; // any already-dispatched batch's readback callback is now stale -- see field comment
 
         foreach (var chunk in _chunks.Values)
             if (chunk != null) ReleaseChunk(chunk);

@@ -19,6 +19,13 @@ StructuredBuffer<PlanetParams> _PlanetBuf; // [1] -- see DensityBiomeBlend.hlsl'
 // aligned the point's radial direction is with each axis. Continuous
 // weights (no discrete face-switch) keep this crack-free across chunk/LOD
 // boundaries; see PlanetField.cs's header comment for the full rationale.
+//
+// Biome SELECTION is computed once from `rel` (MC_ComputeBiomeWeights3D,
+// sphere-coherent) and reused for all 3 faces, rather than each face
+// recomputing its own 2D-projected weights -- see BiomeDensityField.
+// ComputeWeights3D's comment for why per-face weights would visibly
+// mismatch at the triplanar transition bands. Only each biome's own terrain
+// SHAPE still varies per face (via EvaluateBiomeBlendWithWeights's worldPos).
 float EvaluatePlanetWrap(float3 worldPos)
 {
     float3 rel = worldPos - _PlanetBuf[0].center;
@@ -30,11 +37,15 @@ float EvaluatePlanetWrap(float3 worldPos)
     float sum = aw.x + aw.y + aw.z;
     float3 w = sum > 1e-6 ? aw / sum : float3(1.0, 0.0, 0.0);
 
+    int n = (int)_BiomeBlendBuf[0].biomeCount;
+    float bw[MC_MAX_BIOMES];
+    MC_ComputeBiomeWeights3D(normalize(rel) * _PlanetBuf[0].radius, bw, n);
+
     const float eps = 0.0005;
     float d = 0.0;
-    if (w.x > eps) d += w.x * EvaluateBiomeBlend(float3(rel.z, localHeight, rel.y));
-    if (w.y > eps) d += w.y * EvaluateBiomeBlend(float3(rel.x, localHeight, rel.z));
-    if (w.z > eps) d += w.z * EvaluateBiomeBlend(float3(rel.x, localHeight, rel.y));
+    if (w.x > eps) d += w.x * EvaluateBiomeBlendWithWeights(float3(rel.z, localHeight, rel.y), bw, n);
+    if (w.y > eps) d += w.y * EvaluateBiomeBlendWithWeights(float3(rel.x, localHeight, rel.z), bw, n);
+    if (w.z > eps) d += w.z * EvaluateBiomeBlendWithWeights(float3(rel.x, localHeight, rel.y), bw, n);
     return d;
 }
 

@@ -132,4 +132,28 @@ float MC_Fbm3(float x, float y, float z, int octaves, uint seed)
     return s;
 }
 
+// Worley/cellular noise -- 1:1 port of TerrainNoise.Worley2. See its comment;
+// keep the two in lockstep (same MC_Hash jitter, same 3x3 neighborhood scan).
+void MC_Worley2(float x, float y, uint seed, out float f1, out float f2)
+{
+    int cx = (int)floor(x), cy = (int)floor(y);
+    f1 = 3.402823e38; f2 = 3.402823e38;
+    for (int oy = -1; oy <= 1; oy++)
+    {
+        for (int ox = -1; ox <= 1; ox++)
+        {
+            int gx = cx + ox, gy = cy + oy;
+            uint h = MC_Hash((uint)gx, (uint)gy, seed);
+            float jx = (float)(h & 0xFFFFu) / 65536.0;
+            float jy = (float)((h >> 16) & 0xFFFFu) / 65536.0;
+            float dx = (float)gx + jx - x, dy = (float)gy + jy - y;
+            float d2 = dx * dx + dy * dy;
+            if (d2 < f1) { f2 = f1; f1 = d2; }
+            else if (d2 < f2) { f2 = d2; }
+        }
+    }
+    f1 = sqrt(f1);
+    f2 = sqrt(f2);
+}
+
 #endif

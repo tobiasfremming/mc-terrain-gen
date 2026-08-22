@@ -133,4 +133,33 @@ public static class TerrainNoise
         }
         return s;
     }
+
+    // Worley/cellular noise: distance to the nearest (f1) and second-nearest
+    // (f2) of a jittered grid of feature points, one per unit cell. f2-f1 is
+    // ~0 exactly on a cell boundary and grows toward each cell's center --
+    // thresholding it gives cracked/veined patterns (crevasses, permafrost
+    // polygon troughs) that plain fbm/ridged noise can't produce. Same
+    // integer-hash jitter as GNoise's gradient lookup, so it's just as
+    // deterministic/GPU-portable.
+    public static void Worley2(float x, float y, uint seed, out float f1, out float f2)
+    {
+        int cx = Mathf.FloorToInt(x), cy = Mathf.FloorToInt(y);
+        f1 = float.MaxValue; f2 = float.MaxValue;
+        for (int oy = -1; oy <= 1; oy++)
+        {
+            for (int ox = -1; ox <= 1; ox++)
+            {
+                int gx = cx + ox, gy = cy + oy;
+                uint h = Hash(unchecked((uint)gx), unchecked((uint)gy), seed);
+                float jx = (h & 0xFFFFu) / 65536f;
+                float jy = ((h >> 16) & 0xFFFFu) / 65536f;
+                float dx = gx + jx - x, dy = gy + jy - y;
+                float d2 = dx * dx + dy * dy;
+                if (d2 < f1) { f2 = f1; f1 = d2; }
+                else if (d2 < f2) { f2 = d2; }
+            }
+        }
+        f1 = Mathf.Sqrt(f1);
+        f2 = Mathf.Sqrt(f2);
+    }
 }

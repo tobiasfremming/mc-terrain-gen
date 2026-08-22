@@ -29,11 +29,16 @@ public class SimplePlayerController : MonoBehaviour
     [Tooltip("Flat world: world Y below this respawns on the surface. Planet mode: distance from the planet center below this fraction of the radius respawns instead (same idea -- caught falling through terrain that hasn't generated yet).")]
     public float killDepth = -80f;
     [Range(0f, 1f)] public float planetKillRadiusFraction = 0.5f;
+    [Tooltip("While airborne, the fall is held (not applied) if no collider is found within this distance below -- avoids falling through terrain that hasn't streamed in yet. Needs to comfortably exceed the biggest realistic spawn-to-ground gap (see PlanetField.SafeSpawnRadius), or a legitimately far-but-generated drop gets mistaken for 'nothing there yet'.")]
+    public float groundProbeDistance = 2000f;
+    [Tooltip("If the fall stays held (groundProbeDistance never finds a collider) for longer than this, stop waiting and snap to the surface instead of hanging there indefinitely -- a self-healing backstop for slow/stuck chunk streaming.")]
+    public float maxHoldSeconds = 6f;
 
     CharacterController _cc;
     GravityAligner _gravity;
     float _pitch;
     float _yVelocity;
+    float _heldSince = -1f;
 
     void Awake()
     {
@@ -97,11 +102,26 @@ public class SimplePlayerController : MonoBehaviour
         _yVelocity += gravity * Time.deltaTime;
 
         // If there's no collider below us at all (terrain still generating),
-        // hold position instead of falling through the world.
-        if (!grounded && !Physics.Raycast(transform.position, -up, 500f))
+        // hold position instead of falling through the world. Bounded by
+        // maxHoldSeconds so a probe that never finds ground (streaming stuck,
+        // or a spawn gap wider than groundProbeDistance) self-heals via
+        // SnapToSurface instead of holding forever.
+        if (!grounded && !Physics.Raycast(transform.position, -up, groundProbeDistance))
         {
             _yVelocity = 0f;
             move = Vector3.zero;
+
+            if (_heldSince < 0f) _heldSince = Time.time;
+            else if (Time.time - _heldSince > maxHoldSeconds)
+            {
+                _heldSince = -1f;
+                SnapToSurface();
+                return;
+            }
+        }
+        else
+        {
+            _heldSince = -1f;
         }
 
         _cc.Move((move + up * _yVelocity) * Time.deltaTime);

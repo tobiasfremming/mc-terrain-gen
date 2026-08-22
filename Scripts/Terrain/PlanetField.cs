@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 // Wraps an existing DensityField so it renders as a sphere instead of a flat
@@ -66,23 +67,49 @@ public class PlanetField : DensityField
         float localHeight = dist - radius;
         Vector3 w = BlendWeights(rel);
 
-        float d = 0f;
-        if (w.x > kWeightEpsilon) d += w.x * surface.Sample(new Vector3(rel.z, localHeight, rel.y));
-        if (w.y > kWeightEpsilon) d += w.y * surface.Sample(new Vector3(rel.x, localHeight, rel.z));
-        if (w.z > kWeightEpsilon) d += w.z * surface.Sample(new Vector3(rel.x, localHeight, rel.y));
-        return d;
+        if (surface is BiomeDensityField bdf)
+        {
+            int n = bdf.BiomeCount;
+            Span<float> bw = stackalloc float[BiomeDensityField.MaxBiomes];
+            bdf.ComputeWeights3D(rel.normalized * radius, bw, n);
+
+            float d = 0f;
+            if (w.x > kWeightEpsilon) d += w.x * bdf.SampleWithWeights(new Vector3(rel.z, localHeight, rel.y), bw, n);
+            if (w.y > kWeightEpsilon) d += w.y * bdf.SampleWithWeights(new Vector3(rel.x, localHeight, rel.z), bw, n);
+            if (w.z > kWeightEpsilon) d += w.z * bdf.SampleWithWeights(new Vector3(rel.x, localHeight, rel.y), bw, n);
+            return d;
+        }
+
+        float d2 = 0f;
+        if (w.x > kWeightEpsilon) d2 += w.x * surface.Sample(new Vector3(rel.z, localHeight, rel.y));
+        if (w.y > kWeightEpsilon) d2 += w.y * surface.Sample(new Vector3(rel.x, localHeight, rel.z));
+        if (w.z > kWeightEpsilon) d2 += w.z * surface.Sample(new Vector3(rel.x, localHeight, rel.y));
+        return d2;
     }
 
     public override bool HasVertexColors => surface != null && surface.HasVertexColors;
 
+    // Biome color/hardness are pure functions of the (now sphere-coherent)
+    // biome weight vector, with no separate per-face position term -- unlike
+    // Sample, which still needs each biome's own per-face SHAPE -- so these
+    // don't need the triplanar face blend at all once weights come from
+    // ComputeWeights3D: all 3 faces would agree exactly, since they'd share
+    // the same weights.
     public override Color GetVertexColor(Vector3 p)
     {
         if (surface == null) return base.GetVertexColor(p);
-
         Vector3 rel = p - center;
+
+        if (surface is BiomeDensityField bdf)
+        {
+            int n = bdf.BiomeCount;
+            Span<float> bw = stackalloc float[BiomeDensityField.MaxBiomes];
+            bdf.ComputeWeights3D(rel.normalized * radius, bw, n);
+            return bdf.GetVertexColorWithWeights(bw, n);
+        }
+
         float localHeight = rel.magnitude - radius;
         Vector3 w = BlendWeights(rel);
-
         Color c = Color.black;
         if (w.x > kWeightEpsilon) c += w.x * surface.GetVertexColor(new Vector3(rel.z, localHeight, rel.y));
         if (w.y > kWeightEpsilon) c += w.y * surface.GetVertexColor(new Vector3(rel.x, localHeight, rel.z));
@@ -94,11 +121,18 @@ public class PlanetField : DensityField
     public override float SurfaceHardness(Vector3 p)
     {
         if (surface == null) return base.SurfaceHardness(p);
-
         Vector3 rel = p - center;
+
+        if (surface is BiomeDensityField bdf)
+        {
+            int n = bdf.BiomeCount;
+            Span<float> bw = stackalloc float[BiomeDensityField.MaxBiomes];
+            bdf.ComputeWeights3D(rel.normalized * radius, bw, n);
+            return bdf.SurfaceHardnessWithWeights(bw, n);
+        }
+
         float localHeight = rel.magnitude - radius;
         Vector3 w = BlendWeights(rel);
-
         float h = 0f;
         if (w.x > kWeightEpsilon) h += w.x * surface.SurfaceHardness(new Vector3(rel.z, localHeight, rel.y));
         if (w.y > kWeightEpsilon) h += w.y * surface.SurfaceHardness(new Vector3(rel.x, localHeight, rel.z));

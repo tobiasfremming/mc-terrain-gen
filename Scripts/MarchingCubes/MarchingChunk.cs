@@ -111,6 +111,24 @@ public class MarchingChunk : MonoBehaviour
         }
     }
 
+    // Procedural Mesh objects (_mesh/_colliderMesh) aren't owned by the scene
+    // graph and aren't freed automatically when this GameObject is destroyed
+    // -- without this they leak for the life of the pooled/destroyed chunk.
+    // Hit by every ReleaseChunk/ClearAllChunks/CleanupStaleChildren path.
+    void OnDestroy()
+    {
+        if (Application.isPlaying)
+        {
+            if (_mesh != null) Destroy(_mesh);
+            if (_colliderMesh != null) Destroy(_colliderMesh);
+        }
+        else
+        {
+            if (_mesh != null) DestroyImmediate(_mesh);
+            if (_colliderMesh != null) DestroyImmediate(_colliderMesh);
+        }
+    }
+
     void OnDrawGizmosSelected()
     {
         if (!gizmoBounds) return;
