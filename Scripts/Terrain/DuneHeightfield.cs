@@ -138,4 +138,37 @@ public class DuneHeightfield : HeightDensityField
         float basePlain = TerrainNoise.Fbm(wx / plainScale, wz / plainScale, 3, s + 301u) * plainAmplitude;
         return baseHeight + basePlain + dunes;
     }
+
+    // GPU acceleration hook -- see Shaders/Compute/DensityDune.hlsl's
+    // EvaluateDuneHeight, a 1:1 port of HeightAt above. Field order here
+    // must match DuneGpuParams / the HLSL DuneParams struct exactly.
+    public override GpuFieldType GpuType => GpuFieldType.Dune;
+
+    public override LeafGpuParams ToGpuLeafParams()
+    {
+        var p = new LeafGpuParams();
+        p.dune = new DuneGpuParams
+        {
+            seed = seed,
+            windDegrees = windDegrees,
+            baseHeight = baseHeight,
+            megaWavelength = megaWavelength,
+            megaHeight = megaHeight,
+            megaSinuosity = megaSinuosity,
+            megaSegmentation = megaSegmentation,
+            secondaryWavelength = secondaryWavelength,
+            secondaryHeight = secondaryHeight,
+            secondaryWindOffset = secondaryWindOffset,
+            secondarySinuosity = secondarySinuosity,
+            secondarySegmentation = secondarySegmentation,
+            secondaryPatchScale = secondaryPatchScale,
+            rippleWavelength = rippleWavelength,
+            rippleHeight = rippleHeight,
+            supplyScale = supplyScale,
+            sizeVariationScale = sizeVariationScale,
+            plainScale = plainScale,
+            plainAmplitude = plainAmplitude,
+        };
+        return p;
+    }
 }

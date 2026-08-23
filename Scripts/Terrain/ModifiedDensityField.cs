@@ -53,6 +53,42 @@ public class ModifiedDensityField : DensityField
             return;
         }
         source.SampleGrid(origin, countX, countY, countZ, step, dest);
+        ApplyCaches(origin, countX, countY, countZ, step, dest);
+    }
+
+    // GPU acceleration seam (see the "GPU Compute-Shader Acceleration for
+    // Terrain Density Fields" plan): identical to SampleGrid, except the
+    // expensive base-terrain evaluation is supplied pre-computed (from a GPU
+    // dispatch) instead of calling source.SampleGrid. Edits are ALWAYS
+    // applied fresh here, at actual meshing time -- never frozen at
+    // GPU-dispatch time, which could be several frames earlier -- so a
+    // landed dig/footprint is never missed by a job that already has GPU
+    // results in hand. `rawBase` must already contain source's raw output
+    // for this exact (origin,countX,countY,countZ,step) request, laid out
+    // with the same (z*countY+y)*countX+x indexing SampleGrid produces.
+    //
+    // NOT an override of SampleGrid itself: this instance (_renderField/
+    // _physicsField) is a SINGLE SHARED object called concurrently from
+    // every worker thread building a different chunk, so the "is GPU data
+    // available" flag can never be mutable state on this object -- it has to
+    // be an explicit per-call parameter instead, which is exactly what a new
+    // method (rather than a virtual override, which can't add parameters)
+    // lets us do without touching the shared SampleGrid contract at all.
+    public void SampleGridWithRawBase(Vector3 origin, int countX, int countY, int countZ, float step,
+                                       float[] dest, float[] rawBase)
+    {
+        int count = countX * countY * countZ;
+        if (source == null || rawBase == null)
+        {
+            SampleGrid(origin, countX, countY, countZ, step, dest);
+            return;
+        }
+        System.Array.Copy(rawBase, dest, count);
+        ApplyCaches(origin, countX, countY, countZ, step, dest);
+    }
+
+    void ApplyCaches(Vector3 origin, int countX, int countY, int countZ, float step, float[] dest)
+    {
         if (caches != null)
             for (int i = 0; i < caches.Length; i++)
                 caches[i].ApplyToGrid(origin, countX, countY, countZ, step, dest);

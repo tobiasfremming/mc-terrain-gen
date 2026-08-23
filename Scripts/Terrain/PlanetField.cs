@@ -164,4 +164,22 @@ public class PlanetField : DensityField
         float dz = Mathf.Max(Mathf.Abs(p.z - boxMin.z), Mathf.Abs(p.z - boxMax.z));
         return dx * dx + dy * dy + dz * dz;
     }
+
+    // GPU acceleration: only supports wrapping a BiomeDensityField directly
+    // (the shape SandTerrain's whole GPU dispatch hardcodes -- see the plan's
+    // "hardcode the 3-level shape" decision). Any other `surface` type falls
+    // back to pure CPU sampling for the whole world.
+    public bool TryBuildGpuParams(out PlanetGpuParams planetParams, out BiomeBlendGpuParams blend,
+                                   out LeafGpuParams[] leaves, out GpuFieldType[] fieldTypes, out float[] biases)
+    {
+        planetParams = new PlanetGpuParams { isPlanet = 1f, center = center, radius = radius };
+        if (surface is BiomeDensityField biomeWorld && biomeWorld.TryBuildGpuLeaves(out blend, out leaves, out fieldTypes, out biases))
+            return true;
+
+        blend = default;
+        leaves = null;
+        fieldTypes = null;
+        biases = null;
+        return false;
+    }
 }

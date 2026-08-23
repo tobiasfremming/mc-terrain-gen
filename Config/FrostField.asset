@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 980612bb021b8ce44a4be4ab662cc6a7, type: 3}
   m_Name: FrostField
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   isoLevel: 0
   baseHeight: 6
   amplitude: 12
@@ -23,7 +23,7 @@ MonoBehaviour:
   windDir: {x: 1, y: 0}
   duneFreqAlong: 0.02
   duneFreqAcross: 0.2
-  duneAmp: 0
+  duneAmp: 2
   mountains: 1
   ridgeFreq: 0.012
-  ridgeAmp: 24
+  ridgeAmp: 27.4

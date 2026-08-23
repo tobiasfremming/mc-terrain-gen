@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: PlanetField
   m_EditorClassIdentifier: Assembly-CSharp::PlanetField
   isoLevel: 0
-  surface: {fileID: 0}
+  surface: {fileID: 11400000, guid: ba29f6c676ab45b7a34fb2619d064945, type: 2}
   radius: 1000
   center: {x: 0, y: 0, z: 0}
+  spawnMargin: 40

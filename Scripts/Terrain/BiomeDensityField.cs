@@ -194,4 +194,34 @@ public class BiomeDensityField : DensityField
             n > 3 ? w[3] : 0f,
             1f);
     }
+
+    // GPU acceleration: resolves every active biome's terrain field to a
+    // known leaf GPU type and packs everything needed to reproduce
+    // ComputeWeights + the per-biome blend on the GPU (see
+    // Shaders/Compute/DensityBiomeBlend.hlsl's EvaluateBiomeBlend). Returns
+    // false (and leaves the out params unusable) if ANY active biome's field
+    // isn't GPU-capable -- per the plan, this world must fall back to
+    // pure-CPU sampling entirely rather than mixing GPU/CPU per biome, which
+    // risks ULP-level cracks at chunk boundaries between differently-shaded
+    // biome regions.
+    public bool TryBuildGpuLeaves(out BiomeBlendGpuParams blend, out LeafGpuParams[] leaves,
+                                   out GpuFieldType[] fieldTypes, out float[] biases)
+    {
+        int n = Mathf.Min(biomes.Length, kMaxBiomes);
+        blend = new BiomeBlendGpuParams { seed = seed, regionScale = regionScale, sharpness = sharpness, biomeCount = n };
+        leaves = new LeafGpuParams[kMaxBiomes];
+        fieldTypes = new GpuFieldType[kMaxBiomes];
+        biases = new float[kMaxBiomes];
+        for (int i = 0; i < kMaxBiomes; i++) fieldTypes[i] = GpuFieldType.None;
+
+        for (int i = 0; i < n; i++)
+        {
+            var field = Field(i);
+            if (field == null || field.GpuType == GpuFieldType.None) return false;
+            leaves[i] = field.ToGpuLeafParams();
+            fieldTypes[i] = field.GpuType;
+            biases[i] = biomes[i] != null ? biomes[i].bias : -10f;
+        }
+        return true;
+    }
 }

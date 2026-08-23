@@ -38,6 +38,16 @@ public class ChunkMeshJob
     internal readonly Dictionary<long, int> vertexCache = new();
     internal readonly int[] cellVerts = new int[12];
 
+    // GPU-prefetched RAW (pre-edit) base density, keyed by which request they
+    // satisfy -- set by the manager's GPU staging step before Build() runs on
+    // a worker thread; null (the common case when GPU isn't available/used)
+    // means fall back to the normal CPU field.SampleGrid path. See
+    // ModifiedDensityField.SampleGridWithRawBase for why edits are still
+    // always applied fresh here, never frozen at GPU-dispatch time.
+    internal float[] gpuRawRegular;
+    internal readonly float[][] gpuRawFaces = new float[6][];
+    internal float[] gpuRawCollision;
+
     public Exception error;
 
     public void ResetOutputs()
@@ -108,7 +118,12 @@ public static class ChunkMesher
         }
     }
 
-    static void GetEffectiveGrid(ChunkMeshJob job, out int nx, out int ny, out int nz, out float step)
+    // Public: shared with MCChunkManager's hoisted empty-chunk skip check
+    // (used to run only inside Build(); evaluating it right after
+    // PrepareBuild means a provably-empty chunk never costs a GPU batch
+    // slot at all -- see PlanGridRequests's identical reuse for descriptor
+    // shapes).
+    public static void GetEffectiveGrid(ChunkMeshJob job, out int nx, out int ny, out int nz, out float step)
     {
         int ds = Mathf.Max(1, job.densitySampling);
         nx = Mathf.Max(1, job.cells.x / ds);
@@ -142,7 +157,11 @@ public static class ChunkMesher
         EnsureSamples(job, sampleCount);
         float[] samples = job.samples;
 
-        field.SampleGrid(origin, countX, countY, countZ, step, samples);
+        if (job.gpuRawRegular != null && field is ModifiedDensityField mdf)
+            mdf.SampleGridWithRawBase(origin, countX, countY, countZ, step, samples, job.gpuRawRegular);
+        else
+            field.SampleGrid(origin, countX, countY, countZ, step, samples);
+        job.gpuRawRegular = null; // one-shot: don't let a pooled job reuse stale GPU data next time
         if (job.isoLevel != 0f)
             for (int i = 0; i < sampleCount; i++) samples[i] -= job.isoLevel;
 
@@ -281,6 +300,73 @@ public static class ChunkMesher
         }
     }
 
+    // One grid-fill request this job will need -- the regular mesh grid,
+    // one entry per needed Transvoxel transition face, and (if a fresh
+    // collider is needed) the collision grid. Used by the GPU staging code
+    // to build dispatch descriptors; reuses the exact same GetEffectiveGrid/
+    // GetFaceBasis math Build() itself uses, so the two can never drift.
+    public struct PlannedRequest
+    {
+        public enum Kind { Regular, Face, Collision }
+        public Kind kind;
+        public int face; // valid only when kind == Face
+        public Vector3 origin;
+        public float step;
+        public int countX, countY, countZ;
+    }
+
+    public static List<PlannedRequest> PlanGridRequests(ChunkMeshJob job)
+    {
+        var result = new List<PlannedRequest>();
+        GetEffectiveGrid(job, out int nx, out int ny, out int nz, out float step);
+
+        result.Add(new PlannedRequest
+        {
+            kind = PlannedRequest.Kind.Regular,
+            origin = job.origin,
+            step = step,
+            countX = nx + 1, countY = ny + 1, countZ = nz + 1,
+        });
+
+        if (job.needs.Any)
+        {
+            for (int face = 0; face < 6; face++)
+            {
+                if (!job.needs.Face(face)) continue;
+                GetFaceBasis(face, nx, ny, nz, step, out Vector3 faceOrigin, out Vector3 U, out Vector3 V, out int nU, out int nV);
+                float s = 0.5f * step;
+                int ux = (int)U.x, uy = (int)U.y, uz = (int)U.z;
+                int vx = (int)V.x, vy = (int)V.y, vz = (int)V.z;
+                int W = 2 * nU + 1, H = 2 * nV + 1;
+                result.Add(new PlannedRequest
+                {
+                    kind = PlannedRequest.Kind.Face,
+                    face = face,
+                    origin = job.origin + faceOrigin,
+                    step = s,
+                    countX = ux * (W - 1) + vx * (H - 1) + 1,
+                    countY = uy * (W - 1) + vy * (H - 1) + 1,
+                    countZ = uz * (W - 1) + vz * (H - 1) + 1,
+                });
+            }
+        }
+
+        // Mirrors Build()'s own collision trigger condition exactly.
+        if (job.buildCollider && job.refreshCollider &&
+            job.physicsField != null && job.physicsField != job.renderField && job.physicsDiffersNearby)
+        {
+            result.Add(new PlannedRequest
+            {
+                kind = PlannedRequest.Kind.Collision,
+                origin = job.origin,
+                step = step,
+                countX = nx + 1, countY = ny + 1, countZ = nz + 1,
+            });
+        }
+
+        return result;
+    }
+
     static void GenerateTransitionFace(ChunkMeshJob job, int face, int nx, int ny, int nz, float step)
     {
         GetFaceBasis(face, nx, ny, nz, step, out Vector3 faceOrigin, out Vector3 U, out Vector3 V, out int nU, out int nV);
@@ -306,7 +392,12 @@ public static class ChunkMesher
         int total = countX * countY * countZ;
         if (job.faceSamples == null || job.faceSamples.Length < total) job.faceSamples = new float[total];
         float[] faceSamples = job.faceSamples;
-        field.SampleGrid(origin + faceOrigin, countX, countY, countZ, s, faceSamples);
+        float[] gpuRaw = job.gpuRawFaces[face];
+        if (gpuRaw != null && field is ModifiedDensityField mdf)
+            mdf.SampleGridWithRawBase(origin + faceOrigin, countX, countY, countZ, s, faceSamples, gpuRaw);
+        else
+            field.SampleGrid(origin + faceOrigin, countX, countY, countZ, s, faceSamples);
+        job.gpuRawFaces[face] = null; // one-shot, see GenerateRegularMeshData's identical note
         if (job.isoLevel != 0f)
             for (int i = 0; i < total; i++) faceSamples[i] -= job.isoLevel;
 
@@ -421,7 +512,11 @@ public static class ChunkMesher
         EnsureSamples(job, sampleCount);
         float[] samples = job.samples;
 
-        field.SampleGrid(origin, countX, countY, countZ, step, samples);
+        if (job.gpuRawCollision != null && field is ModifiedDensityField mdf)
+            mdf.SampleGridWithRawBase(origin, countX, countY, countZ, step, samples, job.gpuRawCollision);
+        else
+            field.SampleGrid(origin, countX, countY, countZ, step, samples);
+        job.gpuRawCollision = null; // one-shot, see GenerateRegularMeshData's identical note
         if (job.isoLevel != 0f)
             for (int i = 0; i < sampleCount; i++) samples[i] -= job.isoLevel;
 

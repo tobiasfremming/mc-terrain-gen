@@ -64,6 +64,19 @@ public abstract class DensityField : ScriptableObject
         return boxMin.y > maxH || boxMax.y < minH;
     }
 
+    // GPU acceleration hook (see the "GPU Compute-Shader Acceleration for
+    // Terrain Density Fields" plan): a "leaf" field (Dune/Alien/Canyon)
+    // overrides both to identify itself and bind its own tunables into a
+    // LeafGpuParams slot. Composite fields (BiomeDensityField, PlanetField)
+    // are never leaves themselves -- GpuType stays None for them, and their
+    // GPU support instead comes from walking their children and checking
+    // EVERY child resolves to a known leaf type (see BiomeDensityField's
+    // TryBuildGpuLeaves), falling back to pure-CPU sampling for the whole
+    // world if not -- never a per-chunk GPU/CPU mix (see the plan's
+    // Watertightness section for why that specific mixing would be unsafe).
+    public virtual GpuFieldType GpuType => GpuFieldType.None;
+    public virtual LeafGpuParams ToGpuLeafParams() => default;
+
     // Adds weight * density into a vertical column of samples:
     // dest[destIndex + i*destStride] += weight * Sample(wx, yStart+i*yStep, wz).
     // The default just loops Sample; subclasses override to cache their per-

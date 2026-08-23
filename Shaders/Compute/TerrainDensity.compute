@@ -1,0 +1,90 @@
+// GPU density-field bulk grid sampler. See the "GPU Compute-Shader
+// Acceleration for Terrain Density Fields" plan for the full architecture.
+//
+// One dispatch can fill MANY grid-fill requests at once (a chunk's regular
+// mesh grid, its Transvoxel transition faces, its collision grid, and the
+// same for every other chunk being built this frame) -- the batching /
+// "instancing" the terrain generation asked for. Requests are flattened
+// into a single 1D voxel index space rather than mapped onto 3 dispatch
+// dimensions, because requests in one batch have wildly different shapes
+// (a full chunk grid vs. a paper-thin transition face) and counts; a flat
+// index + a per-request prefix-sum offset handles that uniformly with one
+// kernel, no per-shape special-casing.
+//
+// Deliberate v1 simplification vs. the CPU implementation: the CPU fields
+// cache expensive per-(x,z) work (HeightAt, Canyon's bridge-candidate
+// search, biome blend weights) once per COLUMN, then loop y cheaply
+// (HeightDensityField.SampleGrid / AddDensityColumn, CanyonVolumeField.
+// AddDensityColumn, BiomeDensityField.SampleGrid). This port instead
+// re-evaluates every voxel fully independently (ported from each field's
+// Sample(), the simpler canonical per-point definition) -- correct, not a
+// logic change, just not column-cached. GPU massively-parallel throughput
+// should still deliver a large win over the CPU path despite the redundant
+// per-voxel work; column-caching (via a two-pass kernel or groupshared
+// memory) is a follow-up optimization once this is proven correct, not a
+// blocker for it.
+
+#pragma kernel CSMain
+
+#include "DensityPlanet.hlsl"
+
+struct GridRequest
+{
+    float3 origin;
+    float step;
+    uint countX, countY, countZ;
+    uint outputOffset; // where this request's samples start in _Output
+    uint voxelOffset;  // prefix sum of countX*countY*countZ across earlier requests in this dispatch (== outputOffset in practice; kept separate in case output ever needs padding)
+};
+
+StructuredBuffer<GridRequest> _Requests;
+uint _RequestCount;
+uint _TotalVoxels;
+// Dispatch's group count is capped at 65535 PER AXIS -- a big batch (e.g. a
+// full "Generate All Chunks" regen) can easily need far more than 65535
+// thread groups at 64 threads/group, so the C# side spreads the dispatch
+// across X and Y instead of using X alone, and passes how many groups wide
+// the X axis is so this kernel can flatten (groupID.x, groupID.y) back into
+// one linear group index. Do not dispatch with 1 in Y and assume id.x alone
+// is the global thread index -- that's exactly what overflowed before this.
+uint _GroupsX;
+RWStructuredBuffer<float> _Output;
+
+[numthreads(64, 1, 1)]
+void CSMain(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+    uint flatGroup = groupId.x + groupId.y * _GroupsX;
+    uint globalIdx = flatGroup * 64u + groupThreadId.x;
+    if (globalIdx >= _TotalVoxels) return;
+
+    // Which request does this voxel belong to? Linear scan: request counts
+    // per batch are modest (a handful to low hundreds, not thousands) --
+    // revisit with a binary search (or a precomputed per-threadgroup index)
+    // if profiling ever calls for it.
+    uint reqIdx = 0;
+    for (uint i = 0; i < _RequestCount; i++)
+    {
+        GridRequest r = _Requests[i];
+        uint voxelCount = r.countX * r.countY * r.countZ;
+        if (globalIdx >= r.voxelOffset && globalIdx < r.voxelOffset + voxelCount)
+        {
+            reqIdx = i;
+            break;
+        }
+    }
+
+    GridRequest req = _Requests[reqIdx];
+    uint localIdx = globalIdx - req.voxelOffset;
+
+    // Matches ChunkMesher's own indexing convention exactly:
+    // (z*countY + y)*countX + x, i.e. x fastest-varying. Do not change this
+    // without also changing ChunkMesher's Idx()/FaceSample() -- the C#
+    // readback copies request slices straight into job.samples/faceSamples
+    // assuming this layout already matches.
+    uint x = localIdx % req.countX;
+    uint y = (localIdx / req.countX) % req.countY;
+    uint z = localIdx / (req.countX * req.countY);
+
+    float3 worldPos = req.origin + float3(x, y, z) * req.step;
+    _Output[req.outputOffset + localIdx] = EvaluateWorldDensity(worldPos);
+}
