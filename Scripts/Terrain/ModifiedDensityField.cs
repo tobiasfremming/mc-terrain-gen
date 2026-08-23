@@ -74,17 +74,27 @@ public class ModifiedDensityField : DensityField
     // be an explicit per-call parameter instead, which is exactly what a new
     // method (rather than a virtual override, which can't add parameters)
     // lets us do without touching the shared SampleGrid contract at all.
-    public void SampleGridWithRawBase(Vector3 origin, int countX, int countY, int countZ, float step,
+    // `origin` may be a rebased (floating-origin) position used for the base
+    // noise field, while `editOrigin` is ALWAYS the true absolute world
+    // position -- TerrainModificationCache indexes edits (footprints,
+    // digging) by absolute voxel position (stamps use the mover's real
+    // transform.position), so feeding it a rebased origin would silently
+    // look up the wrong coordinate space and never find any edit. See the
+    // "Floating-Origin Precision Fix" plan/its ChunkMesher callers.
+    public void SampleGridWithRawBase(Vector3 origin, Vector3 editOrigin, int countX, int countY, int countZ, float step,
                                        float[] dest, float[] rawBase)
     {
         int count = countX * countY * countZ;
-        if (source == null || rawBase == null)
+        if (source == null)
         {
-            SampleGrid(origin, countX, countY, countZ, step, dest);
+            for (int i = 0; i < count; i++) dest[i] = -1f;
             return;
         }
-        System.Array.Copy(rawBase, dest, count);
-        ApplyCaches(origin, countX, countY, countZ, step, dest);
+        if (rawBase != null)
+            System.Array.Copy(rawBase, dest, count);
+        else
+            source.SampleGrid(origin, countX, countY, countZ, step, dest);
+        ApplyCaches(editOrigin, countX, countY, countZ, step, dest);
     }
 
     void ApplyCaches(Vector3 origin, int countX, int countY, int countZ, float step, float[] dest)

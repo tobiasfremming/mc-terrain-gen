@@ -68,9 +68,12 @@ public class TerrainGpuSampler : IDisposable
         IsWorldGpuCapable = false;
         if (_shader == null || !SupportsCompute) return;
 
-        bool isPlanet = false;
-        Vector3 center = Vector3.zero;
-        float radius = 0f;
+        // PlanetGpuParams.center comes ONLY from TryBuildGpuParams below --
+        // it must be PlanetField's own CenterRebased (floating-origin
+        // precision fix), not a raw re-read of planet.center here. This used
+        // to read `planet.center` directly and discard TryBuildGpuParams'
+        // own output via `out _`, silently bypassing the rebase.
+        PlanetGpuParams planetParams = default; // isPlanet=0/center=zero/radius=0 for the non-planet case, matching prior defaults
         BiomeBlendGpuParams blend;
         LeafGpuParams[] leaves;
         GpuFieldType[] fieldTypes;
@@ -79,10 +82,7 @@ public class TerrainGpuSampler : IDisposable
 
         if (baseField is PlanetField planet)
         {
-            isPlanet = true;
-            center = planet.center;
-            radius = planet.radius;
-            ok = planet.TryBuildGpuParams(out _, out blend, out leaves, out fieldTypes, out biases);
+            ok = planet.TryBuildGpuParams(out planetParams, out blend, out leaves, out fieldTypes, out biases);
         }
         else if (baseField is BiomeDensityField biomeWorld)
         {
@@ -101,7 +101,7 @@ public class TerrainGpuSampler : IDisposable
         _fieldTypeBuffer.SetData(fieldTypeInts);
         _biasBuffer.SetData(biases);
         _blendBuffer.SetData(new[] { blend });
-        _planetBuffer.SetData(new[] { new PlanetGpuParams { isPlanet = isPlanet ? 1f : 0f, center = center, radius = radius } });
+        _planetBuffer.SetData(new[] { planetParams });
 
         _shader.SetBuffer(_kernel, "_LeafParams", _leafParamsBuffer);
         _shader.SetBuffer(_kernel, "_BiomeFieldType", _fieldTypeBuffer);

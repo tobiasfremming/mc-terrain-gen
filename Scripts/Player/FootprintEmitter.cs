@@ -1,10 +1,10 @@
 using UnityEngine;
 
 // Leaves a smooth visual trail in the voxel terrain while something walks.
-// Not tied to any particular mover: if a CharacterController is present its
-// isGrounded is used directly (the same signal SimplePlayerController relies
-// on); otherwise grounded-ness is checked with a short downward probe, so
-// Rigidbody-driven or scripted objects can carry this too. Only talks to
+// Not tied to any particular mover: grounded-ness is always confirmed with a
+// short downward probe (CharacterController.isGrounded alone is too flaky --
+// see IsGrounded's comment), so Rigidbody-driven or scripted objects can
+// carry this too, not just CharacterController ones. Only talks to
 // TerrainModificationSystem.
 //
 // Stamps are VISUAL-ONLY by default (affectPhysics = false): the render mesh
@@ -103,7 +103,15 @@ public class FootprintEmitter : MonoBehaviour
 
     bool IsGrounded(Vector3 pos, Vector3 up)
     {
-        if (_cc != null) return _cc.isGrounded;
+        // CharacterController.isGrounded is notoriously flaky -- it only
+        // reflects contact detected during the PREVIOUS Move() call, and can
+        // read false for a stray frame on perfectly ordinary flat ground
+        // (whenever that Move() call had no downward component to press
+        // into anything). Trusting it alone here caused exactly the
+        // "footprints don't register all the time" gap: real strides
+        // getting skipped mid-walk. The raycast is the actual ground truth;
+        // OR them so a false negative from either one doesn't break a step.
+        if (_cc != null && _cc.isGrounded) return true;
         return Physics.Raycast(pos - up * footOffset, -up, groundProbeMargin);
     }
 }

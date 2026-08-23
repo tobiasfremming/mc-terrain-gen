@@ -10,7 +10,8 @@ using TransitionNeeds = MCChunkManager.TransitionNeeds;
 public class ChunkMeshJob
 {
     // inputs (set by the manager before dispatch)
-    public Vector3 origin;
+    public Vector3 origin;         // chunk's true world position -- used ONLY for chunk transform placement and the empty-skip AABB test
+    public Vector3 densityOrigin;  // same physical position, rebased through MCChunkManager's floating origin -- used for ALL density/noise evaluation (SampleGrid/Gradient/GetVertexColor); see the "Floating-Origin Precision Fix" plan
     public Vector3Int cells;
     public float cellSize;
     public float isoLevel;
@@ -145,7 +146,7 @@ public static class ChunkMesher
     static void GenerateRegularMeshData(ChunkMeshJob job, int nx, int ny, int nz, float step)
     {
         Vector3 chunkSize = new Vector3(nx, ny, nz) * step;
-        Vector3 origin = job.origin;
+        Vector3 origin = job.densityOrigin;
         var field = job.renderField;
         var needs = job.needs;
         var verts = job.verts;
@@ -157,8 +158,8 @@ public static class ChunkMesher
         EnsureSamples(job, sampleCount);
         float[] samples = job.samples;
 
-        if (job.gpuRawRegular != null && field is ModifiedDensityField mdf)
-            mdf.SampleGridWithRawBase(origin, countX, countY, countZ, step, samples, job.gpuRawRegular);
+        if (field is ModifiedDensityField mdf)
+            mdf.SampleGridWithRawBase(origin, job.origin, countX, countY, countZ, step, samples, job.gpuRawRegular);
         else
             field.SampleGrid(origin, countX, countY, countZ, step, samples);
         job.gpuRawRegular = null; // one-shot: don't let a pooled job reuse stale GPU data next time
@@ -323,7 +324,7 @@ public static class ChunkMesher
         result.Add(new PlannedRequest
         {
             kind = PlannedRequest.Kind.Regular,
-            origin = job.origin,
+            origin = job.densityOrigin,
             step = step,
             countX = nx + 1, countY = ny + 1, countZ = nz + 1,
         });
@@ -342,7 +343,7 @@ public static class ChunkMesher
                 {
                     kind = PlannedRequest.Kind.Face,
                     face = face,
-                    origin = job.origin + faceOrigin,
+                    origin = job.densityOrigin + faceOrigin,
                     step = s,
                     countX = ux * (W - 1) + vx * (H - 1) + 1,
                     countY = uy * (W - 1) + vy * (H - 1) + 1,
@@ -358,7 +359,7 @@ public static class ChunkMesher
             result.Add(new PlannedRequest
             {
                 kind = PlannedRequest.Kind.Collision,
-                origin = job.origin,
+                origin = job.densityOrigin,
                 step = step,
                 countX = nx + 1, countY = ny + 1, countZ = nz + 1,
             });
@@ -372,7 +373,7 @@ public static class ChunkMesher
         GetFaceBasis(face, nx, ny, nz, step, out Vector3 faceOrigin, out Vector3 U, out Vector3 V, out int nU, out int nV);
 
         Vector3 chunkSize = new Vector3(nx, ny, nz) * step;
-        Vector3 origin = job.origin;
+        Vector3 origin = job.densityOrigin;
         var field = job.renderField;
         var needs = job.needs;
         var verts = job.verts;
@@ -393,8 +394,8 @@ public static class ChunkMesher
         if (job.faceSamples == null || job.faceSamples.Length < total) job.faceSamples = new float[total];
         float[] faceSamples = job.faceSamples;
         float[] gpuRaw = job.gpuRawFaces[face];
-        if (gpuRaw != null && field is ModifiedDensityField mdf)
-            mdf.SampleGridWithRawBase(origin + faceOrigin, countX, countY, countZ, s, faceSamples, gpuRaw);
+        if (field is ModifiedDensityField mdf)
+            mdf.SampleGridWithRawBase(origin + faceOrigin, job.origin + faceOrigin, countX, countY, countZ, s, faceSamples, gpuRaw);
         else
             field.SampleGrid(origin + faceOrigin, countX, countY, countZ, s, faceSamples);
         job.gpuRawFaces[face] = null; // one-shot, see GenerateRegularMeshData's identical note
@@ -502,7 +503,7 @@ public static class ChunkMesher
     // collision meshes stay sealed; colliders exist only on level-0 chunks.
     static void GenerateCollisionMeshData(ChunkMeshJob job, int nx, int ny, int nz, float step)
     {
-        Vector3 origin = job.origin;
+        Vector3 origin = job.densityOrigin;
         var field = job.physicsField;
         var verts = job.colVerts;
         var tris = job.colTris;
@@ -512,8 +513,8 @@ public static class ChunkMesher
         EnsureSamples(job, sampleCount);
         float[] samples = job.samples;
 
-        if (job.gpuRawCollision != null && field is ModifiedDensityField mdf)
-            mdf.SampleGridWithRawBase(origin, countX, countY, countZ, step, samples, job.gpuRawCollision);
+        if (field is ModifiedDensityField mdf)
+            mdf.SampleGridWithRawBase(origin, job.origin, countX, countY, countZ, step, samples, job.gpuRawCollision);
         else
             field.SampleGrid(origin, countX, countY, countZ, step, samples);
         job.gpuRawCollision = null; // one-shot, see GenerateRegularMeshData's identical note

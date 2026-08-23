@@ -170,6 +170,7 @@ public class TerrainModificationCache
             foreach (var kv in _shortTerm)
                 if (now - kv.Value.lastTouch > shortTermSeconds)
                     _flushScratch.Add(kv.Key);
+            if (_flushScratch.Count == 0) return;
 
             foreach (var v in _flushScratch)
             {
@@ -181,6 +182,19 @@ public class TerrainModificationCache
                 if (np != 0f) _persistent[v] = np;
                 else _persistent.Remove(v);
             }
+
+            // _regions only ever grew via Stamp/CarveSphere; a region's last
+            // remaining voxel can disappear right here (delta nets back to
+            // exactly 0) with nothing else to remove it from _regions. Left
+            // unchecked, OverlapsBounds/SampleDelta/ApplyToGrid's region-
+            // rejection loops keep scanning zones with nothing left in them
+            // for the rest of the session. Flush() runs on a timer, not per
+            // frame, so an O(occupied voxels) rebuild here is cheap relative
+            // to how rarely this actually runs.
+            _regions.Clear();
+            foreach (var v in _shortTerm.Keys) _regions.Add(RegionOf(v));
+            foreach (var v in _persistent.Keys) _regions.Add(RegionOf(v));
+            _regionCountFast = _regions.Count;
         }
     }
 

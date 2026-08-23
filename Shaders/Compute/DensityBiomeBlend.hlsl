@@ -48,8 +48,16 @@ StructuredBuffer<int> _BiomeFieldType;           // [MC_MAX_BIOMES]
 StructuredBuffer<float> _BiomeBias;              // [MC_MAX_BIOMES]
 StructuredBuffer<BiomeBlendParams> _BiomeBlendBuf; // [1]
 
+// [branch]: fieldType is a runtime value (the compiler can't eliminate the
+// other 3 leaf types' code at compile time), so without this hint the
+// compiler is free to flatten this into straight-line arithmetic evaluating
+// ALL 4 branches unconditionally every call -- 4x the cost, and 4x the code
+// size at every one of this function's call sites. [branch] keeps it a real
+// runtime branch instead. See EvaluateBiomeBlendWithWeights's [loop] comment
+// for why call-site code size matters here specifically.
 float EvaluateLeafDensity(int fieldType, float3 worldPos, LeafParams p)
 {
+    [branch]
     if (fieldType == MC_FIELDTYPE_DUNE)
         return EvaluateDuneHeight(worldPos.x, worldPos.z, p.dune) - worldPos.y;
     if (fieldType == MC_FIELDTYPE_CANYON)
@@ -68,7 +76,7 @@ void MC_ComputeBiomeWeights(float wx, float wz, out float w[MC_MAX_BIOMES], int 
     uint s = (uint)(int)_BiomeBlendBuf[0].seed;
     float maxA = -3.402823e38;
     float raw[MC_MAX_BIOMES];
-    for (int i = 0; i < n; i++)
+    [loop] for (int i = 0; i < n; i++)
     {
         float a = MC_Fbm(wx / _BiomeBlendBuf[0].regionScale + i * 13.7, wz / _BiomeBlendBuf[0].regionScale - i * 7.3,
                           2, s + (uint)(i * 191)) + _BiomeBias[i];
@@ -76,21 +84,35 @@ void MC_ComputeBiomeWeights(float wx, float wz, out float w[MC_MAX_BIOMES], int 
         if (a > maxA) maxA = a;
     }
     float sum = 0.0;
-    for (int j = 0; j < n; j++)
+    [loop] for (int j = 0; j < n; j++)
     {
         w[j] = exp(_BiomeBlendBuf[0].sharpness * (raw[j] - maxA));
         sum += w[j];
     }
-    for (int k = 0; k < n; k++) w[k] /= sum;
+    [loop] for (int k = 0; k < n; k++) w[k] /= sum;
 }
 
 // Density blend using externally supplied weights (e.g. from
 // MC_ComputeBiomeWeights3D) instead of computing them from worldPos.xz --
 // same skip-and-renormalize logic EvaluateBiomeBlend (below) uses internally.
+//
+// [loop] is load-bearing, not a style choice: without it the compiler is
+// free to fully UNROLL this (small, statically-bounded-by-MC_MAX_BIOMES
+// loop), which duplicates a full EvaluateLeafDensity call -- itself already
+// containing all 4 leaf types' complete evaluation code (Canyon's
+// bridge/spire system, Frost's Worley scans, etc.) -- once per unrolled
+// iteration, up to MC_MAX_BIOMES=8 times, at EVERY call site. This function
+// has 3 call sites (EvaluatePlanetWrap's triplanar X/Y/Z faces), so unrolled
+// this was ~24 full copies of the entire leaf-density branch tree compiled
+// into one kernel -- exactly what caused the D3D shader compiler to time
+// out entirely. [loop] forces a real runtime loop instead: one compiled
+// copy of the loop body per call site, executed up to 8 times, not
+// unrolled into 8 copies.
 float EvaluateBiomeBlendWithWeights(float3 worldPos, float w[MC_MAX_BIOMES], int n)
 {
     if (n <= 0) return -worldPos.y;
     float d = 0.0, used = 0.0;
+    [loop]
     for (int i = 0; i < n; i++)
     {
         if (w[i] < 0.004) continue;
@@ -125,19 +147,19 @@ void MC_ComputeBiomeWeights3D(float3 pos, out float w[MC_MAX_BIOMES], int n)
     float3 q = pos / _BiomeBlendBuf[0].regionScale;
     float maxA = -3.402823e38;
     float raw[MC_MAX_BIOMES];
-    for (int i = 0; i < n; i++)
+    [loop] for (int i = 0; i < n; i++)
     {
         float a = MC_Fbm3(q.x + i * 13.7, q.y - i * 7.3, q.z + i * 5.1, 2, s + (uint)(i * 191)) + _BiomeBias[i];
         raw[i] = a;
         if (a > maxA) maxA = a;
     }
     float sum = 0.0;
-    for (int j = 0; j < n; j++)
+    [loop] for (int j = 0; j < n; j++)
     {
         w[j] = exp(_BiomeBlendBuf[0].sharpness * (raw[j] - maxA));
         sum += w[j];
     }
-    for (int k = 0; k < n; k++) w[k] /= sum;
+    [loop] for (int k = 0; k < n; k++) w[k] /= sum;
 }
 
 #endif

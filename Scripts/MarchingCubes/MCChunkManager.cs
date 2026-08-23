@@ -65,6 +65,7 @@ public class MCChunkManager : MonoBehaviour
     readonly HashSet<ChunkKey> _needed = new();
     readonly List<ChunkKey> _jobs = new();
     readonly List<ChunkKey> _dirtyJobs = new();
+    readonly List<ChunkKey> _dirtyDeferred = new(); // see DispatchBuilds' IsPendingAnywhere collision handling
     readonly List<ChunkKey> _removeScratch = new();
     int _jobCursor, _dirtyCursor;
 
@@ -158,6 +159,12 @@ public class MCChunkManager : MonoBehaviour
     Vector3Int[] _boxScratch;
     bool _boxesValid;
     bool _pendingRefresh;
+    // Floating-origin precision fix: job.densityOrigin (see PrepareBuild) is
+    // computed relative to this instead of raw Unity world position, so it
+    // stays small/precise regardless of how far `target` has travelled from
+    // Unity's world origin (job.origin, used for chunk transform placement,
+    // is untouched -- see the "Floating-Origin Precision Fix" plan).
+    Double3 _worldOriginOffset;
     float _lastFlush;
 
     // Terrain modification stack. Render field sees all edits; physics field
@@ -396,6 +403,23 @@ public class MCChunkManager : MonoBehaviour
             if (usePooling) PrewarmPool();
         }
 
+        // Must run before the very first chunk is built below: on a large-
+        // radius planet, `target` spawns ~radius away from Unity's world
+        // origin, which is already past the recenter threshold. Without
+        // this, _worldOriginOffset stays at its zero default for this
+        // synchronous initial batch -- exactly the chunks the player sees
+        // first -- and they'd be built with zero floating-origin precision
+        // correction even though the fix is otherwise active everywhere
+        // else (Update() calls this every frame from here on). The
+        // ApplyPendingRefresh() that follows matters too, not just the
+        // recenter itself: it's what actually pushes PlanetField.
+        // CenterRebased into the GPU buffer -- without it, BuildBatchSync
+        // below would dispatch against a stale (un-rebased) GPU center
+        // while job.densityOrigin is already rebased, the exact mismatch
+        // this whole fix exists to avoid.
+        CheckWorldOriginRecenter();
+        if (_pendingRefresh) ApplyPendingRefresh();
+
         RecomputeTargets();
 
         // Generate the player's immediate surroundings synchronously so there
@@ -441,19 +465,27 @@ public class MCChunkManager : MonoBehaviour
         if (isActiveAndEnabled) _pendingRefresh = true;
     }
 
+    // Shared by Update() and Start() (the latter needs it to run BEFORE its
+    // own synchronous initial-batch BuildBatchSync call, whenever
+    // CheckWorldOriginRecenter fires during startup -- see Start()'s call
+    // site comment). Everything here is idempotent/harmless to run at
+    // Start() time even though nothing has been generated yet.
+    void ApplyPendingRefresh()
+    {
+        _pendingRefresh = false;
+        _generatedNeeds.Clear(); // settings may have changed: regenerate all (streamed)
+        _boxesValid = false;
+        RefreshGpuParams(); // keep GPU tunables (incl. PlanetField.CenterRebased) in sync with whatever triggered this
+        _densityCache.Clear(); // base density itself may have changed -- every cached entry is now potentially stale
+        _gpuGeneration++; // any already-dispatched batch's readback now reflects the pre-refresh params -- see field comment
+    }
+
     void Update()
     {
         if (!target) return;
 
-        if (_pendingRefresh)
-        {
-            _pendingRefresh = false;
-            _generatedNeeds.Clear(); // settings may have changed: regenerate all (streamed)
-            _boxesValid = false;
-            RefreshGpuParams(); // keep GPU tunables in sync with whatever Inspector edit triggered this
-            _densityCache.Clear(); // base density itself may have changed -- every cached entry is now potentially stale
-            _gpuGeneration++; // any already-dispatched batch's readback now reflects the pre-refresh params -- see field comment
-        }
+        CheckWorldOriginRecenter();
+        if (_pendingRefresh) ApplyPendingRefresh();
 
         if (BoxesChanged())
             RecomputeTargets(); // only when the player crosses a clipmap boundary
@@ -471,6 +503,41 @@ public class MCChunkManager : MonoBehaviour
             _modSystem.maxDepth = modMaxDepth;
             _modSystem.Flush(Time.time);
         }
+    }
+
+    // Keeps _worldOriginOffset near wherever generation is currently
+    // happening, so job.densityOrigin (computed relative to it in
+    // PrepareBuild) stays small and precise regardless of how far `target`
+    // has travelled from Unity's world origin -- see the "Floating-Origin
+    // Precision Fix" plan. Recentering routes through the existing
+    // _pendingRefresh full-regen path (same one TerrainTuning changes use),
+    // which already bumps _gpuGeneration to drop any in-flight GPU batch
+    // computed under the old offset.
+    //
+    // Threshold is deliberately generous: this only needs the final cast to
+    // float to stay accurate (not sub-meter proximity), and _pendingRefresh's
+    // regen is streamed, not atomic -- recentering too often would make its
+    // "already-rebuilt chunk next to not-yet-rebuilt chunk" transient a
+    // recurring visible seam instead of the rare event it is today.
+    const double kRecenterThreshold = 20000.0;
+    void CheckWorldOriginRecenter()
+    {
+        if (!target) return; // called from Start() too, before Update()'s own target check
+
+        var targetD = (Double3)target.position;
+        var delta = targetD - _worldOriginOffset;
+        double distSq = delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
+        if (distSq < kRecenterThreshold * kRecenterThreshold) return;
+
+        _worldOriginOffset = targetD;
+        // PlanetField.center must be rebased through the exact same offset
+        // job.densityOrigin now uses, or Sample()'s `rel = worldPos - center`
+        // would compute against mismatched reference frames -- see
+        // PlanetField.RefreshDensityOriginOffset's comment. Must happen
+        // before RefreshGpuParams() (below, via _pendingRefresh) reads
+        // CenterRebased into the GPU buffer.
+        ActivePlanet?.RefreshDensityOriginOffset(_worldOriginOffset);
+        _pendingRefresh = true;
     }
 
     // Convenience wrapper; prefer Modifications.StampSphere/StampLine directly.
@@ -859,7 +926,27 @@ public class MCChunkManager : MonoBehaviour
             }
             else break;
 
-            if (IsPendingAnywhere(key)) continue;
+            if (IsPendingAnywhere(key))
+            {
+                // A dirty (edit) request for a chunk whose EARLIER rebuild is
+                // still somewhere in the pipeline (GPU has multi-frame
+                // latency, so this is common -- e.g. a rapid footprint
+                // stream while walking across one chunk). PrepareBuild
+                // already claimed/cleared this chunk's dirty flag when that
+                // earlier rebuild was admitted, on the promise that any edit
+                // landing afterward would "re-add and re-queue" it -- but
+                // just dropping it here (as this used to do) breaks that
+                // promise: the cursor consumes it and nothing ever retries,
+                // so the edit is silently lost until some unrelated later
+                // edit happens to re-dirty the same chunk. Defer it instead
+                // (spliced back into _dirtyJobs after this loop, so it's
+                // retried next frame, not immediately -- re-trying inside
+                // THIS same pass would just collide again and spin).
+                // Regular (non-dirty) collisions don't need this: they
+                // self-heal on the next RecomputeTargets rescan.
+                if (fromDirty) _dirtyDeferred.Add(key);
+                continue;
+            }
             var inflight = PrepareBuild(key);
             if (inflight == null) continue;
 
@@ -894,6 +981,15 @@ public class MCChunkManager : MonoBehaviour
             {
                 _readyForMeshing.Add(inflight);
             }
+        }
+
+        // Splice deferred dirty collisions back in for next frame's pass --
+        // done here, outside the while loop, so they can't be immediately
+        // re-examined (and re-collide) within this same call.
+        if (_dirtyDeferred.Count > 0)
+        {
+            _dirtyJobs.AddRange(_dirtyDeferred);
+            _dirtyDeferred.Clear();
         }
     }
 
@@ -1097,6 +1193,14 @@ public class MCChunkManager : MonoBehaviour
         float S = LevelChunkSize(key.level);
         var job = GetMeshJob();
         job.origin = (Vector3)key.coord * S;
+        // Same physical position as job.origin, but computed relative to
+        // _worldOriginOffset in double precision and cast to float only at
+        // the end -- stays small/precise regardless of how far this chunk
+        // is from Unity's world origin. Used for all density/noise
+        // evaluation (SampleGrid/Gradient/GetVertexColor); job.origin stays
+        // the one used for chunk transform placement. See the "Floating-
+        // Origin Precision Fix" plan.
+        job.densityOrigin = (Vector3)((Double3)key.coord * (double)S - _worldOriginOffset);
         job.cells = CellsPerChunk;
         job.cellSize = S / CellsPerChunk.x;
         job.isoLevel = IsoLevel;
@@ -1207,17 +1311,37 @@ public class MCChunkManager : MonoBehaviour
 
     void BuildBatchSync(List<ChunkKey> keys)
     {
-        var inflights = new List<InFlight>();
+        // Same admission checks DispatchBuilds applies to the async path --
+        // without these, every chunk in a sync batch (initial spawn burst,
+        // "Generate/Refresh All Chunks") paid full GPU dispatch cost even
+        // when provably empty or already covered by a cached base density,
+        // which the async streaming path has skipped since the GPU port.
+        var toGpu = new List<InFlight>();
         foreach (var key in keys)
         {
             var f = PrepareBuild(key);
-            if (f != null) inflights.Add(f);
+            if (f == null) continue;
+
+            if (TryFastEmptySkip(f))
+            {
+                FinishEmptyBuild(f);
+                continue;
+            }
+            if (!f.structural && !f.job.refreshCollider &&
+                _densityCache.TryGetValue(key, out var cached) && cached.needsMask == f.needsMask)
+            {
+                ApplyDensityCache(f.job, cached);
+                ChunkMesher.Build(f.job);
+                ApplyBuildResult(f);
+                continue;
+            }
+            toGpu.Add(f);
         }
 
-        for (int start = 0; start < inflights.Count; start += kMaxChunksPerSyncBatch)
+        for (int start = 0; start < toGpu.Count; start += kMaxChunksPerSyncBatch)
         {
-            int count = Mathf.Min(kMaxChunksPerSyncBatch, inflights.Count - start);
-            var sub = inflights.GetRange(start, count);
+            int count = Mathf.Min(kMaxChunksPerSyncBatch, toGpu.Count - start);
+            var sub = toGpu.GetRange(start, count);
             RunGpuSyncIfAvailable(sub);
             foreach (var f in sub)
             {

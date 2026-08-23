@@ -42,6 +42,21 @@ public class PlanetField : DensityField
 
     const float kWeightEpsilon = 0.0005f;
 
+    // Floating-origin precision fix: MCChunkManager rebases the world
+    // positions it feeds into density evaluation (job.densityOrigin) through
+    // this same offset, so `center` must be rebased identically here -- fed
+    // a rebased worldPos against a raw/absolute center would silently
+    // compute the wrong `rel` (offset by _densityOriginOffset) as soon as
+    // the offset becomes non-zero. Defaults to zero (= today's exact
+    // behavior) until MCChunkManager calls RefreshDensityOriginOffset.
+    // Deliberately NOT used by TryGetEmptySkip/SafeSpawnRadius below --
+    // those receive/report absolute (job.origin-based) positions, not
+    // densityOrigin-based ones, so they must keep using the raw `center`.
+    Double3 _densityOriginOffset;
+    Vector3 CenterRebased => (Vector3)((Double3)center - _densityOriginOffset);
+
+    public void RefreshDensityOriginOffset(Double3 offset) => _densityOriginOffset = offset;
+
     // A radius comfortably above ANY possible terrain -- for spawning
     // something and letting it fall onto the surface, rather than trying to
     // land exactly on the ground (which risks spawning inside an overhang or
@@ -58,9 +73,9 @@ public class PlanetField : DensityField
 
     public override float Sample(Vector3 p)
     {
-        if (surface == null) return radius - Vector3.Distance(p, center);
+        if (surface == null) return radius - Vector3.Distance(p, CenterRebased);
 
-        Vector3 rel = p - center;
+        Vector3 rel = p - CenterRebased;
         float dist = rel.magnitude;
         if (dist < 1e-5f) return radius; // exact center: degenerate, arbitrary but harmless
 
@@ -71,7 +86,17 @@ public class PlanetField : DensityField
         {
             int n = bdf.BiomeCount;
             Span<float> bw = stackalloc float[BiomeDensityField.MaxBiomes];
-            bdf.ComputeWeights3D(rel.normalized * radius, bw, n);
+            // Reuse `rel` directly rather than reconstructing dir*radius from
+            // scratch (rel.normalized * radius) -- that reconstruction threw
+            // away rel's own precision (whatever consistency the floating-
+            // origin fix gives it) and rebuilt a fresh full-magnitude vector
+            // via an independent normalize+multiply, which is exactly what
+            // caused biome selection to stay broken at large radius even
+            // after CenterRebased/densityOrigin were fixed elsewhere. Using
+            // rel means biome selection drifts by `localHeight` (tens of
+            // meters) instead of being perfectly height-invariant -- negligible
+            // against regionScale (thousands of meters).
+            bdf.ComputeWeights3D(rel, bw, n);
 
             float d = 0f;
             if (w.x > kWeightEpsilon) d += w.x * bdf.SampleWithWeights(new Vector3(rel.z, localHeight, rel.y), bw, n);
@@ -98,13 +123,13 @@ public class PlanetField : DensityField
     public override Color GetVertexColor(Vector3 p)
     {
         if (surface == null) return base.GetVertexColor(p);
-        Vector3 rel = p - center;
+        Vector3 rel = p - CenterRebased;
 
         if (surface is BiomeDensityField bdf)
         {
             int n = bdf.BiomeCount;
             Span<float> bw = stackalloc float[BiomeDensityField.MaxBiomes];
-            bdf.ComputeWeights3D(rel.normalized * radius, bw, n);
+            bdf.ComputeWeights3D(rel, bw, n); // see Sample()'s comment on why rel, not rel.normalized*radius
             return bdf.GetVertexColorWithWeights(bw, n);
         }
 
@@ -121,13 +146,13 @@ public class PlanetField : DensityField
     public override float SurfaceHardness(Vector3 p)
     {
         if (surface == null) return base.SurfaceHardness(p);
-        Vector3 rel = p - center;
+        Vector3 rel = p - CenterRebased;
 
         if (surface is BiomeDensityField bdf)
         {
             int n = bdf.BiomeCount;
             Span<float> bw = stackalloc float[BiomeDensityField.MaxBiomes];
-            bdf.ComputeWeights3D(rel.normalized * radius, bw, n);
+            bdf.ComputeWeights3D(rel, bw, n); // see Sample()'s comment on why rel, not rel.normalized*radius
             return bdf.SurfaceHardnessWithWeights(bw, n);
         }
 
@@ -206,7 +231,7 @@ public class PlanetField : DensityField
     public bool TryBuildGpuParams(out PlanetGpuParams planetParams, out BiomeBlendGpuParams blend,
                                    out LeafGpuParams[] leaves, out GpuFieldType[] fieldTypes, out float[] biases)
     {
-        planetParams = new PlanetGpuParams { isPlanet = 1f, center = center, radius = radius };
+        planetParams = new PlanetGpuParams { isPlanet = 1f, center = CenterRebased, radius = radius };
         if (surface is BiomeDensityField biomeWorld && biomeWorld.TryBuildGpuLeaves(out blend, out leaves, out fieldTypes, out biases))
             return true;
 

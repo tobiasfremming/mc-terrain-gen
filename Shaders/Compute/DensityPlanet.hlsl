@@ -39,7 +39,12 @@ float EvaluatePlanetWrap(float3 worldPos)
 
     int n = (int)_BiomeBlendBuf[0].biomeCount;
     float bw[MC_MAX_BIOMES];
-    MC_ComputeBiomeWeights3D(normalize(rel) * _PlanetBuf[0].radius, bw, n);
+    // rel directly, not normalize(rel)*radius -- that reconstruction threw
+    // away rel's own precision and rebuilt a fresh full-magnitude vector via
+    // an independent normalize+multiply, which is exactly what left biome
+    // selection broken at large radius even after CenterRebased/densityOrigin
+    // were fixed on the CPU side. Matches PlanetField.cs's identical fix.
+    MC_ComputeBiomeWeights3D(rel, bw, n);
 
     const float eps = 0.0005;
     float d = 0.0;
