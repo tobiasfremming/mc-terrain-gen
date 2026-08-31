@@ -26,7 +26,7 @@ StructuredBuffer<PlanetParams> _PlanetBuf; // [1] -- see DensityBiomeBlend.hlsl'
 // ComputeWeights3D's comment for why per-face weights would visibly
 // mismatch at the triplanar transition bands. Only each biome's own terrain
 // SHAPE still varies per face (via EvaluateBiomeBlendWithWeights's worldPos).
-float EvaluatePlanetWrap(float3 worldPos)
+float EvaluatePlanetWrap(float3 worldPos, float fw)
 {
     float3 rel = worldPos - _PlanetBuf[0].center;
     float dist = length(rel);
@@ -39,27 +39,28 @@ float EvaluatePlanetWrap(float3 worldPos)
 
     int n = (int)_BiomeBlendBuf[0].biomeCount;
     float bw[MC_MAX_BIOMES];
-    // rel directly, not normalize(rel)*radius -- that reconstruction threw
-    // away rel's own precision and rebuilt a fresh full-magnitude vector via
-    // an independent normalize+multiply, which is exactly what left biome
-    // selection broken at large radius even after CenterRebased/densityOrigin
-    // were fixed on the CPU side. Matches PlanetField.cs's identical fix.
-    MC_ComputeBiomeWeights3D(rel, bw, n);
+    // normalize(rel)*radius, NOT rel -- biome selection must be a function of
+    // WHERE ON THE SPHERE you are, not how high above it. See PlanetField.
+    // Sample's comment for why feeding `rel` directly stacks one biome on top
+    // of another in the same column at blendSharpness ~200.
+    MC_ComputeBiomeWeights3D(normalize(rel) * _PlanetBuf[0].radius, bw, n);
 
     const float eps = 0.0005;
     float d = 0.0;
-    if (w.x > eps) d += w.x * EvaluateBiomeBlendWithWeights(float3(rel.z, localHeight, rel.y), bw, n);
-    if (w.y > eps) d += w.y * EvaluateBiomeBlendWithWeights(float3(rel.x, localHeight, rel.z), bw, n);
-    if (w.z > eps) d += w.z * EvaluateBiomeBlendWithWeights(float3(rel.x, localHeight, rel.y), bw, n);
+    // The triplanar permutation is a rigid relabelling of axes, so the sample
+    // spacing survives it unchanged -- fw passes straight through.
+    if (w.x > eps) d += w.x * EvaluateBiomeBlendWithWeights(float3(rel.z, localHeight, rel.y), bw, n, fw);
+    if (w.y > eps) d += w.y * EvaluateBiomeBlendWithWeights(float3(rel.x, localHeight, rel.z), bw, n, fw);
+    if (w.z > eps) d += w.z * EvaluateBiomeBlendWithWeights(float3(rel.x, localHeight, rel.y), bw, n, fw);
     return d;
 }
 
 // Top-level entry point: the ONE function the compute kernel calls per
 // sample.
-float EvaluateWorldDensity(float3 worldPos)
+float EvaluateWorldDensity(float3 worldPos, float fw)
 {
-    if (_PlanetBuf[0].isPlanet > 0.5) return EvaluatePlanetWrap(worldPos);
-    return EvaluateBiomeBlend(worldPos);
+    if (_PlanetBuf[0].isPlanet > 0.5) return EvaluatePlanetWrap(worldPos, fw);
+    return EvaluateBiomeBlend(worldPos, fw);
 }
 
 #endif

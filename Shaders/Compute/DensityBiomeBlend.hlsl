@@ -55,17 +55,19 @@ StructuredBuffer<BiomeBlendParams> _BiomeBlendBuf; // [1]
 // size at every one of this function's call sites. [branch] keeps it a real
 // runtime branch instead. See EvaluateBiomeBlendWithWeights's [loop] comment
 // for why call-site code size matters here specifically.
-float EvaluateLeafDensity(int fieldType, float3 worldPos, LeafParams p)
+// `fw` is the sample spacing this evaluation belongs to -- see
+// TerrainNoise.cs's header (LOD BAND-LIMITING) and DensityField.Sample.
+float EvaluateLeafDensity(int fieldType, float3 worldPos, LeafParams p, float fw)
 {
     [branch]
     if (fieldType == MC_FIELDTYPE_DUNE)
-        return EvaluateDuneHeight(worldPos.x, worldPos.z, p.dune) - worldPos.y;
+        return EvaluateDuneHeight(worldPos.x, worldPos.z, p.dune, fw) - worldPos.y;
     if (fieldType == MC_FIELDTYPE_CANYON)
-        return EvaluateCanyonDensity(worldPos, p.canyon);
+        return EvaluateCanyonDensity(worldPos, p.canyon, fw);
     if (fieldType == MC_FIELDTYPE_ALIEN)
-        return EvaluateAlienDensity(worldPos, p.alien);
+        return EvaluateAlienDensity(worldPos, p.alien, fw);
     if (fieldType == MC_FIELDTYPE_FROST)
-        return EvaluateFrostHeight(worldPos.x, worldPos.z, p.frost) - worldPos.y;
+        return EvaluateFrostHeight(worldPos.x, worldPos.z, p.frost, fw) - worldPos.y;
     return -worldPos.y; // fallback flat ground, matches BiomeDensityField's n==0 case
 }
 
@@ -78,8 +80,12 @@ void MC_ComputeBiomeWeights(float wx, float wz, out float w[MC_MAX_BIOMES], int 
     float raw[MC_MAX_BIOMES];
     [loop] for (int i = 0; i < n; i++)
     {
+        // Biome SELECTION is deliberately NOT band-limited: regionScale is
+        // kilometres, far coarser than any sample spacing the clipmap uses,
+        // and fading it would make biome boundaries themselves shift with LOD
+        // -- a far worse artifact than the aliasing it would prevent.
         float a = MC_Fbm(wx / _BiomeBlendBuf[0].regionScale + i * 13.7, wz / _BiomeBlendBuf[0].regionScale - i * 7.3,
-                          2, s + (uint)(i * 191)) + _BiomeBias[i];
+                          2, s + (uint)(i * 191), 0.0) + _BiomeBias[i];
         raw[i] = a;
         if (a > maxA) maxA = a;
     }
@@ -108,7 +114,7 @@ void MC_ComputeBiomeWeights(float wx, float wz, out float w[MC_MAX_BIOMES], int 
 // out entirely. [loop] forces a real runtime loop instead: one compiled
 // copy of the loop body per call site, executed up to 8 times, not
 // unrolled into 8 copies.
-float EvaluateBiomeBlendWithWeights(float3 worldPos, float w[MC_MAX_BIOMES], int n)
+float EvaluateBiomeBlendWithWeights(float3 worldPos, float w[MC_MAX_BIOMES], int n, float fw)
 {
     if (n <= 0) return -worldPos.y;
     float d = 0.0, used = 0.0;
@@ -116,7 +122,7 @@ float EvaluateBiomeBlendWithWeights(float3 worldPos, float w[MC_MAX_BIOMES], int
     for (int i = 0; i < n; i++)
     {
         if (w[i] < 0.004) continue;
-        d += w[i] * EvaluateLeafDensity(_BiomeFieldType[i], worldPos, _LeafParams[i]);
+        d += w[i] * EvaluateLeafDensity(_BiomeFieldType[i], worldPos, _LeafParams[i], fw);
         used += w[i];
     }
     return used > 0.0 ? d / used : -worldPos.y;
@@ -124,14 +130,14 @@ float EvaluateBiomeBlendWithWeights(float3 worldPos, float w[MC_MAX_BIOMES], int
 
 // Port of BiomeDensityField.Sample: skip negligible biomes (same 0.004
 // threshold), renormalize over the ones that remain.
-float EvaluateBiomeBlend(float3 worldPos)
+float EvaluateBiomeBlend(float3 worldPos, float fw)
 {
     int n = (int)_BiomeBlendBuf[0].biomeCount;
     if (n <= 0) return -worldPos.y;
 
     float w[MC_MAX_BIOMES];
     MC_ComputeBiomeWeights(worldPos.x, worldPos.z, w, n);
-    return EvaluateBiomeBlendWithWeights(worldPos, w, n);
+    return EvaluateBiomeBlendWithWeights(worldPos, w, n, fw);
 }
 
 // Port of BiomeDensityField.ComputeWeights3D -- biome SELECTION as a
@@ -149,7 +155,8 @@ void MC_ComputeBiomeWeights3D(float3 pos, out float w[MC_MAX_BIOMES], int n)
     float raw[MC_MAX_BIOMES];
     [loop] for (int i = 0; i < n; i++)
     {
-        float a = MC_Fbm3(q.x + i * 13.7, q.y - i * 7.3, q.z + i * 5.1, 2, s + (uint)(i * 191)) + _BiomeBias[i];
+        // Unfiltered, same reasoning as the 2D selection above.
+        float a = MC_Fbm3(q.x + i * 13.7, q.y - i * 7.3, q.z + i * 5.1, 2, s + (uint)(i * 191), 0.0) + _BiomeBias[i];
         raw[i] = a;
         if (a > maxA) maxA = a;
     }

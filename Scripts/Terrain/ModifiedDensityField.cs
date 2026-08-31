@@ -36,10 +36,14 @@ public class ModifiedDensityField : DensityField
         return f;
     }
 
-    public override float Sample(Vector3 p)
+    public override float Sample(Vector3 p, float fw)
     {
         if (source == null) return -1f; // stale wrapper: pretend empty air
-        float d = source.Sample(p);
+        // Edit deltas are NOT band-limited: a footprint or a dig is authored
+        // at a definite size by the player, not procedurally generated, so
+        // fading it out with distance would make edits visibly pop in and out
+        // as chunks change LOD. Only the procedural base gets filtered.
+        float d = source.Sample(p, fw);
         if (caches != null)
             for (int i = 0; i < caches.Length; i++) d += caches[i].SampleDelta(p);
         return d;
@@ -74,14 +78,15 @@ public class ModifiedDensityField : DensityField
     // be an explicit per-call parameter instead, which is exactly what a new
     // method (rather than a virtual override, which can't add parameters)
     // lets us do without touching the shared SampleGrid contract at all.
-    // `origin` may be a rebased (floating-origin) position used for the base
-    // noise field, while `editOrigin` is ALWAYS the true absolute world
-    // position -- TerrainModificationCache indexes edits (footprints,
-    // digging) by absolute voxel position (stamps use the mover's real
-    // transform.position), so feeding it a rebased origin would silently
-    // look up the wrong coordinate space and never find any edit. See the
-    // "Floating-Origin Precision Fix" plan/its ChunkMesher callers.
-    public void SampleGridWithRawBase(Vector3 origin, Vector3 editOrigin, int countX, int countY, int countZ, float step,
+    // `origin` is the chunk's absolute world origin, used for BOTH the base
+    // noise field and the edit-cache lookup. Those two briefly disagreed,
+    // back when a "floating origin" rebase fed the noise field a shifted
+    // position: TerrainModificationCache indexes edits (footprints, digging)
+    // by absolute voxel position, since stamps come from the mover's real
+    // transform.position, so it always needed the unshifted origin. The
+    // rebase is gone (see PlanetField's note on why), so one origin serves
+    // both again -- but keep that asymmetry in mind if a rebase ever returns.
+    public void SampleGridWithRawBase(Vector3 origin, int countX, int countY, int countZ, float step,
                                        float[] dest, float[] rawBase)
     {
         int count = countX * countY * countZ;
@@ -94,7 +99,7 @@ public class ModifiedDensityField : DensityField
             System.Array.Copy(rawBase, dest, count);
         else
             source.SampleGrid(origin, countX, countY, countZ, step, dest);
-        ApplyCaches(editOrigin, countX, countY, countZ, step, dest);
+        ApplyCaches(origin, countX, countY, countZ, step, dest);
     }
 
     void ApplyCaches(Vector3 origin, int countX, int countY, int countZ, float step, float[] dest)
@@ -104,10 +109,10 @@ public class ModifiedDensityField : DensityField
                 caches[i].ApplyToGrid(origin, countX, countY, countZ, step, dest);
     }
 
-    public override Vector3 Gradient(Vector3 p, float eps)
+    public override Vector3 Gradient(Vector3 p, float eps, float fw)
     {
         if (source == null) return Vector3.up;
-        Vector3 g = source.Gradient(p, eps);
+        Vector3 g = source.Gradient(p, eps, fw);
         if (caches != null)
             for (int i = 0; i < caches.Length; i++) g += caches[i].GradientDelta(p, eps);
         return g;

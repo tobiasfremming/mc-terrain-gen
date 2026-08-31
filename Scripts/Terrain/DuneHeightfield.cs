@@ -76,9 +76,16 @@ public class DuneHeightfield : HeightDensityField
     // Quasi-periodic transverse dune ridges: crests run across the wind (along
     // v), warped by low-frequency noise for sinuosity and local wavelength
     // variation, with along-crest swelling/pinching to break ridges up.
+    // The ridge profile repeats every `wavelength` along u, so that is the
+    // feature size the whole system fades on. With three stacked systems
+    // (mega / secondary / ripple) this makes them drop out in the right
+    // order as the sample spacing grows -- ripples first, draa last -- rather
+    // than all three aliasing together into one smeared blob.
     static float DuneSystem(float u, float v, float wavelength, uint seed,
-                            float sinuosity, float segmentation, float crestPos)
+                            float sinuosity, float segmentation, float crestPos, float fw)
     {
+        float fade = TerrainNoise.DetailFade(fw, wavelength);
+        if (fade <= 0f) return 0f;
         float inv = 1f / wavelength;
         float warp = (TerrainNoise.GNoise(u * inv * 0.35f, v * inv * 0.22f, seed + 7u) * 0.55f
                     + TerrainNoise.GNoise(u * inv * 0.11f, v * inv * 0.07f, seed + 13u) * 0.9f) * sinuosity;
@@ -88,7 +95,7 @@ public class DuneHeightfield : HeightDensityField
 
         float seg = Mathf.Clamp01(0.5f + 0.5f * TerrainNoise.GNoise(u * inv * 0.18f, v * inv * 0.4f, seed + 29u));
         seg = 1f - segmentation * (1f - seg * seg * (3f - 2f * seg));
-        return prof * seg;
+        return prof * seg * fade;
     }
 
     public override bool TryGetHeightBounds(out float minH, out float maxH)
@@ -102,7 +109,7 @@ public class DuneHeightfield : HeightDensityField
         return true;
     }
 
-    public override float HeightAt(float wx, float wz)
+    public override float HeightAt(float wx, float wz, float fw)
     {
         uint s = unchecked((uint)seed);
         float wr = windDegrees * Mathf.Deg2Rad;
@@ -111,31 +118,31 @@ public class DuneHeightfield : HeightDensityField
         float v = -wx * su + wz * cu;  // across wind
 
         // --- regional modulation ---
-        float supply = TerrainNoise.Fbm(wx / supplyScale, wz / supplyScale, 3, s + 101u);
+        float supply = TerrainNoise.Fbm(wx / supplyScale, wz / supplyScale, 3, s + 101u, fw / supplyScale);
         supply = Mathf.Clamp01((supply + 0.55f) / 1.0f);
         supply = 0.25f + 0.75f * (supply * supply * (3f - 2f * supply)); // dunes everywhere, but varying
-        float sizeMod = 0.85f + 0.5f * TerrainNoise.Fbm(wx / sizeVariationScale + 31.7f, wz / sizeVariationScale - 11.3f, 2, s + 211u);
+        float sizeMod = 0.85f + 0.5f * TerrainNoise.Fbm(wx / sizeVariationScale + 31.7f, wz / sizeVariationScale - 11.3f, 2, s + 211u, fw / sizeVariationScale);
 
         // --- mega dunes (draa) ---
-        float mega = DuneSystem(u, v, megaWavelength, s + 1u, megaSinuosity, megaSegmentation, kCrestPos) * megaHeight;
+        float mega = DuneSystem(u, v, megaWavelength, s + 1u, megaSinuosity, megaSegmentation, kCrestPos, fw) * megaHeight;
 
         // --- secondary dunes riding on them, slightly rotated wind ---
         float wr2 = (windDegrees + secondaryWindOffset) * Mathf.Deg2Rad;
         float u2 = wx * Mathf.Cos(wr2) + wz * Mathf.Sin(wr2);
         float v2 = -wx * Mathf.Sin(wr2) + wz * Mathf.Cos(wr2);
-        float sec = DuneSystem(u2, v2, secondaryWavelength, s + 2u, secondarySinuosity, secondarySegmentation, 0.68f) * secondaryHeight;
+        float sec = DuneSystem(u2, v2, secondaryWavelength, s + 2u, secondarySinuosity, secondarySegmentation, 0.68f, fw) * secondaryHeight;
         // patchiness: secondary dunes come in fields, not everywhere
-        float patch = Mathf.Clamp01((TerrainNoise.Fbm(wx / secondaryPatchScale - 7.7f, wz / secondaryPatchScale + 3.1f, 2, s + 401u) + 0.45f) / 0.8f);
+        float patch = Mathf.Clamp01((TerrainNoise.Fbm(wx / secondaryPatchScale - 7.7f, wz / secondaryPatchScale + 3.1f, 2, s + 401u, fw / secondaryPatchScale) + 0.45f) / 0.8f);
         patch = patch * patch * (3f - 2f * patch);
         sec *= 0.15f + 0.85f * patch;
 
         // --- sand ripples hint ---
-        float rip = DuneSystem(u, v, rippleWavelength, s + 3u, 1.4f, 0.3f, 0.6f) * rippleHeight;
+        float rip = DuneSystem(u, v, rippleWavelength, s + 3u, 1.4f, 0.3f, 0.6f, fw) * rippleHeight;
 
         float dunes = (mega * sizeMod + sec * (0.45f + 0.55f * supply) + rip * (0.4f + 0.6f * supply)) * supply;
 
         // --- interdune base: gently rolling deflation plain ---
-        float basePlain = TerrainNoise.Fbm(wx / plainScale, wz / plainScale, 3, s + 301u) * plainAmplitude;
+        float basePlain = TerrainNoise.Fbm(wx / plainScale, wz / plainScale, 3, s + 301u, fw / plainScale) * plainAmplitude;
         return baseHeight + basePlain + dunes;
     }
 

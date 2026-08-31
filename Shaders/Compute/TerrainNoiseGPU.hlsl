@@ -17,6 +17,29 @@
 // Identical for any coordinate this project's world extents actually reach
 // (world sizes here are in the hundreds/low thousands of meters).
 
+// LOD band-limiting -- 1:1 mirror of TerrainNoise.DetailFade / the
+// filterWidth parameters in Scripts/TerrainNoise.cs. Read that file's header
+// for why this exists; the two MUST stay in lockstep or GPU-filled and
+// CPU-filled chunks disagree and seams crack.
+// Keep in lockstep with kFadeStart / kFadeEnd in Scripts/TerrainNoise.cs --
+// see that file for what the numbers mean and how to tune them.
+static const float MC_FADE_START = 0.30;
+static const float MC_FADE_END = 1.20;
+
+// Mirrors kBandLimit in Scripts/TerrainNoise.cs -- flip BOTH together. See
+// that comment for what the off state is for.
+#define MC_BAND_LIMIT 0
+
+float MC_DetailFade(float filterWidth, float featureSize)
+{
+#if !MC_BAND_LIMIT
+    return 1.0;
+#endif
+    if (filterWidth <= 0.0 || featureSize <= 0.0) return 1.0;
+    float t = saturate((filterWidth / featureSize - MC_FADE_START) / (MC_FADE_END - MC_FADE_START));
+    return 1.0 - t * t * (3.0 - 2.0 * t);
+}
+
 uint MC_Hash(uint ix, uint iy, uint seed)
 {
     uint h = ix * 374761393u + iy * 668265263u + seed * 2246822519u;
@@ -55,13 +78,16 @@ float MC_GNoise(float x, float y, uint seed)
     return (nx0 + uy * (nx1 - nx0)) * 1.6;
 }
 
-float MC_Fbm(float x, float y, int octaves, uint seed)
+// `norm` accumulates unweighted on purpose -- see the C# Fbm's comment.
+float MC_Fbm(float x, float y, int octaves, uint seed, float filterWidth)
 {
     float s = 0.0, amp = 1.0, freq = 1.0, norm = 0.0;
-    for (int i = 0; i < octaves; i++)
+    [loop] for (int i = 0; i < octaves; i++)
     {
-        s += amp * MC_GNoise(x * freq + i * 19.19, y * freq - i * 7.77, seed + (uint)(i * 131));
         norm += amp;
+        float w = MC_DetailFade(filterWidth * freq, 1.0);
+        if (w > 0.0)
+            s += amp * w * MC_GNoise(x * freq + i * 19.19, y * freq - i * 7.77, seed + (uint)(i * 131));
         amp *= 0.5;
         freq *= 2.0;
     }
@@ -103,15 +129,17 @@ float MC_VNoise3(float x, float y, float z, uint seed)
 // transform): sharp jagged ridgelines instead of blobby fbm hills. gain/lac
 // are always (0.5, 2.0) at every call site in this project (C#'s default
 // parameter values), but kept explicit here since HLSL has no defaults.
-float MC_RidgedFbm(float x, float y, int octaves, uint seed, float gain, float lac)
+float MC_RidgedFbm(float x, float y, int octaves, uint seed, float gain, float lac, float filterWidth)
 {
     float s = 0.0, amp = 0.5, freq = 1.0, prev = 1.0;
-    for (int i = 0; i < octaves; i++)
+    [loop] for (int i = 0; i < octaves; i++)
     {
+        float w = MC_DetailFade(filterWidth * freq, 1.0);
+        if (w <= 0.0) break; // freq only grows, so every later octave is out too
         float n = MC_GNoise(x * freq + i * 19.19, y * freq - i * 7.77, seed + (uint)(i * 131));
         float r = 1.0 - abs(clamp(n, -1.0, 1.0));
         r *= r;
-        s += amp * r * prev;
+        s += amp * r * prev * w;
         prev = r;
         amp *= gain;
         freq *= lac;
@@ -120,12 +148,14 @@ float MC_RidgedFbm(float x, float y, int octaves, uint seed, float gain, float l
 }
 
 // IQ-style fbm: amplitudes 0.5/0.25/0.125..., NOT normalized -> [0, ~0.94].
-float MC_Fbm3(float x, float y, float z, int octaves, uint seed)
+float MC_Fbm3(float x, float y, float z, int octaves, uint seed, float filterWidth)
 {
     float s = 0.0, amp = 0.5, f = 1.0;
-    for (int o = 0; o < octaves; o++)
+    [loop] for (int o = 0; o < octaves; o++)
     {
-        s += amp * MC_VNoise3(x * f + o * 13.1, y * f + o * 7.7, z * f - o * 5.3, seed + (uint)(o * 131));
+        float w = MC_DetailFade(filterWidth * f, 1.0);
+        if (w <= 0.0) break;
+        s += amp * w * MC_VNoise3(x * f + o * 13.1, y * f + o * 7.7, z * f - o * 5.3, seed + (uint)(o * 131));
         amp *= 0.5;
         f *= 2.02;
     }
@@ -138,9 +168,11 @@ void MC_Worley2(float x, float y, uint seed, out float f1, out float f2)
 {
     int cx = (int)floor(x), cy = (int)floor(y);
     f1 = 3.402823e38; f2 = 3.402823e38;
-    for (int oy = -1; oy <= 1; oy++)
+    // Rolled, not unrolled: 9 cells x a hash each, and Frost calls this twice
+    // per sample. See MC_RidgedFbm's note on why code size is the constraint.
+    [loop] for (int oy = -1; oy <= 1; oy++)
     {
-        for (int ox = -1; ox <= 1; ox++)
+        [loop] for (int ox = -1; ox <= 1; ox++)
         {
             int gx = cx + ox, gy = cy + oy;
             uint h = MC_Hash((uint)gx, (uint)gy, seed);

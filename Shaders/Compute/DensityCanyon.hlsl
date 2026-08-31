@@ -3,6 +3,28 @@
 
 #include "TerrainNoiseGPU.hlsl"
 
+// ---------------------------------------------------------------------------
+// MC_CANYON_BRIDGES -- compile the natural rock-arch/bridge system in or out.
+//
+// 0 (default) because the system is off in content (CanyonField.asset has
+// enableBridges: 0) and it is by far the most expensive thing in this kernel
+// to COMPILE, whether or not it ever executes: MC_CanyonGatherBridgeCandidates
+// scans 9 cells and makes up to seven MC_CanyonHeightAt calls per cell, and
+// each of those is two ridged fbms plus an fbm plus an fbm3 plus a 9-cell
+// spire scan. That is what pushes FXC into "Compiler timed out" on this
+// kernel. [loop] keeps it from being 9x worse again, but the cheapest code is
+// the code that isn't there.
+//
+// IF YOU SET THIS TO 1: nothing else to do -- CanyonVolumeField's
+// kGpuBridgesCompiledIn must be flipped to match, and it is checked at
+// runtime (see its comment). Leaving the two out of sync cannot silently
+// corrupt anything: with this at 0 and enableBridges ticked on, the C# side
+// reports GpuFieldType.None and the WHOLE world falls back to CPU sampling,
+// which is slow but produces exactly the bridges you asked for.
+// ---------------------------------------------------------------------------
+#define MC_CANYON_BRIDGES 0
+
+
 // GPU port of Scripts/Terrain/CanyonVolumeField.cs, ported from Sample(p)
 // (the canonical per-point definition -- AddDensityColumn is a CPU-only
 // optimized variant of the same math that caches HeightAt/bridge-candidates
@@ -54,25 +76,36 @@ struct CanyonParams
     float bridgeSmoothing;
 };
 
+#if MC_CANYON_BRIDGES
 struct CanyonBridgeCandidate
 {
     float valid; // 0/1
     float cx, cz, perpX, perpZ, walkX, walkZ, halfSpan, archRise, tubeR, y0;
     float legBottomA, legBottomB;
 };
+#endif
 
-// Forward declare (HeightAt is needed by both GatherBridgeCandidates and Sample).
-float MC_CanyonHeightAt(float wx, float wz, CanyonParams p);
+// Forward declare: MC_CanyonSpireBoost is defined above MC_CanyonHeightAt but
+// the bridge gather (when MC_CANYON_BRIDGES is on) is defined below it and
+// calls it. Harmless when bridges are compiled out.
+float MC_CanyonHeightAt(float wx, float wz, CanyonParams p, float fw);
 
-float MC_CanyonSpireBoost(float wx, float wz, CanyonParams p)
+// Mirrors CanyonVolumeField.SpireBoost -- a spire is ~spireRadius across, so
+// once the sample spacing approaches that the 3x3 scan below either misses
+// the pillar or smears its peak across a whole voxel ("monoliths").
+float MC_CanyonSpireBoost(float wx, float wz, CanyonParams p, float fw)
 {
     if (p.enableSpires <= 0.5) return 0.0;
+    float spireFade = MC_DetailFade(fw, p.spireRadius);
+    if (spireFade <= 0.0) return 0.0;
     uint s = (uint)(int)p.seed;
     float boost = 0.0;
     int icx = (int)floor(wx / p.spireCellSize);
     int icz = (int)floor(wz / p.spireCellSize);
-    for (int dz = -1; dz <= 1; dz++)
-    for (int dx = -1; dx <= 1; dx++)
+    // 9 cells, each 5 hashes plus a full MC_GNoise -- unrolled that is 45
+    // hashes and 9 gradient-noise bodies inlined at every call site.
+    [loop] for (int dz = -1; dz <= 1; dz++)
+    [loop] for (int dx = -1; dx <= 1; dx++)
     {
         int gx = icx + dx, gz = icz + dz;
         uint ux = (uint)gx, uz = (uint)gz;
@@ -86,38 +119,39 @@ float MC_CanyonSpireBoost(float wx, float wz, CanyonParams p)
         float cz = (gz + 0.15 + 0.7 * jz) * p.spireCellSize;
         float radius = p.spireRadius * (0.6 + 0.8 * rj);
         float height = p.spireHeight * (0.55 + 0.9 * hj);
-        float wob = 1.0 + p.spireIrregularity * MC_GNoise(wx / (radius * 0.8), wz / (radius * 0.8), s + 9006u);
+        float wobFade = MC_DetailFade(fw, radius * 0.8);
+        float wob = 1.0 + p.spireIrregularity * wobFade * MC_GNoise(wx / (radius * 0.8), wz / (radius * 0.8), s + 9006u);
         float dx2 = wx - cx, dz2 = wz - cz;
         float dist = sqrt(dx2 * dx2 + dz2 * dz2) / max(wob, 0.35);
         float t = 1.0 - MC_Smoothstep(radius * 0.25, radius, dist);
         boost = max(boost, t * height);
     }
-    return boost;
+    return boost * spireFade;
 }
 
-float MC_CanyonThAt(float wx, float wz, CanyonParams p)
+float MC_CanyonThAt(float wx, float wz, CanyonParams p, float fw)
 {
     uint s = (uint)(int)p.seed;
-    float thn = MC_Fbm3(wx / p.thScale, 0.0, wz / p.thScale, 3, s + 11u) * 1.06;
+    float thn = MC_Fbm3(wx / p.thScale, 0.0, wz / p.thScale, 3, s + 11u, fw / p.thScale) * 1.06;
     return MC_Smoothstep(p.thLo, p.thHi, thn);
 }
 
-float MC_CanyonHeightAt(float wx, float wz, CanyonParams p)
+float MC_CanyonHeightAt(float wx, float wz, CanyonParams p, float fw)
 {
     uint s = (uint)(int)p.seed;
-    float th = MC_CanyonThAt(wx, wz, p);
+    float th = MC_CanyonThAt(wx, wz, p, fw);
 
-    float ridge = MC_RidgedFbm(wx / p.peakScale, wz / p.peakScale, 4, s + 501u, 0.5, 2.0);
+    float ridge = MC_RidgedFbm(wx / p.peakScale, wz / p.peakScale, 4, s + 501u, 0.5, 2.0, fw / p.peakScale);
     float massif = p.peakBase + p.peakRange * ridge;
-    float detail = MC_RidgedFbm(wx / p.detailScale, wz / p.detailScale, 3, s + 733u, 0.5, 2.0);
+    float detail = MC_RidgedFbm(wx / p.detailScale, wz / p.detailScale, 3, s + 733u, 0.5, 2.0, fw / p.detailScale);
     massif += p.detailAmp * detail;
 
-    float rr = MC_Smoothstep(0.1, 0.5, MC_Fbm(wx / p.rrScale, wz / p.rrScale, 2, s + 21u) * 0.5 + 0.5);
+    float rr = MC_Smoothstep(0.1, 0.5, MC_Fbm(wx / p.rrScale, wz / p.rrScale, 2, s + 21u, fw / p.rrScale) * 0.5 + 0.5);
 
     float hNoSpire = p.floorHeight + massif * (1.0 - th) + p.rrAmp * 0.3 * rr;
     if (p.enableSpires <= 0.5) return hNoSpire;
 
-    float spireRaw = MC_CanyonSpireBoost(wx, wz, p);
+    float spireRaw = MC_CanyonSpireBoost(wx, wz, p, fw);
     if (spireRaw <= 0.0) return hNoSpire;
 
     float heightAboveFloor = hNoSpire - p.floorHeight;
@@ -127,20 +161,30 @@ float MC_CanyonHeightAt(float wx, float wz, CanyonParams p)
     return min(spireTop, peakCap);
 }
 
-float MC_CanyonErosion(float wx, float y, float wz, CanyonParams p)
+// THE aliasing hotspot -- see CanyonVolumeField.Erosion's comment. disSquash
+// makes the vertical strata that much finer than the horizontal features, so
+// the filter width has to be taken along the squashed (tightest) axis.
+float MC_CanyonErosion(float wx, float y, float wz, CanyonParams p, float fw)
 {
     uint s = (uint)(int)p.seed;
-    return MC_Fbm3(wx / p.disScale, y * p.disSquash / p.disScale, wz / p.disScale, 3, s + 39323u);
+    float fwNoise = fw * max(1.0, p.disSquash) / p.disScale;
+    return MC_Fbm3(wx / p.disScale, y * p.disSquash / p.disScale, wz / p.disScale, 3, s + 39323u, fwNoise);
 }
 
-void MC_CanyonGatherBridgeCandidates(float wx, float wz, CanyonParams p, out CanyonBridgeCandidate cands[9])
+#if MC_CANYON_BRIDGES
+void MC_CanyonGatherBridgeCandidates(float wx, float wz, CanyonParams p, float fw, out CanyonBridgeCandidate cands[9])
 {
     uint s = (uint)(int)p.seed;
     int icx = (int)floor(wx / p.bridgeCellSize);
     int icz = (int)floor(wz / p.bridgeCellSize);
     int idx = 0;
-    for (int dz = -1; dz <= 1; dz++)
-    for (int dx = -1; dx <= 1; dx++)
+    // THE compile-time hot spot. Each of these 9 cells makes up to SEVEN
+    // MC_CanyonHeightAt calls, and each of those is two ridged fbms plus an
+    // fbm plus an fbm3 plus a 9-cell spire scan. Unrolled, one call to this
+    // function expands to ~63 full terrain evaluations inlined -- which is
+    // how a kernel that merely looks big becomes one FXC gives up on.
+    [loop] for (int dz = -1; dz <= 1; dz++)
+    [loop] for (int dx = -1; dx <= 1; dx++)
     {
         int gx = icx + dx, gz = icz + dz;
         uint ux = (uint)gx, uz = (uint)gz;
@@ -160,7 +204,7 @@ void MC_CanyonGatherBridgeCandidates(float wx, float wz, CanyonParams p, out Can
             float cx = (gx + 0.2 + 0.6 * jx) * p.bridgeCellSize;
             float cz = (gz + 0.2 + 0.6 * jz) * p.bridgeCellSize;
 
-            float hCenter = MC_CanyonHeightAt(cx, cz, p);
+            float hCenter = MC_CanyonHeightAt(cx, cz, p, fw);
             if (hCenter < p.bridgeMaxCenterHeight)
             {
                 float halfSpan = p.bridgeHalfSpanMin + (p.bridgeHalfSpanMax - p.bridgeHalfSpanMin) * spanJ;
@@ -169,8 +213,8 @@ void MC_CanyonGatherBridgeCandidates(float wx, float wz, CanyonParams p, out Can
                 float y0 = hCenter + 4.0;
 
                 const float gradEps = 12.0;
-                float hXp = MC_CanyonHeightAt(cx + gradEps, cz, p), hXm = MC_CanyonHeightAt(cx - gradEps, cz, p);
-                float hZp = MC_CanyonHeightAt(cx, cz + gradEps, p), hZm = MC_CanyonHeightAt(cx, cz - gradEps, p);
+                float hXp = MC_CanyonHeightAt(cx + gradEps, cz, p, fw), hXm = MC_CanyonHeightAt(cx - gradEps, cz, p, fw);
+                float hZp = MC_CanyonHeightAt(cx, cz + gradEps, p, fw), hZm = MC_CanyonHeightAt(cx, cz - gradEps, p, fw);
                 float gxv = hXp - hXm, gzv = hZp - hZm;
                 float glen = sqrt(gxv * gxv + gzv * gzv);
                 float perpX, perpZ;
@@ -187,8 +231,8 @@ void MC_CanyonGatherBridgeCandidates(float wx, float wz, CanyonParams p, out Can
 
                 float legAx = cx + perpX * halfSpan, legAz = cz + perpZ * halfSpan;
                 float legBx = cx - perpX * halfSpan, legBz = cz - perpZ * halfSpan;
-                float hLegA = MC_CanyonHeightAt(legAx, legAz, p);
-                float hLegB = MC_CanyonHeightAt(legBx, legBz, p);
+                float hLegA = MC_CanyonHeightAt(legAx, legAz, p, fw);
+                float hLegB = MC_CanyonHeightAt(legBx, legBz, p, fw);
 
                 c.valid = 1.0;
                 c.cx = cx; c.cz = cz;
@@ -237,22 +281,29 @@ float MC_SMaxCanyon(float a, float b, float k)
     float h = saturate(0.5 - 0.5 * (b - a) / k);
     return a * h + b * (1.0 - h) + k * h * (1.0 - h);
 }
+#endif // MC_CANYON_BRIDGES
 
-float EvaluateCanyonDensity(float3 worldPos, CanyonParams p)
+float EvaluateCanyonDensity(float3 worldPos, CanyonParams p, float fw)
 {
     float wx = worldPos.x, wy = worldPos.y, wz = worldPos.z;
-    float d = MC_CanyonHeightAt(wx, wz, p) - wy - MC_CanyonErosion(wx, wy, wz, p) * p.disAmp;
+    float d = MC_CanyonHeightAt(wx, wz, p, fw) - wy - MC_CanyonErosion(wx, wy, wz, p, fw) * p.disAmp;
 
-    if (p.enableBridges > 0.5)
+#if MC_CANYON_BRIDGES
+    [branch] if (p.enableBridges > 0.5)
     {
         CanyonBridgeCandidate cands[9];
-        MC_CanyonGatherBridgeCandidates(wx, wz, p, cands);
-        for (int k = 0; k < 9; k++)
+        MC_CanyonGatherBridgeCandidates(wx, wz, p, fw, cands);
+        [loop] for (int k = 0; k < 9; k++)
         {
             if (cands[k].valid > 0.5)
                 d = MC_SMaxCanyon(d, MC_CanyonBridgeContribution(cands[k], wx, wy, wz, p), p.bridgeSmoothing);
         }
     }
+#endif
+    // p.enableBridges is deliberately still READ from the params buffer even
+    // when compiled out -- CanyonParams must keep mirroring CanyonGpuParams
+    // field-for-field (StructuredBuffer layout is positional), so the field
+    // stays; only the code that acts on it goes away.
     return d;
 }
 

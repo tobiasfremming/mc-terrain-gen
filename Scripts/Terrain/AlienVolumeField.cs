@@ -90,26 +90,50 @@ public class AlienVolumeField : DensityField
         py = pathAmpB * Mathf.Cos(z * pathFreqB) + pathDriftAmp * (Mathf.Sin(z * pathDriftFreq) - 1f);
     }
 
-    float DensityAt(float wx, float wy, float wz)
+    // These terms are stated as FREQUENCIES rather than scales, so the
+    // feature size each one fades against is 2*pi/freq (one full sine period),
+    // not the raw parameter.
+    float DensityAt(float wx, float wy, float wz, float fw)
     {
         uint s = unchecked((uint)seed);
 
-        float qx = wx * latticeFreq, qy = wy * latticeFreq, qz = wz * latticeFreq;
-        float l1 = Mathf.Sin(qx) * Mathf.Cos(qy) + Mathf.Sin(qy) * Mathf.Cos(qz) + Mathf.Sin(qz) * Mathf.Cos(qx);
-        float l2 = Mathf.Sin(qx * 1.5f) * Mathf.Cos(qy * 1.5f) + Mathf.Sin(qy * 1.5f) * Mathf.Cos(qz * 1.5f) + Mathf.Sin(qz * 1.5f) * Mathf.Cos(qx * 1.5f);
-        float h = lattice1Amp * l1 + lattice2Amp * l2;
+        const float kTau = 6.2831853f;
+        float latticeWave = latticeFreq > 0f ? kTau / latticeFreq : float.MaxValue;
+        float fade1 = TerrainNoise.DetailFade(fw, latticeWave);
+        float fade2 = TerrainNoise.DetailFade(fw, latticeWave / 1.5f);
 
-        float tx = TerrainNoise.VNoise3(wx / pebbleScale, wy / pebbleScale, wz / pebbleScale, s + 8801u);
+        float qx = wx * latticeFreq, qy = wy * latticeFreq, qz = wz * latticeFreq;
+        float l1 = fade1 <= 0f ? 0f
+                 : Mathf.Sin(qx) * Mathf.Cos(qy) + Mathf.Sin(qy) * Mathf.Cos(qz) + Mathf.Sin(qz) * Mathf.Cos(qx);
+        float l2 = fade2 <= 0f ? 0f
+                 : Mathf.Sin(qx * 1.5f) * Mathf.Cos(qy * 1.5f) + Mathf.Sin(qy * 1.5f) * Mathf.Cos(qz * 1.5f) + Mathf.Sin(qz * 1.5f) * Mathf.Cos(qx * 1.5f);
+        float h = lattice1Amp * l1 * fade1 + lattice2Amp * l2 * fade2;
+
+        // The pebble term is a surface texture -- it is the finest thing here
+        // and the first to go. Fading it toward its mean (0.5, VNoise3's
+        // midpoint) rather than toward 0 keeps the terms it feeds
+        // (tnlPebbleOffset, the tunnel radius) at their average value instead
+        // of biasing the whole surface outward as detail drops out.
+        float pebbleFade = TerrainNoise.DetailFade(fw, pebbleScale);
+        float tx = 0.5f;
+        if (pebbleFade > 0f)
+            tx = Mathf.Lerp(0.5f, TerrainNoise.VNoise3(wx / pebbleScale, wy / pebbleScale, wz / pebbleScale, s + 8801u), pebbleFade);
 
         float d = wy + h * hillAmp;
 
         float raw;
         if (enableTunnel)
         {
-            float qx2 = Mathf.Sin(wx * wallDetailFreq + h);
-            float qy2 = Mathf.Sin(wy * wallDetailFreq + h);
-            float qz2 = Mathf.Sin(wz * wallDetailFreq + h);
-            float h2 = qx2 * qy2 * qz2;
+            float wallWave = wallDetailFreq > 0f ? kTau / wallDetailFreq : float.MaxValue;
+            float wallFade = TerrainNoise.DetailFade(fw, wallWave);
+            float h2 = 0f;
+            if (wallFade > 0f)
+            {
+                float qx2 = Mathf.Sin(wx * wallDetailFreq + h);
+                float qy2 = Mathf.Sin(wy * wallDetailFreq + h);
+                float qz2 = Mathf.Sin(wz * wallDetailFreq + h);
+                h2 = qx2 * qy2 * qz2 * wallFade;
+            }
 
             Path(wz, out float px, out float py);
             float lx = wx - px, ly = wy - py;
@@ -125,15 +149,16 @@ public class AlienVolumeField : DensityField
         return -raw; // flip Shane's positive-outside convention to ours (positive = solid)
     }
 
-    public override float Sample(Vector3 p) => DensityAt(p.x, p.y, p.z);
+    public override float Sample(Vector3 p, float fw) => DensityAt(p.x, p.y, p.z, fw);
 
     public override void AddDensityColumn(float wx, float wz, float yStart, float yStep, int count,
-                                          float weight, float[] dest, int destIndex, int destStride)
+                                          float weight, float[] dest, int destIndex, int destStride,
+                                          float fw)
     {
         for (int i = 0; i < count; i++)
         {
             float y = yStart + i * yStep;
-            dest[destIndex] += weight * DensityAt(wx, y, wz);
+            dest[destIndex] += weight * DensityAt(wx, y, wz, fw);
             destIndex += destStride;
         }
     }

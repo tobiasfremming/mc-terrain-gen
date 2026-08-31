@@ -58,7 +58,7 @@ public class MCChunkManager : MonoBehaviour
     readonly Stack<MarchingChunk> _pool = new();
 
     // needsMask each chunk was last generated with (level is fixed by the key)
-    readonly Dictionary<ChunkKey, byte> _generatedNeeds = new();
+    readonly Dictionary<ChunkKey, uint> _generatedNeeds = new();
     readonly HashSet<ChunkKey> _dirty = new();        // must regenerate even if needs match (terrain edits)
     readonly HashSet<ChunkKey> _dirtyPhysics = new(); // subset whose collider must also re-cook
 
@@ -83,7 +83,7 @@ public class MCChunkManager : MonoBehaviour
     class InFlight
     {
         public ChunkKey key;
-        public byte needsMask;
+        public uint needsMask;
         public ChunkMeshJob job;
         public Task task;
         public bool fromDirty;
@@ -124,7 +124,7 @@ public class MCChunkManager : MonoBehaviour
     // updates feel slow once base density moved to GPU.
     class DensityCacheEntry
     {
-        public byte needsMask; // which shape (regular + which faces) this was computed for; must match exactly to be reusable
+        public uint needsMask; // which shape (regular + which faces) this was computed for; must match exactly to be reusable
         public float[] regular;
         public readonly float[][] faces = new float[6][];
     }
@@ -143,7 +143,7 @@ public class MCChunkManager : MonoBehaviour
     class RetiringChunk
     {
         public ChunkKey key;
-        public byte needsMask;
+        public uint needsMask;
         public MarchingChunk chunk;
         public readonly List<ChunkKey> required = new();
     }
@@ -159,12 +159,6 @@ public class MCChunkManager : MonoBehaviour
     Vector3Int[] _boxScratch;
     bool _boxesValid;
     bool _pendingRefresh;
-    // Floating-origin precision fix: job.densityOrigin (see PrepareBuild) is
-    // computed relative to this instead of raw Unity world position, so it
-    // stays small/precise regardless of how far `target` has travelled from
-    // Unity's world origin (job.origin, used for chunk transform placement,
-    // is untouched -- see the "Floating-Origin Precision Fix" plan).
-    Double3 _worldOriginOffset;
     float _lastFlush;
 
     // Terrain modification stack. Render field sees all edits; physics field
@@ -403,23 +397,6 @@ public class MCChunkManager : MonoBehaviour
             if (usePooling) PrewarmPool();
         }
 
-        // Must run before the very first chunk is built below: on a large-
-        // radius planet, `target` spawns ~radius away from Unity's world
-        // origin, which is already past the recenter threshold. Without
-        // this, _worldOriginOffset stays at its zero default for this
-        // synchronous initial batch -- exactly the chunks the player sees
-        // first -- and they'd be built with zero floating-origin precision
-        // correction even though the fix is otherwise active everywhere
-        // else (Update() calls this every frame from here on). The
-        // ApplyPendingRefresh() that follows matters too, not just the
-        // recenter itself: it's what actually pushes PlanetField.
-        // CenterRebased into the GPU buffer -- without it, BuildBatchSync
-        // below would dispatch against a stale (un-rebased) GPU center
-        // while job.densityOrigin is already rebased, the exact mismatch
-        // this whole fix exists to avoid.
-        CheckWorldOriginRecenter();
-        if (_pendingRefresh) ApplyPendingRefresh();
-
         RecomputeTargets();
 
         // Generate the player's immediate surroundings synchronously so there
@@ -465,17 +442,14 @@ public class MCChunkManager : MonoBehaviour
         if (isActiveAndEnabled) _pendingRefresh = true;
     }
 
-    // Shared by Update() and Start() (the latter needs it to run BEFORE its
-    // own synchronous initial-batch BuildBatchSync call, whenever
-    // CheckWorldOriginRecenter fires during startup -- see Start()'s call
-    // site comment). Everything here is idempotent/harmless to run at
-    // Start() time even though nothing has been generated yet.
+    // Full-regen path shared by OnValidate/TerrainTuning changes. Everything
+    // here is idempotent, so it is safe to call speculatively.
     void ApplyPendingRefresh()
     {
         _pendingRefresh = false;
         _generatedNeeds.Clear(); // settings may have changed: regenerate all (streamed)
         _boxesValid = false;
-        RefreshGpuParams(); // keep GPU tunables (incl. PlanetField.CenterRebased) in sync with whatever triggered this
+        RefreshGpuParams(); // keep GPU tunables in sync with whatever triggered this
         _densityCache.Clear(); // base density itself may have changed -- every cached entry is now potentially stale
         _gpuGeneration++; // any already-dispatched batch's readback now reflects the pre-refresh params -- see field comment
     }
@@ -484,7 +458,6 @@ public class MCChunkManager : MonoBehaviour
     {
         if (!target) return;
 
-        CheckWorldOriginRecenter();
         if (_pendingRefresh) ApplyPendingRefresh();
 
         if (BoxesChanged())
@@ -503,41 +476,6 @@ public class MCChunkManager : MonoBehaviour
             _modSystem.maxDepth = modMaxDepth;
             _modSystem.Flush(Time.time);
         }
-    }
-
-    // Keeps _worldOriginOffset near wherever generation is currently
-    // happening, so job.densityOrigin (computed relative to it in
-    // PrepareBuild) stays small and precise regardless of how far `target`
-    // has travelled from Unity's world origin -- see the "Floating-Origin
-    // Precision Fix" plan. Recentering routes through the existing
-    // _pendingRefresh full-regen path (same one TerrainTuning changes use),
-    // which already bumps _gpuGeneration to drop any in-flight GPU batch
-    // computed under the old offset.
-    //
-    // Threshold is deliberately generous: this only needs the final cast to
-    // float to stay accurate (not sub-meter proximity), and _pendingRefresh's
-    // regen is streamed, not atomic -- recentering too often would make its
-    // "already-rebuilt chunk next to not-yet-rebuilt chunk" transient a
-    // recurring visible seam instead of the rare event it is today.
-    const double kRecenterThreshold = 20000.0;
-    void CheckWorldOriginRecenter()
-    {
-        if (!target) return; // called from Start() too, before Update()'s own target check
-
-        var targetD = (Double3)target.position;
-        var delta = targetD - _worldOriginOffset;
-        double distSq = delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
-        if (distSq < kRecenterThreshold * kRecenterThreshold) return;
-
-        _worldOriginOffset = targetD;
-        // PlanetField.center must be rebased through the exact same offset
-        // job.densityOrigin now uses, or Sample()'s `rel = worldPos - center`
-        // would compute against mismatched reference frames -- see
-        // PlanetField.RefreshDensityOriginOffset's comment. Must happen
-        // before RefreshGpuParams() (below, via _pendingRefresh) reads
-        // CenterRebased into the GPU buffer.
-        ActivePlanet?.RefreshDensityOriginOffset(_worldOriginOffset);
-        _pendingRefresh = true;
     }
 
     // Convenience wrapper; prefer Modifications.StampSphere/StampLine directly.
@@ -776,7 +714,7 @@ public class MCChunkManager : MonoBehaviour
         if (IsPendingAnywhere(key)) return false;
         if (!_chunks.ContainsKey(key)) return true;
         if (_dirty.Contains(key)) return true;
-        if (!_generatedNeeds.TryGetValue(key, out byte prev)) return true;
+        if (!_generatedNeeds.TryGetValue(key, out uint prev)) return true;
         return prev != ComputeNeeds(key).Mask;
     }
 
@@ -850,6 +788,15 @@ public class MCChunkManager : MonoBehaviour
     {
         int k = key.level;
         var q = key.coord;
+        int neighbors = 0;
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    if (dx == 0 && dy == 0 && dz == 0) continue;
+                    if (CoveredByFiner(k, q + new Vector3Int(dx, dy, dz)))
+                        neighbors |= 1 << TransitionNeeds.NeighborBit(dx, dy, dz);
+                }
         return new TransitionNeeds
         {
             px = CoveredByFiner(k, q + FaceDirs[0]),
@@ -858,6 +805,7 @@ public class MCChunkManager : MonoBehaviour
             ny = CoveredByFiner(k, q + FaceDirs[3]),
             pz = CoveredByFiner(k, q + FaceDirs[4]),
             nz = CoveredByFiner(k, q + FaceDirs[5]),
+            neighbors = neighbors,
         };
     }
 
@@ -1181,7 +1129,7 @@ public class MCChunkManager : MonoBehaviour
 
         TransitionNeeds needs = ComputeNeeds(key);
         bool dirty = _dirty.Contains(key);
-        bool structural = !_generatedNeeds.TryGetValue(key, out byte prev) || prev != needs.Mask;
+        bool structural = !_generatedNeeds.TryGetValue(key, out uint prev) || prev != needs.Mask;
         bool exists = _chunks.ContainsKey(key);
         if (!dirty && !structural && exists) return null; // up to date
 
@@ -1193,14 +1141,6 @@ public class MCChunkManager : MonoBehaviour
         float S = LevelChunkSize(key.level);
         var job = GetMeshJob();
         job.origin = (Vector3)key.coord * S;
-        // Same physical position as job.origin, but computed relative to
-        // _worldOriginOffset in double precision and cast to float only at
-        // the end -- stays small/precise regardless of how far this chunk
-        // is from Unity's world origin. Used for all density/noise
-        // evaluation (SampleGrid/Gradient/GetVertexColor); job.origin stays
-        // the one used for chunk transform placement. See the "Floating-
-        // Origin Precision Fix" plan.
-        job.densityOrigin = (Vector3)((Double3)key.coord * (double)S - _worldOriginOffset);
         job.cells = CellsPerChunk;
         job.cellSize = S / CellsPerChunk.x;
         job.isoLevel = IsoLevel;
@@ -1438,11 +1378,61 @@ public class MCChunkManager : MonoBehaviour
     [ContextMenu("Refresh All Chunks")]
     void RefreshExistingChunks()
     {
+        if (!target)
+        {
+            Debug.LogWarning("No target set for chunk generation!");
+            return;
+        }
+        SnapTargetToPlanetSurfaceIfStranded(); // same globe trap as GenerateAllChunks -- see its comment
         _generatedNeeds.Clear();
         _boxesValid = false;
         if (BoxesChanged()) { }
         RecomputeTargets();
         ProcessAllJobsNow();
+    }
+
+    // The clipmap is centred on `target`, so on a globe the target has to be
+    // near the surface or generation produces nothing: every level whose box
+    // fits inside the shell is (correctly) skipped as all-solid by
+    // PlanetField.TryGetEmptySkip, and every level beyond it as all-air.
+    //
+    // In Play mode this never comes up, because PlayerBootstrap teleports the
+    // player to center + up * SafeSpawnRadius before anything generates. In
+    // the Editor nothing does that, and a player parked at a perfectly
+    // sensible flat-world position -- near the origin -- is sitting at the
+    // PLANET'S CENTRE, a full radius of solid rock away from any surface.
+    // That is why "Generate All Chunks" appears to do nothing on a globe
+    // while working fine both in Play mode and with useGlobe off.
+    //
+    // Editor-only, and only when the target is genuinely stranded: a target
+    // legitimately above the peaks or inside a cave is left alone.
+    void SnapTargetToPlanetSurfaceIfStranded()
+    {
+        if (Application.isPlaying || !target) return;
+        var planet = BaseField as PlanetField;
+        if (planet == null) return;
+        if (!planet.TryGetSurfaceBand(out float rLo, out float rHi)) return;
+
+        // Criterion: can LEVEL 0 -- the only full-detail, collider-bearing
+        // level -- reach the shell at all? If not, the clipmap pyramid is
+        // centred in the wrong place and at best a few coarse fragments come
+        // out, which is not what anyone pressing this button wants.
+        float reach = LevelChunkSize(0) * Extent * 0.5f;
+        Vector3 rel = target.position - planet.center;
+        float dist = rel.magnitude;
+        if (dist > rLo - reach && dist < rHi + reach) return; // level 0 can reach ground; leave the target alone
+
+        Vector3 dir = dist > 1e-6f ? rel / dist : Vector3.up;
+        Vector3 dst = planet.center + dir * planet.SafeSpawnRadius();
+#if UNITY_EDITOR
+        UnityEditor.Undo.RecordObject(target, "Snap terrain target to planet surface");
+#endif
+        target.position = dst;
+        Debug.Log($"[MCChunkManager] Target sat {dist:F0}m from the planet centre, outside the " +
+                  $"{rLo:F0}..{rHi:F0}m surface shell, so level-0 chunks had no ground to find and every " +
+                  $"chunk was skipped as all-solid or all-air. Moved it to {dst} -- the same place " +
+                  $"PlayerBootstrap drops the player in Play mode, which is why this only ever broke in the " +
+                  $"Editor. Undo to put it back.", target);
     }
 
     [ContextMenu("Generate All Chunks")]
@@ -1453,6 +1443,7 @@ public class MCChunkManager : MonoBehaviour
             Debug.LogWarning("No target set for chunk generation!");
             return;
         }
+        SnapTargetToPlanetSurfaceIfStranded();
         ClearAllChunks();
         if (BoxesChanged()) { }
         RecomputeTargets();
@@ -1575,8 +1566,74 @@ public class MCChunkManager : MonoBehaviour
             0 => px, 1 => nx, 2 => py, 3 => ny, 4 => pz, 5 => nz, _ => false
         };
 
-        public byte Mask =>
-            (byte)((px ? 1 : 0) | (nx ? 2 : 0) | (py ? 4 : 0) |
-                   (ny ? 8 : 0) | (pz ? 16 : 0) | (nz ? 32 : 0));
+        // Which of the 26 surrounding chunks are covered by a finer level, as
+        // a bitmask indexed by NeighborBit(dx,dy,dz). The six face bits above
+        // are the axis-aligned subset of this and drive transition CELLS; the
+        // edge and corner bits drive nothing geometric -- they exist purely so
+        // ChunkMesher can answer "is this boundary grid point also touched by
+        // a finer chunk?", which is what decides its band-limiting filter
+        // width. See ChunkMesher.PatchRegularBoundaryPlanes.
+        public int neighbors;
+
+        public static int NeighborBit(int dx, int dy, int dz) =>
+            (dz + 1) * 9 + (dy + 1) * 3 + (dx + 1);
+
+        public bool Neighbor(int dx, int dy, int dz) =>
+            (neighbors & (1 << NeighborBit(dx, dy, dz))) != 0;
+
+        // A boundary grid point is identified by which side of the chunk it
+        // sits on per axis: -1 = at the minimum face, +1 = at the maximum,
+        // 0 = interior to that axis. A neighbour touches the point when, on
+        // every axis, it either shares that axis (d == 0) or lies on the same
+        // side the point is on.
+        public bool FinerTouches(int sx, int sy, int sz)
+        {
+            for (int dz = -1; dz <= 1; dz++)
+            {
+                if (dz != 0 && dz != sz) continue;
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    if (dy != 0 && dy != sy) continue;
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        if (dx != 0 && dx != sx) continue;
+                        if (dx == 0 && dy == 0 && dz == 0) continue;
+                        if (Neighbor(dx, dy, dz)) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // Enough face grids to cover every point FinerTouches reports: for each
+        // finer neighbour, one face on an axis it actually differs along. Any
+        // point that neighbour touches shares that side, so it lands on that
+        // face's plane.
+        public bool NeedsFaceGrid(int f)
+        {
+            if (Face(f)) return true;
+            for (int dz = -1; dz <= 1; dz++)
+                for (int dy = -1; dy <= 1; dy++)
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        if ((dx == 0 && dy == 0 && dz == 0) || !Neighbor(dx, dy, dz)) continue;
+                        int sf = dx != 0 ? (dx > 0 ? 0 : 1)
+                               : dy != 0 ? (dy > 0 ? 2 : 3)
+                                         : (dz > 0 ? 4 : 5);
+                        if (sf == f) return true;
+                    }
+            return false;
+        }
+
+        public bool AnyFaceGrid
+        {
+            get
+            {
+                for (int f = 0; f < 6; f++) if (NeedsFaceGrid(f)) return true;
+                return false;
+            }
+        }
+
+        public uint Mask => (uint)neighbors; // faces are a subset, so this covers both
     }
 }

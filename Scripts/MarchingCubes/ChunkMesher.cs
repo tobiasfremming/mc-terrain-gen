@@ -11,7 +11,6 @@ public class ChunkMeshJob
 {
     // inputs (set by the manager before dispatch)
     public Vector3 origin;         // chunk's true world position -- used ONLY for chunk transform placement and the empty-skip AABB test
-    public Vector3 densityOrigin;  // same physical position, rebased through MCChunkManager's floating origin -- used for ALL density/noise evaluation (SampleGrid/Gradient/GetVertexColor); see the "Floating-Origin Precision Fix" plan
     public Vector3Int cells;
     public float cellSize;
     public float isoLevel;
@@ -35,7 +34,11 @@ public class ChunkMeshJob
 
     // scratch (owned by this job -> thread safe)
     internal float[] samples;
-    internal float[] faceSamples;
+    // One buffer PER FACE, not one shared scratch: the transition-face grids
+    // are now sampled up front (before the regular mesh is polygonized) so the
+    // regular grid's boundary planes can be overwritten from them -- see
+    // ChunkMesher.Build. They therefore all have to be alive at once.
+    internal readonly float[][] faceSamples = new float[6][];
     internal readonly Dictionary<long, int> vertexCache = new();
     internal readonly int[] cellVerts = new int[12];
 
@@ -93,6 +96,20 @@ public static class ChunkMesher
                 }
             }
 
+            // Order matters. The transition-face grids must exist BEFORE the
+            // regular mesh is polygonized, because PatchRegularBoundaryPlanes
+            // rewrites the regular grid's boundary planes from them -- that is
+            // what keeps LOD seams closed under band-limiting (see its
+            // comment). Polygonizing first would bake the un-patched values
+            // into the vertices.
+            // NeedsFaceGrid, not Face: a chunk that merely touches a finer
+            // chunk along an EDGE or CORNER generates no transition cell there,
+            // but still shares those grid points with it and so must
+            // band-limit them the same way. See PatchRegularBoundaryPlanes.
+            for (int face = 0; face < 6; face++)
+                if (job.needs.NeedsFaceGrid(face))
+                    SampleTransitionFaceGrid(job, face, nx, ny, nz, step);
+
             GenerateRegularMeshData(job, nx, ny, nz, step);
 
             if (job.needs.Any)
@@ -146,7 +163,7 @@ public static class ChunkMesher
     static void GenerateRegularMeshData(ChunkMeshJob job, int nx, int ny, int nz, float step)
     {
         Vector3 chunkSize = new Vector3(nx, ny, nz) * step;
-        Vector3 origin = job.densityOrigin;
+        Vector3 origin = job.origin;
         var field = job.renderField;
         var needs = job.needs;
         var verts = job.verts;
@@ -159,12 +176,16 @@ public static class ChunkMesher
         float[] samples = job.samples;
 
         if (field is ModifiedDensityField mdf)
-            mdf.SampleGridWithRawBase(origin, job.origin, countX, countY, countZ, step, samples, job.gpuRawRegular);
+            mdf.SampleGridWithRawBase(origin, countX, countY, countZ, step, samples, job.gpuRawRegular);
         else
             field.SampleGrid(origin, countX, countY, countZ, step, samples);
         job.gpuRawRegular = null; // one-shot: don't let a pooled job reuse stale GPU data next time
         if (job.isoLevel != 0f)
             for (int i = 0; i < sampleCount; i++) samples[i] -= job.isoLevel;
+
+        // Both grids are iso-adjusted by now, so the two are directly
+        // comparable -- patch before anything reads `samples`.
+        PatchRegularBoundaryPlanes(job, nx, ny, nz, step);
 
         float gradStep = field.GradientStep(step);
 
@@ -191,14 +212,14 @@ public static class ChunkMesher
             float t = (da != db) ? Mathf.Clamp01(da / (da - db)) : 0.5f;
             Vector3 pL = Vector3.Lerp(pa, pb, t);
 
-            Vector3 n = -field.Gradient(origin + pL, gradStep).normalized;
+            Vector3 n = -field.Gradient(origin + pL, gradStep, step).normalized;
             Vector3 pPrimary = pL;
             pL = ApplySecondaryOffset(pL, n, needs, step, chunkSize);
 
             vi = verts.Count;
             verts.Add(pL);
             norms.Add(n);
-            job.colors.Add(VertexColorWithAO(field, origin + pPrimary, n, step));
+            job.colors.Add(VertexColorWithAO(field, origin + pPrimary, n, step, step));
             cache.Add(key, vi);
             return vi;
         }
@@ -230,11 +251,16 @@ public static class ChunkMesher
     // A = cheap baked ambient occlusion — one density sample along the normal;
     // open sky above gives 1, crevices/overhang undersides approach 0. This is
     // the rasterizer's stand-in for the raymarchers' curvature/AO darkening.
-    static Color VertexColorWithAO(DensityField field, Vector3 worldPos, Vector3 n, float step)
+    // `step` sets the probe DISTANCE; `fw` is the band-limiting filter width
+    // of the grid this vertex came from. They differ on transition faces,
+    // where the probe still reaches out by the coarse step but the density
+    // must be filtered at the fine face spacing so both sides of the seam
+    // agree.
+    static Color VertexColorWithAO(DensityField field, Vector3 worldPos, Vector3 n, float step, float fw)
     {
         Color c = field.HasVertexColors ? field.GetVertexColor(worldPos) : new Color(0, 0, 0, 1);
         float d = 2.5f * step;
-        float above = field.Sample(worldPos + n * d);
+        float above = field.Sample(worldPos + n * d, fw);
         c.a = 0.25f + 0.75f * Mathf.Clamp01(-above / d);
         return c;
     }
@@ -324,16 +350,19 @@ public static class ChunkMesher
         result.Add(new PlannedRequest
         {
             kind = PlannedRequest.Kind.Regular,
-            origin = job.densityOrigin,
+            origin = job.origin,
             step = step,
             countX = nx + 1, countY = ny + 1, countZ = nz + 1,
         });
 
-        if (job.needs.Any)
+        if (job.needs.AnyFaceGrid)
         {
             for (int face = 0; face < 6; face++)
             {
-                if (!job.needs.Face(face)) continue;
+                // NeedsFaceGrid, not Face -- edge/corner-only contacts need the
+                // grid for PatchRegularBoundaryPlanes even though they produce
+                // no transition cell.
+                if (!job.needs.NeedsFaceGrid(face)) continue;
                 GetFaceBasis(face, nx, ny, nz, step, out Vector3 faceOrigin, out Vector3 U, out Vector3 V, out int nU, out int nV);
                 float s = 0.5f * step;
                 int ux = (int)U.x, uy = (int)U.y, uz = (int)U.z;
@@ -343,7 +372,7 @@ public static class ChunkMesher
                 {
                     kind = PlannedRequest.Kind.Face,
                     face = face,
-                    origin = job.densityOrigin + faceOrigin,
+                    origin = job.origin + faceOrigin,
                     step = s,
                     countX = ux * (W - 1) + vx * (H - 1) + 1,
                     countY = uy * (W - 1) + vy * (H - 1) + 1,
@@ -359,7 +388,7 @@ public static class ChunkMesher
             result.Add(new PlannedRequest
             {
                 kind = PlannedRequest.Kind.Collision,
-                origin = job.densityOrigin,
+                origin = job.origin,
                 step = step,
                 countX = nx + 1, countY = ny + 1, countZ = nz + 1,
             });
@@ -368,12 +397,137 @@ public static class ChunkMesher
         return result;
     }
 
+    // THE fix for LOD-seam cracks under band-limiting. Read this with
+    // TerrainNoise.cs's header.
+    //
+    // Transvoxel assumes ONE density field sampled at two rates: Lengyel
+    // defines the transition cell's four low-res corner values to simply BE
+    // the coincident high-res samples, which is trivially true when the field
+    // does not depend on sample spacing. Band-limiting made it false -- the
+    // coarse chunk's own grid (spacing `step`) and the fine face grid
+    // (spacing `s`) became genuinely different functions at the same points --
+    // and a zipper handed two different pieces of cloth leaves a gap.
+    //
+    // Rather than teach Transvoxel about two fields (impossible: one case code
+    // drives both sides of the cell), restore its premise. The rule that makes
+    // the field single-valued again is:
+    //
+    //     a grid point is band-limited at the step of the FINEST chunk that
+    //     touches it
+    //
+    // which every chunk sharing that point evaluates identically, so they
+    // cannot disagree. It is deliberately stated per POINT rather than per
+    // face, because the face-only version leaves rims: a chunk diagonally
+    // outside the corner of a finer region shares only an EDGE with it,
+    // generates no transition cell there, and would otherwise leave those
+    // points coarse while its neighbour made them fine -- a thin crack along
+    // the 12 edges of every clipmap box. FinerTouches answers the rule for
+    // faces, edges and corners uniformly.
+    //
+    // Implementation: the fine-filtered values already exist in the face
+    // grids (their even indices are exactly the coarse grid points), so the
+    // patch is a copy, not extra sampling. On a transitioning face this also
+    // restores Lengyel's identity exactly --
+    //
+    //   coarse grid on the plane == face grid even samples == d[0,2,6,8]
+    //                            == d[9..12]
+    //
+    // -- so the coarse cell's boundary polygon and the transition cell's
+    // low-res polygon agree in both value and sign, position and topology.
+    // The cost is a one-cell-thick band where a chunk carries slightly finer
+    // detail than its interior, which is exactly the region the transition
+    // cell exists to blend.
+    static void PatchRegularBoundaryPlanes(ChunkMeshJob job, int nx, int ny, int nz, float step)
+    {
+        var needs = job.needs;
+        if (!needs.AnyFaceGrid) return;
+
+        int cX = nx + 1, cY = ny + 1;
+        float[] regular = job.samples;
+
+        // FinerTouches only depends on which SIDE of the chunk a point is on
+        // per axis, so there are 27 possible answers -- resolve them once
+        // instead of walking 26 neighbours per grid point.
+        Span<bool> fine = stackalloc bool[27]; // per-build, on a worker thread: keep it off the heap
+        for (int sz = -1; sz <= 1; sz++)
+            for (int sy = -1; sy <= 1; sy++)
+                for (int sx = -1; sx <= 1; sx++)
+                    fine[(sz + 1) * 9 + (sy + 1) * 3 + (sx + 1)] = needs.FinerTouches(sx, sy, sz);
+
+        int Side(int i, int n) => i == 0 ? -1 : (i == n ? 1 : 0);
+
+        for (int face = 0; face < 6; face++)
+        {
+            if (!needs.NeedsFaceGrid(face)) continue;
+            float[] faceSamples = job.faceSamples[face];
+            if (faceSamples == null) continue;
+
+            GetFaceBasis(face, nx, ny, nz, step, out Vector3 faceOrigin, out Vector3 U, out Vector3 V, out int nU, out int nV);
+            int ux = (int)U.x, uy = (int)U.y, uz = (int)U.z;
+            int vx = (int)V.x, vy = (int)V.y, vz = (int)V.z;
+            int W = 2 * nU + 1, H = 2 * nV + 1;
+            int fcX = ux * (W - 1) + vx * (H - 1) + 1;
+            int fcY = uy * (W - 1) + vy * (H - 1) + 1;
+
+            int baseX = Mathf.RoundToInt(faceOrigin.x / step);
+            int baseY = Mathf.RoundToInt(faceOrigin.y / step);
+            int baseZ = Mathf.RoundToInt(faceOrigin.z / step);
+
+            for (int b = 0; b <= nV; b++)
+                for (int a = 0; a <= nU; a++)
+                {
+                    int rx = baseX + ux * a + vx * b;
+                    int ry = baseY + uy * a + vy * b;
+                    int rz = baseZ + uz * a + vz * b;
+                    if (!fine[(Side(rz, nz) + 1) * 9 + (Side(ry, ny) + 1) * 3 + (Side(rx, nx) + 1)]) continue;
+
+                    // face grid is at spacing s = step/2, so coarse point
+                    // (a, b) sits at full-res index (2a, 2b).
+                    int fx = ux * (2 * a) + vx * (2 * b);
+                    int fy = uy * (2 * a) + vy * (2 * b);
+                    int fz = uz * (2 * a) + vz * (2 * b);
+                    regular[(rz * cY + ry) * cX + rx] = faceSamples[(fz * fcY + fy) * fcX + fx];
+                }
+        }
+    }
+
+    // Sampling half of the transition face, split out of GenerateTransitionFace
+    // so every face grid exists BEFORE the regular mesh is polygonized (see
+    // Build and PatchRegularBoundaryPlanes for why that ordering is what keeps
+    // LOD seams closed).
+    static void SampleTransitionFaceGrid(ChunkMeshJob job, int face, int nx, int ny, int nz, float step)
+    {
+        GetFaceBasis(face, nx, ny, nz, step, out Vector3 faceOrigin, out Vector3 U, out Vector3 V, out int nU, out int nV);
+        var field = job.renderField;
+        float s = 0.5f * step; // fine (neighbor) sample spacing
+
+        int W = 2 * nU + 1, H = 2 * nV + 1;
+        int ux = (int)U.x, uy = (int)U.y, uz = (int)U.z;
+        int vx = (int)V.x, vy = (int)V.y, vz = (int)V.z;
+        int countX = ux * (W - 1) + vx * (H - 1) + 1;
+        int countY = uy * (W - 1) + vy * (H - 1) + 1;
+        int countZ = uz * (W - 1) + vz * (H - 1) + 1;
+        int total = countX * countY * countZ;
+
+        var buf = job.faceSamples[face];
+        if (buf == null || buf.Length < total) job.faceSamples[face] = buf = new float[total];
+
+        float[] gpuRaw = job.gpuRawFaces[face];
+        if (field is ModifiedDensityField mdf)
+            mdf.SampleGridWithRawBase(job.origin + faceOrigin, countX, countY, countZ, s, buf, gpuRaw);
+        else
+            field.SampleGrid(job.origin + faceOrigin, countX, countY, countZ, s, buf);
+        job.gpuRawFaces[face] = null; // one-shot, see GenerateRegularMeshData's identical note
+        if (job.isoLevel != 0f)
+            for (int i = 0; i < total; i++) buf[i] -= job.isoLevel;
+    }
+
     static void GenerateTransitionFace(ChunkMeshJob job, int face, int nx, int ny, int nz, float step)
     {
         GetFaceBasis(face, nx, ny, nz, step, out Vector3 faceOrigin, out Vector3 U, out Vector3 V, out int nU, out int nV);
 
         Vector3 chunkSize = new Vector3(nx, ny, nz) * step;
-        Vector3 origin = job.densityOrigin;
+        Vector3 origin = job.origin;
         var field = job.renderField;
         var needs = job.needs;
         var verts = job.verts;
@@ -383,24 +537,12 @@ public static class ChunkMesher
         float s = 0.5f * step; // fine (neighbor) sample spacing
         float gradStep = field.GradientStep(step);
 
-        // Pre-sample the whole fine face grid in one batch.
         int W = 2 * nU + 1, H = 2 * nV + 1;
         int ux = (int)U.x, uy = (int)U.y, uz = (int)U.z;
         int vx = (int)V.x, vy = (int)V.y, vz = (int)V.z;
         int countX = ux * (W - 1) + vx * (H - 1) + 1;
         int countY = uy * (W - 1) + vy * (H - 1) + 1;
-        int countZ = uz * (W - 1) + vz * (H - 1) + 1;
-        int total = countX * countY * countZ;
-        if (job.faceSamples == null || job.faceSamples.Length < total) job.faceSamples = new float[total];
-        float[] faceSamples = job.faceSamples;
-        float[] gpuRaw = job.gpuRawFaces[face];
-        if (field is ModifiedDensityField mdf)
-            mdf.SampleGridWithRawBase(origin + faceOrigin, job.origin + faceOrigin, countX, countY, countZ, s, faceSamples, gpuRaw);
-        else
-            field.SampleGrid(origin + faceOrigin, countX, countY, countZ, s, faceSamples);
-        job.gpuRawFaces[face] = null; // one-shot, see GenerateRegularMeshData's identical note
-        if (job.isoLevel != 0f)
-            for (int i = 0; i < total; i++) faceSamples[i] -= job.isoLevel;
+        float[] faceSamples = job.faceSamples[face]; // filled by SampleTransitionFaceGrid
 
         float FaceSample(int a, int b)
         {
@@ -421,6 +563,10 @@ public static class ChunkMesher
             {
                 for (int c = 0; c < 9; c++)
                     d[c] = FaceSample(2 * i + (c % 3), 2 * j + (c / 3));
+                // Lengyel's identity: the low-res corners ARE the coincident
+                // high-res samples. Valid again because
+                // PatchRegularBoundaryPlanes made the coarse grid agree with
+                // this face grid on this plane -- see its comment.
                 for (int hc = 0; hc < 4; hc++)
                     d[9 + hc] = d[kHalfToFullCorner[hc]];
 
@@ -461,7 +607,18 @@ public static class ChunkMesher
                         float t = (d0 != d1) ? Mathf.Clamp01(d0 / (d0 - d1)) : 0.5f;
                         Vector3 p = Vector3.Lerp(p0, p1, t);
 
-                        Vector3 n = -field.Gradient(origin + p, gradStep).normalized;
+                        // Each vertex is band-limited at the resolution of
+                        // the side it belongs to and will be welded against:
+                        // half-res vertices meet OUR regular mesh (step),
+                        // full-res ones meet the fine neighbour's (s). Using
+                        // one width for both pulls one of the two seams open.
+                        // gradStep is already GradientStep(step) on both sides
+                        // here, matching GenerateRegularMeshData exactly, so
+                        // the half-res normals -- and therefore the secondary
+                        // offset below, which is driven by n -- come out
+                        // identical to the regular mesh's.
+                        float vfw = halfRes ? step : s;
+                        Vector3 n = -field.Gradient(origin + p, gradStep, vfw).normalized;
 
                         // Half-res face vertices get the same secondary
                         // transform as the regular boundary vertices; full-res
@@ -473,7 +630,7 @@ public static class ChunkMesher
                         vi = verts.Count;
                         verts.Add(p);
                         norms.Add(n);
-                        job.colors.Add(VertexColorWithAO(field, origin + pPrimary, n, step));
+                        job.colors.Add(VertexColorWithAO(field, origin + pPrimary, n, step, vfw));
                         cache.Add(key, vi);
                     }
                     cellVerts[v] = vi;
@@ -503,7 +660,7 @@ public static class ChunkMesher
     // collision meshes stay sealed; colliders exist only on level-0 chunks.
     static void GenerateCollisionMeshData(ChunkMeshJob job, int nx, int ny, int nz, float step)
     {
-        Vector3 origin = job.densityOrigin;
+        Vector3 origin = job.origin;
         var field = job.physicsField;
         var verts = job.colVerts;
         var tris = job.colTris;
@@ -514,7 +671,7 @@ public static class ChunkMesher
         float[] samples = job.samples;
 
         if (field is ModifiedDensityField mdf)
-            mdf.SampleGridWithRawBase(origin, job.origin, countX, countY, countZ, step, samples, job.gpuRawCollision);
+            mdf.SampleGridWithRawBase(origin, countX, countY, countZ, step, samples, job.gpuRawCollision);
         else
             field.SampleGrid(origin, countX, countY, countZ, step, samples);
         job.gpuRawCollision = null; // one-shot, see GenerateRegularMeshData's identical note

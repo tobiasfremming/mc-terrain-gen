@@ -66,16 +66,17 @@ public class FrostVolumeField : HeightDensityField
         return true;
     }
 
-    public override float HeightAt(float wx, float wz)
+    public override float HeightAt(float wx, float wz, float fw)
     {
         uint s = unchecked((uint)seed);
         float h = baseHeight;
 
         // broad rolling base (interdune-plain equivalent)
-        h += TerrainNoise.Fbm(wx / plainScale, wz / plainScale, 3, s + 11u) * plainAmplitude;
+        h += TerrainNoise.Fbm(wx / plainScale, wz / plainScale, 3, s + 11u, fw / plainScale) * plainAmplitude;
 
         // frozen peaks / hills
-        h += TerrainNoise.RidgedFbm(wx / peakScale, wz / peakScale, peakOctaves, s + 23u) * peakAmp;
+        h += TerrainNoise.RidgedFbm(wx / peakScale, wz / peakScale, peakOctaves, s + 23u,
+                                    filterWidth: fw / peakScale) * peakAmp;
 
         // sastrugi: wind-carved ridges. Anisotropic ridged noise -- long
         // wavelength along wind (ridges run in the wind direction), short
@@ -83,36 +84,55 @@ public class FrostVolumeField : HeightDensityField
         // directional-derivative proxy (two single-octave GNoise taps,
         // instead of a second full multi-octave RidgedFbm call) for the
         // sharp-lee/gentle-windward asymmetry real sastrugi has.
-        if (sastrugi)
+        // Sastrugi are the finest features in this biome (wavelengthAcross is
+        // metres, not tens of metres), so they are the first thing to go as
+        // the sample spacing grows -- gate on the ACROSS wavelength, the
+        // tighter of the two axes.
+        float sastrugiFade = sastrugi ? TerrainNoise.DetailFade(fw, sastrugiWavelengthAcross) : 0f;
+        if (sastrugiFade > 0f)
         {
             float wr = windDegrees * Mathf.Deg2Rad;
             float cu = Mathf.Cos(wr), su = Mathf.Sin(wr);
             float u = wx * cu + wz * su;   // along wind
             float v = -wx * su + wz * cu;  // across wind
 
-            float ridge = TerrainNoise.RidgedFbm(v / sastrugiWavelengthAcross, u / sastrugiWavelengthAlong, sastrugiOctaves, s + 41u);
+            float ridge = TerrainNoise.RidgedFbm(v / sastrugiWavelengthAcross, u / sastrugiWavelengthAlong, sastrugiOctaves, s + 41u,
+                                                 filterWidth: fw / sastrugiWavelengthAcross);
             float nHere = TerrainNoise.GNoise(v / sastrugiWavelengthAcross, u / sastrugiWavelengthAlong, s + 41u);
             float nAhead = TerrainNoise.GNoise(v / sastrugiWavelengthAcross, (u + sastrugiWavelengthAcross * 0.35f) / sastrugiWavelengthAlong, s + 41u);
             ridge += sastrugiAsymmetry * 0.5f * (nHere - nAhead);
-            h += ridge * sastrugiAmp;
+            h += ridge * sastrugiAmp * sastrugiFade;
         }
 
         // permafrost polygons: Worley cell-boundary troughs (patterned
         // ground) -- f2-f1 is ~0 exactly on a cell edge, so 1-smoothstep(...)
         // carves a thin trough network along the polygon boundaries.
-        if (permafrostPolygons)
+        // Worley troughs are single-scale, so there are no octaves to fade --
+        // the whole feature's amplitude has to ramp out instead. The relevant
+        // size is the TROUGH width (edgeWidth, in cell units, hence the
+        // multiply back up by polygonScale), not the cell spacing: a thin
+        // crack between wide cells is what undersampling turns into a
+        // flickering, LOD-dependent gash.
+        float polyFade = permafrostPolygons
+            ? TerrainNoise.DetailFade(fw, polygonEdgeWidth * polygonScale)
+            : 0f;
+        if (polyFade > 0f)
         {
             TerrainNoise.Worley2(wx / polygonScale, wz / polygonScale, s + 61u, out float f1, out float f2);
             float trough = 1f - TerrainNoise.Smoothstep(0f, polygonEdgeWidth, f2 - f1);
-            h -= trough * polygonTroughDepth;
+            h -= trough * polygonTroughDepth * polyFade;
         }
 
         // crevasse fields: same Worley-edge trick as the polygons, but finer
         // and deeper, and gated by a slow patch mask so cracked glacier-like
         // zones appear regionally rather than blanketing the whole biome.
-        if (crevasses)
+        float crevasseFade = crevasses
+            ? TerrainNoise.DetailFade(fw, crevasseEdgeWidth * crevasseScale)
+            : 0f;
+        if (crevasseFade > 0f)
         {
-            float patch = TerrainNoise.Fbm(wx / crevassePatchScale + 5.2f, wz / crevassePatchScale - 2.9f, 2, s + 71u);
+            float patch = TerrainNoise.Fbm(wx / crevassePatchScale + 5.2f, wz / crevassePatchScale - 2.9f, 2, s + 71u,
+                                           fw / crevassePatchScale);
             patch = Mathf.Clamp01((patch + 0.4f) / 0.7f);
             patch = patch * patch * (3f - 2f * patch);
 
@@ -120,13 +140,13 @@ public class FrostVolumeField : HeightDensityField
             {
                 TerrainNoise.Worley2(wx / crevasseScale, wz / crevasseScale, s + 83u, out float f1, out float f2);
                 float crack = 1f - TerrainNoise.Smoothstep(0f, crevasseEdgeWidth, f2 - f1);
-                h -= crack * crevasseDepth * patch;
+                h -= crack * crevasseDepth * patch * crevasseFade;
             }
         }
 
         // frost heave hummocks: small bumpy ground texture
         if (hummocks)
-            h += TerrainNoise.Fbm(wx / hummockScale, wz / hummockScale, 2, s + 97u) * hummockAmp;
+            h += TerrainNoise.Fbm(wx / hummockScale, wz / hummockScale, 2, s + 97u, fw / hummockScale) * hummockAmp;
 
         return h;
     }

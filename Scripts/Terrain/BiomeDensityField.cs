@@ -130,13 +130,13 @@ public class BiomeDensityField : DensityField
     // Density blend using externally supplied weights (e.g. from
     // ComputeWeights3D) instead of computing them from p.x/p.z -- same
     // skip-and-renormalize logic as Sample().
-    public float SampleWithWeights(Vector3 p, ReadOnlySpan<float> w, int n)
+    public float SampleWithWeights(Vector3 p, ReadOnlySpan<float> w, int n, float fw)
     {
         float d = 0f, used = 0f;
         for (int i = 0; i < n; i++)
         {
             if (w[i] < 0.004f || Field(i) == null) continue;
-            d += w[i] * Field(i).Sample(p);
+            d += w[i] * Field(i).Sample(p, fw);
             used += w[i];
         }
         return used > 0f ? d / used : -p.y;
@@ -159,7 +159,7 @@ public class BiomeDensityField : DensityField
         return h;
     }
 
-    public override float Sample(Vector3 p)
+    public override float Sample(Vector3 p, float fw)
     {
         int n = Mathf.Min(biomes.Length, kMaxBiomes);
         if (n == 0) return -p.y;
@@ -173,7 +173,7 @@ public class BiomeDensityField : DensityField
         for (int i = 0; i < n; i++)
         {
             if (w[i] < 0.004f || Field(i) == null) continue;
-            d += w[i] * Field(i).Sample(p);
+            d += w[i] * Field(i).Sample(p, fw);
             used += w[i];
         }
         return used > 0f ? d / used : -p.y;
@@ -214,7 +214,7 @@ public class BiomeDensityField : DensityField
                     for (int i = 0; i < n; i++)
                         if (w[i] >= 0.004f && Field(i) != null)
                             Field(i).AddDensityColumn(wx, wz, origin.y, step, countY,
-                                                      w[i] / used, dest, colIdx, countX);
+                                                      w[i] / used, dest, colIdx, countX, step);
             }
         }
     }
@@ -222,7 +222,7 @@ public class BiomeDensityField : DensityField
     // Fast 2D gradient when every active biome is a plain heightfield
     // (d/dy is exactly -1 there); full 3D central differences otherwise.
     // Both formulas agree exactly where the choice flips, so no seams.
-    public override Vector3 Gradient(Vector3 p, float eps)
+    public override Vector3 Gradient(Vector3 p, float eps, float fw)
     {
         int n = Mathf.Min(biomes.Length, kMaxBiomes);
         if (n > 0)
@@ -237,12 +237,12 @@ public class BiomeDensityField : DensityField
             }
             if (pure2D)
             {
-                float dx = Sample(new Vector3(p.x + eps, p.y, p.z)) - Sample(new Vector3(p.x - eps, p.y, p.z));
-                float dz = Sample(new Vector3(p.x, p.y, p.z + eps)) - Sample(new Vector3(p.x, p.y, p.z - eps));
+                float dx = Sample(new Vector3(p.x + eps, p.y, p.z), fw) - Sample(new Vector3(p.x - eps, p.y, p.z), fw);
+                float dz = Sample(new Vector3(p.x, p.y, p.z + eps), fw) - Sample(new Vector3(p.x, p.y, p.z - eps), fw);
                 return new Vector3(dx / (2f * eps), -1f, dz / (2f * eps));
             }
         }
-        return base.Gradient(p, eps); // 6-sample central differences
+        return base.Gradient(p, eps, fw); // 6-sample central differences
     }
 
     // Weighted surface hardness: 0 soft sand .. 1 hard rock, blending smoothly

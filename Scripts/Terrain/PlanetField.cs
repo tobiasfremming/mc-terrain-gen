@@ -42,20 +42,22 @@ public class PlanetField : DensityField
 
     const float kWeightEpsilon = 0.0005f;
 
-    // Floating-origin precision fix: MCChunkManager rebases the world
-    // positions it feeds into density evaluation (job.densityOrigin) through
-    // this same offset, so `center` must be rebased identically here -- fed
-    // a rebased worldPos against a raw/absolute center would silently
-    // compute the wrong `rel` (offset by _densityOriginOffset) as soon as
-    // the offset becomes non-zero. Defaults to zero (= today's exact
-    // behavior) until MCChunkManager calls RefreshDensityOriginOffset.
-    // Deliberately NOT used by TryGetEmptySkip/SafeSpawnRadius below --
-    // those receive/report absolute (job.origin-based) positions, not
-    // densityOrigin-based ones, so they must keep using the raw `center`.
-    Double3 _densityOriginOffset;
-    Vector3 CenterRebased => (Vector3)((Double3)center - _densityOriginOffset);
-
-    public void RefreshDensityOriginOffset(Double3 offset) => _densityOriginOffset = offset;
+    // NOTE: Sample/GetVertexColor/SurfaceHardness take ABSOLUTE world
+    // positions, the same convention every other DensityField uses. There
+    // used to be a "floating origin" rebase here (a CenterRebased property
+    // fed by MCChunkManager's job.densityOrigin) intended to fight float32
+    // precision loss at large radius. It was removed: it bought nothing (the
+    // sample position got smaller but `center` got correspondingly larger,
+    // so `rel` came out at the same magnitude and the same precision), and it
+    // silently broke every caller that legitimately passes an absolute
+    // position -- TerrainModificationCache (terrain edits/footprints) and
+    // CharacterGravity's surface probes both did, which is what made
+    // footprints stop working once the planet was big enough to trip the
+    // recenter threshold. If precision ever genuinely does become the
+    // limiting factor here (it is not below ~10^7 radius: float32's ULP at
+    // 10^5 is 8 mm), the fix is to split the coordinate into an exact
+    // integer part plus a small fractional part BEFORE the noise functions'
+    // floor/frac split -- not to shuffle the origin around.
 
     // A radius comfortably above ANY possible terrain -- for spawning
     // something and letting it fall onto the surface, rather than trying to
@@ -71,11 +73,11 @@ public class PlanetField : DensityField
         return radius * 1.5f + spawnMargin;
     }
 
-    public override float Sample(Vector3 p)
+    public override float Sample(Vector3 p, float fw)
     {
-        if (surface == null) return radius - Vector3.Distance(p, CenterRebased);
+        if (surface == null) return radius - Vector3.Distance(p, center);
 
-        Vector3 rel = p - CenterRebased;
+        Vector3 rel = p - center;
         float dist = rel.magnitude;
         if (dist < 1e-5f) return radius; // exact center: degenerate, arbitrary but harmless
 
@@ -86,29 +88,33 @@ public class PlanetField : DensityField
         {
             int n = bdf.BiomeCount;
             Span<float> bw = stackalloc float[BiomeDensityField.MaxBiomes];
-            // Reuse `rel` directly rather than reconstructing dir*radius from
-            // scratch (rel.normalized * radius) -- that reconstruction threw
-            // away rel's own precision (whatever consistency the floating-
-            // origin fix gives it) and rebuilt a fresh full-magnitude vector
-            // via an independent normalize+multiply, which is exactly what
-            // caused biome selection to stay broken at large radius even
-            // after CenterRebased/densityOrigin were fixed elsewhere. Using
-            // rel means biome selection drifts by `localHeight` (tens of
-            // meters) instead of being perfectly height-invariant -- negligible
-            // against regionScale (thousands of meters).
-            bdf.ComputeWeights3D(rel, bw, n);
+            // rel.normalized * radius, NOT rel -- biome selection must be a
+            // function of WHERE ON THE SPHERE you are, not how high above it.
+            // Feeding `rel` directly (briefly tried, as a misguided precision
+            // tweak) makes selection drift by localHeight/regionScale ~= 0.2
+            // cells over the terrain's height range. That sounds negligible,
+            // but blendSharpness is ~200: the softmax is effectively an
+            // argmax, so a 0.2-cell drift flips the winning biome anywhere two
+            // biomes score within ~0.1 of each other -- a ~200m-wide band
+            // around EVERY biome boundary. The visible result is one biome
+            // stacked on top of another in the same column (frost caps
+            // floating over canyon), which reads as a "monolith".
+            bdf.ComputeWeights3D(rel.normalized * radius, bw, n);
 
             float d = 0f;
-            if (w.x > kWeightEpsilon) d += w.x * bdf.SampleWithWeights(new Vector3(rel.z, localHeight, rel.y), bw, n);
-            if (w.y > kWeightEpsilon) d += w.y * bdf.SampleWithWeights(new Vector3(rel.x, localHeight, rel.z), bw, n);
-            if (w.z > kWeightEpsilon) d += w.z * bdf.SampleWithWeights(new Vector3(rel.x, localHeight, rel.y), bw, n);
+            // The triplanar permutation is a rigid relabelling of axes, so
+            // the sample spacing survives it unchanged -- fw passes straight
+            // through to each face.
+            if (w.x > kWeightEpsilon) d += w.x * bdf.SampleWithWeights(new Vector3(rel.z, localHeight, rel.y), bw, n, fw);
+            if (w.y > kWeightEpsilon) d += w.y * bdf.SampleWithWeights(new Vector3(rel.x, localHeight, rel.z), bw, n, fw);
+            if (w.z > kWeightEpsilon) d += w.z * bdf.SampleWithWeights(new Vector3(rel.x, localHeight, rel.y), bw, n, fw);
             return d;
         }
 
         float d2 = 0f;
-        if (w.x > kWeightEpsilon) d2 += w.x * surface.Sample(new Vector3(rel.z, localHeight, rel.y));
-        if (w.y > kWeightEpsilon) d2 += w.y * surface.Sample(new Vector3(rel.x, localHeight, rel.z));
-        if (w.z > kWeightEpsilon) d2 += w.z * surface.Sample(new Vector3(rel.x, localHeight, rel.y));
+        if (w.x > kWeightEpsilon) d2 += w.x * surface.Sample(new Vector3(rel.z, localHeight, rel.y), fw);
+        if (w.y > kWeightEpsilon) d2 += w.y * surface.Sample(new Vector3(rel.x, localHeight, rel.z), fw);
+        if (w.z > kWeightEpsilon) d2 += w.z * surface.Sample(new Vector3(rel.x, localHeight, rel.y), fw);
         return d2;
     }
 
@@ -123,13 +129,13 @@ public class PlanetField : DensityField
     public override Color GetVertexColor(Vector3 p)
     {
         if (surface == null) return base.GetVertexColor(p);
-        Vector3 rel = p - CenterRebased;
+        Vector3 rel = p - center;
 
         if (surface is BiomeDensityField bdf)
         {
             int n = bdf.BiomeCount;
             Span<float> bw = stackalloc float[BiomeDensityField.MaxBiomes];
-            bdf.ComputeWeights3D(rel, bw, n); // see Sample()'s comment on why rel, not rel.normalized*radius
+            bdf.ComputeWeights3D(rel.normalized * radius, bw, n); // see Sample() on why normalized*radius, not rel
             return bdf.GetVertexColorWithWeights(bw, n);
         }
 
@@ -146,13 +152,13 @@ public class PlanetField : DensityField
     public override float SurfaceHardness(Vector3 p)
     {
         if (surface == null) return base.SurfaceHardness(p);
-        Vector3 rel = p - CenterRebased;
+        Vector3 rel = p - center;
 
         if (surface is BiomeDensityField bdf)
         {
             int n = bdf.BiomeCount;
             Span<float> bw = stackalloc float[BiomeDensityField.MaxBiomes];
-            bdf.ComputeWeights3D(rel, bw, n); // see Sample()'s comment on why rel, not rel.normalized*radius
+            bdf.ComputeWeights3D(rel.normalized * radius, bw, n); // see Sample() on why normalized*radius, not rel
             return bdf.SurfaceHardnessWithWeights(bw, n);
         }
 
@@ -193,12 +199,24 @@ public class PlanetField : DensityField
     // Without this, EVERY chunk in the clipmap box gets fully marched,
     // including chunks buried deep in the planet's interior or stranded far
     // out in empty space -- the single biggest cost of planet mode.
+    // The radial band [rLo, rHi] that can contain surface. Everything nearer
+    // the center is solid rock, everything beyond it is open sky. Public
+    // because callers outside the mesher need it to answer "is this point
+    // anywhere near the ground?" -- notably MCChunkManager's editor-time
+    // generate, which otherwise happily centres the whole clipmap 1000 m deep
+    // inside the planet and produces nothing.
+    public bool TryGetSurfaceBand(out float rLo, out float rHi)
+    {
+        rLo = rHi = radius;
+        if (surface == null || !surface.TryGetHeightBounds(out float minH, out float maxH)) return false;
+        rLo = Mathf.Max(0f, radius + minH);
+        rHi = radius + maxH;
+        return true;
+    }
+
     public override bool TryGetEmptySkip(Vector3 boxMin, Vector3 boxMax)
     {
-        if (surface == null || !surface.TryGetHeightBounds(out float minH, out float maxH)) return false;
-
-        float rLo = Mathf.Max(0f, radius + minH);
-        float rHi = radius + maxH;
+        if (!TryGetSurfaceBand(out float rLo, out float rHi)) return false;
 
         float closestSq = ClosestDistanceSq(center, boxMin, boxMax);
         float farthestSq = FarthestDistanceSq(center, boxMin, boxMax);
@@ -231,7 +249,7 @@ public class PlanetField : DensityField
     public bool TryBuildGpuParams(out PlanetGpuParams planetParams, out BiomeBlendGpuParams blend,
                                    out LeafGpuParams[] leaves, out GpuFieldType[] fieldTypes, out float[] biases)
     {
-        planetParams = new PlanetGpuParams { isPlanet = 1f, center = CenterRebased, radius = radius };
+        planetParams = new PlanetGpuParams { isPlanet = 1f, center = center, radius = radius };
         if (surface is BiomeDensityField biomeWorld && biomeWorld.TryBuildGpuLeaves(out blend, out leaves, out fieldTypes, out biases))
             return true;
 

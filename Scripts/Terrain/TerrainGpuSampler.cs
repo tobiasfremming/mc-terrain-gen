@@ -30,8 +30,8 @@ public class TerrainGpuSampler : IDisposable
     public const int MaxBiomes = 8;
 
     readonly ComputeShader _shader;
-    readonly int _kernel = -1;
-    readonly uint _threadGroupSizeX = 64;
+    int _kernel = -1;
+    uint _threadGroupSizeX = 64;
 
     ComputeBuffer _leafParamsBuffer;
     ComputeBuffer _fieldTypeBuffer;
@@ -47,8 +47,36 @@ public class TerrainGpuSampler : IDisposable
         _shader = shader;
         if (_shader == null || !SupportsCompute) return;
 
-        _kernel = _shader.FindKernel("CSMain");
-        _shader.GetKernelThreadGroupSizes(_kernel, out _threadGroupSizeX, out _, out _);
+        // A ComputeShader that failed to compile (most likely: the FXC
+        // "Compiler timed out" this kernel is genuinely capable of hitting)
+        // still loads as an asset, but exposes NO kernels -- FindKernel logs
+        // an error and returns -1, and GetKernelThreadGroupSizes then THROWS
+        // IndexOutOfRangeException. Letting that escape this constructor took
+        // the entire generation pass down with it: EnsureField ->
+        // RecomputeTargets -> GenerateAllChunks all unwound, so not one chunk
+        // was built -- not even the ones that never needed the GPU. The whole
+        // point of the CPU fallback is that a broken/absent compute shader is
+        // survivable, so swallow it here and leave _kernel at -1.
+        try
+        {
+            if (!_shader.HasKernel("CSMain"))
+            {
+                Debug.LogWarning($"[TerrainGpuSampler] '{_shader.name}' has no CSMain kernel " +
+                                 "(did it fail to compile?). Falling back to CPU density sampling.");
+                return;
+            }
+            int k = _shader.FindKernel("CSMain");
+            if (k < 0) return;
+            _shader.GetKernelThreadGroupSizes(k, out _threadGroupSizeX, out _, out _);
+            _kernel = k;
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[TerrainGpuSampler] Could not bind '{_shader.name}' CSMain " +
+                             $"({e.GetType().Name}: {e.Message}). Falling back to CPU density sampling.");
+            _kernel = -1;
+            return;
+        }
 
         _leafParamsBuffer = new ComputeBuffer(MaxBiomes, Marshal.SizeOf<LeafGpuParams>());
         _fieldTypeBuffer = new ComputeBuffer(MaxBiomes, sizeof(int));
@@ -66,13 +94,15 @@ public class TerrainGpuSampler : IDisposable
     public void RefreshWorldParams(DensityField baseField)
     {
         IsWorldGpuCapable = false;
-        if (_shader == null || !SupportsCompute) return;
+        // _kernel < 0 => the shader never bound (see the constructor); every
+        // buffer below is null too, so this must bail before touching them.
+        if (_shader == null || !SupportsCompute || _kernel < 0) return;
 
-        // PlanetGpuParams.center comes ONLY from TryBuildGpuParams below --
-        // it must be PlanetField's own CenterRebased (floating-origin
-        // precision fix), not a raw re-read of planet.center here. This used
-        // to read `planet.center` directly and discard TryBuildGpuParams'
-        // own output via `out _`, silently bypassing the rebase.
+        // PlanetGpuParams.center comes ONLY from TryBuildGpuParams below, so
+        // the CPU and GPU can never disagree about it. This used to re-read
+        // `planet.center` directly here and discard TryBuildGpuParams' own
+        // output via `out _` -- harmless while the two agreed, a silent
+        // divergence the moment they stopped.
         PlanetGpuParams planetParams = default; // isPlanet=0/center=zero/radius=0 for the non-planet case, matching prior defaults
         BiomeBlendGpuParams blend;
         LeafGpuParams[] leaves;

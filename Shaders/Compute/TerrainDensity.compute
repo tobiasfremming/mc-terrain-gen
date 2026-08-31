@@ -85,6 +85,10 @@ void CSMain(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
     uint y = (localIdx / req.countX) % req.countY;
     uint z = localIdx / (req.countX * req.countY);
 
+    // req.step doubles as the LOD band-limiting filter width -- it IS this
+    // request's sample spacing. The CPU path passes the same value at the
+    // same points (DensityField.SampleGrid), which is what keeps GPU-filled
+    // and CPU-filled chunks bit-comparable.
     float3 worldPos = req.origin + float3(x, y, z) * req.step;
-    _Output[req.outputOffset + localIdx] = EvaluateWorldDensity(worldPos);
+    _Output[req.outputOffset + localIdx] = EvaluateWorldDensity(worldPos, req.step);
 }
