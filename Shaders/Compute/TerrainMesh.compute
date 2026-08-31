@@ -1,0 +1,825 @@
+// GPU Marching Cubes: turns an already-GPU-resident density grid straight
+// into vertex/index buffers, so a chunk's mesh never has to be marched on
+// the CPU at all.
+//
+// WHY, precisely -- the win is CPU time, not bandwidth. Reading a finished
+// mesh back (~5k verts x 40B + ~15k indices x 4B ~= 260 KB) is actually MORE
+// bytes than the 35^3 density grid it replaces (~172 KB). What it removes is
+// the expensive part: the per-vertex work. ChunkMesher pays one full
+// EvaluateWorldDensity per vertex for the AO probe plus a biome-weight
+// evaluation for the vertex color -- on a worker thread, serially, ~5000
+// times per chunk. Here both are just more of what this hardware is already
+// doing in parallel for the grid itself.
+//
+// Reads the SAME density values ChunkMesher would have read (the grid is
+// computed by TerrainDensity.compute and left on the GPU), and applies the
+// identical interpolation and gradient formulas, so a GPU-meshed chunk and a
+// CPU-meshed neighbour agree on their shared boundary vertices to within
+// float rounding -- which is the same standard two CPU-meshed neighbours
+// already meet (they disagree at the last ULP too, because they reach a
+// shared edge from opposite directions; see kEdgeOwner).
+//
+// SCOPE (deliberate, see TerrainGpuMesher.cs's admission test): no collider,
+// no terrain edits. Colliders need the data CPU-side for PhysX to cook
+// anyway, and edits are applied on the CPU by ModifiedDensityField, which
+// this path bypasses entirely. Anything failing that test simply takes the
+// existing CPU path -- never a partial mix within one chunk.
+//
+// Transvoxel transition faces ARE handled, by CSPatch (which restores
+// Lengyel's single-field premise the way PatchRegularBoundaryPlanes does on
+// the CPU) and CSTransition (the transition cells themselves). Read
+// ChunkMesher.PatchRegularBoundaryPlanes' comment first -- it is the argument
+// for why any of this is watertight, and this file only reimplements it.
+
+#pragma kernel CSClear
+#pragma kernel CSPatch
+#pragma kernel CSVertices
+#pragma kernel CSTriangles
+#pragma kernel CSTransition
+#pragma kernel CSCopyOut
+
+#include "DensityPlanet.hlsl"
+
+// Mirrors ChunkMeshJob.PackedVertex and MarchingChunk.kVertexLayout exactly:
+// position, normal, color, tightly packed, 40 bytes. All three -- four, with
+// MC_VERTEX_STRIDE below -- have to be changed together.
+#define MC_VERTEX_STRIDE 40u
+
+struct MCVertex
+{
+    float3 position; // CHUNK-LOCAL, matching ChunkMesher (the chunk transform carries the origin)
+    float3 normal;
+    float4 color;
+};
+
+struct MeshChunkDesc
+{
+    float3 origin;      // chunk world origin (NOT the halo grid origin, which is one step lower)
+    float step;
+    float isoLevel;
+    uint densityBase;   // first element of this chunk's halo grid in _Density
+    // Bit f set = face f has a half-resolution grid in _Density. Faces are
+    // 0:+X 1:-X 2:+Y 3:-Y 4:+Z 5:-Z, matching ChunkMesher.GetFaceBasis.
+    uint faceGridMask;
+    // Bit f set = face f gets actual transition CELLS. A subset of
+    // faceGridMask: a chunk that only touches a finer chunk along an edge or
+    // corner still needs that face's grid for CSPatch, but generates no
+    // transition geometry there. See TransitionNeeds.NeedsFaceGrid.
+    uint transitionMask;
+    // 27 bits of TransitionNeeds.FinerTouches, indexed (sz+1)*9+(sy+1)*3+(sx+1),
+    // precomputed on the CPU rather than re-deriving the 26-neighbour walk per
+    // grid point here.
+    uint finerMask;
+    // First element of each face grid in _Density; only meaningful where
+    // faceGridMask says so. Six named fields rather than uint[6]: array
+    // packing inside a StructuredBuffer struct is the one layout rule that
+    // varies between compilers, and this struct has to match C# byte for byte.
+    uint faceBase0, faceBase1, faceBase2, faceBase3, faceBase4, faceBase5;
+    uint pad0;          // pads to 64 bytes
+};
+
+StructuredBuffer<MeshChunkDesc> _Desc;
+// RW because CSPatch writes into it -- the coarse grid's boundary planes are
+// overwritten from the fine face grids before anything marches. Everything
+// else only reads.
+RWStructuredBuffer<float> _Density;    // halo grid + up to 6 face grids per chunk
+StructuredBuffer<int> _TriTable;       // 256 * 16, row-major, -1 terminated
+
+// Transvoxel tables, flattened from TransVoxelTables.Tables. The variable
+// length rows (TransitionVertexData, each RegularCell's index list) are packed
+// into one flat array each with a (count | offset << 8) descriptor per entry.
+StructuredBuffer<int> _TransCellClass; // [512]
+StructuredBuffer<int> _TransCellInfo;  // per cell class: triangleCount | (indexOffset << 8)
+StructuredBuffer<int> _TransCellIdx;   // flat triangle indices
+StructuredBuffer<int> _TransVertInfo;  // per case code: vertexCount | (dataOffset << 8)
+StructuredBuffer<int> _TransVertData;  // flat packed corner pairs
+
+RWStructuredBuffer<int> _EdgeIdx;      // 3 per owned grid point per chunk; -1 = no vertex
+RWStructuredBuffer<MCVertex> _Verts;
+RWStructuredBuffer<uint> _Indices;
+// MC_COUNTS_PER_CHUNK slots per chunk:
+//   0 vertexCount, 1 indexCount, 2 overflow flag,
+//   3..5 local-space bounds min (x,y,z), 6..8 bounds max.
+//
+// The bounds are accumulated here rather than walked on the CPU afterwards
+// because vertex positions are chunk-LOCAL and therefore non-negative
+// (lattice 0..cells times a positive step), and asuint() is monotonic over
+// non-negative floats -- so a plain InterlockedMin/Max on the bit pattern
+// orders them correctly. That saves the readback callback from walking every
+// vertex on the main thread just to reproduce what Mesh.RecalculateBounds
+// would have done.
+#define MC_COUNTS_PER_CHUNK 9u
+RWStructuredBuffer<uint> _Counts;
+
+uint _Cells;           // cells per axis (cubic); same for every chunk in a batch
+uint _ChunkCount;
+uint _VertexCapacity;  // per chunk
+uint _IndexCapacity;   // per chunk
+uint _GroupsX;         // see TerrainDensity.compute: dispatches spread over X and Y
+uint _TotalThreads;
+
+// CSCopyOut only. The destination is ONE chunk's Mesh, so these are set per
+// dispatch rather than living in the descriptor.
+RWByteAddressBuffer _MeshVerts;
+RWByteAddressBuffer _MeshIndices;
+uint _CopyChunk;        // which chunk slot in _Verts/_Indices to copy from
+uint _CopyVertexCount;
+uint _CopyIndexCount;
+
+// ---------------------------------------------------------------- indexing --
+
+// Halo grid stride. Must equal ChunkMesher.RegularCount(cells) = cells+1+2*kHalo
+// with kHalo == 1, and the layout must match ChunkMesher.RegularIdx.
+uint MC_HaloStride() { return _Cells + 3u; }
+
+// Chunk-lattice (0..cells, and one past either end) -> flat halo index.
+uint MC_GridIdx(uint chunkBase, int x, int y, int z)
+{
+    uint h = MC_HaloStride();
+    return chunkBase + (uint)((z + 1) * (int)(h * h) + (y + 1) * (int)h + (x + 1));
+}
+
+float MC_D(uint chunkBase, int x, int y, int z, float iso)
+{
+    return _Density[MC_GridIdx(chunkBase, x, y, z)] - iso;
+}
+
+// Owned-point stride: only lattice points 0..cells own edge slots.
+uint MC_PointStride() { return _Cells + 1u; }
+
+uint MC_EdgeSlot(uint chunkIdx, uint x, uint y, uint z, uint axis)
+{
+    uint p = MC_PointStride();
+    uint perChunk = 3u * p * p * p;
+    return chunkIdx * perChunk + 3u * ((z * p + y) * p + x) + axis;
+}
+
+// Port of ChunkMesher.GetFaceBasis, in LATTICE units (multiples of step).
+// nU and nV are both _Cells here because a chunk is cubic -- the CPU version
+// carries them separately only because it is written against nx/ny/nz.
+uint MC_FaceBase(MeshChunkDesc d, uint face)
+{
+    if (face == 0u) return d.faceBase0;
+    if (face == 1u) return d.faceBase1;
+    if (face == 2u) return d.faceBase2;
+    if (face == 3u) return d.faceBase3;
+    if (face == 4u) return d.faceBase4;
+    return d.faceBase5;
+}
+
+void MC_FaceBasis(uint face, out int3 faceLat, out int3 U, out int3 V)
+{
+    int c = (int)_Cells;
+    if (face == 0u)      { faceLat = int3(c, 0, 0); U = int3(0, 1, 0); V = int3(0, 0, 1); } // +X
+    else if (face == 1u) { faceLat = int3(0, 0, 0); U = int3(0, 0, 1); V = int3(0, 1, 0); } // -X
+    else if (face == 2u) { faceLat = int3(0, c, 0); U = int3(0, 0, 1); V = int3(1, 0, 0); } // +Y
+    else if (face == 3u) { faceLat = int3(0, 0, 0); U = int3(1, 0, 0); V = int3(0, 0, 1); } // -Y
+    else if (face == 4u) { faceLat = int3(0, 0, c); U = int3(1, 0, 0); V = int3(0, 1, 0); } // +Z
+    else                 { faceLat = int3(0, 0, 0); U = int3(0, 1, 0); V = int3(1, 0, 0); } // -Z
+}
+
+// Flat index of face-grid sample (a, b), matching ChunkMesher's FaceSample
+// exactly: the grid is a 2D sheet stored with the same 3D (z*cY+y)*cX+x
+// convention as every other grid here, one of whose dimensions is 1.
+uint MC_FaceIdx(uint face, int a, int b)
+{
+    int3 faceLat, U, V;
+    MC_FaceBasis(face, faceLat, U, V);
+    int span = 2 * (int)_Cells; // (W-1) and (H-1); equal, since the chunk is cubic
+    int cX = (U.x + V.x) * span + 1;
+    int cY = (U.y + V.y) * span + 1;
+    int3 q = U * a + V * b;
+    return (uint)((q.z * cY + q.y) * cX + q.x);
+}
+
+// Face-grid density, iso-adjusted -- the CPU subtracts isoLevel into the face
+// buffer up front (SampleTransitionFaceGrid); doing it at read time here is
+// the same value and keeps _Density holding raw density for CSPatch.
+float MC_FaceD(uint faceBase, uint face, int a, int b, float iso)
+{
+    return _Density[faceBase + MC_FaceIdx(face, a, b)] - iso;
+}
+
+// ------------------------------------------------------------------ tables --
+
+// Bourke corner offsets, matching MarchingCubesTables.Corner exactly.
+// Lengyel's transition-cell corner bit order and the four low-res corners'
+// mapping onto the nine high-res ones. Identical to ChunkMesher's own
+// kTransitionCaseBit / kHalfToFullCorner -- do not "tidy" either.
+static const int kTransitionCaseBit[9] = { 0x01, 0x02, 0x04, 0x80, 0x100, 0x08, 0x40, 0x20, 0x10 };
+static const int kHalfToFullCorner[4] = { 0, 2, 6, 8 };
+
+static const int3 kCorner[8] =
+{
+    int3(0, 0, 0), int3(1, 0, 0), int3(1, 1, 0), int3(0, 1, 0),
+    int3(0, 0, 1), int3(1, 0, 1), int3(1, 1, 1), int3(0, 1, 1)
+};
+
+// Each MC edge, re-expressed as (owning lattice point offset, axis) so a
+// vertex can be deduplicated by the point that owns it -- the GPU equivalent
+// of ChunkMesher's edge-keyed dictionary, but with no hashing and no
+// contention: every edge has exactly one owner, and one thread per owner.
+//
+// Derived directly from MarchingCubesTables.EdgeToCorners. Note edges 2, 3, 6
+// and 7 run in the NEGATIVE axis direction there, and this table canonicalises
+// them to the positive one. That flips t to 1-t, which is the same point but
+// not the same last bit. Harmless, and not new: ChunkMesher already computes
+// a shared edge from whichever cell reaches it first, so two neighbouring
+// chunks already disagree at that ULP today.
+// xyz = offset, w = axis (0=X, 1=Y, 2=Z).
+static const int4 kEdgeOwner[12] =
+{
+    int4(0, 0, 0, 0), int4(1, 0, 0, 1), int4(0, 1, 0, 0), int4(0, 0, 0, 1),
+    int4(0, 0, 1, 0), int4(1, 0, 1, 1), int4(0, 1, 1, 0), int4(0, 0, 1, 1),
+    int4(0, 0, 0, 2), int4(1, 0, 0, 2), int4(1, 1, 0, 2), int4(0, 1, 0, 2)
+};
+
+// ----------------------------------------------------------------- normals --
+
+// Port of ChunkMesher.GridGradient -- same central differences, same trilinear
+// blend, same lattice-space input. Read its comment for why lattice space and
+// the exact zero-weight drop-out are what keep chunk seams closed.
+float3 MC_GridGradient(uint chunkBase, float3 lPos, float cellStep)
+{
+    int nx = (int)_Cells;
+    int x0 = clamp((int)floor(lPos.x), 0, nx - 1);
+    int y0 = clamp((int)floor(lPos.y), 0, nx - 1);
+    int z0 = clamp((int)floor(lPos.z), 0, nx - 1);
+    float tx = lPos.x - x0, ty = lPos.y - y0, tz = lPos.z - z0;
+
+    float3 acc = 0.0;
+    [unroll] for (int dz = 0; dz < 2; dz++)
+    {
+        float wz = dz == 0 ? 1.0 - tz : tz;
+        if (wz == 0.0) continue;
+        [unroll] for (int dy = 0; dy < 2; dy++)
+        {
+            float wy = dy == 0 ? 1.0 - ty : ty;
+            if (wy == 0.0) continue;
+            float wyz = wy * wz;
+            [unroll] for (int dx = 0; dx < 2; dx++)
+            {
+                float wx = dx == 0 ? 1.0 - tx : tx;
+                if (wx == 0.0) continue;
+                float w = wx * wyz;
+                int cx = x0 + dx, cy = y0 + dy, cz = z0 + dz;
+                // iso cancels in a difference, so raw _Density is fine here.
+                uint c = MC_GridIdx(chunkBase, cx, cy, cz);
+                uint h = MC_HaloStride();
+                acc.x += w * (_Density[c + 1] - _Density[c - 1]);
+                acc.y += w * (_Density[c + h] - _Density[c - h]);
+                acc.z += w * (_Density[c + h * h] - _Density[c - h * h]);
+            }
+        }
+    }
+    return acc * (0.5 / cellStep);
+}
+
+// Port of ChunkMesher.ApplySecondaryOffset (Lengyel Eq. 4.2/4.3). Slides
+// vertices within one cell of a TRANSITIONING face inwards along the surface,
+// making room for the transition sheet. Vertices near a face without a
+// transition are left alone, which is what keeps seams with same-LOD and
+// coarser neighbours closed.
+//
+// `mask` is the descriptor's transitionMask; bit order is the face order.
+float3 MC_ApplySecondaryOffset(float3 pLocal, float3 n, uint mask, float step, float chunkSize)
+{
+    const float kTransitionWidthFraction = 0.25;
+    float h = step;
+    float eps = h * 1e-4;
+
+    float3 dp = chunkSize - pLocal; // distance to the +X/+Y/+Z faces
+    float3 dn = pLocal;             // ... and to -X/-Y/-Z
+
+    bool3 nearP = dp < h - eps;
+    bool3 nearN = dn < h - eps;
+    if (!any(nearP) && !any(nearN)) return pLocal;
+
+    bool3 hasP = bool3((mask & 1u) != 0u, (mask & 4u) != 0u, (mask & 16u) != 0u);
+    bool3 hasN = bool3((mask & 2u) != 0u, (mask & 8u) != 0u, (mask & 32u) != 0u);
+
+    // Near a face that is NOT transitioning: leave the vertex exactly where it
+    // is, or it would part company with the neighbour that shares it.
+    if (any(nearP && !hasP) || any(nearN && !hasN)) return pLocal;
+
+    float w = kTransitionWidthFraction * h;
+    float3 zero = float3(0.0, 0.0, 0.0);
+    float3 delta = zero;
+    delta -= (nearP && hasP) ? w * (1.0 - dp / h) : zero;
+    delta += (nearN && hasN) ? w * (1.0 - dn / h) : zero;
+    if (all(delta == zero)) return pLocal;
+
+    delta -= dot(n, delta) * n; // tangent-plane projection (Eq. 4.3)
+    return pLocal + delta;
+}
+
+// ------------------------------------------------------------ vertex color --
+
+// Port of PlanetField.GetVertexColor / BiomeDensityField.GetVertexColor:
+// RGB = biome weights for channels 1..3 (channel 0's weight is the implicit
+// remainder), A = the baked AO term from ChunkMesher.VertexColorWithAO.
+//
+// The planet branch selects on `normalize(rel) * radius`, NOT rel -- biome
+// selection is a function of where on the sphere you are, not how high above
+// it. See PlanetField.Sample's comment; getting this wrong stacks one biome
+// on top of another in the same column.
+float4 MC_VertexColor(float3 worldPos, float3 n, float probeStep, float fw)
+{
+    int nb = (int)_BiomeBlendBuf[0].biomeCount;
+    float4 c = float4(0.0, 0.0, 0.0, 1.0);
+    if (nb > 1)
+    {
+        float bw[MC_MAX_BIOMES];
+        if (_PlanetBuf[0].isPlanet > 0.5)
+        {
+            float3 rel = worldPos - _PlanetBuf[0].center;
+            MC_ComputeBiomeWeights3D(normalize(rel) * _PlanetBuf[0].radius, bw, nb);
+        }
+        else
+        {
+            MC_ComputeBiomeWeights(worldPos.x, worldPos.z, bw, nb);
+        }
+        c.r = bw[1];
+        c.g = nb > 2 ? bw[2] : 0.0;
+        c.b = nb > 3 ? bw[3] : 0.0;
+    }
+
+    // One full field evaluation per vertex -- THE cost this whole kernel
+    // exists to move off the worker thread. Probe distance and the 0.25/0.75
+    // remap match ChunkMesher.VertexColorWithAO exactly; `step` doubles as
+    // the band-limiting filter width there too.
+    // probeStep sets the probe DISTANCE, fw the band-limiting filter width.
+    // They differ on transition faces, where the probe still reaches out by
+    // the coarse step but the density must be filtered at the fine face
+    // spacing so both sides of the seam agree -- exactly as
+    // ChunkMesher.VertexColorWithAO's two parameters do.
+    float d = 2.5 * probeStep;
+    float above = EvaluateWorldDensity(worldPos + n * d, fw);
+    c.a = 0.25 + 0.75 * saturate(-above / d);
+    return c;
+}
+
+// ----------------------------------------------------------------- kernels --
+
+// Vertex positions are chunk-LOCAL and therefore non-negative, and asuint is
+// monotonic over non-negative floats -- so a plain integer min/max on the bit
+// pattern orders them correctly. See the _Counts comment.
+//
+// The secondary offset can push a vertex a fraction of a cell OUTSIDE [0,
+// chunkSize], which would break that monotonicity if it ever went negative.
+// It cannot: the offset is at most a quarter cell and only applies to
+// vertices within one cell of a face, and it always pushes INWARD.
+void MC_AccumulateBounds(uint cbase, float3 p)
+{
+    InterlockedMin(_Counts[cbase + 3u], asuint(p.x));
+    InterlockedMin(_Counts[cbase + 4u], asuint(p.y));
+    InterlockedMin(_Counts[cbase + 5u], asuint(p.z));
+    InterlockedMax(_Counts[cbase + 6u], asuint(p.x));
+    InterlockedMax(_Counts[cbase + 7u], asuint(p.y));
+    InterlockedMax(_Counts[cbase + 8u], asuint(p.z));
+}
+
+uint MC_GlobalIndex(uint3 groupId, uint3 groupThreadId)
+{
+    uint flatGroup = groupId.x + groupId.y * _GroupsX;
+    return flatGroup * 64u + groupThreadId.x;
+}
+
+// Resets the per-chunk counters and marks every edge slot as "no vertex".
+// _EdgeIdx MUST be cleared between batches: a stale slot from a previous
+// chunk would be silently reused as a valid vertex index and stitch garbage
+// triangles into the mesh.
+[numthreads(64, 1, 1)]
+void CSClear(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+    uint i = MC_GlobalIndex(groupId, groupThreadId);
+    if (i >= _TotalThreads) return;
+    _EdgeIdx[i] = -1;
+    if (i < _ChunkCount * MC_COUNTS_PER_CHUNK)
+    {
+        uint slot = i % MC_COUNTS_PER_CHUNK;
+        // min slots start at +inf (all bits set), everything else at 0.
+        _Counts[i] = (slot >= 3u && slot <= 5u) ? 0xFFFFFFFFu : 0u;
+    }
+}
+
+// Overwrites the regular grid's boundary planes from the fine face grids --
+// the GPU half of ChunkMesher.PatchRegularBoundaryPlanes, whose comment is THE
+// explanation for why LOD seams stay closed under band-limiting. In short:
+// a grid point is band-limited at the step of the FINEST chunk that touches
+// it, which every chunk sharing that point evaluates identically, so they
+// cannot disagree.
+//
+// Must run BEFORE CSVertices and CSTriangles: they would otherwise mark the
+// un-patched values into the geometry, exactly as polygonizing before the
+// patch would on the CPU.
+//
+// One thread per (chunk, face, a, b) over the COARSE points of each face.
+[numthreads(64, 1, 1)]
+void CSPatch(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+    uint gi = MC_GlobalIndex(groupId, groupThreadId);
+    if (gi >= _TotalThreads) return;
+
+    uint p = _Cells + 1u;
+    uint perFace = p * p;
+    uint perChunk = 6u * perFace;
+    uint chunkIdx = gi / perChunk;
+    if (chunkIdx >= _ChunkCount) return;
+    uint local = gi - chunkIdx * perChunk;
+    uint face = local / perFace;
+    uint cell = local - face * perFace;
+    int a = (int)(cell % p);
+    int b = (int)(cell / p);
+
+    MeshChunkDesc desc = _Desc[chunkIdx];
+    if ((desc.faceGridMask & (1u << face)) == 0u) return;
+
+    int3 faceLat, U, V;
+    MC_FaceBasis(face, faceLat, U, V);
+    int3 r = faceLat + U * a + V * b; // this point in chunk-lattice coordinates
+
+    // FinerTouches, precomputed: which side of the chunk the point sits on per
+    // axis is all the rule depends on, so there are only 27 possible answers.
+    int c = (int)_Cells;
+    int sx = r.x == 0 ? -1 : (r.x == c ? 1 : 0);
+    int sy = r.y == 0 ? -1 : (r.y == c ? 1 : 0);
+    int sz = r.z == 0 ? -1 : (r.z == c ? 1 : 0);
+    uint bit = (uint)((sz + 1) * 9 + (sy + 1) * 3 + (sx + 1));
+    if ((desc.finerMask & (1u << bit)) == 0u) return;
+
+    // The face grid is at spacing step/2, so coarse point (a, b) is its
+    // full-res sample (2a, 2b). The patch is a copy, not extra sampling.
+    _Density[MC_GridIdx(desc.densityBase, r.x, r.y, r.z)] =
+        _Density[MC_FaceBase(desc, face) + MC_FaceIdx(face, 2 * a, 2 * b)];
+}
+
+// One thread per owned lattice point. Emits at most three vertices (the +X,
+// +Y and +Z edges that point owns) and records their indices for CSTriangles.
+[numthreads(64, 1, 1)]
+void CSVertices(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+    uint gi = MC_GlobalIndex(groupId, groupThreadId);
+    if (gi >= _TotalThreads) return;
+
+    uint p = MC_PointStride();
+    uint perChunk = p * p * p;
+    uint chunkIdx = gi / perChunk;
+    if (chunkIdx >= _ChunkCount) return;
+    uint local = gi - chunkIdx * perChunk;
+
+    uint px = local % p;
+    uint py = (local / p) % p;
+    uint pz = local / (p * p);
+
+    MeshChunkDesc desc = _Desc[chunkIdx];
+    uint chunkBase = desc.densityBase;
+
+    float da = MC_D(chunkBase, (int)px, (int)py, (int)pz, desc.isoLevel);
+
+    // [loop], NOT [unroll]: the body inlines MC_VertexColor, which is a whole
+    // EvaluateWorldDensity plus a biome-weight evaluation. Unrolling put three
+    // copies of that in one kernel -- TerrainDensity.compute's CSMain holds
+    // ONE and has already timed FXC out once in this project. Rolled it is one
+    // copy, and the loop diverges heavily anyway (most lattice points emit no
+    // vertex at all).
+    [loop] for (uint axis = 0; axis < 3u; axis++)
+    {
+        // The far end of this edge must still be inside the chunk's own
+        // lattice -- points at cells own no edge in that direction.
+        uint along = axis == 0u ? px : (axis == 1u ? py : pz);
+        if (along >= _Cells) continue;
+
+        int3 st = int3(axis == 0u ? 1 : 0, axis == 1u ? 1 : 0, axis == 2u ? 1 : 0);
+        float db = MC_D(chunkBase, (int)px + st.x, (int)py + st.y, (int)pz + st.z, desc.isoLevel);
+        if ((da < 0.0) == (db < 0.0)) continue; // no sign change: no surface on this edge
+
+        // Identical to ChunkMesher.GetOrCreateVertex: lattice space is the
+        // primary quantity, world space derived from it.
+        float3 la = float3(px, py, pz);
+        float3 lb = la + (float3)st;
+        float t = (da != db) ? saturate(da / (da - db)) : 0.5;
+        float3 lPos = lerp(la, lb, t);
+        float3 pPrimary = lPos * desc.step;
+
+        float3 nrm = -normalize(MC_GridGradient(chunkBase, lPos, desc.step));
+        float3 pLocal = MC_ApplySecondaryOffset(pPrimary, nrm, desc.transitionMask,
+                                                desc.step, (float)_Cells * desc.step);
+
+        uint cbase = chunkIdx * MC_COUNTS_PER_CHUNK;
+        uint slot;
+        InterlockedAdd(_Counts[cbase + 0u], 1u, slot);
+        if (slot >= _VertexCapacity)
+        {
+            // Out of room. Flag it and emit nothing: TerrainGpuMesher drops
+            // the whole chunk back to the CPU path rather than uploading a
+            // truncated mesh. (The counter is left past capacity on purpose --
+            // the C# side must read the flag, not clamp the count.)
+            _Counts[cbase + 2u] = 1u;
+            continue;
+        }
+
+        MC_AccumulateBounds(cbase, pLocal);
+
+        MCVertex v;
+        v.position = pLocal;
+        v.normal = nrm;
+        // pPrimary, not pLocal: the color/AO is sampled at the vertex's
+        // UNOFFSET position, matching ChunkMesher's own pPrimary.
+        v.color = MC_VertexColor(desc.origin + pPrimary, nrm, desc.step, desc.step);
+        _Verts[chunkIdx * _VertexCapacity + slot] = v;
+
+        _EdgeIdx[MC_EdgeSlot(chunkIdx, px, py, pz, axis)] = (int)slot;
+    }
+}
+
+// One thread per cell. Looks up this cell's case, then resolves each of its
+// edges to the vertex CSVertices already created on the owning lattice point.
+[numthreads(64, 1, 1)]
+void CSTriangles(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+    uint gi = MC_GlobalIndex(groupId, groupThreadId);
+    if (gi >= _TotalThreads) return;
+
+    uint c = _Cells;
+    uint perChunk = c * c * c;
+    uint chunkIdx = gi / perChunk;
+    if (chunkIdx >= _ChunkCount) return;
+    uint local = gi - chunkIdx * perChunk;
+
+    int cx = (int)(local % c);
+    int cy = (int)((local / c) % c);
+    int cz = (int)(local / (c * c));
+
+    MeshChunkDesc desc = _Desc[chunkIdx];
+    uint chunkBase = desc.densityBase;
+
+    uint caseIdx = 0u;
+    [unroll] for (uint i = 0; i < 8u; i++)
+    {
+        int3 co = kCorner[i];
+        if (MC_D(chunkBase, cx + co.x, cy + co.y, cz + co.z, desc.isoLevel) < 0.0)
+            caseIdx |= (1u << i);
+    }
+    if (caseIdx == 0u || caseIdx == 255u) return;
+
+    uint row = caseIdx * 16u;
+    [loop] for (uint e = 0; e < 16u; e += 3u)
+    {
+        int e0 = _TriTable[row + e];
+        if (e0 < 0) break;
+        int e1 = _TriTable[row + e + 1u];
+        int e2 = _TriTable[row + e + 2u];
+
+        int vi[3];
+        bool ok = true;
+        [unroll] for (uint k = 0; k < 3u; k++)
+        {
+            int edgeId = k == 0u ? e0 : (k == 1u ? e1 : e2);
+            int4 own = kEdgeOwner[edgeId];
+            uint slot = MC_EdgeSlot(chunkIdx, (uint)(cx + own.x), (uint)(cy + own.y), (uint)(cz + own.z), (uint)own.w);
+            vi[k] = _EdgeIdx[slot];
+            // -1 can only mean the vertex overflowed the capacity (a sign
+            // change on this edge is exactly what put us in this case code),
+            // so skip the triangle; the chunk is already flagged.
+            if (vi[k] < 0) ok = false;
+        }
+        if (!ok) continue;
+        if (vi[0] == vi[1] || vi[1] == vi[2] || vi[0] == vi[2]) continue; // zero-area
+
+        uint at;
+        InterlockedAdd(_Counts[chunkIdx * MC_COUNTS_PER_CHUNK + 1u], 3u, at);
+        if (at + 3u > _IndexCapacity)
+        {
+            _Counts[chunkIdx * MC_COUNTS_PER_CHUNK + 2u] = 1u;
+            continue;
+        }
+        uint b = chunkIdx * _IndexCapacity + at;
+        _Indices[b + 0u] = (uint)vi[0];
+        _Indices[b + 1u] = (uint)vi[1];
+        _Indices[b + 2u] = (uint)vi[2];
+    }
+}
+
+// Transvoxel transition cells: the half-resolution sheet a coarse chunk lays
+// over a face it shares with finer chunks. Port of
+// ChunkMesher.GenerateTransitionFace.
+//
+// NO VERTEX DEDUPLICATION, unlike CSVertices and unlike the CPU. That is a
+// deliberate difference, not an omission. Two cells meeting on a shared edge
+// compute the same t from the same face-grid values, so their vertices land in
+// the same place; duplicating them costs memory, never watertightness. A
+// transition sheet is one cell thick around a face, so the extra vertices are
+// a rounding error against a chunk's interior -- and skipping dedup means no
+// per-face edge-ownership table and no second clear pass.
+//
+// One thread per (chunk, face, i, j) over the cells of each transitioning face.
+[numthreads(64, 1, 1)]
+void CSTransition(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+    uint gi = MC_GlobalIndex(groupId, groupThreadId);
+    if (gi >= _TotalThreads) return;
+
+    uint c = _Cells;
+    uint perFace = c * c;
+    uint perChunk = 6u * perFace;
+    uint chunkIdx = gi / perChunk;
+    if (chunkIdx >= _ChunkCount) return;
+    uint local = gi - chunkIdx * perChunk;
+    uint face = local / perFace;
+    uint cell = local - face * perFace;
+    int i = (int)(cell % c);
+    int j = (int)(cell / c);
+
+    MeshChunkDesc desc = _Desc[chunkIdx];
+    if ((desc.transitionMask & (1u << face)) == 0u) return;
+
+    uint faceBase = MC_FaceBase(desc, face);
+    float iso = desc.isoLevel;
+    float step = desc.step;
+    float sHalf = 0.5 * step; // fine (neighbour) sample spacing
+
+    float d[13];
+    [unroll] for (uint k = 0; k < 9u; k++)
+        d[k] = MC_FaceD(faceBase, face, 2 * i + (int)(k % 3u), 2 * j + (int)(k / 3u), iso);
+    // Lengyel's identity: the low-res corners ARE the coincident high-res
+    // samples. True again because CSPatch made the coarse grid agree with this
+    // face grid on this plane.
+    [unroll] for (int hc = 0; hc < 4; hc++)
+        d[9 + hc] = d[kHalfToFullCorner[hc]];
+
+    int caseCode = 0;
+    [unroll] for (int cb = 0; cb < 9; cb++)
+        if (d[cb] < 0.0) caseCode |= kTransitionCaseBit[cb];
+    if (caseCode == 0 || caseCode == 511) return;
+
+    int cellClass = _TransCellClass[caseCode];
+    bool invert = (cellClass & 0x80) != 0;
+    int info = _TransCellInfo[cellClass & 0x7F];
+    int triCount = info & 0xFF;
+    if (triCount == 0) return;
+    int idxOffset = info >> 8;
+
+    int vinfo = _TransVertInfo[caseCode];
+    int vertCount = vinfo & 0xFF;
+    int vertOffset = vinfo >> 8;
+    if (vertCount == 0) return;
+
+    uint cbase = chunkIdx * MC_COUNTS_PER_CHUNK;
+    uint vbase;
+    InterlockedAdd(_Counts[cbase + 0u], (uint)vertCount, vbase);
+    if (vbase + (uint)vertCount > _VertexCapacity)
+    {
+        _Counts[cbase + 2u] = 1u;
+        return;
+    }
+
+    int3 faceLat, U, V;
+    MC_FaceBasis(face, faceLat, U, V);
+    float3 faceOrigin = (float3)faceLat * step;
+    float3 Uf = (float3)U, Vf = (float3)V;
+    float chunkSize = (float)_Cells * step;
+
+    // [loop], not [unroll]: the body inlines MC_VertexColor and (for full-res
+    // vertices) an analytic gradient, i.e. two complete field evaluations.
+    // Unrolling it up to twelve times is the same mistake that stopped
+    // CSVertices compiling.
+    [loop] for (int v = 0; v < vertCount; v++)
+    {
+        int packed = _TransVertData[vertOffset + v];
+        int c0 = (packed >> 4) & 0x0F; // corner indices live in the LOW byte
+        int c1 = packed & 0x0F;
+        bool halfRes = c0 >= 9 && c1 >= 9;
+
+        // uint, not int: these are corner indices in [0, 8] and can never be
+        // negative, and a signed divide is markedly slower on this hardware
+        // (FXC warns about it explicitly). Same for the /2 in the half-res
+        // lattice position below, which becomes a shift.
+        uint f0 = (uint)(c0 >= 9 ? kHalfToFullCorner[c0 - 9] : c0);
+        uint f1 = (uint)(c1 >= 9 ? kHalfToFullCorner[c1 - 9] : c1);
+        int a0 = 2 * i + (int)(f0 % 3u), b0 = 2 * j + (int)(f0 / 3u);
+        int a1 = 2 * i + (int)(f1 % 3u), b1 = 2 * j + (int)(f1 / 3u);
+
+        float d0 = d[c0], d1 = d[c1];
+        float3 p0 = faceOrigin + Uf * (a0 * sHalf) + Vf * (b0 * sHalf);
+        float3 p1 = faceOrigin + Uf * (a1 * sHalf) + Vf * (b1 * sHalf);
+        float t = (d0 != d1) ? saturate(d0 / (d0 - d1)) : 0.5;
+        float3 pPrimary = lerp(p0, p1, t);
+
+        // Each vertex is band-limited at the resolution of the side it will be
+        // welded against: half-res vertices meet OUR regular mesh (step),
+        // full-res ones meet the fine neighbour's (sHalf).
+        float vfw = halfRes ? step : sHalf;
+        float3 nrm;
+        if (halfRes)
+        {
+            // MUST be bit-identical to what CSVertices produces at this point:
+            // the secondary offset below is driven by the normal, and both
+            // sides offset the same shared vertex. Same grid, same lattice
+            // position, same function.
+            // a0/b0/a1/b1 are even here (half-res corners are the even face
+            // indices) and non-negative, so >> 1 is exactly the /2 the CPU
+            // does -- ChunkMesher's `a0 * 0.5f` on an even value.
+            float3 lPos = lerp((float3)(faceLat + U * (a0 >> 1) + V * (b0 >> 1)),
+                               (float3)(faceLat + U * (a1 >> 1) + V * (b1 >> 1)), t);
+            nrm = -normalize(MC_GridGradient(desc.densityBase, lPos, step));
+        }
+        else
+        {
+            // Full-res vertices weld against the FINE neighbour, not our grid,
+            // so they keep the analytic gradient at the fine filter width --
+            // matching DensityField.Gradient's central differences exactly.
+            // Rolled over all six taps so only ONE EvaluateWorldDensity is
+            // inlined; unrolled this alone would not compile.
+            float3 wp = desc.origin + pPrimary;
+            float eps = 0.5 * step; // DensityField.GradientStep(step)
+            float3 g = 0.0;
+            [loop] for (uint tap = 0; tap < 6u; tap++)
+            {
+                uint ax = tap >> 1u;
+                float sgn = (tap & 1u) != 0u ? -1.0 : 1.0;
+                float3 off = float3(ax == 0u ? eps : 0.0, ax == 1u ? eps : 0.0, ax == 2u ? eps : 0.0);
+                float val = EvaluateWorldDensity(wp + off * sgn, vfw);
+                if (ax == 0u) g.x += sgn * val;
+                else if (ax == 1u) g.y += sgn * val;
+                else g.z += sgn * val;
+            }
+            nrm = -normalize(g / (2.0 * eps));
+        }
+
+        // Half-res face vertices get the same secondary transform as the
+        // regular boundary vertices; full-res ones are never moved.
+        float3 pLocal = halfRes
+            ? MC_ApplySecondaryOffset(pPrimary, nrm, desc.transitionMask, step, chunkSize)
+            : pPrimary;
+
+        MCVertex outV;
+        outV.position = pLocal;
+        outV.normal = nrm;
+        outV.color = MC_VertexColor(desc.origin + pPrimary, nrm, step, vfw);
+        _Verts[chunkIdx * _VertexCapacity + vbase + (uint)v] = outV;
+        MC_AccumulateBounds(cbase, pLocal);
+    }
+
+    uint at;
+    InterlockedAdd(_Counts[cbase + 1u], (uint)(triCount * 3), at);
+    if (at + (uint)(triCount * 3) > _IndexCapacity)
+    {
+        _Counts[cbase + 2u] = 1u;
+        return;
+    }
+
+    uint ibase = chunkIdx * _IndexCapacity + at;
+    [loop] for (int tri = 0; tri < triCount; tri++)
+    {
+        uint i0 = vbase + (uint)_TransCellIdx[idxOffset + tri * 3 + 0];
+        uint i1 = vbase + (uint)_TransCellIdx[idxOffset + tri * 3 + 1];
+        uint i2 = vbase + (uint)_TransCellIdx[idxOffset + tri * 3 + 2];
+        uint o = ibase + (uint)(tri * 3);
+        if (invert) { _Indices[o + 0u] = i2; _Indices[o + 1u] = i1; _Indices[o + 2u] = i0; }
+        else        { _Indices[o + 0u] = i0; _Indices[o + 1u] = i1; _Indices[o + 2u] = i2; }
+    }
+}
+
+// Copies one chunk's finished vertices and indices straight into its Mesh's
+// own graphics buffers, so the geometry never leaves the GPU.
+//
+// This is the whole point of the exercise. Without it a finished chunk goes
+// GPU -> AsyncGPUReadback -> managed array -> SetVertexBufferData -> GPU,
+// which is ~260 KB across the bus in each direction plus a main-thread memcpy,
+// for data that was already sitting in video memory. With it, the only thing
+// read back is the counter block -- a few hundred bytes -- because the CPU
+// still has to know how big to size the Mesh's buffers before it can hand
+// them over.
+//
+// _MeshVerts/_MeshIndices are the Mesh's real buffers, obtained via
+// Mesh.GetVertexBuffer/GetIndexBuffer after SetVertexBufferParams has sized
+// them; they are raw (ByteAddress) views, hence the manual Store per channel.
+// Offsets must stay in lockstep with MarchingChunk.kVertexLayout.
+//
+// One dispatch per chunk -- a compute shader binds one destination at a time,
+// and a chunk's Mesh is its own. Dispatches are cheap; the copy is not.
+[numthreads(64, 1, 1)]
+void CSCopyOut(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+    uint gi = MC_GlobalIndex(groupId, groupThreadId);
+    if (gi >= _TotalThreads) return;
+
+    // Vertices and indices share one dispatch: threads below the vertex count
+    // copy vertices, the rest copy indices. Saves a second dispatch per chunk
+    // for what is the same trivial move either way.
+    if (gi < _CopyVertexCount)
+    {
+        MCVertex v = _Verts[_CopyChunk * _VertexCapacity + gi];
+        uint a = gi * MC_VERTEX_STRIDE;
+        _MeshVerts.Store3(a, asuint(v.position));
+        _MeshVerts.Store3(a + 12u, asuint(v.normal));
+        _MeshVerts.Store4(a + 24u, asuint(v.color));
+    }
+    else
+    {
+        uint k = gi - _CopyVertexCount;
+        if (k >= _CopyIndexCount) return;
+        _MeshIndices.Store(k * 4u, _Indices[_CopyChunk * _IndexCapacity + k]);
+    }
+}

@@ -57,18 +57,25 @@ StructuredBuffer<BiomeBlendParams> _BiomeBlendBuf; // [1]
 // for why call-site code size matters here specifically.
 // `fw` is the sample spacing this evaluation belongs to -- see
 // TerrainNoise.cs's header (LOD BAND-LIMITING) and DensityField.Sample.
+// Written as one initialised local and one return, rather than four early
+// returns: with [branch] in front of them FXC's flow analysis cannot prove the
+// return value is always assigned and warns "use of potentially uninitialized
+// variable" on every kernel that includes this header. The warning was always
+// spurious -- the final fallback covered every path -- but this shape produces
+// the same branch chain without it.
 float EvaluateLeafDensity(int fieldType, float3 worldPos, LeafParams p, float fw)
 {
+    float d = -worldPos.y; // fallback flat ground, matches BiomeDensityField's n==0 case
     [branch]
     if (fieldType == MC_FIELDTYPE_DUNE)
-        return EvaluateDuneHeight(worldPos.x, worldPos.z, p.dune, fw) - worldPos.y;
-    if (fieldType == MC_FIELDTYPE_CANYON)
-        return EvaluateCanyonDensity(worldPos, p.canyon, fw);
-    if (fieldType == MC_FIELDTYPE_ALIEN)
-        return EvaluateAlienDensity(worldPos, p.alien, fw);
-    if (fieldType == MC_FIELDTYPE_FROST)
-        return EvaluateFrostHeight(worldPos.x, worldPos.z, p.frost, fw) - worldPos.y;
-    return -worldPos.y; // fallback flat ground, matches BiomeDensityField's n==0 case
+        d = EvaluateDuneHeight(worldPos.x, worldPos.z, p.dune, fw) - worldPos.y;
+    else if (fieldType == MC_FIELDTYPE_CANYON)
+        d = EvaluateCanyonDensity(worldPos, p.canyon, fw);
+    else if (fieldType == MC_FIELDTYPE_ALIEN)
+        d = EvaluateAlienDensity(worldPos, p.alien, fw);
+    else if (fieldType == MC_FIELDTYPE_FROST)
+        d = EvaluateFrostHeight(worldPos.x, worldPos.z, p.frost, fw) - worldPos.y;
+    return d;
 }
 
 // Port of BiomeDensityField.ComputeWeights: softmax over per-biome low-freq

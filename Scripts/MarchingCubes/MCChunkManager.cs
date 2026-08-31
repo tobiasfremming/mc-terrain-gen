@@ -24,6 +24,15 @@ public class MCChunkManager : MonoBehaviour
     [Tooltip("Optional. Shaders/Compute/TerrainDensity.compute -- GPU-accelerates base density sampling (see the 'GPU Compute-Shader Acceleration for Terrain Density Fields' plan). Falls back to the original CPU path entirely if unset, unsupported (SystemInfo.supportsComputeShaders), or the active world doesn't resolve every biome to a known GPU leaf type -- never a per-chunk GPU/CPU mix.")]
     public ComputeShader densityCompute;
 
+    [Tooltip("Optional. Shaders/Compute/TerrainMesh.compute -- runs Marching Cubes itself on the GPU for chunks that qualify (see TerrainGpuMesher.CanMesh), so their mesh is never marched on a worker thread. Requires densityCompute. Unset, or for any chunk that does not qualify, the CPU mesher runs exactly as before.")]
+    public ComputeShader meshCompute;
+
+    [Tooltip("Master switch for GPU meshing, for A/B comparison against the CPU mesher. Off means every chunk goes through ChunkMesher, as it did before TerrainMesh.compute existed.")]
+    public bool gpuMeshing = true;
+
+    [Tooltip("Lets GPU-meshed chunks write straight into their Mesh's graphics buffers instead of being read back and re-uploaded. Off falls back to the readback path -- same geometry, ~260 KB per chunk across the bus in each direction.")]
+    public bool gpuMeshDirectUpload = true;
+
     [Header("Pooling")]
     public bool usePooling = true;
     public int prewarm = 16;             // how many chunks to create up-front
@@ -110,6 +119,7 @@ public class MCChunkManager : MonoBehaviour
     readonly Stack<ChunkMeshJob> _meshJobPool = new();
     int _inFlightDirty;
     TerrainGpuSampler _gpuSampler;
+    TerrainGpuMesher _gpuMesher;
 
     // Per-chunk raw (pre-edit) base density, cached across rebuilds so an
     // EDIT-ONLY rebuild (footprints/digging -- the chunk itself didn't move
@@ -125,8 +135,12 @@ public class MCChunkManager : MonoBehaviour
     class DensityCacheEntry
     {
         public uint needsMask; // which shape (regular + which faces) this was computed for; must match exactly to be reusable
+        // The arrays are reused across saves and so can be LONGER than the
+        // data in them; the counts are the authority.
         public float[] regular;
+        public int regularCount;
         public readonly float[][] faces = new float[6][];
+        public readonly int[] faceCounts = new int[6];
     }
     readonly Dictionary<ChunkKey, DensityCacheEntry> _densityCache = new();
 
@@ -154,6 +168,27 @@ public class MCChunkManager : MonoBehaviour
     // job queue: until they generate, the player is looking at (and leaving
     // footprints "under") a stale retired mesh that never remeshes.
     readonly HashSet<ChunkKey> _priorityKeys = new();
+
+    // Chunks with an off-thread PhysX cook outstanding (see MarchingChunk's
+    // _bakeTask). Pumped once per frame from Update -- deliberately a manager-
+    // owned list rather than an Update() on MarchingChunk itself, which would
+    // put a per-frame managed->native callback on all ~1300 chunk objects to
+    // service the handful that are actually baking.
+    // GPU-meshing track, parallel to the density track above. A chunk goes
+    // down exactly one of the two: either the GPU produces its finished mesh
+    // (and it never touches a worker thread at all), or the GPU fills its
+    // density grid and ChunkMesher marches it. TerrainGpuMesher.CanMesh picks.
+    //   _gpuMeshPending -> admitted, not yet dispatched
+    //   _gpuMeshBatches -> dispatched, waiting on the two-hop readback
+    //   _readyToApply   -> mesh data is in the job; nothing left but the upload
+    readonly List<InFlight> _gpuMeshPending = new();
+    class GpuMeshBatch { public readonly List<InFlight> jobs = new(); public int generation; }
+    readonly List<GpuMeshBatch> _gpuMeshBatches = new();
+    readonly List<InFlight> _readyToApply = new();
+
+    readonly List<MarchingChunk> _pendingBakes = new();
+    // True only for the duration of BuildBatchSync, which must not defer.
+    bool _applyingSync;
 
     Vector3Int[] _boxMin;      // per level, min corner in level-k chunk units
     Vector3Int[] _boxScratch;
@@ -235,6 +270,11 @@ public class MCChunkManager : MonoBehaviour
     void OnEnable()
     {
         TerrainTuning.Changed += OnTerrainTuningChanged;
+        // An editor domain reload destroys _runtimeMaterial (it is DontSave)
+        // while the chunks referencing it survive -- they would render with a
+        // missing material until something else rebuilt it. Re-create and
+        // rebind here, the one callback guaranteed to fire afterwards.
+        RefreshTerrainMaterial();
     }
 
     void OnDisable()
@@ -249,9 +289,92 @@ public class MCChunkManager : MonoBehaviour
             _pendingRefresh = true;
     }
 
+    // A RUNTIME COPY of the terrain material, shared by every chunk renderer.
+    //
+    // This used to be a MaterialPropertyBlock stamped onto each renderer via
+    // SetPropertyBlock. That silently disabled the SRP Batcher for all ~1300
+    // chunk renderers: SandTerrain.shader is batcher-compatible (it declares a
+    // proper CBUFFER_START(UnityPerMaterial)), but a per-renderer property
+    // block forces that renderer off the batched path entirely -- and the
+    // block held no per-chunk data at all. Every chunk got the SAME values,
+    // so the whole override mechanism was buying nothing and costing the
+    // batcher.
+    //
+    // An instance (not the asset) keeps the original "no asset mutation"
+    // property: the .mat on disk is never written to, the copy lives and dies
+    // with this manager. Since all chunks share this ONE material, the SRP
+    // Batcher can now put them in one batch.
+    Material _runtimeMaterial;
+    Material _runtimeMaterialSource; // what _runtimeMaterial was copied from, so a changed source is detected
+
+    static readonly string[] ChannelSuffix = { "0", "1", "2", "3" };
+
+    // The material a chunk should render with if we cannot make a runtime
+    // copy: the BiomeWorld choice, else whatever the prefab itself carries.
+    Material SourceTerrainMaterial
+    {
+        get
+        {
+            var world = ActiveBiomeWorld;
+            if (world != null && world.terrainMaterial != null) return world.terrainMaterial;
+            if (chunkPrefab == null) return null;
+            var r = chunkPrefab.GetComponent<MeshRenderer>();
+            return r != null ? r.sharedMaterial : null;
+        }
+    }
+
+    // Creates/refreshes the shared runtime material and pushes the current
+    // biome data into it. Replaces BuildBiomeMaterialProps + ApplyBiomeProps.
+    void RefreshTerrainMaterial()
+    {
+        Material source = SourceTerrainMaterial;
+        if (source == null) { DestroyRuntimeMaterial(); return; }
+
+        // The null test also catches the Unity-destroyed case (editor domain
+        // reload), which is why OnEnable calls this.
+        bool created = false;
+        if (_runtimeMaterial == null || _runtimeMaterialSource != source)
+        {
+            DestroyRuntimeMaterial();
+            _runtimeMaterial = new Material(source)
+            {
+                name = source.name + " (Terrain Runtime)",
+                hideFlags = HideFlags.DontSave, // never serialized into the scene
+            };
+            _runtimeMaterialSource = source;
+            created = true;
+        }
+
+        WriteBiomeMaterialProps(_runtimeMaterial);
+
+        // Existing chunks still point at the previous instance (or a destroyed
+        // one, after a domain reload). Rebinding is cheap and only happens on
+        // field (re)creation / enable, never per frame.
+        if (created) RebindTerrainMaterial();
+    }
+
+    void RebindTerrainMaterial()
+    {
+        foreach (var chunk in _chunks.Values) ApplyTerrainMaterial(chunk);
+        foreach (var e in _retiring) if (e.chunk != null) ApplyTerrainMaterial(e.chunk);
+    }
+
+    void DestroyRuntimeMaterial()
+    {
+        if (_runtimeMaterial == null) { _runtimeMaterialSource = null; return; }
+#if UNITY_EDITOR
+        if (!Application.isPlaying) DestroyImmediate(_runtimeMaterial);
+        else Destroy(_runtimeMaterial);
+#else
+        Destroy(_runtimeMaterial);
+#endif
+        _runtimeMaterial = null;
+        _runtimeMaterialSource = null;
+    }
+
     // Push per-biome material data (palette, style, detail textures) from the
-    // Biome assets into the terrain material via a property block — no asset
-    // mutation, applied to every chunk renderer.
+    // Biome assets onto the shared runtime material — no asset
+    // mutation; the .mat on disk is never touched.
     //
     // DATA-DRIVEN by design: biomes[i] maps to vertex-color CHANNEL i (0 =
     // implicit remainder, 1 = R, 2 = G, 3 = B) — that mapping is fixed and
@@ -261,22 +384,27 @@ public class MCChunkManager : MonoBehaviour
     // sits at an index and its style follows it to whatever channel it lands
     // on — SandTerrain.shader's EVALUATE_CHANNEL macro dispatches on this
     // per-channel style tag at runtime.
-    MaterialPropertyBlock _biomeProps;
-    static readonly string[] ChannelSuffix = { "0", "1", "2", "3" };
-    void BuildBiomeMaterialProps()
+    void WriteBiomeMaterialProps(Material m)
     {
         var world = ActiveBiomeWorld;
-        if (world == null || world.biomes == null) { _biomeProps = null; return; }
-        _biomeProps = new MaterialPropertyBlock();
+        if (m == null || world == null || world.biomes == null) return;
 
         // Planet mode: tell the shader to use radial "up" instead of world Y
         // for slope tinting / sediment banding (see SandTerrain.shader's
         // Frag). Left at the shader's defaults (flat world) otherwise.
         var planet = ActivePlanet;
+        // Explicit else: unlike a property block (rebuilt from scratch every
+        // time), the material persists, so leaving these unset would strand a
+        // stale planet setup on it after switching back to a flat world.
         if (planet != null)
         {
-            _biomeProps.SetFloat("_UseSphericalUp", 1f);
-            _biomeProps.SetVector("_PlanetCenter", new Vector4(planet.center.x, planet.center.y, planet.center.z, 0f));
+            m.SetFloat("_UseSphericalUp", 1f);
+            m.SetVector("_PlanetCenter", new Vector4(planet.center.x, planet.center.y, planet.center.z, 0f));
+        }
+        else
+        {
+            m.SetFloat("_UseSphericalUp", 0f);
+            m.SetVector("_PlanetCenter", Vector4.zero);
         }
 
         int n = Mathf.Min(world.biomes.Length, ChannelSuffix.Length);
@@ -286,25 +414,25 @@ public class MCChunkManager : MonoBehaviour
             if (b == null) continue;
             string suf = ChannelSuffix[i];
 
-            _biomeProps.SetFloat("_Chan" + suf + "Style", (float)b.surfaceStyle);
-            _biomeProps.SetFloat("_Chan" + suf + "Sharpness", Mathf.Max(0.01f, b.blendSharpness));
-            _biomeProps.SetColor("_Chan" + suf + "Flat", b.colorFlat);
-            _biomeProps.SetColor("_Chan" + suf + "Steep", b.colorSteep);
+            m.SetFloat("_Chan" + suf + "Style", (float)b.surfaceStyle);
+            m.SetFloat("_Chan" + suf + "Sharpness", Mathf.Max(0.01f, b.blendSharpness));
+            m.SetColor("_Chan" + suf + "Flat", b.colorFlat);
+            m.SetColor("_Chan" + suf + "Steep", b.colorSteep);
 
             // Style-specific extras that stay global material properties
             // (only one active source per style — see Biome.albedo's tooltip).
             switch (b.surfaceStyle)
             {
                 case Biome.SurfaceStyle.Sand:
-                    if (b.albedo != null) _biomeProps.SetTexture("_MainTex", b.albedo);
-                    if (b.normalMap != null) _biomeProps.SetTexture("_NormalTex", b.normalMap);
+                    if (b.albedo != null) m.SetTexture("_MainTex", b.albedo);
+                    if (b.normalMap != null) m.SetTexture("_NormalTex", b.normalMap);
                     break;
                 case Biome.SurfaceStyle.Canyon:
-                    _biomeProps.SetColor("_CanyonFloorColor", b.colorFlat);
+                    m.SetColor("_CanyonFloorColor", b.colorFlat);
                     break;
                 case Biome.SurfaceStyle.Alien:
-                    if (b.albedo != null) _biomeProps.SetTexture("_PebbleTex", b.albedo);
-                    if (b.normalMap != null) _biomeProps.SetTexture("_PebbleNormal", b.normalMap);
+                    if (b.albedo != null) m.SetTexture("_PebbleTex", b.albedo);
+                    if (b.normalMap != null) m.SetTexture("_PebbleNormal", b.normalMap);
                     break;
                 case Biome.SurfaceStyle.Frost:
                     // fully procedural (BiomeFrost.hlsl) -- _Chan{i}Flat/Steep
@@ -314,22 +442,22 @@ public class MCChunkManager : MonoBehaviour
         }
     }
 
-    void ApplyBiomeProps(MarchingChunk chunk)
-    {
-        if (_biomeProps == null) return;
-        var r = chunk.GetComponent<MeshRenderer>();
-        if (r != null) r.SetPropertyBlock(_biomeProps);
-    }
-
     // Lets a BiomeWorld asset pick which material (and therefore shader) the
     // whole world renders with, instead of that being fixed on the chunk
     // prefab. Falls back to the prefab's own material when unset.
     void ApplyTerrainMaterial(MarchingChunk chunk)
     {
-        var world = ActiveBiomeWorld;
-        if (world == null || world.terrainMaterial == null) return;
+        if (chunk == null) return;
         var r = chunk.GetComponent<MeshRenderer>();
-        if (r != null) r.sharedMaterial = world.terrainMaterial;
+        if (r == null) return;
+
+        // A pooled chunk (or one left over from a previous session) can still
+        // be carrying the property block this used to set. One stale block is
+        // enough to keep that renderer out of the SRP Batcher, so clear it
+        // unconditionally -- a no-op when there is none.
+        r.SetPropertyBlock(null);
+
+        if (_runtimeMaterial != null) r.sharedMaterial = _runtimeMaterial;
     }
 
     void EnsureField()
@@ -356,7 +484,7 @@ public class MCChunkManager : MonoBehaviour
         {
             _renderField = ModifiedDensityField.Create(BaseField, _modSystem.visual, _modSystem.physical);
             _physicsField = ModifiedDensityField.Create(BaseField, _modSystem.physical);
-            BuildBiomeMaterialProps();
+            RefreshTerrainMaterial();
             RefreshGpuParams();
         }
     }
@@ -375,6 +503,12 @@ public class MCChunkManager : MonoBehaviour
             _gpuSampler = new TerrainGpuSampler(densityCompute);
         }
         _gpuSampler.RefreshWorldParams(BaseField);
+
+        // Created once and kept: its own availability check consults the
+        // sampler every call, so a world that only becomes GPU-capable later
+        // still picks it up.
+        if (_gpuMesher == null && meshCompute != null)
+            _gpuMesher = new TerrainGpuMesher(meshCompute, _gpuSampler);
     }
 
     static void DestroyField(ref ModifiedDensityField f)
@@ -416,6 +550,7 @@ public class MCChunkManager : MonoBehaviour
 
     void OnDestroy()
     {
+        DestroyRuntimeMaterial();
         // Let in-flight tasks finish so pooled jobs aren't mutated mid-build.
         foreach (var f in _inFlight)
         {
@@ -425,6 +560,7 @@ public class MCChunkManager : MonoBehaviour
 
         DestroyField(ref _renderField);
         DestroyField(ref _physicsField);
+        _gpuMesher?.Dispose();
         _gpuSampler?.Dispose();
     }
 
@@ -450,6 +586,7 @@ public class MCChunkManager : MonoBehaviour
         _generatedNeeds.Clear(); // settings may have changed: regenerate all (streamed)
         _boxesValid = false;
         RefreshGpuParams(); // keep GPU tunables in sync with whatever triggered this
+        RefreshTerrainMaterial(); // ditto for the shader-side biome palette / planet params
         _densityCache.Clear(); // base density itself may have changed -- every cached entry is now potentially stale
         _gpuGeneration++; // any already-dispatched batch's readback now reflects the pre-refresh params -- see field comment
     }
@@ -464,8 +601,10 @@ public class MCChunkManager : MonoBehaviour
             RecomputeTargets(); // only when the player crosses a clipmap boundary
 
         ApplyCompletedBuilds();
+        PumpColliderBakes();
         DispatchBuilds();
         StageGpuBatch();
+        StageGpuMeshBatch();
         PumpMeshingQueue();
         SweepRetiring();
 
@@ -831,6 +970,16 @@ public class MCChunkManager : MonoBehaviour
             if (_gpuPending[i].key.Equals(key)) return true;
         for (int i = 0; i < _readyForMeshing.Count; i++)
             if (_readyForMeshing[i].key.Equals(key)) return true;
+        for (int i = 0; i < _gpuMeshPending.Count; i++)
+            if (_gpuMeshPending[i].key.Equals(key)) return true;
+        for (int i = 0; i < _readyToApply.Count; i++)
+            if (_readyToApply[i].key.Equals(key)) return true;
+        for (int b = 0; b < _gpuMeshBatches.Count; b++)
+        {
+            var mjobs = _gpuMeshBatches[b].jobs;
+            for (int i = 0; i < mjobs.Count; i++)
+                if (mjobs[i].key.Equals(key)) return true;
+        }
         for (int b = 0; b < _gpuInFlightBatches.Count; b++)
         {
             var jobs = _gpuInFlightBatches[b].jobs;
@@ -851,8 +1000,10 @@ public class MCChunkManager : MonoBehaviour
     // the scarce WorkerCount slots.
     void DispatchBuilds()
     {
-        int pipelineDepth = _gpuPending.Count + _readyForMeshing.Count + _inFlight.Count;
+        int pipelineDepth = _gpuPending.Count + _readyForMeshing.Count + _inFlight.Count +
+                            _gpuMeshPending.Count + _readyToApply.Count;
         foreach (var batch in _gpuInFlightBatches) pipelineDepth += batch.jobs.Count;
+        foreach (var batch in _gpuMeshBatches) pipelineDepth += batch.jobs.Count;
 
         while (pipelineDepth < kAdmissionCap)
         {
@@ -921,6 +1072,11 @@ public class MCChunkManager : MonoBehaviour
                 ApplyDensityCache(inflight.job, cached);
                 _readyForMeshing.Add(inflight);
             }
+            else if (UseGpuMeshing && TerrainGpuMesher.CanMesh(inflight.job))
+            {
+                // Skips the density readback AND ChunkMesher entirely.
+                _gpuMeshPending.Add(inflight);
+            }
             else if (_gpuSampler != null && _gpuSampler.IsWorldGpuCapable)
             {
                 _gpuPending.Add(inflight);
@@ -941,14 +1097,33 @@ public class MCChunkManager : MonoBehaviour
         }
     }
 
+    // Copies the cache's density INTO the job's own buffers. It used to hand
+    // out Clone()s of the cached arrays, which allocated a fresh ~171 KB
+    // regular grid (plus face grids) on every edit-driven rebuild -- i.e. on
+    // every footprint, several times a second while walking.
+    //
+    // Copying rather than aliasing is still required: the job's buffers are
+    // reused and the cached ones must stay pristine for the next rebuild.
     static void ApplyDensityCache(ChunkMeshJob job, DensityCacheEntry cached)
     {
-        // Clone rather than hand out the cache's own arrays: ChunkMesher
-        // one-shot-consumes (nulls) job.gpuRaw* after use, which must not
-        // reach into and destroy the cached copy.
-        job.gpuRawRegular = (float[])cached.regular.Clone();
+        job.ClearGpuRawFlags();
+
+        // Guard against a cache entry from a different grid shape (someone
+        // edited cellsPerChunk, say). needsMask matching does not cover size,
+        // and ChunkMesher copies the CURRENT grid's element count out of
+        // whatever buffer it is handed -- a short one would be read past the
+        // end. Leaving every flag false just makes it re-sample on the CPU.
+        ChunkMesher.GetEffectiveGrid(job, out int nx, out int ny, out int nz, out _);
+        int need = ChunkMesher.RegularGridCount(nx) * ChunkMesher.RegularGridCount(ny) *
+                   ChunkMesher.RegularGridCount(nz);
+        if (cached.regularCount != need) return; // face grids derive from the same shape, so they match too
+
+        Array.Copy(cached.regular, job.RentGpuRawRegular(cached.regularCount), cached.regularCount);
         for (int i = 0; i < 6; i++)
-            job.gpuRawFaces[i] = cached.faces[i] != null ? (float[])cached.faces[i].Clone() : null;
+        {
+            if (cached.faces[i] == null) continue;
+            Array.Copy(cached.faces[i], job.RentGpuRawFace(i, cached.faceCounts[i]), cached.faceCounts[i]);
+        }
     }
 
     // Snapshots a job's freshly GPU-filled raw density into the cache, for
@@ -958,12 +1133,49 @@ public class MCChunkManager : MonoBehaviour
     void SaveDensityCache(InFlight inflight)
     {
         var job = inflight.job;
-        if (job.gpuRawRegular == null) return; // GPU wasn't used/failed for this job
-        var entry = new DensityCacheEntry { needsMask = inflight.needsMask, regular = (float[])job.gpuRawRegular.Clone() };
-        for (int i = 0; i < 6; i++)
-            if (job.gpuRawFaces[i] != null) entry.faces[i] = (float[])job.gpuRawFaces[i].Clone();
-        _densityCache[inflight.key] = entry;
+        if (!job.hasGpuRawRegular) return; // GPU wasn't used/failed for this job
+
+        ChunkMesher.GetEffectiveGrid(job, out int nx, out int ny, out int nz, out _);
+        int regularCount = ChunkMesher.RegularGridCount(nx) * ChunkMesher.RegularGridCount(ny) *
+                           ChunkMesher.RegularGridCount(nz);
+
+        // Reuse the entry (and its arrays) already sitting under this key --
+        // the overwhelmingly common case is the SAME chunk being rebuilt
+        // repeatedly at the same size, and re-allocating its cache arrays
+        // every time is the other half of the churn ApplyDensityCache just
+        // stopped paying.
+        if (!_densityCache.TryGetValue(inflight.key, out var entry))
+            _densityCache[inflight.key] = entry = new DensityCacheEntry();
+        entry.needsMask = inflight.needsMask;
+
+        CopyIntoCache(ref entry.regular, job.gpuRawRegular, regularCount);
+        entry.regularCount = regularCount;
+
+        // A face grid's length is whatever the planner asked for, and the job
+        // buffer may be longer than that, so cache exactly what was requested.
+        // Planned ONCE for all six faces -- per-face planning would rebuild
+        // the whole request list six times over.
+        for (int i = 0; i < 6; i++) { entry.faces[i] = null; entry.faceCounts[i] = 0; }
+        ChunkMesher.PlanGridRequests(job, _planScratch);
+        foreach (var r in _planScratch)
+        {
+            if (r.kind != ChunkMesher.PlannedRequest.Kind.Face) continue;
+            if (!job.hasGpuRawFace[r.face]) continue;
+            int n = r.countX * r.countY * r.countZ;
+            CopyIntoCache(ref entry.faces[r.face], job.gpuRawFaces[r.face], n);
+            entry.faceCounts[r.face] = n;
+        }
     }
+
+    static void CopyIntoCache(ref float[] dst, float[] src, int count)
+    {
+        if (dst == null || dst.Length < count) dst = new float[count];
+        Array.Copy(src, dst, count);
+    }
+
+    // Scratch for the PlanGridRequests overload that does not allocate.
+    // Main-thread only, and every user consumes it fully before returning.
+    readonly List<ChunkMesher.PlannedRequest> _planScratch = new();
 
     bool TryFastEmptySkip(InFlight inflight)
     {
@@ -982,11 +1194,16 @@ public class MCChunkManager : MonoBehaviour
         ApplyBuildResult(inflight);
     }
 
+    // Only the flags: the arrays themselves are the job's own reusable
+    // scratch now (see ChunkMeshJob's gpuRaw comment), so throwing them away
+    // here would reintroduce exactly the per-rebuild allocation they exist to
+    // avoid.
     static void ClearGpuRaw(ChunkMeshJob job)
     {
-        job.gpuRawRegular = null;
-        for (int i = 0; i < job.gpuRawFaces.Length; i++) job.gpuRawFaces[i] = null;
-        job.gpuRawCollision = null;
+        job.ClearGpuRawFlags();
+        // Every completion path routes through here, which is exactly the
+        // property the GPU output slot's reference counting needs.
+        job.ReleaseGpuMesh();
     }
 
     // Shared staleness handling for the two new pre-CPU-meshing gates (GPU
@@ -1029,16 +1246,16 @@ public class MCChunkManager : MonoBehaviour
             if (!_boxesValid || !IsDesired(inflight.key)) { RequeueOrDrop(inflight); continue; }
 
             var job = inflight.job;
-            var planned = ChunkMesher.PlanGridRequests(job);
-            foreach (var req in planned)
+            ChunkMesher.PlanGridRequests(job, _planScratch);
+            foreach (var req in _planScratch)
             {
-                var dest = new float[req.countX * req.countY * req.countZ];
-                switch (req.kind)
+                int len = req.countX * req.countY * req.countZ;
+                float[] dest = req.kind switch
                 {
-                    case ChunkMesher.PlannedRequest.Kind.Regular: job.gpuRawRegular = dest; break;
-                    case ChunkMesher.PlannedRequest.Kind.Face: job.gpuRawFaces[req.face] = dest; break;
-                    case ChunkMesher.PlannedRequest.Kind.Collision: job.gpuRawCollision = dest; break;
-                }
+                    ChunkMesher.PlannedRequest.Kind.Regular => job.RentGpuRawRegular(len),
+                    ChunkMesher.PlannedRequest.Kind.Face => job.RentGpuRawFace(req.face, len),
+                    _ => job.RentGpuRawCollision(len),
+                };
                 requests.Add(new TerrainGpuSampler.Request
                 {
                     origin = req.origin,
@@ -1082,6 +1299,69 @@ public class MCChunkManager : MonoBehaviour
                 _readyForMeshing.Add(inflight);
             }
         });
+    }
+
+    // Dispatches one GPU-meshing batch, if there is work and a free output
+    // slot. Deliberately not gated by WorkerCount: this path never occupies a
+    // CPU worker at all, which is the entire point of it.
+    void StageGpuMeshBatch()
+    {
+        if (!UseGpuMeshing || _gpuMeshPending.Count == 0) return;
+        if (!_gpuMesher.HasFreeSlot) return;
+
+        int take = HomogeneousRun(_gpuMeshPending, 0);
+        if (take == 0) return;
+        bool needsCollider = _gpuMeshPending[0].job.buildCollider;
+        var batch = new GpuMeshBatch { generation = _gpuGeneration };
+        _meshJobsScratch.Clear();
+        for (int i = 0; i < take; i++)
+        {
+            var f = _gpuMeshPending[i];
+            // Re-validate: staleness can only have grown since admission.
+            if (!_boxesValid || !IsDesired(f.key)) { RequeueOrDrop(f); continue; }
+            batch.jobs.Add(f);
+            _meshJobsScratch.Add(f.job);
+        }
+        _gpuMeshPending.RemoveRange(0, take);
+        if (batch.jobs.Count == 0) return;
+
+        _gpuMeshBatches.Add(batch);
+        // SubmitBatchAsync copies the job list before returning, so reusing
+        // _meshJobsScratch afterwards is safe.
+        // Collider chunks cannot direct-upload: PhysX cooks from CPU-side data,
+        // which a compute-written mesh does not have. See TerrainGpuMesher.CanMesh.
+        bool direct = gpuMeshDirectUpload && !needsCollider;
+        if (!_gpuMesher.SubmitBatchAsync(_meshJobsScratch, direct,
+                                         meshed => OnGpuMeshBatchDone(batch, meshed)))
+        {
+            _gpuMeshBatches.Remove(batch);
+            foreach (var f in batch.jobs) _readyForMeshing.Add(f); // never started: mesh it on the CPU
+        }
+    }
+
+    void OnGpuMeshBatchDone(GpuMeshBatch batch, bool[] meshed)
+    {
+        _gpuMeshBatches.Remove(batch);
+
+        // Same staleness rule as StageGpuBatch's readback: the world was
+        // cleared or its GPU params rebuilt after this batch was dispatched,
+        // so the geometry it produced may not reflect the current world.
+        if (batch.generation != _gpuGeneration)
+        {
+            foreach (var f in batch.jobs) RequeueOrDrop(f);
+            return;
+        }
+
+        for (int i = 0; i < batch.jobs.Count; i++)
+        {
+            var f = batch.jobs[i];
+            // Per-chunk fallback: one chunk can overflow the kernel's output
+            // capacity while the rest of the batch is fine. Its gpuRaw*
+            // buffers are null, so ChunkMesher re-samples the grid itself.
+            if (!meshed[i]) { _readyForMeshing.Add(f); continue; }
+            if (!_boxesValid || !IsDesired(f.key)) { RequeueOrDrop(f); continue; }
+            _readyToApply.Add(f);
+        }
     }
 
     // Promotes _readyForMeshing jobs into actual CPU meshing (_inFlight),
@@ -1167,6 +1447,24 @@ public class MCChunkManager : MonoBehaviour
 
     void ApplyCompletedBuilds()
     {
+        float t0 = Time.realtimeSinceStartup;
+        int done = 0;
+
+        // GPU-meshed chunks first: their data is already sitting in the job,
+        // so there is nothing to wait on and they are the cheapest thing the
+        // budget can spend itself on. They share the budget with the CPU
+        // results below rather than getting their own -- the point of the
+        // budget is a frame-time ceiling, and it does not care which half of
+        // the pipeline the work came from.
+        while (_readyToApply.Count > 0)
+        {
+            if (done > 0 && (Time.realtimeSinceStartup - t0) * 1000f >= generationBudgetMs) break;
+            var g = _readyToApply[0];
+            _readyToApply.RemoveAt(0); // oldest-first, same fairness rule as below
+            ApplyBuildResult(g);
+            done++;
+        }
+
         if (_inFlight.Count == 0) return;
 
         // OLDEST-FIRST (FIFO). New dispatches append at the end, so iterating
@@ -1174,8 +1472,6 @@ public class MCChunkManager : MonoBehaviour
         // budget and a steady stream of fast dirty-rebuilds (footprints while
         // walking), the oldest entry starves and its chunk stays stale for a
         // long time. Forward iteration guarantees fairness.
-        float t0 = Time.realtimeSinceStartup;
-        int done = 0;
         int i = 0;
         while (i < _inFlight.Count)
         {
@@ -1186,6 +1482,22 @@ public class MCChunkManager : MonoBehaviour
             _inFlight.RemoveAt(i); // don't advance: next entry slides into i
             ApplyBuildResult(f);
             done++;
+        }
+    }
+
+    // Binds finished off-thread collider cooks. Unbudgeted on purpose: the
+    // work here is the cheap half (a cache-warm sharedMesh assignment); the
+    // expensive half already happened on a worker thread.
+    void PumpColliderBakes()
+    {
+        for (int i = _pendingBakes.Count - 1; i >= 0; i--)
+        {
+            var ch = _pendingBakes[i];
+            if (ch == null || ch.FinishColliderBake())
+            {
+                if (ch != null) ch.bakeTracked = false;
+                _pendingBakes.RemoveAt(i);
+            }
         }
     }
 
@@ -1212,7 +1524,16 @@ public class MCChunkManager : MonoBehaviour
                 _chunks[f.key] = chunk;
             }
             ApplyLevelSettings(chunk, f.key);
+            // Only the streaming path defers: BuildBatchSync's callers expect
+            // collision to be live the moment it returns, and edit mode never
+            // reaches Update() to pump the bakes anyway.
+            job.deferColliderBake = !_applyingSync && Application.isPlaying;
             chunk.ApplyBuild(job);
+            if (chunk.ColliderBakePending && !chunk.bakeTracked)
+            {
+                chunk.bakeTracked = true;
+                _pendingBakes.Add(chunk);
+            }
             _generatedNeeds[f.key] = f.needsMask;
             chunk.SetVisible(!IsShowBlocked(f.key));
         }
@@ -1251,12 +1572,20 @@ public class MCChunkManager : MonoBehaviour
 
     void BuildBatchSync(List<ChunkKey> keys)
     {
+        _applyingSync = true;
+        try { BuildBatchSyncInner(keys); }
+        finally { _applyingSync = false; }
+    }
+
+    void BuildBatchSyncInner(List<ChunkKey> keys)
+    {
         // Same admission checks DispatchBuilds applies to the async path --
         // without these, every chunk in a sync batch (initial spawn burst,
         // "Generate/Refresh All Chunks") paid full GPU dispatch cost even
         // when provably empty or already covered by a cached base density,
         // which the async streaming path has skipped since the GPU port.
         var toGpu = new List<InFlight>();
+        var toGpuMesh = new List<InFlight>();
         foreach (var key in keys)
         {
             var f = PrepareBuild(key);
@@ -1275,7 +1604,18 @@ public class MCChunkManager : MonoBehaviour
                 ApplyBuildResult(f);
                 continue;
             }
-            toGpu.Add(f);
+            // Chunks the GPU can take end to end skip BOTH the density
+            // readback and ChunkMesher. Everything else keeps the existing
+            // "GPU fills the grid, CPU marches it" path.
+            if (UseGpuMeshing && TerrainGpuMesher.CanMesh(f.job)) toGpuMesh.Add(f);
+            else toGpu.Add(f);
+        }
+
+        for (int start = 0; start < toGpuMesh.Count; )
+        {
+            int count = HomogeneousRun(toGpuMesh, start);
+            RunGpuMeshSync(toGpuMesh.GetRange(start, count), toGpuMesh[start].job.buildCollider);
+            start += count;
         }
 
         for (int start = 0; start < toGpu.Count; start += kMaxChunksPerSyncBatch)
@@ -1288,6 +1628,54 @@ public class MCChunkManager : MonoBehaviour
                 ChunkMesher.Build(f.job);
                 ApplyBuildResult(f);
             }
+        }
+    }
+
+    bool UseGpuMeshing => gpuMeshing && _gpuMesher != null && _gpuMesher.IsAvailable;
+
+    // How many entries starting at `from` share the first one's buildCollider,
+    // capped at one batch. Batches have to be homogeneous in it: collider
+    // chunks take the readback path and everything else direct upload, and a
+    // mixed batch would mean tracking two different output-slot lifetimes at
+    // once. Admission order is nearest-first, so LOD0 clusters anyway and the
+    // usual cost of this is nothing.
+    static int HomogeneousRun(List<InFlight> src, int from)
+    {
+        if (from >= src.Count) return 0;
+        bool collider = src[from].job.buildCollider;
+        int n = 0;
+        while (n < TerrainGpuMesher.MaxChunksPerBatch && from + n < src.Count &&
+               src[from + n].job.buildCollider == collider) n++;
+        return n;
+    }
+
+    // Scratch for RunGpuMeshSync -- this runs in a loop over hundreds of
+    // chunks during a bulk regen, so it does not allocate per batch.
+    readonly List<ChunkMeshJob> _meshJobsScratch = new();
+    bool[] _meshedScratch;
+
+    void RunGpuMeshSync(List<InFlight> inflights, bool needsCollider)
+    {
+        _meshJobsScratch.Clear();
+        foreach (var f in inflights) _meshJobsScratch.Add(f.job);
+        if (_meshedScratch == null || _meshedScratch.Length < inflights.Count)
+            _meshedScratch = new bool[TerrainGpuMesher.MaxChunksPerBatch];
+        Array.Clear(_meshedScratch, 0, _meshedScratch.Length);
+
+        // Direct upload is safe here even though this path is synchronous: every
+        // chunk is applied (and so releases its slot reference) before this
+        // method returns.
+        bool ok = _gpuMesher.MeshBatchSync(_meshJobsScratch, _meshedScratch,
+                                           gpuMeshDirectUpload && !needsCollider);
+
+        for (int i = 0; i < inflights.Count; i++)
+        {
+            // Per-chunk fallback, not per-batch: a single chunk can overflow
+            // the kernel's output capacity while the rest of the batch is
+            // fine. ChunkMesher.Build re-samples the grid itself (gpuRaw* are
+            // null here), so the fallback is correct, just slower.
+            if (!ok || !_meshedScratch[i]) ChunkMesher.Build(inflights[i].job);
+            ApplyBuildResult(inflights[i]);
         }
     }
 
@@ -1305,16 +1693,16 @@ public class MCChunkManager : MonoBehaviour
         foreach (var f in inflights)
         {
             var job = f.job;
-            var planned = ChunkMesher.PlanGridRequests(job);
-            foreach (var req in planned)
+            ChunkMesher.PlanGridRequests(job, _planScratch);
+            foreach (var req in _planScratch)
             {
-                var dest = new float[req.countX * req.countY * req.countZ];
-                switch (req.kind)
+                int len = req.countX * req.countY * req.countZ;
+                float[] dest = req.kind switch
                 {
-                    case ChunkMesher.PlannedRequest.Kind.Regular: job.gpuRawRegular = dest; break;
-                    case ChunkMesher.PlannedRequest.Kind.Face: job.gpuRawFaces[req.face] = dest; break;
-                    case ChunkMesher.PlannedRequest.Kind.Collision: job.gpuRawCollision = dest; break;
-                }
+                    ChunkMesher.PlannedRequest.Kind.Regular => job.RentGpuRawRegular(len),
+                    ChunkMesher.PlannedRequest.Kind.Face => job.RentGpuRawFace(req.face, len),
+                    _ => job.RentGpuRawCollision(len),
+                };
                 requests.Add(new TerrainGpuSampler.Request
                 {
                     origin = req.origin,
@@ -1370,7 +1758,6 @@ public class MCChunkManager : MonoBehaviour
         go.autoRegenerate = false;
         ApplyLevelSettings(go, key);
         ApplyTerrainMaterial(go);
-        ApplyBiomeProps(go);
         go.gameObject.SetActive(true);
         return go;
     }
@@ -1465,8 +1852,22 @@ public class MCChunkManager : MonoBehaviour
         _gpuPending.Clear();
         _readyForMeshing.Clear();
         _gpuInFlightBatches.Clear();
+        // Same treatment for the GPU-meshing track: its in-flight readbacks
+        // are dropped by the _gpuGeneration bump below, exactly like the
+        // density track's.
+        foreach (var f in _readyToApply) f.job.ReleaseGpuMesh();
+        _gpuMeshPending.Clear();
+        _gpuMeshBatches.Clear();
+        _readyToApply.Clear();
+        // Anything still holding an output slot is gone now; force them free
+        // rather than wait for reference counts that will never be decremented.
+        _gpuMesher?.ResetSlots();
         _densityCache.Clear();
         _gpuGeneration++; // any already-dispatched batch's readback callback is now stale -- see field comment
+
+        foreach (var ch in _pendingBakes)
+            if (ch != null) ch.bakeTracked = false;
+        _pendingBakes.Clear();
 
         foreach (var chunk in _chunks.Values)
             if (chunk != null) ReleaseChunk(chunk);
@@ -1522,6 +1923,10 @@ public class MCChunkManager : MonoBehaviour
     void ReleaseChunk(MarchingChunk ch)
     {
         if (!ch) return;
+        // Anything still baking for this chunk is for terrain it no longer
+        // represents; drop the result (the Task itself is harmless and runs
+        // out on its own -- see MarchingChunk.CancelPendingColliderBake).
+        ch.CancelPendingColliderBake();
 
         if (usePooling && Application.isPlaying && _pool.Count < maxPoolSize)
         {

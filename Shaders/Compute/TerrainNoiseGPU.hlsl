@@ -168,11 +168,21 @@ void MC_Worley2(float x, float y, uint seed, out float f1, out float f2)
 {
     int cx = (int)floor(x), cy = (int)floor(y);
     f1 = 3.402823e38; f2 = 3.402823e38;
-    // Rolled, not unrolled: 9 cells x a hash each, and Frost calls this twice
-    // per sample. See MC_RidgedFbm's note on why code size is the constraint.
-    [loop] for (int oy = -1; oy <= 1; oy++)
+    // Unrolled ON PURPOSE, unlike the other fixed-bound 3x3 scans in this
+    // codebase (MC_CanyonSpireBoost, the bridge gather). The rule is code
+    // size, not iteration count, and this body is ~12 ALU plus one hash --
+    // nine of those is nothing next to the ~63 inlined terrain evaluations
+    // that made FXC give up on the bridge gather.
+    //
+    // Rolling it actively costs here: the two comparisons below are a
+    // loop-carried dependency on f1/f2, so [loop] turns them into nine
+    // serialized real branches. Unrolled, the compiler flattens the whole
+    // thing into min/max selects with no branching and schedules the nine
+    // independent hashes together. Frost calls this twice per sample, so it
+    // is one of the hotter inner loops on the GPU side.
+    for (int oy = -1; oy <= 1; oy++)
     {
-        [loop] for (int ox = -1; ox <= 1; ox++)
+        for (int ox = -1; ox <= 1; ox++)
         {
             int gx = cx + ox, gy = cy + oy;
             uint h = MC_Hash((uint)gx, (uint)gy, seed);

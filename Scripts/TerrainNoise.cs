@@ -80,11 +80,15 @@ public static class TerrainNoise
     // unresolvable (drop it). filterWidth <= 0 means "unfiltered".
     public static float DetailFade(float filterWidth, float featureSize)
     {
+        // The suppression has to span the REST of the method, not just the
+        // early return: when kBandLimit is const false, it is the two lines
+        // below that the compiler proves unreachable, and restoring the
+        // warning before them (as this used to) let CS0162 through anyway.
 #pragma warning disable CS0162 // unreachable when kBandLimit is off -- deliberate
         if (!kBandLimit) return 1f;
-#pragma warning restore CS0162
         if (filterWidth <= 0f || featureSize <= 0f) return 1f;
         return 1f - Smoothstep(kFadeStart, kFadeEnd, filterWidth / featureSize);
+#pragma warning restore CS0162
     }
 
     // 32 precomputed gradient directions instead of per-corner cos/sin.
