@@ -18,7 +18,7 @@ public class SimplePlayerController : MonoBehaviour
 {
     [Header("Movement")]
     public float walkSpeed = 6f;
-    public float sprintSpeed = 12f;
+    public float sprintSpeed = 60f;
 
     [Header("Look")]
     public Transform cameraTransform;

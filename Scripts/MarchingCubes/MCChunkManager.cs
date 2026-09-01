@@ -809,6 +809,15 @@ public class MCChunkManager : MonoBehaviour
                 _showBlockers[k] = _showBlockers.TryGetValue(k, out int b) ? b + 1 : 1;
         }
 
+        // Rescue anything the rebuild above just orphaned. Clearing and
+        // recomputing _showBlockers can drop the entry that was holding a
+        // chunk hidden, and resurrection (just above) removes a retiring chunk
+        // without ever running its reveal -- both leave a hidden chunk with
+        // nothing left to show it. Reveal-only, so it cannot hide anything;
+        // and this is the one place orphaning happens, so checking right after
+        // it covers the case exactly.
+        foreach (var kv in _chunks) RevealIfAllowed(kv.Key, kv.Value);
+
         // Swap groups the player can see up close must finish first: collect
         // the replacement keys of retiring chunks near the player.
         Vector3 p = target.position;
@@ -890,6 +899,26 @@ public class MCChunkManager : MonoBehaviour
     bool IsReady(ChunkKey key) => _chunks.ContainsKey(key) && _generatedNeeds.ContainsKey(key);
 
     bool IsShowBlocked(ChunkKey key) => _showBlockers.TryGetValue(key, out int b) && b > 0;
+
+    // Chunk visibility is MONOTONE: hidden -> visible, never the reverse. The
+    // only place it is lowered is CreateChunk, before the chunk has a mesh.
+    //
+    // _showBlockers exists to delay a freshly generated chunk's FIRST
+    // appearance so the chunk it replaces can retire in the same frame -- it
+    // was never meant to take an on-screen chunk away. But ApplyBuildResult
+    // used to evaluate SetVisible(!IsShowBlocked(key)) unconditionally, so an
+    // EXISTING, already-visible chunk that happened to be blocked when it got
+    // rebuilt was hidden too. Only SweepRetiring's release could bring it
+    // back, and that release is not guaranteed to come: a retiring chunk can
+    // be resurrected (removed from _retiring without ever releasing), and
+    // RecomputeTargets clears and rebuilds _showBlockers from scratch, which
+    // silently drops entries. Either way the chunk stayed generated, present,
+    // and invisible for good.
+    void RevealIfAllowed(ChunkKey key, MarchingChunk chunk)
+    {
+        if (chunk == null || chunk.IsVisible) return;
+        if (!IsShowBlocked(key)) chunk.SetVisible(true);
+    }
 
     // Release retiring chunks whose replacements are all generated, and reveal
     // those replacements in the same frame — no visible hole, no overlap.
@@ -1535,7 +1564,7 @@ public class MCChunkManager : MonoBehaviour
                 _pendingBakes.Add(chunk);
             }
             _generatedNeeds[f.key] = f.needsMask;
-            chunk.SetVisible(!IsShowBlocked(f.key));
+            RevealIfAllowed(f.key, chunk);
         }
         else if (!ok && IsDesired(f.key))
         {
@@ -1756,6 +1785,11 @@ public class MCChunkManager : MonoBehaviour
         var go = AcquireChunk();
         go.gameObject.name = $"Chunk_L{key.level}_{key.coord.x}_{key.coord.y}_{key.coord.z}";
         go.autoRegenerate = false;
+        // A pooled chunk carries whatever renderer state it was released with,
+        // and visibility is only ever raised after this point (see
+        // RevealIfAllowed) -- so this is the one place it gets lowered, while
+        // the chunk still has no mesh to show.
+        go.SetVisible(false);
         ApplyLevelSettings(go, key);
         ApplyTerrainMaterial(go);
         go.gameObject.SetActive(true);

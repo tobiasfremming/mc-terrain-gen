@@ -94,6 +94,15 @@ public class MarchingChunk : MonoBehaviour
         if (_renderer != null) _renderer.enabled = visible;
     }
 
+    public bool IsVisible
+    {
+        get
+        {
+            if (_renderer == null) _renderer = GetComponent<MeshRenderer>();
+            return _renderer != null && _renderer.enabled;
+        }
+    }
+
     void EnsureMesh()
     {
         if (_mesh == null)
