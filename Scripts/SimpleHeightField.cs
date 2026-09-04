@@ -50,7 +50,12 @@ public class SimpleHeightfield : HeightDensityField
         return true;
     }
 
-    public override float HeightAt(float wx, float wz)
+    // filterWidth is accepted but unused: this is the simple test/debug field,
+    // built on Mathf.PerlinNoise rather than TerrainNoise, and it is not part
+    // of the biome world any real clipmap renders. If it ever gets used at
+    // coarse LODs it will alias exactly like the real fields did -- band-limit
+    // it then, the same way (see TerrainNoise's header).
+    public override float HeightAt(float wx, float wz, float filterWidth)
     {
         Vector2 xz = new Vector2(wx, wz);
 

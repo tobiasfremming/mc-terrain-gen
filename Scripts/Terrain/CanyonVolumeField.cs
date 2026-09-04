@@ -92,9 +92,17 @@ public class CanyonVolumeField : DensityField
     [Tooltip("Blend radius welding the arch into the terrain — kept tight so the arch reads as a distinct span, not a ballooning overhang.")]
     public float bridgeSmoothing = 3f;
 
-    float SpireBoost(float wx, float wz)
+    float SpireBoost(float wx, float wz, float fw)
     {
         if (!enableSpires) return 0f;
+        // A spire is ~spireRadius across (11 m by default). Once the sample
+        // spacing approaches that, the 3x3 cell scan below either misses the
+        // pillar entirely or catches its peak and extrudes it across a whole
+        // voxel -- which is precisely the "monolith" failure. Fade the whole
+        // feature out instead; the amplitude gate keeps it continuous.
+        float spireFade = TerrainNoise.DetailFade(fw, spireRadius);
+        if (spireFade <= 0f) return 0f;
+
         uint s = unchecked((uint)seed);
         float boost = 0f;
         long icx = (long)Mathf.Floor(wx / spireCellSize);
@@ -114,37 +122,45 @@ public class CanyonVolumeField : DensityField
             float cz = (gz + 0.15f + 0.7f * jz) * spireCellSize;
             float radius = spireRadius * (0.6f + 0.8f * rj);
             float height = spireHeight * (0.55f + 0.9f * hj);
-            float wob = 1f + spireIrregularity * TerrainNoise.GNoise(wx / (radius * 0.8f), wz / (radius * 0.8f), s + 9006u);
+            // The wobble rides at the spire's own radius, so it is finer than
+            // the spire itself and drops out first.
+            float wobFade = TerrainNoise.DetailFade(fw, radius * 0.8f);
+            float wob = 1f + spireIrregularity * wobFade * TerrainNoise.GNoise(wx / (radius * 0.8f), wz / (radius * 0.8f), s + 9006u);
             float dx2 = wx - cx, dz2 = wz - cz;
             float dist = Mathf.Sqrt(dx2 * dx2 + dz2 * dz2) / Mathf.Max(wob, 0.35f);
             float t = 1f - TerrainNoise.Smoothstep(radius * 0.25f, radius, dist);
             boost = Mathf.Max(boost, t * height);
         }
-        return boost;
+        return boost * spireFade;
     }
 
     // th alone: 0 = inside the mountain, 1 = inside the canyon/valley. This is
     // the cheap classifier bridges use to scan for a facing wall pair without
     // paying for the full ridged-noise massif + spire computation below.
-    float ThAt(float wx, float wz)
+    float ThAt(float wx, float wz, float fw)
     {
         uint s = unchecked((uint)seed);
-        float thn = TerrainNoise.Fbm3(wx / thScale, 0f, wz / thScale, 3, s + 11u) * 1.06f;
+        float thn = TerrainNoise.Fbm3(wx / thScale, 0f, wz / thScale, 3, s + 11u, fw / thScale) * 1.06f;
         return TerrainNoise.Smoothstep(thLo, thHi, thn);
     }
 
-    float HeightAt(float wx, float wz)
+    // Every noise call divides its world coordinate by a scale, so each one
+    // gets the sample spacing divided by that same scale -- the filter width
+    // has to live in the same units as the coordinate it is filtering.
+    float HeightAt(float wx, float wz, float fw)
     {
         uint s = unchecked((uint)seed);
-        float th = ThAt(wx, wz);   // 1 = canyon/valley, 0 = mountain
+        float th = ThAt(wx, wz, fw);   // 1 = canyon/valley, 0 = mountain
 
-        float ridge = TerrainNoise.RidgedFbm(wx / peakScale, wz / peakScale, 4, s + 501u);
+        float ridge = TerrainNoise.RidgedFbm(wx / peakScale, wz / peakScale, 4, s + 501u,
+                                             filterWidth: fw / peakScale);
         float massif = peakBase + peakRange * ridge;
-        float detail = TerrainNoise.RidgedFbm(wx / detailScale, wz / detailScale, 3, s + 733u);
+        float detail = TerrainNoise.RidgedFbm(wx / detailScale, wz / detailScale, 3, s + 733u,
+                                              filterWidth: fw / detailScale);
         massif += detailAmp * detail;
 
         float rr = TerrainNoise.Smoothstep(0.1f, 0.5f,
-                       TerrainNoise.Fbm(wx / rrScale, wz / rrScale, 2, s + 21u) * 0.5f + 0.5f);
+                       TerrainNoise.Fbm(wx / rrScale, wz / rrScale, 2, s + 21u, fw / rrScale) * 0.5f + 0.5f);
 
         float hNoSpire = floorHeight + massif * (1f - th) + rrAmp * 0.3f * rr;
         if (!enableSpires) return hNoSpire;
@@ -155,7 +171,7 @@ public class CanyonVolumeField : DensityField
         // absolute world height is hard-capped at the tallest possible
         // mountain peak so a pillar can never read as taller than the
         // mountains around it.
-        float spireRaw = SpireBoost(wx, wz);
+        float spireRaw = SpireBoost(wx, wz, fw);
         if (spireRaw <= 0f) return hNoSpire;
 
         float heightAboveFloor = hNoSpire - floorHeight;
@@ -165,10 +181,19 @@ public class CanyonVolumeField : DensityField
         return Mathf.Min(spireTop, peakCap);
     }
 
-    float Erosion(float wx, float y, float wz)
+    // THE aliasing hotspot. disSquash squashes y before the divide, which
+    // makes the vertical strata disSquash times finer than the horizontal
+    // features -- at the default 26/3 that is an ~8.7 m vertical wavelength
+    // (and ~2.2 m by the third octave) against a 16 m sample spacing on the
+    // coarsest clipmap level. Undersampling that is what draws the regular
+    // corduroy banding across distant canyon walls, so the filter width has
+    // to be taken along the SQUASHED axis (the tightest one), not the loose
+    // horizontal ones.
+    float Erosion(float wx, float y, float wz, float fw)
     {
         uint s = unchecked((uint)seed);
-        return TerrainNoise.Fbm3(wx / disScale, y * disSquash / disScale, wz / disScale, 3, s + 39323u);
+        float fwNoise = fw * Mathf.Max(1f, disSquash) / disScale;
+        return TerrainNoise.Fbm3(wx / disScale, y * disSquash / disScale, wz / disScale, 3, s + 39323u, fwNoise);
     }
 
     // A candidate natural-bridge site: an explicit arch made of a circular-arc
@@ -189,7 +214,7 @@ public class CanyonVolumeField : DensityField
         public float legBottomA, legBottomB; // v-coordinate (relative to y0) each leg extends down to
     }
 
-    void GatherBridgeCandidates(float wx, float wz, Span<BridgeCandidate> outCandidates)
+    void GatherBridgeCandidates(float wx, float wz, Span<BridgeCandidate> outCandidates, float fw)
     {
         uint s = unchecked((uint)seed);
         long icx = (long)Mathf.Floor(wx / bridgeCellSize);
@@ -216,7 +241,7 @@ public class CanyonVolumeField : DensityField
 
                 // One cheap one-shot check (not a search): don't bother
                 // placing a bridge on top of a mountain.
-                float hCenter = HeightAt(cx, cz);
+                float hCenter = HeightAt(cx, cz, fw);
                 if (hCenter < bridgeMaxCenterHeight)
                 {
                     float halfSpan = bridgeHalfSpanMin + (bridgeHalfSpanMax - bridgeHalfSpanMin) * spanJ;
@@ -244,8 +269,8 @@ public class CanyonVolumeField : DensityField
                     // in all but pathological cases — still just one cheap
                     // directional sample, not a search.
                     const float gradEps = 12f;
-                    float hXp = HeightAt(cx + gradEps, cz), hXm = HeightAt(cx - gradEps, cz);
-                    float hZp = HeightAt(cx, cz + gradEps), hZm = HeightAt(cx, cz - gradEps);
+                    float hXp = HeightAt(cx + gradEps, cz, fw), hXm = HeightAt(cx - gradEps, cz, fw);
+                    float hZp = HeightAt(cx, cz + gradEps, fw), hZm = HeightAt(cx, cz - gradEps, fw);
                     float gxv = hXp - hXm, gzv = hZp - hZm;
                     float glen = Mathf.Sqrt(gxv * gxv + gzv * gzv);
                     float perpX, perpZ;
@@ -265,8 +290,8 @@ public class CanyonVolumeField : DensityField
 
                     float legAx = cx + perpX * halfSpan, legAz = cz + perpZ * halfSpan;
                     float legBx = cx - perpX * halfSpan, legBz = cz - perpZ * halfSpan;
-                    float hLegA = HeightAt(legAx, legAz);
-                    float hLegB = HeightAt(legBx, legBz);
+                    float hLegA = HeightAt(legAx, legAz, fw);
+                    float hLegB = HeightAt(legBx, legBz, fw);
 
                     c.valid = true;
                     c.cx = cx; c.cz = cz;
@@ -313,13 +338,13 @@ public class CanyonVolumeField : DensityField
         return a * h + b * (1f - h) + k * h * (1f - h);
     }
 
-    public override float Sample(Vector3 p)
+    public override float Sample(Vector3 p, float fw)
     {
-        float d = HeightAt(p.x, p.z) - p.y - Erosion(p.x, p.y, p.z) * disAmp;
+        float d = HeightAt(p.x, p.z, fw) - p.y - Erosion(p.x, p.y, p.z, fw) * disAmp;
         if (enableBridges)
         {
             Span<BridgeCandidate> cands = stackalloc BridgeCandidate[9];
-            GatherBridgeCandidates(p.x, p.z, cands);
+            GatherBridgeCandidates(p.x, p.z, cands, fw);
             for (int k = 0; k < cands.Length; k++)
                 if (cands[k].valid)
                     d = SMax(d, BridgeContribution(cands[k], p.x, p.y, p.z), bridgeSmoothing);
@@ -332,17 +357,18 @@ public class CanyonVolumeField : DensityField
     // per column too — only the erosion and arch terms need re-evaluating
     // per sample.
     public override void AddDensityColumn(float wx, float wz, float yStart, float yStep, int count,
-                                          float weight, float[] dest, int destIndex, int destStride)
+                                          float weight, float[] dest, int destIndex, int destStride,
+                                          float fw)
     {
-        float h = HeightAt(wx, wz);
+        float h = HeightAt(wx, wz, fw);
         Span<BridgeCandidate> cands = stackalloc BridgeCandidate[9];
         if (enableBridges)
-            GatherBridgeCandidates(wx, wz, cands);
+            GatherBridgeCandidates(wx, wz, cands, fw);
 
         for (int i = 0; i < count; i++)
         {
             float y = yStart + i * yStep;
-            float d = h - y - Erosion(wx, y, wz) * disAmp;
+            float d = h - y - Erosion(wx, y, wz, fw) * disAmp;
             if (enableBridges)
                 for (int k = 0; k < cands.Length; k++)
                     if (cands[k].valid)
@@ -368,7 +394,44 @@ public class CanyonVolumeField : DensityField
     // per-point definition; AddDensityColumn is a CPU-only optimized
     // variant of the same math). Field order here must match
     // CanyonGpuParams / the HLSL CanyonParams struct exactly.
-    public override GpuFieldType GpuType => GpuFieldType.Canyon;
+    // Mirrors MC_CANYON_BRIDGES in Shaders/Compute/DensityCanyon.hlsl. The
+    // bridge system is compiled OUT of the compute kernel by default: it is
+    // off in content, and it is the single most expensive thing in that kernel
+    // to compile (see the HLSL comment), to the point of tripping FXC's
+    // "Compiler timed out". Flip BOTH this and the HLSL define together to
+    // bring it back.
+    //
+    // If they ever disagree, this is the side that keeps things correct rather
+    // than merely consistent: with bridges wanted but not compiled in, GpuType
+    // reports None, which makes BiomeDensityField.TryBuildGpuLeaves fail and
+    // drops the WHOLE world to CPU sampling (the existing all-or-nothing rule
+    // -- never a per-chunk GPU/CPU mix, see DensityField.GpuType's comment).
+    // Slow, but you get the bridges you asked for, and CPU normals/vertex
+    // colours can never describe geometry the GPU didn't build.
+    const bool kGpuBridgesCompiledIn = false;
+    bool _bridgeCpuFallbackWarned;
+
+    public override GpuFieldType GpuType
+    {
+        get
+        {
+            if (enableBridges && !kGpuBridgesCompiledIn)
+            {
+                if (!_bridgeCpuFallbackWarned)
+                {
+                    _bridgeCpuFallbackWarned = true;
+                    Debug.LogWarning($"[CanyonVolumeField] '{name}': enableBridges is on, but the bridge " +
+                        "system is compiled out of the density compute shader (MC_CANYON_BRIDGES 0 in " +
+                        "DensityCanyon.hlsl). Falling back to CPU-only terrain generation for the whole " +
+                        "world so the mesh actually contains the bridges. To get GPU acceleration back, " +
+                        "either turn enableBridges off, or set MC_CANYON_BRIDGES to 1 and " +
+                        "kGpuBridgesCompiledIn to true together.", this);
+                }
+                return GpuFieldType.None;
+            }
+            return GpuFieldType.Canyon;
+        }
+    }
 
     public override LeafGpuParams ToGpuLeafParams()
     {

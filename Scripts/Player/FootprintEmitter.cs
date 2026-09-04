@@ -1,14 +1,16 @@
 using UnityEngine;
 
-// Leaves a smooth visual trail in the voxel terrain while the character walks.
-// Decoupled from the movement controller: any object with a CharacterController
-// can carry this, and it only talks to TerrainModificationSystem.
+// Leaves a smooth visual trail in the voxel terrain while something walks.
+// Not tied to any particular mover: grounded-ness is always confirmed with a
+// short downward probe (CharacterController.isGrounded alone is too flaky --
+// see IsGrounded's comment), so Rigidbody-driven or scripted objects can
+// carry this too, not just CharacterController ones. Only talks to
+// TerrainModificationSystem.
 //
 // Stamps are VISUAL-ONLY by default (affectPhysics = false): the render mesh
 // shows the trail but colliders ignore it, so movement stays smooth.
 // Consecutive stamps are connected with capsule (line) stamps, carving one
 // continuous groove instead of a bumpy chain of dents.
-[RequireComponent(typeof(CharacterController))]
 public class FootprintEmitter : MonoBehaviour
 {
     [Tooltip("Horizontal distance walked between stamps, meters.")]
@@ -18,6 +20,12 @@ public class FootprintEmitter : MonoBehaviour
     public float depth = 0.15f;
     [Tooltip("If true the trail also deforms collision (colliders re-cook on every stamp).")]
     public bool affectPhysics = false;
+
+    [Header("Foot placement")]
+    [Tooltip("Distance from the transform's pivot down to where the feet/base touch the ground, along 'up'. Auto-filled from CharacterController.height*0.5, or a Collider's bounds if present; otherwise set this manually -- left at 0 the ground probe never finds anything and this silently never stamps.")]
+    public float footOffset = 0f;
+    [Tooltip("Only used without a CharacterController: how far below the foot point to probe for ground.")]
+    public float groundProbeMargin = 0.3f;
 
     CharacterController _cc;
     MCChunkManager _terrain;
@@ -29,6 +37,15 @@ public class FootprintEmitter : MonoBehaviour
     void Awake()
     {
         _cc = GetComponent<CharacterController>();
+        if (footOffset <= 0f)
+        {
+            if (_cc != null) footOffset = _cc.height * 0.5f;
+            else if (TryGetComponent<Collider>(out var col)) footOffset = col.bounds.extents.y;
+        }
+        if (footOffset <= 0f)
+            Debug.LogWarning($"[FootprintEmitter] '{name}': footOffset is 0 and couldn't be auto-filled " +
+                "(no CharacterController or Collider found) -- the ground probe will never find anything " +
+                "and this will silently never stamp. Set footOffset manually.", this);
     }
 
     void Start()
@@ -37,7 +54,7 @@ public class FootprintEmitter : MonoBehaviour
         _lastPos = transform.position;
     }
 
-    void LateUpdate() // after the controller has moved
+    void LateUpdate() // after the mover has moved
     {
         if (_terrain == null) return;
 
@@ -45,7 +62,9 @@ public class FootprintEmitter : MonoBehaviour
         Vector3 delta = pos - _lastPos;
         _lastPos = pos;
 
-        if (!_cc.isGrounded)
+        Vector3 up = transform.up;
+
+        if (!IsGrounded(pos, up))
         {
             _hasLastStamp = false; // break the trail across jumps/falls
             return;
@@ -54,13 +73,12 @@ public class FootprintEmitter : MonoBehaviour
         // Measure horizontal distance walked: strip out whatever component of
         // delta points along "up" (world Y normally, planet-radial when the
         // player is aligned to a globe -- see GravityAligner).
-        Vector3 up = transform.up;
         delta -= Vector3.Dot(delta, up) * up;
         _accum += delta.magnitude;
         if (_accum < stride) return;
         _accum = 0f;
 
-        Vector3 foot = pos - up * (_cc.height * 0.5f);
+        Vector3 foot = pos - up * footOffset;
 
         // Soft ground takes footprints; hard rock doesn't. Hardness blends
         // smoothly across biome transitions, so prints fade out gradually.
@@ -81,5 +99,19 @@ public class FootprintEmitter : MonoBehaviour
 
         _lastStamp = foot;
         _hasLastStamp = true;
+    }
+
+    bool IsGrounded(Vector3 pos, Vector3 up)
+    {
+        // CharacterController.isGrounded is notoriously flaky -- it only
+        // reflects contact detected during the PREVIOUS Move() call, and can
+        // read false for a stray frame on perfectly ordinary flat ground
+        // (whenever that Move() call had no downward component to press
+        // into anything). Trusting it alone here caused exactly the
+        // "footprints don't register all the time" gap: real strides
+        // getting skipped mid-walk. The raycast is the actual ground truth;
+        // OR them so a false negative from either one doesn't break a step.
+        if (_cc != null && _cc.isGrounded) return true;
+        return Physics.Raycast(pos - up * footOffset, -up, groundProbeMargin);
     }
 }

@@ -38,8 +38,38 @@ public class BiomeDensityField : DensityField
     public Material terrainMaterial;
 
     const int kMaxBiomes = 8;
+    public const int MaxBiomes = kMaxBiomes;
+    public int BiomeCount => Mathf.Min(biomes.Length, kMaxBiomes);
 
-    DensityField Field(int i) => biomes[i] != null ? biomes[i].terrain : null;
+    bool _nullSlotWarned;
+
+    protected override void OnValidate()
+    {
+        base.OnValidate();
+        _nullSlotWarned = false; // biomes[] may have just been fixed -- allow a fresh warning if not
+    }
+
+    // An unassigned slot here doesn't just skip that biome -- it silently
+    // takes TryGetHeightBounds/TryGetEmptySkip/TryBuildGpuLeaves down with it
+    // for the WHOLE world (see their own comments), degrading spawn-altitude
+    // accuracy, chunk-skip perf, and GPU acceleration all at once with no
+    // other diagnostic anywhere. Warn once so a resized-but-not-yet-filled
+    // biomes[] array doesn't look like three unrelated mystery slowdowns.
+    DensityField Field(int i)
+    {
+        if (biomes[i] == null)
+        {
+            if (!_nullSlotWarned)
+            {
+                _nullSlotWarned = true;
+                Debug.LogWarning($"[BiomeDensityField] '{name}': biomes[{i}] is unassigned -- " +
+                    "falling back to slow CPU-only generation (no GPU acceleration, no chunk-skip, " +
+                    "conservative spawn altitude) until every slot has a Biome assigned.", this);
+            }
+            return null;
+        }
+        return biomes[i].terrain;
+    }
 
     // Thread-safe: pure math on stack memory, no shared scratch.
     void ComputeWeights(float wx, float wz, Span<float> w, int n)
@@ -62,7 +92,74 @@ public class BiomeDensityField : DensityField
         for (int i = 0; i < n; i++) w[i] /= sum;
     }
 
-    public override float Sample(Vector3 p)
+    // Sphere-coherent counterpart of ComputeWeights, for PlanetField: biome
+    // SELECTION as a function of a single 3D position (e.g. a point on the
+    // planet's surface, dir.normalized * radius), instead of a 2D (x,z)
+    // position. PlanetField's triplanar wrap evaluates each biome's own
+    // terrain SHAPE via 3 different per-face flat projections (needed for
+    // watertightness -- see PlanetField.cs), but if biome selection also
+    // went through those same 3 independent per-face (x,z) projections, the
+    // result would be 3 UNRELATED biome patterns stitched together, visibly
+    // mismatched near the triplanar transition bands. Using one 3D noise
+    // field for selection instead means every face agrees on which biome is
+    // where -- only each biome's shape still varies per face, as intended.
+    // `pos` divides by regionScale exactly like the 2D case's wx/wz, so
+    // regionScale keeps the same "meters per biome region" meaning in both
+    // flat and globe modes.
+    public void ComputeWeights3D(Vector3 pos, Span<float> w, int n)
+    {
+        uint s = unchecked((uint)seed);
+        Vector3 q = pos / regionScale;
+        float maxA = float.MinValue;
+        for (int i = 0; i < n; i++)
+        {
+            float a = TerrainNoise.Fbm3(q.x + i * 13.7f, q.y - i * 7.3f, q.z + i * 5.1f,
+                                        2, s + (uint)(i * 191)) + (biomes[i] != null ? biomes[i].bias : -10f);
+            w[i] = a;
+            if (a > maxA) maxA = a;
+        }
+        float sum = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            w[i] = Mathf.Exp(sharpness * (w[i] - maxA));
+            sum += w[i];
+        }
+        for (int i = 0; i < n; i++) w[i] /= sum;
+    }
+
+    // Density blend using externally supplied weights (e.g. from
+    // ComputeWeights3D) instead of computing them from p.x/p.z -- same
+    // skip-and-renormalize logic as Sample().
+    public float SampleWithWeights(Vector3 p, ReadOnlySpan<float> w, int n, float fw)
+    {
+        float d = 0f, used = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            if (w[i] < 0.004f || Field(i) == null) continue;
+            d += w[i] * Field(i).Sample(p, fw);
+            used += w[i];
+        }
+        return used > 0f ? d / used : -p.y;
+    }
+
+    // GetVertexColor/SurfaceHardness using externally supplied weights --
+    // both are pure functions of the weight vector (no position-dependent
+    // per-biome term), so unlike SampleWithWeights they don't need a `p`.
+    public Color GetVertexColorWithWeights(ReadOnlySpan<float> w, int n)
+    {
+        if (n <= 1) return new Color(0, 0, 0, 1);
+        return new Color(n > 1 ? w[1] : 0f, n > 2 ? w[2] : 0f, n > 3 ? w[3] : 0f, 1f);
+    }
+
+    public float SurfaceHardnessWithWeights(ReadOnlySpan<float> w, int n)
+    {
+        float h = 0f;
+        for (int i = 0; i < n; i++)
+            if (biomes[i] != null) h += w[i] * biomes[i].hardness;
+        return h;
+    }
+
+    public override float Sample(Vector3 p, float fw)
     {
         int n = Mathf.Min(biomes.Length, kMaxBiomes);
         if (n == 0) return -p.y;
@@ -76,7 +173,7 @@ public class BiomeDensityField : DensityField
         for (int i = 0; i < n; i++)
         {
             if (w[i] < 0.004f || Field(i) == null) continue;
-            d += w[i] * Field(i).Sample(p);
+            d += w[i] * Field(i).Sample(p, fw);
             used += w[i];
         }
         return used > 0f ? d / used : -p.y;
@@ -117,7 +214,7 @@ public class BiomeDensityField : DensityField
                     for (int i = 0; i < n; i++)
                         if (w[i] >= 0.004f && Field(i) != null)
                             Field(i).AddDensityColumn(wx, wz, origin.y, step, countY,
-                                                      w[i] / used, dest, colIdx, countX);
+                                                      w[i] / used, dest, colIdx, countX, step);
             }
         }
     }
@@ -125,7 +222,7 @@ public class BiomeDensityField : DensityField
     // Fast 2D gradient when every active biome is a plain heightfield
     // (d/dy is exactly -1 there); full 3D central differences otherwise.
     // Both formulas agree exactly where the choice flips, so no seams.
-    public override Vector3 Gradient(Vector3 p, float eps)
+    public override Vector3 Gradient(Vector3 p, float eps, float fw)
     {
         int n = Mathf.Min(biomes.Length, kMaxBiomes);
         if (n > 0)
@@ -140,12 +237,12 @@ public class BiomeDensityField : DensityField
             }
             if (pure2D)
             {
-                float dx = Sample(new Vector3(p.x + eps, p.y, p.z)) - Sample(new Vector3(p.x - eps, p.y, p.z));
-                float dz = Sample(new Vector3(p.x, p.y, p.z + eps)) - Sample(new Vector3(p.x, p.y, p.z - eps));
+                float dx = Sample(new Vector3(p.x + eps, p.y, p.z), fw) - Sample(new Vector3(p.x - eps, p.y, p.z), fw);
+                float dz = Sample(new Vector3(p.x, p.y, p.z + eps), fw) - Sample(new Vector3(p.x, p.y, p.z - eps), fw);
                 return new Vector3(dx / (2f * eps), -1f, dz / (2f * eps));
             }
         }
-        return base.Gradient(p, eps); // 6-sample central differences
+        return base.Gradient(p, eps, fw); // 6-sample central differences
     }
 
     // Weighted surface hardness: 0 soft sand .. 1 hard rock, blending smoothly

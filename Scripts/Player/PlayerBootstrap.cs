@@ -61,9 +61,10 @@ public static class PlayerBootstrap
         cam.nearClipPlane = Mathf.Min(cam.nearClipPlane, 0.1f);
 
         // --- controller + footprint trail + digging ---
-        var ctrl = player.AddComponent<SimplePlayerController>(); // RequireComponent auto-adds GravityAligner
+        var ctrl = player.AddComponent<SimplePlayerController>(); // RequireComponent auto-adds GravityAligner + CharacterGravity
         ctrl.cameraTransform = cam.transform;
-        ctrl.densityField = density;
+        var charGravity = player.GetComponent<CharacterGravity>();
+        charGravity.densityField = density;
         var gravity = player.GetComponent<GravityAligner>();
         gravity.terrain = manager;
         if (!player.GetComponent<FootprintEmitter>())
@@ -80,9 +81,9 @@ public static class PlayerBootstrap
         // isn't necessarily a pure heightfield (canyon/alien carve caves and
         // overhangs), so landing exactly on "the surface" along one ray risks
         // spawning inside a mountain's flank or under an overhang. Falling
-        // onto it is simple and robust; SimplePlayerController's existing
-        // "no collider below yet -> hold position" check keeps this safe
-        // even before nearby chunks have streamed in.
+        // onto it is simple and robust; CharacterGravity's existing "no
+        // collider below yet -> hold position" check keeps this safe even
+        // before nearby chunks have streamed in.
         //
         // Position AND orientation are set directly here so the player is
         // correctly oriented from frame one; gravity.ResetOrientation() below
@@ -99,7 +100,7 @@ public static class PlayerBootstrap
         }
         else
         {
-            float surfaceY = SimplePlayerController.SampleSurfaceHeight(p.x, p.z, density);
+            float surfaceY = CharacterGravity.SampleSurfaceHeight(p.x, p.z, density);
             player.transform.SetPositionAndRotation(
                 new Vector3(p.x, surfaceY + 2f, p.z),
                 Quaternion.Euler(0f, player.transform.eulerAngles.y, 0f));

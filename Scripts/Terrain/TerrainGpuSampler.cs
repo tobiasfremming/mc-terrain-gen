@@ -30,14 +30,16 @@ public class TerrainGpuSampler : IDisposable
     public const int MaxBiomes = 8;
 
     readonly ComputeShader _shader;
-    readonly int _kernel = -1;
-    readonly uint _threadGroupSizeX = 64;
+    int _kernel = -1;
+    uint _threadGroupSizeX = 64;
 
     ComputeBuffer _leafParamsBuffer;
     ComputeBuffer _fieldTypeBuffer;
     ComputeBuffer _biasBuffer;
     ComputeBuffer _blendBuffer;
     ComputeBuffer _planetBuffer;
+
+    float[] _syncScratch = Array.Empty<float>(); // see SubmitBatchSync
 
     public bool IsWorldGpuCapable { get; private set; }
     public static bool SupportsCompute => SystemInfo.supportsComputeShaders;
@@ -47,8 +49,36 @@ public class TerrainGpuSampler : IDisposable
         _shader = shader;
         if (_shader == null || !SupportsCompute) return;
 
-        _kernel = _shader.FindKernel("CSMain");
-        _shader.GetKernelThreadGroupSizes(_kernel, out _threadGroupSizeX, out _, out _);
+        // A ComputeShader that failed to compile (most likely: the FXC
+        // "Compiler timed out" this kernel is genuinely capable of hitting)
+        // still loads as an asset, but exposes NO kernels -- FindKernel logs
+        // an error and returns -1, and GetKernelThreadGroupSizes then THROWS
+        // IndexOutOfRangeException. Letting that escape this constructor took
+        // the entire generation pass down with it: EnsureField ->
+        // RecomputeTargets -> GenerateAllChunks all unwound, so not one chunk
+        // was built -- not even the ones that never needed the GPU. The whole
+        // point of the CPU fallback is that a broken/absent compute shader is
+        // survivable, so swallow it here and leave _kernel at -1.
+        try
+        {
+            if (!_shader.HasKernel("CSMain"))
+            {
+                Debug.LogWarning($"[TerrainGpuSampler] '{_shader.name}' has no CSMain kernel " +
+                                 "(did it fail to compile?). Falling back to CPU density sampling.");
+                return;
+            }
+            int k = _shader.FindKernel("CSMain");
+            if (k < 0) return;
+            _shader.GetKernelThreadGroupSizes(k, out _threadGroupSizeX, out _, out _);
+            _kernel = k;
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[TerrainGpuSampler] Could not bind '{_shader.name}' CSMain " +
+                             $"({e.GetType().Name}: {e.Message}). Falling back to CPU density sampling.");
+            _kernel = -1;
+            return;
+        }
 
         _leafParamsBuffer = new ComputeBuffer(MaxBiomes, Marshal.SizeOf<LeafGpuParams>());
         _fieldTypeBuffer = new ComputeBuffer(MaxBiomes, sizeof(int));
@@ -66,11 +96,16 @@ public class TerrainGpuSampler : IDisposable
     public void RefreshWorldParams(DensityField baseField)
     {
         IsWorldGpuCapable = false;
-        if (_shader == null || !SupportsCompute) return;
+        // _kernel < 0 => the shader never bound (see the constructor); every
+        // buffer below is null too, so this must bail before touching them.
+        if (_shader == null || !SupportsCompute || _kernel < 0) return;
 
-        bool isPlanet = false;
-        Vector3 center = Vector3.zero;
-        float radius = 0f;
+        // PlanetGpuParams.center comes ONLY from TryBuildGpuParams below, so
+        // the CPU and GPU can never disagree about it. This used to re-read
+        // `planet.center` directly here and discard TryBuildGpuParams' own
+        // output via `out _` -- harmless while the two agreed, a silent
+        // divergence the moment they stopped.
+        PlanetGpuParams planetParams = default; // isPlanet=0/center=zero/radius=0 for the non-planet case, matching prior defaults
         BiomeBlendGpuParams blend;
         LeafGpuParams[] leaves;
         GpuFieldType[] fieldTypes;
@@ -79,10 +114,7 @@ public class TerrainGpuSampler : IDisposable
 
         if (baseField is PlanetField planet)
         {
-            isPlanet = true;
-            center = planet.center;
-            radius = planet.radius;
-            ok = planet.TryBuildGpuParams(out _, out blend, out leaves, out fieldTypes, out biases);
+            ok = planet.TryBuildGpuParams(out planetParams, out blend, out leaves, out fieldTypes, out biases);
         }
         else if (baseField is BiomeDensityField biomeWorld)
         {
@@ -101,7 +133,7 @@ public class TerrainGpuSampler : IDisposable
         _fieldTypeBuffer.SetData(fieldTypeInts);
         _biasBuffer.SetData(biases);
         _blendBuffer.SetData(new[] { blend });
-        _planetBuffer.SetData(new[] { new PlanetGpuParams { isPlanet = isPlanet ? 1f : 0f, center = center, radius = radius } });
+        _planetBuffer.SetData(new[] { planetParams });
 
         _shader.SetBuffer(_kernel, "_LeafParams", _leafParamsBuffer);
         _shader.SetBuffer(_kernel, "_BiomeFieldType", _fieldTypeBuffer);
@@ -110,6 +142,56 @@ public class TerrainGpuSampler : IDisposable
         _shader.SetBuffer(_kernel, "_PlanetBuf", _planetBuffer);
 
         IsWorldGpuCapable = true;
+    }
+
+    // Binds the persistent world/biome parameter buffers onto ANOTHER
+    // compute shader's kernel. TerrainGpuMesher includes the same
+    // DensityPlanet.hlsl and so declares the same StructuredBuffers, but it
+    // is a separate ComputeShader asset with its own binding table -- these
+    // have to be bound there too, and from here, so there is still exactly
+    // one place that decides what the world's GPU parameters are.
+    public bool BindWorldBuffers(ComputeShader shader, int kernel)
+    {
+        if (!IsWorldGpuCapable || shader == null || kernel < 0) return false;
+        shader.SetBuffer(kernel, "_LeafParams", _leafParamsBuffer);
+        shader.SetBuffer(kernel, "_BiomeFieldType", _fieldTypeBuffer);
+        shader.SetBuffer(kernel, "_BiomeBias", _biasBuffer);
+        shader.SetBuffer(kernel, "_BiomeBlendBuf", _blendBuffer);
+        shader.SetBuffer(kernel, "_PlanetBuf", _planetBuffer);
+        return true;
+    }
+
+    // Fills `outBuffer` with the requested grids and LEAVES IT ON THE GPU --
+    // no readback, no dest arrays (Request.dest is ignored here). This is the
+    // entry point for GPU meshing, where the density is only ever consumed by
+    // another kernel and reading it back would be the one pointless copy in
+    // the whole pipeline.
+    public bool DispatchGrids(IList<Request> requests, ComputeBuffer outBuffer, out uint totalVoxels)
+    {
+        totalVoxels = 0;
+        if (!IsWorldGpuCapable || requests == null || requests.Count == 0 || outBuffer == null) return false;
+
+        BuildDescriptors(requests, out GpuGridRequest[] descriptors, out totalVoxels);
+        if (outBuffer.count < (int)totalVoxels) return false;
+
+        ComputeBuffer reqBuffer = null;
+        try
+        {
+            reqBuffer = new ComputeBuffer(descriptors.Length, Marshal.SizeOf<GpuGridRequest>());
+            Dispatch(reqBuffer, outBuffer, descriptors, totalVoxels);
+            return true;
+        }
+        catch (Exception e)
+        {
+            // Same reasoning as the other two dispatch paths: a GPU failure
+            // must degrade to the CPU mesher, never abort the caller's loop.
+            Debug.LogException(e);
+            return false;
+        }
+        finally
+        {
+            reqBuffer?.Dispose();
+        }
     }
 
     // One pending grid-fill request. `dest` must already be sized to
@@ -141,16 +223,13 @@ public class TerrainGpuSampler : IDisposable
             {
                 Dispatch(reqBuffer, outBuffer, descriptors, totalVoxels);
 
-                var result = new float[totalVoxels];
-                outBuffer.GetData(result); // blocking
+                // Grown and kept rather than allocated per call: a bulk
+                // regen runs this repeatedly, and at 32 chunks a batch this
+                // array is several megabytes each time.
+                if (_syncScratch.Length < (int)totalVoxels) _syncScratch = new float[(int)totalVoxels];
+                outBuffer.GetData(_syncScratch, 0, 0, (int)totalVoxels); // blocking
 
-                for (int i = 0; i < requests.Count; i++)
-                {
-                    var dest = requests[i].dest;
-                    uint baseOffset = descriptors[i].outputOffset;
-                    for (int v = 0; v < dest.Length; v++)
-                        dest[v] = result[baseOffset + v];
-                }
+                CopySlices(requests, descriptors, _syncScratch);
             }
             return true;
         }
@@ -209,13 +288,7 @@ public class TerrainGpuSampler : IDisposable
             if (ok)
             {
                 NativeArray<float> data = request.GetData<float>();
-                for (int i = 0; i < requests.Count; i++)
-                {
-                    var dest = requests[i].dest;
-                    uint baseOffset = descriptors[i].outputOffset;
-                    for (int v = 0; v < dest.Length; v++)
-                        dest[v] = data[(int)baseOffset + v];
-                }
+                CopySlices(requests, descriptors, data);
             }
             reqBuffer.Dispose();
             outBuffer.Dispose();
@@ -246,6 +319,39 @@ public class TerrainGpuSampler : IDisposable
 
         _shader.SetInt("_GroupsX", groupsX);
         _shader.Dispatch(_kernel, groupsX, groupsY, 1);
+    }
+
+    // Scatter one flat readback buffer back into the per-request dest arrays.
+    //
+    // The length copied is the REQUEST's voxel count, never dest.Length:
+    // ChunkMeshJob now owns and reuses its raw-density buffers, so a dest can
+    // legitimately be longer than the request that is filling it. Using
+    // dest.Length would read past this request's slice into the next one's.
+    //
+    // BULK copies, deliberately -- these used to be scalar `for (v...)
+    // dest[v] = src[baseOffset + v]` loops, and they are NOT cheap at this
+    // scale: one regular chunk grid alone is 33^3 ~= 36k floats, so a batch of
+    // a few dozen chunks (each contributing a regular grid, up to 6 transition
+    // faces and a collision grid) runs to millions of element reads. Worse,
+    // the async one runs inside the AsyncGPUReadback callback, which fires on
+    // the MAIN thread and is NOT covered by MCChunkManager.generationBudgetMs
+    // -- so that cost landed as an unbudgeted frame hitch, invisible to the
+    // budget that exists precisely to prevent hitches. Both overloads below
+    // bottom out in a memcpy instead.
+    static void CopySlices(IList<Request> requests, GpuGridRequest[] descriptors, float[] src)
+    {
+        for (int i = 0; i < requests.Count; i++)
+            Array.Copy(src, (int)descriptors[i].outputOffset, requests[i].dest, 0, (int)descriptors[i].VoxelCount);
+    }
+
+    // NativeArray.Copy is the managed-array overload of the same memcpy; the
+    // per-element NativeArray indexer it replaces additionally pays a
+    // bounds/atomic-safety check per read outside Burst, which is what made
+    // this the more expensive of the two paths.
+    static void CopySlices(IList<Request> requests, GpuGridRequest[] descriptors, NativeArray<float> src)
+    {
+        for (int i = 0; i < requests.Count; i++)
+            NativeArray<float>.Copy(src, (int)descriptors[i].outputOffset, requests[i].dest, 0, (int)descriptors[i].VoxelCount);
     }
 
     static void BuildDescriptors(IList<Request> requests, out GpuGridRequest[] descriptors, out uint totalVoxels)

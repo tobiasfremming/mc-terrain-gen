@@ -9,21 +9,33 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 980612bb021b8ce44a4be4ab662cc6a7, type: 3}
+  m_Script: {fileID: 11500000, guid: af224e116c5243e9b31d8121d9537db8, type: 3}
   m_Name: FrostField
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier:
   isoLevel: 0
+  seed: 2024
   baseHeight: 6
-  amplitude: 12
-  frequency: 0.006
-  octaves: 5
-  lacunarity: 2.2
-  gain: 0.45
-  dunes: 0
-  windDir: {x: 1, y: 0}
-  duneFreqAlong: 0.02
-  duneFreqAcross: 0.2
-  duneAmp: 2
-  mountains: 1
-  ridgeFreq: 0.012
-  ridgeAmp: 27.4
+  windDegrees: 40
+  plainScale: 380
+  plainAmplitude: 3
+  peakScale: 260
+  peakOctaves: 3
+  peakAmp: 27.4
+  sastrugi: 1
+  sastrugiWavelengthAcross: 3.5
+  sastrugiWavelengthAlong: 40
+  sastrugiOctaves: 2
+  sastrugiAmp: 0.6
+  sastrugiAsymmetry: 0.5
+  permafrostPolygons: 1
+  polygonScale: 18
+  polygonTroughDepth: 0.35
+  polygonEdgeWidth: 0.35
+  crevasses: 1
+  crevasseScale: 55
+  crevasseDepth: 6
+  crevasseEdgeWidth: 0.12
+  crevassePatchScale: 500
+  hummocks: 1
+  hummockScale: 6
+  hummockAmp: 0.4

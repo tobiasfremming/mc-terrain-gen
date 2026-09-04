@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 // Wraps an existing DensityField so it renders as a sphere instead of a flat
@@ -41,6 +42,23 @@ public class PlanetField : DensityField
 
     const float kWeightEpsilon = 0.0005f;
 
+    // NOTE: Sample/GetVertexColor/SurfaceHardness take ABSOLUTE world
+    // positions, the same convention every other DensityField uses. There
+    // used to be a "floating origin" rebase here (a CenterRebased property
+    // fed by MCChunkManager's job.densityOrigin) intended to fight float32
+    // precision loss at large radius. It was removed: it bought nothing (the
+    // sample position got smaller but `center` got correspondingly larger,
+    // so `rel` came out at the same magnitude and the same precision), and it
+    // silently broke every caller that legitimately passes an absolute
+    // position -- TerrainModificationCache (terrain edits/footprints) and
+    // CharacterGravity's surface probes both did, which is what made
+    // footprints stop working once the planet was big enough to trip the
+    // recenter threshold. If precision ever genuinely does become the
+    // limiting factor here (it is not below ~10^7 radius: float32's ULP at
+    // 10^5 is 8 mm), the fix is to split the coordinate into an exact
+    // integer part plus a small fractional part BEFORE the noise functions'
+    // floor/frac split -- not to shuffle the origin around.
+
     // A radius comfortably above ANY possible terrain -- for spawning
     // something and letting it fall onto the surface, rather than trying to
     // land exactly on the ground (which risks spawning inside an overhang or
@@ -55,7 +73,7 @@ public class PlanetField : DensityField
         return radius * 1.5f + spawnMargin;
     }
 
-    public override float Sample(Vector3 p)
+    public override float Sample(Vector3 p, float fw)
     {
         if (surface == null) return radius - Vector3.Distance(p, center);
 
@@ -66,23 +84,63 @@ public class PlanetField : DensityField
         float localHeight = dist - radius;
         Vector3 w = BlendWeights(rel);
 
-        float d = 0f;
-        if (w.x > kWeightEpsilon) d += w.x * surface.Sample(new Vector3(rel.z, localHeight, rel.y));
-        if (w.y > kWeightEpsilon) d += w.y * surface.Sample(new Vector3(rel.x, localHeight, rel.z));
-        if (w.z > kWeightEpsilon) d += w.z * surface.Sample(new Vector3(rel.x, localHeight, rel.y));
-        return d;
+        if (surface is BiomeDensityField bdf)
+        {
+            int n = bdf.BiomeCount;
+            Span<float> bw = stackalloc float[BiomeDensityField.MaxBiomes];
+            // rel.normalized * radius, NOT rel -- biome selection must be a
+            // function of WHERE ON THE SPHERE you are, not how high above it.
+            // Feeding `rel` directly (briefly tried, as a misguided precision
+            // tweak) makes selection drift by localHeight/regionScale ~= 0.2
+            // cells over the terrain's height range. That sounds negligible,
+            // but blendSharpness is ~200: the softmax is effectively an
+            // argmax, so a 0.2-cell drift flips the winning biome anywhere two
+            // biomes score within ~0.1 of each other -- a ~200m-wide band
+            // around EVERY biome boundary. The visible result is one biome
+            // stacked on top of another in the same column (frost caps
+            // floating over canyon), which reads as a "monolith".
+            bdf.ComputeWeights3D(rel.normalized * radius, bw, n);
+
+            float d = 0f;
+            // The triplanar permutation is a rigid relabelling of axes, so
+            // the sample spacing survives it unchanged -- fw passes straight
+            // through to each face.
+            if (w.x > kWeightEpsilon) d += w.x * bdf.SampleWithWeights(new Vector3(rel.z, localHeight, rel.y), bw, n, fw);
+            if (w.y > kWeightEpsilon) d += w.y * bdf.SampleWithWeights(new Vector3(rel.x, localHeight, rel.z), bw, n, fw);
+            if (w.z > kWeightEpsilon) d += w.z * bdf.SampleWithWeights(new Vector3(rel.x, localHeight, rel.y), bw, n, fw);
+            return d;
+        }
+
+        float d2 = 0f;
+        if (w.x > kWeightEpsilon) d2 += w.x * surface.Sample(new Vector3(rel.z, localHeight, rel.y), fw);
+        if (w.y > kWeightEpsilon) d2 += w.y * surface.Sample(new Vector3(rel.x, localHeight, rel.z), fw);
+        if (w.z > kWeightEpsilon) d2 += w.z * surface.Sample(new Vector3(rel.x, localHeight, rel.y), fw);
+        return d2;
     }
 
     public override bool HasVertexColors => surface != null && surface.HasVertexColors;
 
+    // Biome color/hardness are pure functions of the (now sphere-coherent)
+    // biome weight vector, with no separate per-face position term -- unlike
+    // Sample, which still needs each biome's own per-face SHAPE -- so these
+    // don't need the triplanar face blend at all once weights come from
+    // ComputeWeights3D: all 3 faces would agree exactly, since they'd share
+    // the same weights.
     public override Color GetVertexColor(Vector3 p)
     {
         if (surface == null) return base.GetVertexColor(p);
-
         Vector3 rel = p - center;
+
+        if (surface is BiomeDensityField bdf)
+        {
+            int n = bdf.BiomeCount;
+            Span<float> bw = stackalloc float[BiomeDensityField.MaxBiomes];
+            bdf.ComputeWeights3D(rel.normalized * radius, bw, n); // see Sample() on why normalized*radius, not rel
+            return bdf.GetVertexColorWithWeights(bw, n);
+        }
+
         float localHeight = rel.magnitude - radius;
         Vector3 w = BlendWeights(rel);
-
         Color c = Color.black;
         if (w.x > kWeightEpsilon) c += w.x * surface.GetVertexColor(new Vector3(rel.z, localHeight, rel.y));
         if (w.y > kWeightEpsilon) c += w.y * surface.GetVertexColor(new Vector3(rel.x, localHeight, rel.z));
@@ -94,11 +152,18 @@ public class PlanetField : DensityField
     public override float SurfaceHardness(Vector3 p)
     {
         if (surface == null) return base.SurfaceHardness(p);
-
         Vector3 rel = p - center;
+
+        if (surface is BiomeDensityField bdf)
+        {
+            int n = bdf.BiomeCount;
+            Span<float> bw = stackalloc float[BiomeDensityField.MaxBiomes];
+            bdf.ComputeWeights3D(rel.normalized * radius, bw, n); // see Sample() on why normalized*radius, not rel
+            return bdf.SurfaceHardnessWithWeights(bw, n);
+        }
+
         float localHeight = rel.magnitude - radius;
         Vector3 w = BlendWeights(rel);
-
         float h = 0f;
         if (w.x > kWeightEpsilon) h += w.x * surface.SurfaceHardness(new Vector3(rel.z, localHeight, rel.y));
         if (w.y > kWeightEpsilon) h += w.y * surface.SurfaceHardness(new Vector3(rel.x, localHeight, rel.z));
@@ -134,12 +199,24 @@ public class PlanetField : DensityField
     // Without this, EVERY chunk in the clipmap box gets fully marched,
     // including chunks buried deep in the planet's interior or stranded far
     // out in empty space -- the single biggest cost of planet mode.
+    // The radial band [rLo, rHi] that can contain surface. Everything nearer
+    // the center is solid rock, everything beyond it is open sky. Public
+    // because callers outside the mesher need it to answer "is this point
+    // anywhere near the ground?" -- notably MCChunkManager's editor-time
+    // generate, which otherwise happily centres the whole clipmap 1000 m deep
+    // inside the planet and produces nothing.
+    public bool TryGetSurfaceBand(out float rLo, out float rHi)
+    {
+        rLo = rHi = radius;
+        if (surface == null || !surface.TryGetHeightBounds(out float minH, out float maxH)) return false;
+        rLo = Mathf.Max(0f, radius + minH);
+        rHi = radius + maxH;
+        return true;
+    }
+
     public override bool TryGetEmptySkip(Vector3 boxMin, Vector3 boxMax)
     {
-        if (surface == null || !surface.TryGetHeightBounds(out float minH, out float maxH)) return false;
-
-        float rLo = Mathf.Max(0f, radius + minH);
-        float rHi = radius + maxH;
+        if (!TryGetSurfaceBand(out float rLo, out float rHi)) return false;
 
         float closestSq = ClosestDistanceSq(center, boxMin, boxMax);
         float farthestSq = FarthestDistanceSq(center, boxMin, boxMax);

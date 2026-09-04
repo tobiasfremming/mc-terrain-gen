@@ -1,0 +1,16 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: GroveGrammar
+  m_EditorClassIdentifier: 
+  source: "// Wind-carved stone spires. A thick trunk that forks rarely, leans upward, and\n// caps each finished branch with a K marker the grove field turns into a\n// knobbly tip. Tuned so every branch terminates by iteration 7.\n#define A 26          // fork angle\n#define SH 0.74       // how much shorter each generation gets\n#define TP 0.85       // how much thinner each generation gets\n#define MIN 1.2       // stop branching below this length\n#define PHI 137.5     // golden angle: successive forks never stack into a plane\n#iterations: 8\n\n#axiom: !(3.4) S(9, 3.4)\n\n// S(length, width) is a growing tip. Three variants, drawn 25/35/40, so the\n// trunk mostly climbs and only occasionally splits -- a spire, not a bush.\nS(l,w) : l >= MIN : 0.25 -> F(l) !(w*TP) [ &(A) /(PHI) S(l*SH, w*TP) ] [ &(-A*0.85) /(PHI*2) S(l*SH*0.9, w*TP) ]\nS(l,w) : l >= MIN : 0.35 -> F(l) !(w*TP) [ &(A*1.6) \\(PHI) S(l*SH*0.75, w*TP*0.85) ] S(l*SH, w*TP*0.97)\nS(l,w) : l >= MIN : 0.40 -> F(l*1.15) ^(A*0.35) /(PHI) S(l*SH, w*TP*0.94)\n\n// Too short to keep going: lay the last stub down and mark the tip.\nS(l,w) : l < MIN -> F(l) K(w*1.1)\n"
+  iterations: 8

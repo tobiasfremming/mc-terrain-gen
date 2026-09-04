@@ -45,27 +45,44 @@ void MC_AlienPath(float z, AlienParams p, out float px, out float py)
     py = p.pathAmpB * cos(z * p.pathFreqB) + p.pathDriftAmp * (sin(z * p.pathDriftFreq) - 1.0);
 }
 
-float EvaluateAlienDensity(float3 worldPos, AlienParams p)
+// See AlienVolumeField.DensityAt: these terms are FREQUENCIES, so each one's
+// feature size is 2*pi/freq (one sine period), not the raw parameter.
+float EvaluateAlienDensity(float3 worldPos, AlienParams p, float fw)
 {
     float wx = worldPos.x, wy = worldPos.y, wz = worldPos.z;
     uint s = (uint)(int)p.seed;
 
-    float qx = wx * p.latticeFreq, qy = wy * p.latticeFreq, qz = wz * p.latticeFreq;
-    float l1 = sin(qx) * cos(qy) + sin(qy) * cos(qz) + sin(qz) * cos(qx);
-    float l2 = sin(qx * 1.5) * cos(qy * 1.5) + sin(qy * 1.5) * cos(qz * 1.5) + sin(qz * 1.5) * cos(qx * 1.5);
-    float h = p.lattice1Amp * l1 + p.lattice2Amp * l2;
+    const float kTau = 6.2831853;
+    float latticeWave = p.latticeFreq > 0.0 ? kTau / p.latticeFreq : 3.402823e38;
+    float fade1 = MC_DetailFade(fw, latticeWave);
+    float fade2 = MC_DetailFade(fw, latticeWave / 1.5);
 
-    float tx = MC_VNoise3(wx / p.pebbleScale, wy / p.pebbleScale, wz / p.pebbleScale, s + 8801u);
+    float qx = wx * p.latticeFreq, qy = wy * p.latticeFreq, qz = wz * p.latticeFreq;
+    float l1 = fade1 <= 0.0 ? 0.0
+             : sin(qx) * cos(qy) + sin(qy) * cos(qz) + sin(qz) * cos(qx);
+    float l2 = fade2 <= 0.0 ? 0.0
+             : sin(qx * 1.5) * cos(qy * 1.5) + sin(qy * 1.5) * cos(qz * 1.5) + sin(qz * 1.5) * cos(qx * 1.5);
+    float h = p.lattice1Amp * l1 * fade1 + p.lattice2Amp * l2 * fade2;
+
+    // Fade the pebble term toward MC_VNoise3's midpoint (0.5), not toward 0 --
+    // it feeds tnlPebbleOffset and the tunnel radius, which would bias the
+    // whole surface outward if it decayed to zero instead of to its mean.
+    float pebbleFade = MC_DetailFade(fw, p.pebbleScale);
+    float tx = 0.5;
+    if (pebbleFade > 0.0)
+        tx = lerp(0.5, MC_VNoise3(wx / p.pebbleScale, wy / p.pebbleScale, wz / p.pebbleScale, s + 8801u), pebbleFade);
 
     float d = wy + h * p.hillAmp;
 
     float raw;
     if (p.enableTunnel > 0.5)
     {
+        float wallWave = p.wallDetailFreq > 0.0 ? kTau / p.wallDetailFreq : 3.402823e38;
+        float wallFade = MC_DetailFade(fw, wallWave);
         float qx2 = sin(wx * p.wallDetailFreq + h);
         float qy2 = sin(wy * p.wallDetailFreq + h);
         float qz2 = sin(wz * p.wallDetailFreq + h);
-        float h2 = qx2 * qy2 * qz2;
+        float h2 = qx2 * qy2 * qz2 * wallFade;
 
         float px, py;
         MC_AlienPath(wz, p, px, py);

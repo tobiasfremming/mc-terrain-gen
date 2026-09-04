@@ -75,6 +75,15 @@ public float lodUpdateInterval = 0.5f; // How often to recalculate LOD
         cellSize = Mathf.Max(0.0001f, cellSize);
         densitySampling = Mathf.Max(1, densitySampling);
         windDir = (windDir.sqrMagnitude < 1e-6f) ? new Vector3(1,0,0) : windDir.normalized;
+
+        // EffectiveDensity silently falls back to flat (defaultDensity) if
+        // useGlobe is on but planetField isn't wired up -- no error, no
+        // visual glitch, just a world that looks flat when you expected a
+        // sphere. Warn loudly instead of leaving that to be a mystery.
+        if (useGlobe && planetField == null)
+            Debug.LogWarning($"[WorldConfig] '{name}': Use Globe is on but Planet Field is unassigned -- " +
+                "falling back to the flat defaultDensity until a PlanetField is set.", this);
+
         TerrainTuning.NotifyChanged(); // so flipping Use Globe hot-reloads in Play mode, same as any Biome tweak
     }
 }

@@ -16,8 +16,8 @@ MonoBehaviour:
   biomes:
   - {fileID: 11400000, guid: 0cefd04ec5a24c7fbaab5487fb114eb9, type: 2}
   - {fileID: 11400000, guid: af0705236a0543c0a817c648feb768ad, type: 2}
-  - {fileID: 11400000, guid: 99593ba9132c43a68259a4f6e92848d7, type: 2}
+  - {fileID: 11400000, guid: 91a7ee9e2c937a0a1bb7dab3f76c4f38, type: 2}
   seed: 99
   regionScale: 1000
-  sharpness: 20
+  sharpness: 150
   terrainMaterial: {fileID: 2100000, guid: 18c6bc84e3bc488bb08862a1ca3ff129, type: 2}
