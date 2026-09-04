@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using LSystems;
 using UnityEngine;
 
@@ -38,15 +39,20 @@ using UnityEngine;
 // is the range beyond which a capsule cannot change the smooth union near a
 // surface -- so the bucketing never moves the extracted isosurface.
 //
-// NOT GPU-CAPABLE
-// ---------------
-// GpuType stays None. The GPU path packs each leaf field into a fixed
-// LeafGpuParams struct, and a grove is a variable-length buffer of capsules,
-// not twenty floats. Per BiomeDensityField.TryBuildGpuLeaves, ONE non-GPU
-// biome drops the WHOLE world to CPU meshing -- so adding this to a
-// GPU-accelerated BiomeWorld costs that world its GPU path. That is a real
-// price, and it is the reason this asset is not wired into BiomeWorld by
-// default.
+// GPU
+// ---
+// Half of this field is closed-form (the ground) and half is not: a grove is a
+// variable-length buffer of capsules produced by deriving a grammar, and there
+// is no sane way to run an L-system in HLSL. So the work is split rather than
+// refused -- the CPU builds each plot's capsules once and caches them, and the
+// GPU evaluates the round-cone SDF over them, which is the half that runs per
+// voxel and therefore the half that costs. See GpuType / BuildGpuAtlas below,
+// Shaders/Compute/DensityGrove.hlsl for the evaluation, and
+// TerrainGpuSampler.EnsureGroveAtlas for the upload.
+//
+// Reporting a real GpuType matters beyond this field: per
+// BiomeDensityField.TryBuildGpuLeaves, ONE non-GPU biome drops the WHOLE world
+// to CPU meshing.
 [CreateAssetMenu(fileName = "GroveField", menuName = "Marching Cubes/Volume (L-System Grove)")]
 public class LSystemGroveField : DensityField
 {
@@ -150,7 +156,18 @@ public class LSystemGroveField : DensityField
             float y = yStart + i * yStep;
             float d = h - y;
             for (int c = 0; c < n; c++)
-                d = SMax(d, -candidates[c].Distance(wx, y, wz), blend);
+            {
+                Capsule cap = candidates[c];
+                // Same padded-range reject as Plot.Accumulate's per-cell Y
+                // bounds, applied per capsule because a gathered column spans
+                // many heights. Both paths must cull identically or the column
+                // fast path and Sample would disagree.
+                float pad = cap.MaxRadius + blend;
+                float ay = cap.A.y, by = cap.B.y;
+                float lo = (ay < by ? ay : by) - pad, hi = (ay > by ? ay : by) + pad;
+                if (y < lo || y > hi) continue;
+                d = SMax(d, -cap.Distance(wx, y, wz), blend);
+            }
             dest[destIndex] += weight * d;
             destIndex += destStride;
         }
@@ -180,6 +197,7 @@ public class LSystemGroveField : DensityField
     {
         base.OnValidate();
         _plots = null;      // tunables changed: every cached plot is stale
+        _version++;         // ...and so is any atlas the GPU sampler uploaded
     }
 
     float PlotSize => Mathf.Max(8f, plotSize);
@@ -253,11 +271,20 @@ public class LSystemGroveField : DensityField
             Capsules = new Capsule[0],
             CellStart = new int[1],
             CellItems = new int[0],
+            CellMinY = new float[0],
+            CellMaxY = new float[0],
         };
 
         public Capsule[] Capsules;
         public int[] CellStart;         // CSR offsets, length res*res + 1
         public int[] CellItems;
+        // Per-cell vertical extent, ALREADY inflated by each capsule's
+        // radius + blend -- the range outside which nothing in the cell can
+        // move the surface. The bucket grid is XZ-only, so without this a
+        // voxel 40 m under a spire still evaluated every capsule in the
+        // spire's column. Most voxels in a chunk are nowhere near the
+        // geometry vertically, so this is the cheapest large win available.
+        public float[] CellMinY, CellMaxY;
         public int Res;
         public float MinX, MinZ, InvCell;
         public float MaxX, MaxZ;
@@ -275,12 +302,16 @@ public class LSystemGroveField : DensityField
         {
             int cell = Cell(p.x, p.z);
             if (cell < 0) return d;
+            if (p.y < CellMinY[cell] || p.y > CellMaxY[cell]) return d; // exact: bounds already padded
             int end = CellStart[cell + 1];
             for (int i = CellStart[cell]; i < end; i++)
                 d = SMax(d, -Capsules[CellItems[i]].Distance(p.x, p.y, p.z), blend);
             return d;
         }
 
+        // No Y test here: AddDensityColumn gathers once for a whole column and
+        // the column spans many heights. The per-voxel Y reject happens in
+        // AddDensityColumn itself, against each capsule's own padded range.
         public void Gather(float wx, float wz, List<Capsule> into)
         {
             int cell = Cell(wx, wz);
@@ -445,8 +476,6 @@ public class LSystemGroveField : DensityField
     // parameters-I-happened-to-pick.
     Plot Bucket(List<Capsule> caps, float originX, float originZ, float size)
     {
-        int res = Mathf.Clamp(gridResolution, 2, 32);
-
         float minX = float.MaxValue, minZ = float.MaxValue;
         float maxX = float.MinValue, maxZ = float.MinValue;
         for (int i = 0; i < caps.Count; i++)
@@ -460,9 +489,28 @@ public class LSystemGroveField : DensityField
         }
 
         float extent = Mathf.Max(Mathf.Max(maxX - minX, maxZ - minZ), 0.001f);
+
+        // Resolution ADAPTS to how fat the capsules actually are, instead of
+        // trusting gridResolution to suit them. A capsule is inserted into
+        // every cell its inflated footprint touches, so when that footprint is
+        // large next to the cell size each capsule lands in many cells and the
+        // grid stops separating anything: at radiusScale 9.75 the fixed 10x10
+        // grid gave 19.3 cells per capsule and 199 capsules to test per voxel.
+        // Sizing cells to the mean footprint keeps duplication near 1x whatever
+        // the radii are, which is what makes the field robust to tuning rather
+        // than quietly quadratic in it.
+        double meanPad = 0.0;
+        for (int i = 0; i < caps.Count; i++) meanPad += caps[i].MaxRadius + blend;
+        meanPad = caps.Count > 0 ? meanPad / caps.Count : 1.0;
+        int adaptive = Mathf.CeilToInt(extent / Mathf.Max(0.001f, (float)(2.0 * meanPad)));
+        int res = Mathf.Clamp(Mathf.Max(adaptive, gridResolution), 2, 64);
+
         float invCell = res / extent;
 
         var counts = new int[res * res + 1];
+        var cellMinY = new float[res * res];
+        var cellMaxY = new float[res * res];
+        for (int i = 0; i < res * res; i++) { cellMinY[i] = float.MaxValue; cellMaxY[i] = float.MinValue; }
         var lo = new int[caps.Count * 4];   // (x0,z0,x1,z1) per capsule
 
         for (int i = 0; i < caps.Count; i++)
@@ -478,9 +526,17 @@ public class LSystemGroveField : DensityField
             int z1 = Mathf.Clamp((int)((bz - minZ) * invCell), 0, res - 1);
             lo[i * 4] = x0; lo[i * 4 + 1] = z0; lo[i * 4 + 2] = x1; lo[i * 4 + 3] = z1;
 
+            // Same pad vertically as horizontally, so "outside the cell's Y
+            // range" means "cannot move the surface", exactly.
+            float y0 = Mathf.Min(c.A.y, c.B.y) - pad, y1 = Mathf.Max(c.A.y, c.B.y) + pad;
             for (int z = z0; z <= z1; z++)
                 for (int x = x0; x <= x1; x++)
-                    counts[z * res + x + 1]++;
+                {
+                    int ci = z * res + x;
+                    counts[ci + 1]++;
+                    if (y0 < cellMinY[ci]) cellMinY[ci] = y0;
+                    if (y1 > cellMaxY[ci]) cellMaxY[ci] = y1;
+                }
         }
 
         for (int i = 0; i < res * res; i++) counts[i + 1] += counts[i];
@@ -503,6 +559,8 @@ public class LSystemGroveField : DensityField
             Capsules = caps.ToArray(),
             CellStart = counts,
             CellItems = items,
+            CellMinY = cellMinY,
+            CellMaxY = cellMaxY,
             Res = res,
             MinX = minX,
             MinZ = minZ,
@@ -510,6 +568,105 @@ public class LSystemGroveField : DensityField
             MaxZ = minZ + extent,
             InvCell = invCell,
         };
+    }
+
+    // ---- GPU ------------------------------------------------------------
+
+    // Unlike the other leaves this field is only HALF expressible as fixed
+    // params: the ground is closed-form noise, but the spires are a
+    // variable-length capsule set produced by deriving a grammar, which has no
+    // sane HLSL form. So the split is CPU-builds-geometry / GPU-evaluates-SDF.
+    // The capsules travel separately as an atlas (BuildGpuAtlas below), which
+    // TerrainGpuSampler uploads per dispatch.
+    //
+    // Reporting a real type here is what keeps a world containing this biome on
+    // the GPU at all: BiomeDensityField.TryBuildGpuLeaves fails if ANY biome
+    // resolves to None, and takes the whole world down to CPU sampling with it.
+    public override GpuFieldType GpuType => GpuFieldType.Grove;
+
+    public override LeafGpuParams ToGpuLeafParams() => new LeafGpuParams
+    {
+        grove = new GroveGpuParams
+        {
+            seed = seed,
+            groundHeight = groundHeight,
+            groundAmp = groundAmp,
+            groundScale = groundScale > 0.01f ? groundScale : 0.01f,
+            groundOctaves = groundOctaves,
+            blend = blend,
+            plotSize = PlotSize,
+        }
+    };
+
+    // Bumped whenever cached plots are thrown away, so the sampler can tell
+    // that an atlas it uploaded for the same plot rectangle is nonetheless
+    // stale and must be rebuilt.
+    public int Version => _version;
+    int _version;
+
+    // Flattens the plots covering [pxMin, pxMin+plotsX) x [pzMin, pzMin+plotsZ)
+    // into the caller's lists, in ROW-MAJOR order so the shader can index a
+    // plot as (pz - pzMin) * plotsX + (px - pxMin) with no search.
+    //
+    // Cell items stay plot-relative; the shader adds capsuleBase. That keeps
+    // this a copy rather than a renumbering pass.
+    public bool BuildGpuAtlas(int pxMin, int pzMin, int plotsX, int plotsZ,
+                              List<GroveCapsuleGpu> capsules, List<GrovePlotGpu> plots,
+                              List<int> cellStart, List<int> cellItems, List<Vector2> cellY)
+    {
+        capsules.Clear();
+        plots.Clear();
+        cellStart.Clear();
+        cellItems.Clear();
+        cellY.Clear();
+        if (grammar == null || plotsX <= 0 || plotsZ <= 0) return false;
+
+        int total = plotsX * plotsZ;
+        var resolved = new Plot[total];
+
+        // A plot is a pure function of (px, pz, seed) and GetPlot is already
+        // thread-safe -- ConcurrentDictionary plus [ThreadStatic] scratch -- so
+        // warming the range in parallel is free correctness-wise and turns a
+        // first-entry hitch into a fraction of one. Repeat dispatches over the
+        // same ground hit the cache and do no derivation at all.
+        Parallel.For(0, total, i => resolved[i] = GetPlot(pxMin + (i % plotsX), pzMin + (i / plotsX)));
+
+        for (int i = 0; i < total; i++)
+        {
+            Plot p = resolved[i];
+            if (p == null || p.Res <= 0 || p.Capsules.Length == 0)
+            {
+                plots.Add(default); // res = 0: the shader skips it
+                continue;
+            }
+
+            var rec = new GrovePlotGpu
+            {
+                minX = p.MinX,
+                minZ = p.MinZ,
+                maxX = p.MaxX,
+                maxZ = p.MaxZ,
+                invCell = p.InvCell,
+                res = p.Res,
+                cellStartBase = cellStart.Count,
+                itemBase = cellItems.Count,
+                capsuleBase = capsules.Count,
+                cellYBase = cellY.Count,
+            };
+
+            for (int c = 0; c < p.Capsules.Length; c++)
+            {
+                Capsule cap = p.Capsules[c];
+                capsules.Add(new GroveCapsuleGpu { a = cap.A, ra = cap.RA, b = cap.B, rb = cap.RB });
+            }
+            for (int c = 0; c < p.CellStart.Length; c++) cellStart.Add(p.CellStart[c]);
+            for (int c = 0; c < p.CellItems.Length; c++) cellItems.Add(p.CellItems[c]);
+            for (int c = 0; c < p.CellMinY.Length; c++) cellY.Add(new Vector2(p.CellMinY[c], p.CellMaxY[c]));
+
+            plots.Add(rec);
+        }
+
+        return capsules.Count > 0;
     }
 
     // Exposed for the offline verification harness only: the round-cone SDF

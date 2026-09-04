@@ -1,0 +1,107 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: TreeGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// A flowering fruit tree. The most elaborate of the three: deep recursion,
+
+    //
+    three stochastic ways to grow, and terminal rules that CHOOSE what to make
+
+    //
+    based on how thick the wood ended up.
+
+    //
+
+    // Where the complexity comes
+    from:
+
+    //   * three growth variants (52/26/22) -- forking, single-side, and
+    a plain
+
+    //     climb -- so no two branches take the same path
+
+    //  
+    * width carried as a parameter and set with !(w), so the tree tapers from
+
+    //    
+    trunk to twig instead of being one thickness
+
+    //   * /(PHI) between siblings,
+    so branches spiral instead of stacking flat
+
+    //   * two DIFFERENT endings,
+    chosen by a condition on width: stubby branches
+
+    //     that finished early
+    are still thick and bear fruit; long thin ones
+
+    //     blossom instead
+
+    //
+
+    //
+    Terminal widths run about 0.011 to 0.025, so 0.019 puts fruit on roughly the
+
+    //
+    thickest third. Change that number and the tree re-fruits instantly.
+
+
+    #define
+    FORK 34       // main fork angle
+
+    #define LEAN 20       // how much a climbing
+    segment tilts
+
+    #define SH   0.79     // each generation shorter
+
+    #define
+    TP   0.74     // ...and thinner
+
+    #define MIN  0.26     // length at which
+    wood stops growing and finishes
+
+    #define PHI  137.5    // golden angle between
+    siblings
+
+
+    #iterations: 13
+
+
+    #axiom: !(0.34) T(2.6, 0.34)
+
+
+    // T(length,
+    width) is live wood. Three variants -> an asymmetric tree.
+
+    T(l,w) : l >=
+    MIN : 0.52 -> F(l) !(w*TP) [ &(FORK) /(PHI) T(l*SH, w*TP) ] [ &(-FORK*0.82) /(PHI*2)
+    T(l*SH*0.9, w*TP*0.94) ] L(w*3)
+
+    T(l,w) : l >= MIN : 0.26 -> F(l) !(w*TP)
+    [ &(FORK*1.5) \(PHI) T(l*SH*0.82, w*TP*0.86) ] T(l*SH, w*TP*0.97) L(w*3.4)
+
+    T(l,w)
+    : l >= MIN : 0.22 -> F(l*1.12) ^(LEAN*0.5) /(PHI) T(l*SH, w*TP*0.97) L(w*3.2)
+
+
+    //
+    Two endings. Thick tip -> fruit. Thin tip -> blossom.
+
+    T(l,w) : l < MIN :
+    w >  0.019 -> F(l) Q(w*7) L(w*3)
+
+    T(l,w) : l < MIN : w <= 0.019 -> F(l) B(w*11)
+    L(w*3)
+
+'
+  iterations: 13

@@ -41,6 +41,12 @@ public class BiomeDensityField : DensityField
     public const int MaxBiomes = kMaxBiomes;
     public int BiomeCount => Mathf.Min(biomes.Length, kMaxBiomes);
 
+    // The field in slot i, or null. Exposed for the one case where
+    // TryBuildGpuLeaves' fixed LeafGpuParams is not the whole story:
+    // LSystemGroveField also needs a per-dispatch capsule atlas uploaded, so
+    // TerrainGpuSampler has to find the instance, not just its params.
+    public DensityField FieldAt(int i) => (uint)i < (uint)BiomeCount ? Field(i) : null;
+
     bool _nullSlotWarned;
 
     protected override void OnValidate()

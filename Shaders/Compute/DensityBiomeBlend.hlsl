@@ -6,6 +6,7 @@
 #include "DensityAlien.hlsl"
 #include "DensityCanyon.hlsl"
 #include "DensityFrost.hlsl"
+#include "DensityGrove.hlsl"
 
 // Matches Biome.SurfaceStyle-style dispatch already proven in
 // SandTerrain.shader's EVALUATE_CHANNEL macro -- density's analogue. Values
@@ -15,6 +16,7 @@
 #define MC_FIELDTYPE_ALIEN  1
 #define MC_FIELDTYPE_CANYON 2
 #define MC_FIELDTYPE_FROST  3
+#define MC_FIELDTYPE_GROVE  4
 #define MC_MAX_BIOMES 8
 
 // Union of all 4 leaf types' params in one struct (nested, not flattened, so
@@ -27,6 +29,7 @@ struct LeafParams
     AlienParams alien;
     CanyonParams canyon;
     FrostParams frost;
+    GroveParams grove; // appended LAST -- mirrors LeafGpuParams
 };
 
 struct BiomeBlendParams
@@ -75,6 +78,8 @@ float EvaluateLeafDensity(int fieldType, float3 worldPos, LeafParams p, float fw
         d = EvaluateAlienDensity(worldPos, p.alien, fw);
     else if (fieldType == MC_FIELDTYPE_FROST)
         d = EvaluateFrostHeight(worldPos.x, worldPos.z, p.frost, fw) - worldPos.y;
+    else if (fieldType == MC_FIELDTYPE_GROVE)
+        d = EvaluateGroveDensity(worldPos, p.grove, fw); // volumetric, not a heightfield
     return d;
 }
 

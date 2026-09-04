@@ -39,6 +39,35 @@ public class TerrainGpuSampler : IDisposable
     ComputeBuffer _blendBuffer;
     ComputeBuffer _planetBuffer;
 
+    // ---- grove atlas ----------------------------------------------------
+    //
+    // LSystemGroveField is the one leaf whose shape is not closed-form: an
+    // L-system cannot be derived in HLSL, so its spires arrive as a capsule
+    // atlas the CPU builds per plot and caches. These buffers carry whatever
+    // plots the region currently being dispatched can reach.
+    // See Shaders/Compute/DensityGrove.hlsl.
+    LSystemGroveField _grove;
+    ComputeBuffer _groveCapsuleBuffer;
+    ComputeBuffer _grovePlotBuffer;
+    ComputeBuffer _groveCellStartBuffer;
+    ComputeBuffer _groveCellItemBuffer;
+    ComputeBuffer _groveCellYBuffer;
+    ComputeBuffer _groveAtlasBuffer;
+
+    readonly List<GroveCapsuleGpu> _groveCapsules = new List<GroveCapsuleGpu>();
+    readonly List<GrovePlotGpu> _grovePlots = new List<GrovePlotGpu>();
+    readonly List<int> _groveCellStart = new List<int>();
+    readonly List<int> _groveCellItems = new List<int>();
+    readonly List<Vector2> _groveCellY = new List<Vector2>();
+
+    // The plot rectangle currently uploaded. Kept separate from what is
+    // written into _groveAtlasBuffer, because a region that produced no
+    // capsules uploads plotsX = 0 (so the shader skips straight to ground)
+    // while still counting as "already covered" for caching.
+    int _atlasPxMin, _atlasPzMin, _atlasPlotsX, _atlasPlotsZ;
+    int _atlasVersion = -1;
+    bool _atlasValid;
+
     float[] _syncScratch = Array.Empty<float>(); // see SubmitBatchSync
 
     public bool IsWorldGpuCapable { get; private set; }
@@ -85,6 +114,19 @@ public class TerrainGpuSampler : IDisposable
         _biasBuffer = new ComputeBuffer(MaxBiomes, sizeof(float));
         _blendBuffer = new ComputeBuffer(1, Marshal.SizeOf<BiomeBlendGpuParams>());
         _planetBuffer = new ComputeBuffer(1, Marshal.SizeOf<PlanetGpuParams>());
+
+        // One-element placeholders so every kernel including DensityGrove.hlsl
+        // has valid bindings even in a world with no grove in it. An unbound
+        // StructuredBuffer is not merely empty on some backends -- it is
+        // undefined behaviour. plotsX stays 0, so the shader reads one atlas
+        // entry and falls through to ground.
+        _groveCapsuleBuffer = new ComputeBuffer(1, Marshal.SizeOf<GroveCapsuleGpu>());
+        _grovePlotBuffer = new ComputeBuffer(1, Marshal.SizeOf<GrovePlotGpu>());
+        _groveCellStartBuffer = new ComputeBuffer(1, sizeof(int));
+        _groveCellItemBuffer = new ComputeBuffer(1, sizeof(int));
+        _groveCellYBuffer = new ComputeBuffer(1, sizeof(float) * 2);
+        _groveAtlasBuffer = new ComputeBuffer(1, Marshal.SizeOf<GroveAtlasGpuParams>());
+        _groveAtlasBuffer.SetData(new[] { default(GroveAtlasGpuParams) });
     }
 
     // Rebuilds the persistent per-world parameter buffers. Call whenever
@@ -140,8 +182,37 @@ public class TerrainGpuSampler : IDisposable
         _shader.SetBuffer(_kernel, "_BiomeBias", _biasBuffer);
         _shader.SetBuffer(_kernel, "_BiomeBlendBuf", _blendBuffer);
         _shader.SetBuffer(_kernel, "_PlanetBuf", _planetBuffer);
+        BindGroveBuffers(_shader, _kernel);
+
+        // The world's leaves may have been swapped out from under an atlas
+        // built for the previous set.
+        _grove = FindGroveField(baseField);
+        _atlasValid = false;
 
         IsWorldGpuCapable = true;
+    }
+
+    // Only one grove per world is supported, which matches what a BiomeWorld
+    // can meaningfully hold: two grove biomes would need two atlases and a
+    // per-slot index, for no content reason anyone has asked for yet.
+    static LSystemGroveField FindGroveField(DensityField baseField)
+    {
+        var world = baseField as BiomeDensityField;
+        if (world == null && baseField is PlanetField planet) world = planet.surface as BiomeDensityField;
+        if (world == null) return null;
+        for (int i = 0; i < world.BiomeCount; i++)
+            if (world.FieldAt(i) is LSystemGroveField g) return g;
+        return null;
+    }
+
+    void BindGroveBuffers(ComputeShader shader, int kernel)
+    {
+        shader.SetBuffer(kernel, "_GroveCapsules", _groveCapsuleBuffer);
+        shader.SetBuffer(kernel, "_GrovePlots", _grovePlotBuffer);
+        shader.SetBuffer(kernel, "_GroveCellStart", _groveCellStartBuffer);
+        shader.SetBuffer(kernel, "_GroveCellItems", _groveCellItemBuffer);
+        shader.SetBuffer(kernel, "_GroveCellY", _groveCellYBuffer);
+        shader.SetBuffer(kernel, "_GroveAtlasBuf", _groveAtlasBuffer);
     }
 
     // Binds the persistent world/biome parameter buffers onto ANOTHER
@@ -158,6 +229,7 @@ public class TerrainGpuSampler : IDisposable
         shader.SetBuffer(kernel, "_BiomeBias", _biasBuffer);
         shader.SetBuffer(kernel, "_BiomeBlendBuf", _blendBuffer);
         shader.SetBuffer(kernel, "_PlanetBuf", _planetBuffer);
+        BindGroveBuffers(shader, kernel);
         return true;
     }
 
@@ -170,6 +242,7 @@ public class TerrainGpuSampler : IDisposable
     {
         totalVoxels = 0;
         if (!IsWorldGpuCapable || requests == null || requests.Count == 0 || outBuffer == null) return false;
+        EnsureGroveAtlasForRequests(requests);
 
         BuildDescriptors(requests, out GpuGridRequest[] descriptors, out totalVoxels);
         if (outBuffer.count < (int)totalVoxels) return false;
@@ -198,6 +271,105 @@ public class TerrainGpuSampler : IDisposable
     // countX*countY*countZ (matches DensityField.SampleGrid's contract) --
     // results are copied straight in, using the identical (z*countY+y)*
     // countX+x flattening ChunkMesher already expects.
+    // Makes the resident capsule atlas cover the world-space XZ span
+    // [worldMin, worldMax], rebuilding and re-uploading only when that span
+    // moves to different plots (or the field's tunables changed).
+    //
+    // PUBLIC because the MESHER needs it too, and dispatches a DIFFERENT chunk
+    // set than the density pass. TerrainGpuMesher's vertex and transition
+    // kernels evaluate density themselves -- the AO probe, the biome weights,
+    // and the transition cells all call EvaluateBiomeBlend -- so an atlas
+    // built only for the last density batch would leave them sampling plots
+    // that are not resident. That reads as ground where a spire should be, and
+    // therefore as a crack against the neighbour that did see the spire.
+    public void EnsureGroveAtlas(Vector3 worldMin, Vector3 worldMax)
+    {
+        if (_grove == null || _kernel < 0) return;
+
+        float size = Mathf.Max(8f, _grove.plotSize);
+        // One plot of slack each way, because the shader reads the 3x3 plot
+        // neighbourhood around each sample exactly as Sample does.
+        int pxMin = Mathf.FloorToInt(worldMin.x / size) - 1;
+        int pzMin = Mathf.FloorToInt(worldMin.z / size) - 1;
+        int plotsX = Mathf.FloorToInt(worldMax.x / size) + 2 - pxMin;
+        int plotsZ = Mathf.FloorToInt(worldMax.z / size) + 2 - pzMin;
+        if (plotsX <= 0 || plotsZ <= 0) return;
+
+        if (_atlasValid && _atlasVersion == _grove.Version &&
+            _atlasPxMin == pxMin && _atlasPzMin == pzMin &&
+            _atlasPlotsX == plotsX && _atlasPlotsZ == plotsZ)
+            return; // same ground as last dispatch -- nothing to re-upload
+
+        _grove.BuildGpuAtlas(pxMin, pzMin, plotsX, plotsZ,
+                             _groveCapsules, _grovePlots, _groveCellStart, _groveCellItems, _groveCellY);
+
+        Grow(ref _groveCapsuleBuffer, _groveCapsules.Count, Marshal.SizeOf<GroveCapsuleGpu>());
+        Grow(ref _grovePlotBuffer, _grovePlots.Count, Marshal.SizeOf<GrovePlotGpu>());
+        Grow(ref _groveCellStartBuffer, _groveCellStart.Count, sizeof(int));
+        Grow(ref _groveCellItemBuffer, _groveCellItems.Count, sizeof(int));
+        Grow(ref _groveCellYBuffer, _groveCellY.Count, sizeof(float) * 2);
+
+        if (_groveCapsules.Count > 0) _groveCapsuleBuffer.SetData(_groveCapsules, 0, 0, _groveCapsules.Count);
+        if (_grovePlots.Count > 0) _grovePlotBuffer.SetData(_grovePlots, 0, 0, _grovePlots.Count);
+        if (_groveCellStart.Count > 0) _groveCellStartBuffer.SetData(_groveCellStart, 0, 0, _groveCellStart.Count);
+        if (_groveCellItems.Count > 0) _groveCellItemBuffer.SetData(_groveCellItems, 0, 0, _groveCellItems.Count);
+        if (_groveCellY.Count > 0) _groveCellYBuffer.SetData(_groveCellY, 0, 0, _groveCellY.Count);
+
+        // An empty region uploads plotsX = 0, so the shader reads one atlas
+        // entry and falls straight through to ground.
+        _groveAtlasBuffer.SetData(new[] { new GroveAtlasGpuParams
+        {
+            pxMin = pxMin,
+            pzMin = pzMin,
+            plotsX = _groveCapsules.Count > 0 ? plotsX : 0,
+            plotsZ = _groveCapsules.Count > 0 ? plotsZ : 0,
+        }});
+
+        BindGroveBuffers(_shader, _kernel); // Grow may have replaced any of them
+
+        _atlasPxMin = pxMin;
+        _atlasPzMin = pzMin;
+        _atlasPlotsX = plotsX;
+        _atlasPlotsZ = plotsZ;
+        _atlasVersion = _grove.Version;
+        _atlasValid = true;
+    }
+
+    // Overflow policy is GROW, never clamp. Dropping capsules past a cap would
+    // desync the GPU from LSystemGroveField.Sample, which still sees them --
+    // and a density that disagrees between the two paths is exactly how a seam
+    // is made. One reallocation the first time a dense region appears, then
+    // the high-water mark holds and this is a no-op.
+    static void Grow(ref ComputeBuffer buf, int count, int stride)
+    {
+        int need = Mathf.Max(1, count);
+        if (buf != null && buf.count >= need) return;
+        buf?.Dispose();
+        buf = new ComputeBuffer(Mathf.NextPowerOfTwo(need), stride);
+    }
+
+    // XZ span a batch of grid requests can sample.
+    void EnsureGroveAtlasForRequests(IList<Request> requests)
+    {
+        if (_grove == null) return;
+
+        float minX = float.MaxValue, minZ = float.MaxValue;
+        float maxX = float.MinValue, maxZ = float.MinValue;
+        for (int i = 0; i < requests.Count; i++)
+        {
+            Request r = requests[i];
+            float x1 = r.origin.x + Mathf.Max(0, r.countX - 1) * r.step;
+            float z1 = r.origin.z + Mathf.Max(0, r.countZ - 1) * r.step;
+            if (r.origin.x < minX) minX = r.origin.x;
+            if (r.origin.z < minZ) minZ = r.origin.z;
+            if (x1 > maxX) maxX = x1;
+            if (z1 > maxZ) maxZ = z1;
+        }
+        if (minX > maxX) return;
+
+        EnsureGroveAtlas(new Vector3(minX, 0f, minZ), new Vector3(maxX, 0f, maxZ));
+    }
+
     public struct Request
     {
         public Vector3 origin;
@@ -213,6 +385,7 @@ public class TerrainGpuSampler : IDisposable
     public bool SubmitBatchSync(IList<Request> requests)
     {
         if (!IsWorldGpuCapable || requests == null || requests.Count == 0) return false;
+        EnsureGroveAtlasForRequests(requests);
 
         BuildDescriptors(requests, out GpuGridRequest[] descriptors, out uint totalVoxels);
 
@@ -258,10 +431,12 @@ public class TerrainGpuSampler : IDisposable
     {
         if (!IsWorldGpuCapable || requests == null || requests.Count == 0)
         {
+            // no atlas needed: nothing will be dispatched
             onComplete?.Invoke(false);
             return;
         }
 
+        EnsureGroveAtlasForRequests(requests);
         BuildDescriptors(requests, out GpuGridRequest[] descriptors, out uint totalVoxels);
 
         ComputeBuffer reqBuffer = null, outBuffer = null;
@@ -384,5 +559,11 @@ public class TerrainGpuSampler : IDisposable
         _biasBuffer?.Dispose();
         _blendBuffer?.Dispose();
         _planetBuffer?.Dispose();
+        _groveCapsuleBuffer?.Dispose();
+        _grovePlotBuffer?.Dispose();
+        _groveCellStartBuffer?.Dispose();
+        _groveCellItemBuffer?.Dispose();
+        _groveCellYBuffer?.Dispose();
+        _groveAtlasBuffer?.Dispose();
     }
 }

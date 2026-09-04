@@ -18,6 +18,7 @@ public enum GpuFieldType
     Alien = 1,
     Canyon = 2,
     Frost = 3,
+    Grove = 4,
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -150,6 +151,72 @@ public struct LeafGpuParams
     public AlienGpuParams alien;
     public CanyonGpuParams canyon;
     public FrostGpuParams frost;
+    public GroveGpuParams grove; // appended LAST: LeafParams in HLSL is positional
+}
+
+// Mirrors GroveParams in Shaders/Compute/DensityGrove.hlsl.
+//
+// Unlike every other leaf, this one is NOT the whole field. It carries only
+// the ground and the blend radius; the spires themselves arrive as a capsule
+// atlas in separate buffers (see LSystemGroveField.BuildGpuAtlas), because an
+// L-system cannot be derived in HLSL -- grammar rewriting is variable-length,
+// branch-heavy pointer chasing. The CPU builds the geometry once per plot and
+// caches it; the GPU only evaluates the SDF, which is the part that runs per
+// voxel and is therefore the part that actually costs.
+//
+// Everything that shapes a spire -- radiusScale, minRadius, tipCapScale,
+// scaleRange, leanDegrees, the grammar -- is already baked into those capsules
+// and so deliberately absent here.
+[StructLayout(LayoutKind.Sequential)]
+public struct GroveGpuParams
+{
+    public float seed;
+    public float groundHeight;
+    public float groundAmp;
+    public float groundScale;
+    public float groundOctaves;
+    public float blend;
+    public float plotSize;
+}
+
+// One tapered capsule (round cone). Mirrors GroveCapsule in DensityGrove.hlsl
+// and LSystemGroveField.Capsule.
+[StructLayout(LayoutKind.Sequential)]
+public struct GroveCapsuleGpu
+{
+    public Vector3 a;
+    public float ra;
+    public Vector3 b;
+    public float rb;
+}
+
+// One plot's CSR bucket grid, as offsets into the shared atlas arrays.
+// Mirrors GrovePlot in DensityGrove.hlsl and LSystemGroveField.Plot.
+[StructLayout(LayoutKind.Sequential)]
+public struct GrovePlotGpu
+{
+    public float minX;
+    public float minZ;
+    public float maxX;
+    public float maxZ;
+    public float invCell;
+    public int res;           // 0 for an empty plot -- shader skips it
+    public int cellStartBase; // into _GroveCellStart, length res*res + 1
+    public int itemBase;      // into _GroveCellItems
+    public int capsuleBase;   // into _GroveCapsules; items are plot-relative
+    public int cellYBase;     // into _GroveCellY, one float2 per cell
+}
+
+// Where the resident plot rectangle sits, so the shader can turn a plot
+// coordinate into an index with no search. Mirrors GroveAtlas in
+// DensityGrove.hlsl.
+[StructLayout(LayoutKind.Sequential)]
+public struct GroveAtlasGpuParams
+{
+    public int pxMin;
+    public int pzMin;
+    public int plotsX;
+    public int plotsZ;
 }
 
 // Mirrors BiomeBlendParams in DensityBiomeBlend.hlsl.

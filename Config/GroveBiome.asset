@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   displayName: Spire Grove
   terrain: {fileID: 11400000, guid: 2f6fd9807d5549678e9bcc3cb6ab2a34, type: 2}
-  bias: 0
+  bias: 0.4
   surfaceStyle: 2
   hardness: 1
   blendSharpness: 1.4

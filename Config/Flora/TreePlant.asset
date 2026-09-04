@@ -1,0 +1,69 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 01db12252b7120b4281a3eaa4b96f2d2, type: 3}
+  m_Name: TreePlant
+  m_EditorClassIdentifier: Assembly-CSharp::PlantProfile
+  grammar: {fileID: 11400000, guid: 2b745686ea6aec247a6c4287159e09a9, type: 2}
+  iterations: -1
+  seed: 3039
+  turtle:
+    stepLength: 1
+    angleDegrees: 25
+    initialWidth: 0.34
+    widthFactor: 0.7
+    lengthFactor: 0.9
+    origin: {x: 0, y: 0, z: 0}
+    heading: {x: 0, y: 1, z: 0}
+    up: {x: 0, y: 0, z: -1}
+  stemShape: 1
+  stemColor: {r: 0.33, g: 0.24, b: 0.16, a: 1}
+  stemRadiusScale: 1.15
+  minStemRadius: 0.006
+  taperStems: 1
+  hideStemsBelowRadius: 0
+  parts:
+  - symbol: L
+    shape: 5
+    prefab: {fileID: 0}
+    color: {r: 0.3, g: 0.56, b: 0.2, a: 1}
+    scale: {x: 0.17, y: 0.24, z: 0.17}
+    sizeFrom: 0
+    paramIndex: 0
+    sizeMultiplier: 1
+    alignToHeading: 1
+    eulerOffset: {x: 68, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: B
+    shape: 2
+    prefab: {fileID: 0}
+    color: {r: 0.97, g: 0.9, b: 0.94, a: 1}
+    scale: {x: 1, y: 1, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 0.55
+    alignToHeading: 0
+    eulerOffset: {x: 0, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: Q
+    shape: 2
+    prefab: {fileID: 0}
+    color: {r: 0.78, g: 0.14, b: 0.13, a: 1}
+    scale: {x: 1, y: 1, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 0.75
+    alignToHeading: 0
+    eulerOffset: {x: 0, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1

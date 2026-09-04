@@ -21,7 +21,8 @@ namespace LSystems
 
         LSystemGrammar _grammar;
         IReadOnlyList<LSystemParseError> _errors;
-        bool _parsed;
+        volatile bool _parsed;
+        readonly object _parseLock = new object();
 
         // Parsed form, or null if the source does not parse. Never throws:
         // callers check IsValid or handle null, and Errors says what is wrong.
@@ -55,16 +56,38 @@ namespace LSystems
 
         public void Invalidate()
         {
-            _parsed = false;
-            _grammar = null;
-            _errors = null;
+            // Same lock as EnsureParsed: a reader mid-parse must not observe
+            // this tearing the grammar out from under it.
+            lock (_parseLock)
+            {
+                _parsed = false;
+                _grammar = null;
+                _errors = null;
+            }
         }
 
+        // Locked, and _parsed is published only AFTER the parse completes.
+        //
+        // This used to set _parsed = true first and then parse. Chunk meshing
+        // calls Sample from several worker threads, and LSystemGroveField
+        // warms a plot range with Parallel.For, so on a cold cache many
+        // threads arrive here at once: the first began parsing while every
+        // other one saw _parsed == true and left immediately with _grammar
+        // still null. Their plots came back EMPTY and stayed cached that way.
+        //
+        // The symptom was not a crash or a stall -- it was scenery. Most
+        // spires silently missing, a different set each run (2392 / 191 / 817
+        // capsules for the same plot rectangle across three runs), leaving
+        // ground with a few isolated lumps on it.
         void EnsureParsed()
         {
             if (_parsed) return;
-            _parsed = true;
-            LSystemParser.TryParse(source, out _grammar, out _errors);
+            lock (_parseLock)
+            {
+                if (_parsed) return;
+                LSystemParser.TryParse(source, out _grammar, out _errors);
+                _parsed = true; // publish last: no thread may see a half-built grammar
+            }
         }
 
         // Convenience end-to-end path, so the common case is one call:

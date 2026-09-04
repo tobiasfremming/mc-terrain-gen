@@ -151,13 +151,29 @@ What it has to solve, and how — these are the parts that generalise:
 
 ## Traps specific to this project
 
-**Adding a grammar-driven field to a BiomeWorld drops that world to CPU
-meshing.** `BiomeDensityField.TryBuildGpuLeaves` requires *every* biome's field
-to resolve to a fixed `LeafGpuParams` struct; one that can't takes the whole
-world with it (no per-chunk GPU/CPU mixing — that would break watertightness).
-A grove is a variable-length capsule buffer, so it can never be a GPU leaf as
-that interface stands. This is why `GroveBiome` is **not** wired into
-`Config/BiomeWorld.asset` by default.
+**A non-GPU field in a BiomeWorld drops that whole world to CPU meshing.**
+`BiomeDensityField.TryBuildGpuLeaves` requires *every* biome's field to resolve
+to a real `GpuFieldType`; one that reports `None` takes the whole world with it
+(no per-chunk GPU/CPU mixing — that would break watertightness).
+
+The grove used to be exactly that trap, and the fix is the pattern to copy for
+any future grammar-driven field: **split the field rather than refusing it.**
+An L-system cannot be derived in HLSL, but it does not have to be. The CPU
+builds each plot's capsules once and caches them
+(`LSystemGroveField.BuildGpuAtlas`); `TerrainGpuSampler` uploads that atlas for
+the plots a dispatch can reach; and `Shaders/Compute/DensityGrove.hlsl`
+evaluates the round-cone SDF over them. Geometry construction is amortised over
+a whole plot, while SDF evaluation runs per voxel — so moving only the second
+half is what actually mattered.
+
+Two things that keep it correct, and will silently break it if changed:
+
+- **Visiting order.** `SMax` is not exactly associative, so the shader walks
+  plots `dz` outer / `dx` inner over `-1..1` and capsules in CSR order —
+  identical to `Sample`. A different order means a different density, which at
+  a chunk boundary is a crack.
+- **Overflow grows, never clamps.** Dropping capsules past a cap would desync
+  the GPU from `Sample`, which still sees them.
 
 **The dependency runs one way.** `Scripts/LSystem` has an `.asmdef` (the only
 one in the project) so that EditMode tests have something to reference — a test

@@ -1,0 +1,70 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: HerbGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// A flowering herb. Edit ANYTHING here and the plant rebuilds as you
+    type.
+
+    //
+
+    // F draws a stem. L and K are not turtle commands, so they
+    land in the
+
+    // skeleton as markers -- the PlantProfile decides what they
+    look like.
+
+    // Invent your own: add a symbol here, add a row there.
+
+
+    #define
+    ANG 28        // branch angle
+
+    #define SH  0.78      // each generation is
+    shorter
+
+    #define TP  0.68      // ...and thinner
+
+    #define MIN 0.22     
+    // apex length at which a branch stops and flowers
+
+    #define PHI 137.5    
+    // golden angle: successive branches never stack up
+
+
+    #iterations: 8
+
+
+    #axiom:
+    !(0.16) A(1.1, 0.16)
+
+
+    // A(length, width) is a growing apex. Two variants,
+    drawn 55/45, so no two
+
+    // seeds give the same plant.
+
+    A(l,w) : l >=
+    MIN : 0.55 -> F(l) !(w*TP) [ &(ANG) /(PHI) A(l*SH, w*TP) ] [ &(-ANG*0.9) /(PHI*2)
+    A(l*SH*0.9, w*TP) ] L(w*3)
+
+    A(l,w) : l >= MIN : 0.45 -> F(l) !(w*TP) [ &(ANG*1.5)
+    \(PHI) A(l*SH*0.8, w*TP*0.9) ] A(l*SH, w*TP) L(w*2.6)
+
+
+    // Too short to keep
+    branching: cap it with a flower.
+
+    A(l,w) : l < MIN -> F(l) K(w*6)
+
+'
+  iterations: 6

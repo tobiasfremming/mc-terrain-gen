@@ -15,7 +15,7 @@ MonoBehaviour:
   isoLevel: 0
   seed: 8123
   groundHeight: 0
-  groundAmp: 9
+  groundAmp: 17.28
   groundScale: 260
   groundOctaves: 4
   grammar: {fileID: 11400000, guid: f7a588ecc0af43f8bb5a9fc49e22690a, type: 2}
@@ -29,14 +29,14 @@ MonoBehaviour:
     origin: {x: 0, y: 0, z: 0}
     heading: {x: 0, y: 1, z: 0}
     up: {x: 0, y: 0, z: -1}
-  plotSize: 90
+  plotSize: 38.4
   plotOccupancy: 0.75
   structuresPerPlot: 3
-  maxHeight: 44
+  maxHeight: 134
   scaleRange: {x: 0.7, y: 1.25}
   leanDegrees: 9
   rootDepth: 2.5
-  radiusScale: 1
+  radiusScale: 9.75
   minRadius: 0.4
   blend: 1.6
   tipCapScale: 1.15

@@ -1,0 +1,85 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: FernGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// A fern. No trunk and no forking: several fronds spring from one crown
+    and
+
+    // each ARCHES over under its own weight, shedding pinnae down both
+    sides.
+
+    //
+
+    // The shape comes from REPETITION, not branching -- one
+    rule applied ~20 times,
+
+    // pitching down a few degrees each step. That accumulated
+    curve is the plant.
+
+    // Compare HerbGrammar, which gets its shape by forking
+    instead.
+
+
+    #define ARCH   4.5    // degrees of droop per segment -- raise
+    it for a weeping fern
+
+    #define SH     0.94   // each segment slightly shorter
+
+    #define
+    TP     0.90   // ...and slightly thinner
+
+    #define MIN    0.085  // segment
+    length at which a frond runs out
+
+    #define OUT    44     // how far a frond
+    leans out of the crown to begin with
+
+    #define PINNA  74     // angle the
+    pinnae stand off the rachis
+
+    #define PHI    137.5  // golden angle between
+    successive fronds
+
+
+    // The crown spends 7 iterations unrolling before the
+    LAST frond even starts,
+
+    // so this is 7 + the ~21 a frond needs. Press Check
+    termination after editing.
+
+    #iterations: 31
+
+
+    #axiom: !(0.075) C(7)
+
+
+    //
+    C(n): the crown. Sheds one frond, rolls by the golden angle, recurses.
+
+    C(n)
+    : n > 0 -> [ /(PHI*n) &(OUT) A(0.22, 0.075) ] C(n-1)
+
+    C(n) : n <= 0 -> $
+
+
+    //
+    A(l,w): one frond segment -- step forward, droop, shed a pinna each side.
+
+    A(l,w)
+    : l >= MIN -> F(l) &(ARCH) !(w*TP) [ +(PINNA) P(l*3.4) ] [ -(PINNA) P(l*3.4)
+    ] A(l*SH, w*TP)
+
+    A(l,w) : l < MIN -> F(l) P(l*2.4)
+
+'
+  iterations: 13
