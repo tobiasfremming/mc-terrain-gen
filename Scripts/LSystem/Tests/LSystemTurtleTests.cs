@@ -167,9 +167,19 @@ namespace LSystems.Tests
         public void BoundsCoverEveryNode()
         {
             LSkeleton s = Build("F [ +F ] F");
-            Assert.IsTrue(s.Bounds.Contains(new Vector3(0, 0, 2)), "far tip");
-            Assert.IsTrue(s.Bounds.Contains(new Vector3(-1, 0, 1)), "branch tip");
-            Assert.IsTrue(s.Bounds.Contains(Vector3.zero), "root");
+
+            // The invariant, stated directly. Probing hardcoded corners instead
+            // is a trap: a rotated node lands at -0.99999994, not -1, because
+            // sin(45) in float does not normalize to exactly 1 -- so an exact
+            // corner probe sits a hair OUTSIDE the bounds it is meant to be in.
+            foreach (var n in s.Nodes)
+                Assert.IsTrue(s.Bounds.Contains(n.Position), "bounds must contain node at " + n.Position);
+
+            // ...and that the extremes land where the word says, to float tolerance.
+            Assert.AreEqual(-1f, s.Bounds.min.x, 1e-4f, "branch reaches one step left");
+            Assert.AreEqual(0f, s.Bounds.max.x, 1e-4f, "nothing goes right");
+            Assert.AreEqual(0f, s.Bounds.min.z, 1e-4f, "root at the origin");
+            Assert.AreEqual(2f, s.Bounds.max.z, 1e-4f, "trunk reaches two steps forward");
         }
 
         [Test]
