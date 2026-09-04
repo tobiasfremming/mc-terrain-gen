@@ -19,5 +19,5 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 91a7ee9e2c937a0a1bb7dab3f76c4f38, type: 2}
   seed: 99
   regionScale: 1000
-  sharpness: 20
+  sharpness: 150
   terrainMaterial: {fileID: 2100000, guid: 18c6bc84e3bc488bb08862a1ca3ff129, type: 2}

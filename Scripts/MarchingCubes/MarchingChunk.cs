@@ -107,7 +107,18 @@ public class MarchingChunk : MonoBehaviour
     {
         if (_mesh == null)
         {
-            _mesh = new Mesh { indexFormat = UnityEngine.Rendering.IndexFormat.UInt32, name = "MC_Chunk" };
+            // A chunk mesh is derived data, regenerated from the density field
+            // on demand. Without a hide flag the editor serializes one per
+            // chunk into the scene -- 2859 of them and 203 MB, last time.
+            _mesh = new Mesh
+            {
+                indexFormat = UnityEngine.Rendering.IndexFormat.UInt32,
+                name = "MC_Chunk",
+                // DontSaveInEditor rather than DontSave: the latter also implies
+                // DontUnloadUnusedAsset, so a mesh that ever escapes Release()
+                // would be pinned for the life of the process.
+                hideFlags = HideFlags.DontSaveInEditor,
+            };
             // Deliberately NOT MarkDynamic. It puts the mesh in a CPU-writable
             // heap that Unity may re-upload from its own system-memory copy,
             // which for a compute-written mesh means silently wiping what
@@ -218,7 +229,12 @@ public class MarchingChunk : MonoBehaviour
         {
             if (_colliderMesh == null)
             {
-                _colliderMesh = new Mesh { indexFormat = UnityEngine.Rendering.IndexFormat.UInt32, name = "MC_Collider" };
+                _colliderMesh = new Mesh
+                {
+                    indexFormat = UnityEngine.Rendering.IndexFormat.UInt32,
+                    name = "MC_Collider",
+                    hideFlags = HideFlags.DontSaveInEditor, // derived data; see EnsureMesh
+                };
                 _colliderMesh.MarkDynamic();
             }
             if (job.colVertexCount > 0 && job.colIndexCount > 0)

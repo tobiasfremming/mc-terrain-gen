@@ -1466,19 +1466,21 @@ public class MCChunkManager : MonoBehaviour
         if (!UseGpuMeshing || _gpuMeshPending.Count == 0) return;
         if (!_gpuMesher.HasFreeSlot) return;
 
-        int take = HomogeneousRun(_gpuMeshPending, 0, out bool needsReadback);
+        int take = GatherHomogeneous(_gpuMeshPending, 0, _batchIdxScratch, out bool needsReadback);
         if (take == 0) return;
         var batch = new GpuMeshBatch { generation = _gpuGeneration };
         _meshJobsScratch.Clear();
         for (int i = 0; i < take; i++)
         {
-            var f = _gpuMeshPending[i];
+            var f = _gpuMeshPending[_batchIdxScratch[i]];
             // Re-validate: staleness can only have grown since admission.
+            // RequeueOrDrop touches _jobs and the job pool, never
+            // _gpuMeshPending, so the gathered indices stay valid.
             if (!_boxesValid || !IsDesired(f.key)) { RequeueOrDrop(f); continue; }
             batch.jobs.Add(f);
             _meshJobsScratch.Add(f.job);
         }
-        _gpuMeshPending.RemoveRange(0, take);
+        RemoveGathered(_gpuMeshPending, _batchIdxScratch);
         if (batch.jobs.Count == 0) return;
 
         _gpuMeshBatches.Add(batch);
@@ -1793,11 +1795,17 @@ public class MCChunkManager : MonoBehaviour
             else toGpu.Add(f);
         }
 
-        for (int start = 0; start < toGpuMesh.Count; )
+        // Drains by gathering, for the same reason as the async path: a bulk
+        // regen interleaves collider and non-collider chunks, and taking
+        // contiguous runs would submit one-chunk batches through most of it.
+        while (toGpuMesh.Count > 0)
         {
-            int count = HomogeneousRun(toGpuMesh, start, out bool syncReadback);
-            RunGpuMeshSync(toGpuMesh.GetRange(start, count), syncReadback);
-            start += count;
+            int count = GatherHomogeneous(toGpuMesh, 0, _batchIdxScratch, out bool syncReadback);
+            if (count == 0) break;
+            _batchPickScratch.Clear();
+            for (int i = 0; i < count; i++) _batchPickScratch.Add(toGpuMesh[_batchIdxScratch[i]]);
+            RemoveGathered(toGpuMesh, _batchIdxScratch);
+            RunGpuMeshSync(_batchPickScratch, syncReadback);
         }
 
         for (int start = 0; start < toGpu.Count; start += kMaxChunksPerSyncBatch)
@@ -1834,16 +1842,39 @@ public class MCChunkManager : MonoBehaviour
     //    completes (see _heldKeys), and a parked job holding a slot would pin
     //    one of only three for as long as the hold lasts, stalling the mesher.
     //    Read back, its data sits in packedVerts and parking is free.
-    int HomogeneousRun(List<InFlight> src, int from, out bool needsReadback)
+    // GATHERS one batch of entries sharing the head's readback requirement,
+    // scanning the whole queue, and reports their indices in `into` (ascending).
+    //
+    // It gathers rather than taking a contiguous run, and that distinction is
+    // the whole point. Homogeneity used to be keyed on buildCollider alone,
+    // which clusters -- colliders are LOD0-only and admission is nearest-first
+    // -- so a contiguous run reliably returned a full batch. Keying it on
+    // NeedsReadback broke that: held keys are scattered through the queue by
+    // construction, because CollectSwapParticipants marks the neighbours of
+    // every retiring chunk, so held and unheld interleave. A run stopping at
+    // the first mismatch then returns 1 whenever anything is retiring -- the
+    // entire time the player moves -- and since StageGpuMeshBatch dispatches
+    // exactly one batch per Update, GPU meshing collapsed from 4 chunks/frame
+    // to 1. Gathering keeps batches full without giving up homogeneity.
+    int GatherHomogeneous(List<InFlight> src, int from, List<int> into, out bool needsReadback)
     {
+        into.Clear();
         needsReadback = false;
         if (from >= src.Count) return 0;
         needsReadback = NeedsReadback(src[from]);
-        int n = 0;
-        while (n < TerrainGpuMesher.MaxChunksPerBatch && from + n < src.Count &&
-               NeedsReadback(src[from + n]) == needsReadback) n++;
-        return n;
+        for (int i = from; i < src.Count && into.Count < TerrainGpuMesher.MaxChunksPerBatch; i++)
+            if (NeedsReadback(src[i]) == needsReadback) into.Add(i);
+        return into.Count;
     }
+
+    // Back to front, so the indices still to be removed stay valid.
+    static void RemoveGathered(List<InFlight> src, List<int> idx)
+    {
+        for (int i = idx.Count - 1; i >= 0; i--) src.RemoveAt(idx[i]);
+    }
+
+    readonly List<int> _batchIdxScratch = new();
+    readonly List<InFlight> _batchPickScratch = new();
 
     bool NeedsReadback(InFlight f) => f.job.buildCollider || IsHeldKey(f.key);
 
@@ -1953,6 +1984,17 @@ public class MCChunkManager : MonoBehaviour
     {
         var go = AcquireChunk();
         go.gameObject.name = $"Chunk_L{key.level}_{key.coord.x}_{key.coord.y}_{key.coord.z}";
+        // A chunk is derived data: it is rebuilt from the density field
+        // whenever the clipmap wants it, so serializing it into the scene
+        // stores nothing that cannot be regenerated -- and it stores a LOT.
+        // Generating in the editor and saving once left 2859 chunk meshes in
+        // SampleScene.unity, 203 MB, which costs frame rate forever after; and
+        // because chunk throughput is frame-rate bound (one GPU batch per
+        // Update, a 6 ms apply budget), a heavy scene slows GENERATION too.
+        //
+        // DontSaveInEditor, not DontSave: the latter also opts the object out
+        // of being destroyed on scene load, which would leak chunks instead.
+        go.gameObject.hideFlags = HideFlags.DontSaveInEditor;
         go.autoRegenerate = false;
         // A pooled chunk carries whatever renderer state it was released with,
         // and visibility is only ever raised after this point (see
