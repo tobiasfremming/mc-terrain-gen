@@ -159,8 +159,38 @@ public class MCChunkManager : MonoBehaviour
         public ChunkKey key;
         public uint needsMask;
         public MarchingChunk chunk;
-        public readonly List<ChunkKey> required = new();
+        public readonly List<ChunkKey> required = new();     // replacements: generated hidden, revealed on release
+        public readonly List<ChunkKey> participants = new(); // already-visible neighbours whose mesh must change WITH the swap
     }
+
+    // THE TRANSIENT-CRACK FIX.
+    //
+    // ChunkMesher.ApplySecondaryOffset pulls a chunk's boundary vertices
+    // INWARD by a quarter cell, but only on faces bordering a finer region
+    // (Lengyel Eq. 4.2) -- that is what makes room for the transition sheet.
+    // ComputeNeeds flips that flag from _boxMin the instant the clipmap moves.
+    //
+    // The staged swap is atomic for REPLACEMENTS: new fine chunks are built
+    // hidden and revealed the same frame their retiring chunk is released. But
+    // a neighbouring chunk whose needs mask merely CHANGED belongs to no swap
+    // group. It rebuilds asynchronously and ApplyBuildResult swaps its mesh in
+    // the moment it lands -- so its boundary vertices move inward while the
+    // volume on the far side of that face is still being drawn by the RETIRING
+    // chunk's old, un-offset geometry. A gap of up to 0.25 * step, lasting
+    // until the swap completes.
+    //
+    // Fix: park such a rebuild instead of applying it, and apply it in the
+    // same frame SweepRetiring releases the chunk it is offsetting for. The
+    // chunk stays visible with its previous mesh the whole time -- parking
+    // NEVER hides anything, so the worst failure here is a mesh that updates
+    // slightly late, never a hole.
+    readonly Dictionary<ChunkKey, int> _heldKeys = new();        // key -> #retiring chunks that still need it held
+    readonly Dictionary<ChunkKey, InFlight> _heldBuilds = new(); // completed builds waiting for their swap
+    readonly Dictionary<ChunkKey, float> _heldSince = new();
+    readonly List<ChunkKey> _heldScratch = new();
+
+    // A parked build must not be stranded if its swap never completes.
+    const float kMaxHoldSeconds = 1.5f;
     readonly List<RetiringChunk> _retiring = new();
     readonly Dictionary<ChunkKey, int> _showBlockers = new(); // key -> #retiring chunks waiting on it
 
@@ -809,6 +839,8 @@ public class MCChunkManager : MonoBehaviour
                 _showBlockers[k] = _showBlockers.TryGetValue(k, out int b) ? b + 1 : 1;
         }
 
+        CollectSwapParticipants();
+
         // Rescue anything the rebuild above just orphaned. Clearing and
         // recomputing _showBlockers can drop the entry that was holding a
         // chunk hidden, and resurrection (just above) removes a retiring chunk
@@ -898,7 +930,90 @@ public class MCChunkManager : MonoBehaviour
 
     bool IsReady(ChunkKey key) => _chunks.ContainsKey(key) && _generatedNeeds.ContainsKey(key);
 
+    // Safety valve: a swap that never completes must not strand a rebuild
+    // forever. Late-but-applied beats permanently stale.
+    void ExpireHeldBuilds()
+    {
+        if (_heldBuilds.Count == 0) return;
+        _heldScratch.Clear();
+        foreach (var kv in _heldSince)
+            if (Time.time - kv.Value >= kMaxHoldSeconds) _heldScratch.Add(kv.Key);
+        foreach (var k in _heldScratch)
+        {
+            _heldKeys.Remove(k);
+            ApplyHeldBuild(k);
+        }
+    }
+
     bool IsShowBlocked(ChunkKey key) => _showBlockers.TryGetValue(key, out int b) && b > 0;
+
+    bool IsHeldKey(ChunkKey key) => _heldKeys.ContainsKey(key);
+
+    readonly List<ChunkKey> _coverScratch = new();
+    readonly HashSet<ChunkKey> _participantScratch = new();
+
+    // Which already-visible chunks must change their mesh AT THE SAME MOMENT
+    // as each pending swap -- see the _heldKeys comment for why.
+    //
+    // Resolved through ResolveCovering rather than by scanning same-level
+    // neighbours, because the mirror case matters too: when a region COARSENS,
+    // the chunk whose mask changes sits at a different level from the chunks
+    // retiring. ResolveCovering answers "who covers this neighbouring volume
+    // now" in both directions.
+    //
+    // Recomputed wholesale each recompute, like _showBlockers. Any build parked
+    // for a key that is no longer held is released immediately, so a stale hold
+    // cannot survive a box move.
+    void CollectSwapParticipants()
+    {
+        _heldKeys.Clear();
+        foreach (var e in _retiring)
+        {
+            e.participants.Clear();
+            _participantScratch.Clear();
+
+            for (int dz = -1; dz <= 1; dz++)
+                for (int dy = -1; dy <= 1; dy++)
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        if (dx == 0 && dy == 0 && dz == 0) continue;
+                        _coverScratch.Clear();
+                        ResolveCovering(e.key.level, e.key.coord + new Vector3Int(dx, dy, dz), _coverScratch);
+                        foreach (var nk in _coverScratch)
+                        {
+                            if (!_participantScratch.Add(nk)) continue;       // reachable from several offsets
+                            if (!_chunks.TryGetValue(nk, out var c) || c == null || !c.IsVisible) continue;
+                            uint want = ComputeNeeds(nk).Mask;
+                            if (_generatedNeeds.TryGetValue(nk, out uint have) && have == want) continue; // mesh already matches
+                            e.participants.Add(nk);
+                        }
+                    }
+
+            foreach (var k in e.participants)
+                _heldKeys[k] = _heldKeys.TryGetValue(k, out int h) ? h + 1 : 1;
+        }
+
+        ReleaseUnheldBuilds();
+    }
+
+    // Applies any parked build whose key stopped being held (its swap
+    // completed, or a box move dropped it from every participant list).
+    void ReleaseUnheldBuilds()
+    {
+        if (_heldBuilds.Count == 0) return;
+        _heldScratch.Clear();
+        foreach (var kv in _heldBuilds)
+            if (!IsHeldKey(kv.Key)) _heldScratch.Add(kv.Key);
+        foreach (var k in _heldScratch) ApplyHeldBuild(k);
+    }
+
+    void ApplyHeldBuild(ChunkKey key)
+    {
+        if (!_heldBuilds.TryGetValue(key, out var f)) return;
+        _heldBuilds.Remove(key);
+        _heldSince.Remove(key);
+        ApplyBuildResult(f, allowHold: false);
+    }
 
     // Chunk visibility is MONOTONE: hidden -> visible, never the reverse. The
     // only place it is lowered is CreateChunk, before the chunk has a mesh.
@@ -924,6 +1039,7 @@ public class MCChunkManager : MonoBehaviour
     // those replacements in the same frame — no visible hole, no overlap.
     void SweepRetiring()
     {
+        ExpireHeldBuilds();
         if (_retiring.Count == 0) return;
 
         for (int i = _retiring.Count - 1; i >= 0; i--)
@@ -937,6 +1053,17 @@ public class MCChunkManager : MonoBehaviour
 
             ReleaseChunk(e.chunk);
             _retiring.RemoveAt(i);
+
+            // The whole point: this chunk's replacements become visible below,
+            // so every neighbour that was offsetting itself for them applies
+            // its new mesh in the SAME frame.
+            foreach (var k in e.participants)
+            {
+                if (!_heldKeys.TryGetValue(k, out int h)) continue;
+                if (h > 1) { _heldKeys[k] = h - 1; continue; }
+                _heldKeys.Remove(k);
+                ApplyHeldBuild(k);
+            }
             _densityCache.Remove(e.key); // chunk is truly gone (not just retired-but-resurrectable); stop holding its cached density
 
             foreach (var k in e.required)
@@ -999,6 +1126,7 @@ public class MCChunkManager : MonoBehaviour
             if (_gpuPending[i].key.Equals(key)) return true;
         for (int i = 0; i < _readyForMeshing.Count; i++)
             if (_readyForMeshing[i].key.Equals(key)) return true;
+        if (_heldBuilds.ContainsKey(key)) return true; // parked, not lost
         for (int i = 0; i < _gpuMeshPending.Count; i++)
             if (_gpuMeshPending[i].key.Equals(key)) return true;
         for (int i = 0; i < _readyToApply.Count; i++)
@@ -1338,9 +1466,8 @@ public class MCChunkManager : MonoBehaviour
         if (!UseGpuMeshing || _gpuMeshPending.Count == 0) return;
         if (!_gpuMesher.HasFreeSlot) return;
 
-        int take = HomogeneousRun(_gpuMeshPending, 0);
+        int take = HomogeneousRun(_gpuMeshPending, 0, out bool needsReadback);
         if (take == 0) return;
-        bool needsCollider = _gpuMeshPending[0].job.buildCollider;
         var batch = new GpuMeshBatch { generation = _gpuGeneration };
         _meshJobsScratch.Clear();
         for (int i = 0; i < take; i++)
@@ -1359,7 +1486,7 @@ public class MCChunkManager : MonoBehaviour
         // _meshJobsScratch afterwards is safe.
         // Collider chunks cannot direct-upload: PhysX cooks from CPU-side data,
         // which a compute-written mesh does not have. See TerrainGpuMesher.CanMesh.
-        bool direct = gpuMeshDirectUpload && !needsCollider;
+        bool direct = gpuMeshDirectUpload && !needsReadback;
         if (!_gpuMesher.SubmitBatchAsync(_meshJobsScratch, direct,
                                          meshed => OnGpuMeshBatchDone(batch, meshed)))
         {
@@ -1530,8 +1657,34 @@ public class MCChunkManager : MonoBehaviour
         }
     }
 
-    void ApplyBuildResult(InFlight f)
+    void ApplyBuildResult(InFlight f, bool allowHold = true)
     {
+        // Park it: this chunk's new mesh is offset for fine chunks that are
+        // not on screen yet. Applying now would open the very seam the hold
+        // exists to prevent. It keeps rendering its previous mesh meanwhile.
+        // gpuMeshOwner != null means the geometry is still sitting in a GPU
+        // output slot, which parking would pin for the whole hold -- one of
+        // only three, so the mesher would stall. Batches are normally routed
+        // to readback for held keys (see NeedsReadback); this covers the race
+        // where a chunk was already dispatched when the hold appeared. It just
+        // applies as it used to, keeping the old brief seam for that one chunk.
+        if (allowHold && IsHeldKey(f.key) && f.job.error == null && f.job.gpuMeshOwner == null &&
+            _chunks.TryGetValue(f.key, out var held) && held != null && held.IsVisible)
+        {
+            if (f.countedInFlightDirty) _inFlightDirty = Mathf.Max(0, _inFlightDirty - 1);
+            f.countedInFlightDirty = false;
+            if (_heldBuilds.TryGetValue(f.key, out var prev) && prev != f)
+            {
+                // A newer build superseded one already parked for this key.
+                ClearGpuRaw(prev.job);
+                prev.job.ResetOutputs();
+                _meshJobPool.Push(prev.job);
+            }
+            _heldBuilds[f.key] = f;
+            _heldSince[f.key] = Time.time;
+            return;
+        }
+
         // NOT f.fromDirty: jobs that finished via the hoisted empty-chunk
         // skip (FinishEmptyBuild) never went through PumpMeshingQueue's
         // promotion, so _inFlightDirty was never incremented for them --
@@ -1642,8 +1795,8 @@ public class MCChunkManager : MonoBehaviour
 
         for (int start = 0; start < toGpuMesh.Count; )
         {
-            int count = HomogeneousRun(toGpuMesh, start);
-            RunGpuMeshSync(toGpuMesh.GetRange(start, count), toGpuMesh[start].job.buildCollider);
+            int count = HomogeneousRun(toGpuMesh, start, out bool syncReadback);
+            RunGpuMeshSync(toGpuMesh.GetRange(start, count), syncReadback);
             start += count;
         }
 
@@ -1668,22 +1821,38 @@ public class MCChunkManager : MonoBehaviour
     // mixed batch would mean tracking two different output-slot lifetimes at
     // once. Admission order is nearest-first, so LOD0 clusters anyway and the
     // usual cost of this is nothing.
-    static int HomogeneousRun(List<InFlight> src, int from)
+    // How many entries starting at `from` share the first one's readback
+    // requirement, capped at one batch. Batches must be homogeneous in it:
+    // direct upload leaves the geometry in a GPU output slot, and mixing that
+    // with readback chunks in one batch would mean two different slot
+    // lifetimes at once.
+    //
+    // Two reasons a chunk needs readback:
+    //  * it builds a COLLIDER -- PhysX cooks from CPU-side data, which a
+    //    compute-written mesh does not have.
+    //  * it is a SWAP PARTICIPANT -- its build gets parked until the swap
+    //    completes (see _heldKeys), and a parked job holding a slot would pin
+    //    one of only three for as long as the hold lasts, stalling the mesher.
+    //    Read back, its data sits in packedVerts and parking is free.
+    int HomogeneousRun(List<InFlight> src, int from, out bool needsReadback)
     {
+        needsReadback = false;
         if (from >= src.Count) return 0;
-        bool collider = src[from].job.buildCollider;
+        needsReadback = NeedsReadback(src[from]);
         int n = 0;
         while (n < TerrainGpuMesher.MaxChunksPerBatch && from + n < src.Count &&
-               src[from + n].job.buildCollider == collider) n++;
+               NeedsReadback(src[from + n]) == needsReadback) n++;
         return n;
     }
+
+    bool NeedsReadback(InFlight f) => f.job.buildCollider || IsHeldKey(f.key);
 
     // Scratch for RunGpuMeshSync -- this runs in a loop over hundreds of
     // chunks during a bulk regen, so it does not allocate per batch.
     readonly List<ChunkMeshJob> _meshJobsScratch = new();
     bool[] _meshedScratch;
 
-    void RunGpuMeshSync(List<InFlight> inflights, bool needsCollider)
+    void RunGpuMeshSync(List<InFlight> inflights, bool needsReadback)
     {
         _meshJobsScratch.Clear();
         foreach (var f in inflights) _meshJobsScratch.Add(f.job);
@@ -1695,7 +1864,7 @@ public class MCChunkManager : MonoBehaviour
         // chunk is applied (and so releases its slot reference) before this
         // method returns.
         bool ok = _gpuMesher.MeshBatchSync(_meshJobsScratch, _meshedScratch,
-                                           gpuMeshDirectUpload && !needsCollider);
+                                           gpuMeshDirectUpload && !needsReadback);
 
         for (int i = 0; i < inflights.Count; i++)
         {
@@ -1893,6 +2062,10 @@ public class MCChunkManager : MonoBehaviour
         _gpuMeshPending.Clear();
         _gpuMeshBatches.Clear();
         _readyToApply.Clear();
+        foreach (var kv in _heldBuilds) kv.Value.job.ReleaseGpuMesh();
+        _heldBuilds.Clear();
+        _heldSince.Clear();
+        _heldKeys.Clear();
         // Anything still holding an output slot is gone now; force them free
         // rather than wait for reference counts that will never be decremented.
         _gpuMesher?.ResetSlots();
