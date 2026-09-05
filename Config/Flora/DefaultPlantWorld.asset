@@ -1,0 +1,79 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 08180d8b1b4e883478eb472fdb8f822f, type: 3}
+  m_Name: DefaultPlantWorld
+  m_EditorClassIdentifier: Assembly-CSharp::PlantWorld
+  seed: 5150
+  plotSize: 24
+  radius: 310
+  maxCachedPlots: 4096
+  species:
+  - label: TreePlant
+    prototypes: {fileID: 11400000, guid: 64aaff2b43c8c85429858d161a39e2a0, type: 2}
+    perPlot: 2
+    plotChance: 0.45
+    minUpness: 0.86
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.8, y: 1.25}
+    leanDegrees: 5
+    sink: 0.4
+    useLod: 0
+    lod1Distance: 45
+    lod2Distance: 75
+    cullDistance: 260
+    enabled: 1
+  - label: BramblePlant
+    prototypes: {fileID: 11400000, guid: ae1f5275fbe87a048be2cea7863bf202, type: 2}
+    perPlot: 3
+    plotChance: 0.35
+    minUpness: 0.8
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.8, y: 1.25}
+    leanDegrees: 8
+    sink: 0.3
+    useLod: 1
+    lod1Distance: 45
+    lod2Distance: 75
+    cullDistance: 100
+    enabled: 1
+  - label: HerbPlant
+    prototypes: {fileID: 11400000, guid: 338a70b2870034b45b6aca2674e5f76b, type: 2}
+    perPlot: 6
+    plotChance: 0.7
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.8, y: 1.25}
+    leanDegrees: 10
+    sink: 0.15
+    useLod: 1
+    lod1Distance: 45
+    lod2Distance: 75
+    cullDistance: 100
+    enabled: 1
+  - label: FernPlant
+    prototypes: {fileID: 11400000, guid: c82b2375b6fdf6040bccf07599caf9cc, type: 2}
+    perPlot: 5
+    plotChance: 0.6
+    minUpness: 0.72
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.8, y: 1.25}
+    leanDegrees: 12
+    sink: 0.1
+    useLod: 1
+    lod1Distance: 45
+    lod2Distance: 75
+    cullDistance: 100
+    enabled: 1

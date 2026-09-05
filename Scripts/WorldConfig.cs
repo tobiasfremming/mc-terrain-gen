@@ -62,6 +62,12 @@ public float lodUpdateInterval = 0.5f; // How often to recalculate LOD
     // toggling useGlobe is the only thing callers need to check.
     public DensityField EffectiveDensity => (useGlobe && planetField != null) ? (DensityField)planetField : defaultDensity;
 
+    [Header("Vegetation")]
+    [Tooltip("Master switch. Off means PlantScatter draws nothing and builds nothing -- not merely hidden, so it costs zero. Turn it off to measure terrain in isolation.")]
+    public bool enablePlants = true;
+    [Tooltip("Which species grow here, and how thickly. Leave empty for a bare world.")]
+    public PlantWorld plantWorld;
+
     [Header("Debug")]
     public bool showChunkBounds = true;
     public int configVersion = 1;

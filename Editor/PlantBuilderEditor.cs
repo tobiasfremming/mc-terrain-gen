@@ -72,8 +72,12 @@ public class PlantBuilderEditor : Editor
             EditorGUILayout.LabelField("word", b.WordModules.ToString("N0") + " modules"
                 + (b.profile != null ? "   (cap " + b.profile.maxModules.ToString("N0") + ")" : ""));
             EditorGUILayout.LabelField("stems / parts", b.SegmentCount.ToString("N0") + "  /  " + b.PartCount.ToString("N0"));
-            EditorGUILayout.LabelField("GameObjects", objects.ToString("N0")
-                + (objects > 40000 ? "   — heavy; expect a sluggish hierarchy" : ""));
+            if (b.renderMode == PlantRenderMode.SingleMesh)
+                EditorGUILayout.LabelField("mesh", b.VertexCount.ToString("N0") + " verts,  "
+                    + b.TriangleCount.ToString("N0") + " tris   (1 GameObject)");
+            else
+                EditorGUILayout.LabelField("GameObjects", objects.ToString("N0")
+                    + (objects > 40000 ? "   — heavy; switch renderMode to SingleMesh" : ""));
 
             var un = b.UnmappedSymbols;
             if (un != null && un.Count > 0)

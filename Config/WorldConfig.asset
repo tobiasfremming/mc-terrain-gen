@@ -43,5 +43,7 @@ MonoBehaviour:
   defaultDensity: {fileID: 11400000, guid: ba29f6c676ab45b7a34fb2619d064945, type: 2}
   useGlobe: 1
   planetField: {fileID: 11400000, guid: 29ef9f052c4c2b94f8f1f8dbc1edf1de, type: 2}
+  enablePlants: 1
+  plantWorld: {fileID: 11400000, guid: 6be5d01a81a55ea4d995d0aabb43bdb3, type: 2}
   showChunkBounds: 1
   configVersion: 1

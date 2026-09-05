@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: FractalAPlant
   m_EditorClassIdentifier: Assembly-CSharp::PlantProfile
   grammar: {fileID: 11400000, guid: bcea5ea3ba94cee43a2135075806b2ef, type: 2}
-  iterations: 7
+  iterations: 6
   seed: 1
   maxModules: 250000
   turtle:
@@ -25,9 +25,9 @@ MonoBehaviour:
     origin: {x: 0, y: 0, z: 0}
     heading: {x: 0, y: 1, z: 0}
     up: {x: 0, y: 0, z: -1}
-  stemShape: 1
+  stemShape: 4
   stemColor: {r: 0.2924528, g: 0.26254648, b: 0.24555, a: 1}
-  stemRadiusScale: 1
+  stemRadiusScale: 2.45
   minStemRadius: 0.003
   taperStems: 1
   hideStemsBelowRadius: 0

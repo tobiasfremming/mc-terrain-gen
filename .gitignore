@@ -1,0 +1,6 @@
+# Baked plant prototypes: derived data, rebuilt by the "Bake prototypes" button
+# on any PlantProfile. Deterministic from (profile, grammar, seed), and
+# expensive to store here because this project serializes assets as TEXT --
+# 8 variants x 3 LODs of one tree is ~12 MB of YAML.
+Config/Flora/Prototypes/
+Config/Flora/Prototypes.meta

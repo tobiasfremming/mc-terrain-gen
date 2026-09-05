@@ -12,74 +12,97 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
   m_Name: FernGrammar
   m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
-  source: '// A fern. No trunk and no forking: several fronds spring from one crown
-    and
+  source: '// A fern. No trunk and no forking: several fronds spring from one crown and
 
-    // each ARCHES over under its own weight, shedding pinnae down both
-    sides.
+    // each ARCHES over under its own weight, shedding pinnae down both sides.
 
     //
 
-    // The shape comes from REPETITION, not branching -- one
-    rule applied ~20 times,
+    // The shape comes from REPETITION, not branching -- one rule applied ~19 times,
 
-    // pitching down a few degrees each step. That accumulated
-    curve is the plant.
+    // pitching down a few degrees each step. That accumulated curve is the plant.
 
-    // Compare HerbGrammar, which gets its shape by forking
-    instead.
+    // Compare HerbGrammar, which gets its shape by forking instead.
 
+    //
 
-    #define ARCH   4.5    // degrees of droop per segment -- raise
-    it for a weeping fern
+    // EVERY NUMBER THAT CAN VARY, VARIES. The first version of this grammar was
+
+    // fully deterministic -- no rand(), no weighted productions -- so every seed
+
+    // grew the identical plant. All 8 baked variants came out identical: the same
+
+    // 1,890 triangles and the same bounds, 3.9 MB storing one fern eight times,
+
+    // and a field of clones. The randomness below is not decoration; it is what
+
+    // makes baking more than one prototype worth anything.
+
+    //
+
+    #define ARCH   4.5    // MEAN degrees of droop per segment -- raise it for a weeping fern
 
     #define SH     0.94   // each segment slightly shorter
 
-    #define
-    TP     0.90   // ...and slightly thinner
+    #define TP     0.90   // ...and slightly thinner
 
-    #define MIN    0.085  // segment
-    length at which a frond runs out
+    #define MIN    0.085  // segment length at which a frond runs out
 
-    #define OUT    44     // how far a frond
-    leans out of the crown to begin with
+    #define OUT    44     // MEAN lean out of the crown
 
-    #define PINNA  74     // angle the
-    pinnae stand off the rachis
+    #define PINNA  74     // MEAN angle the pinnae stand off the rachis
 
-    #define PHI    137.5  // golden angle between
-    successive fronds
+    #define PHI    137.5  // golden angle between successive fronds
 
+    //
 
-    // The crown spends 7 iterations unrolling before the
-    LAST frond even starts,
+    // SH and MIN together fix how many iterations a frond needs, which is why SH is
 
-    // so this is 7 + the ~21 a frond needs. Press Check
-    termination after editing.
+    // the one number here left constant. Budget: 1 to expand S, up to 8 to unroll
+
+    // the crown, and at most 20 for the longest frond -- 0.26 * 0.94^18 = 0.085, the
+
+    // shortest start that still grows. 29 all told, against a budget of 31. Press
+
+    // Check termination after changing SH, MIN, or the bounds of the rand() calls
+
+    // that feed them.
 
     #iterations: 31
 
+    //
 
-    #axiom: !(0.075) C(7)
-
+    #axiom: !(0.075) S
 
     //
-    C(n): the crown. Sheds one frond, rolls by the golden angle, recurses.
 
-    C(n)
-    : n > 0 -> [ /(PHI*n) &(OUT) A(0.22, 0.075) ] C(n-1)
+    // Frond count varies 5..8. Drawn in a rule rather than in the axiom so the draw
+
+    // happens inside the derivation, where the seed is in play.
+
+    S -> C(rand(5,8))
+
+    //
+
+    // C(n): the crown. Sheds one frond, rolls by the golden angle, recurses. The
+
+    // roll carries a few degrees of slop so the fronds are not a perfect phyllotaxic
+
+    // fan, and each frond leans out at its own angle and starts at its own size.
+
+    C(n) : n > 0 -> [ /(PHI*n + rand(0-7,7)) &(rand(OUT-9,OUT+9)) A(rand(0.18,0.26), rand(0.065,0.085)) ] C(n-1)
 
     C(n) : n <= 0 -> $
 
-
     //
-    A(l,w): one frond segment -- step forward, droop, shed a pinna each side.
 
-    A(l,w)
-    : l >= MIN -> F(l) &(ARCH) !(w*TP) [ +(PINNA) P(l*3.4) ] [ -(PINNA) P(l*3.4)
-    ] A(l*SH, w*TP)
+    // A(l,w): one frond segment -- step forward, droop, shed a pinna each side. The
 
-    A(l,w) : l < MIN -> F(l) P(l*2.4)
+    // droop, the roll and both pinna angles are drawn PER SEGMENT, so two fronds
 
-'
-  iterations: 13
+    // that happen to start the same length still trace different arcs.
+
+    A(l,w) : l >= MIN -> F(l) &(rand(ARCH*0.7,ARCH*1.35)) /(rand(0-5,5)) !(w*TP) [ +(rand(PINNA-11,PINNA+11)) P(l*rand(2.9,3.9)) ] [ -(rand(PINNA-11,PINNA+11)) P(l*rand(2.9,3.9)) ] A(l*SH, w*TP)
+
+    A(l,w) : l < MIN -> F(l) P(l*rand(2.0,2.9))'
+  iterations: 31

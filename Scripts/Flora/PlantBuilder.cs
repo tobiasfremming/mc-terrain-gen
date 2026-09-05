@@ -15,11 +15,23 @@ using UnityEngine;
 // SOURCE TEXT changes (polled, because editing another asset does not call
 // this component's OnValidate), and when the transform is scaled. Type a rule
 // into the grammar and the plant reshapes in the scene view.
+public enum PlantRenderMode
+{
+    Primitives,   // one GameObject per stem/part -- readable, dies above ~50k
+    SingleMesh,   // one combined mesh -- what a real plant asset needs to be
+}
+
 [ExecuteAlways]
 [DisallowMultipleComponent]
 public class PlantBuilder : MonoBehaviour
 {
     public PlantProfile profile;
+
+    [Tooltip("Primitives is the lab view: one GameObject per piece, inspectable. SingleMesh is what ships, and the only mode that scales.")]
+    public PlantRenderMode renderMode = PlantRenderMode.SingleMesh;
+
+    [Tooltip("Detail level of the generated mesh: ring count and the thin-stem cull both come from here.")]
+    [Range(0, 2)] public int lodLevel = 0;
 
     [Tooltip("Rebuild automatically in the editor. Off if a huge grammar makes typing sluggish; use the Rebuild context menu instead.")]
     public bool liveRebuild = true;
@@ -36,6 +48,11 @@ public class PlantBuilder : MonoBehaviour
     [SerializeField] string _status = "";
 
     // Read by PlantBuilderEditor so it does not have to reflect over privates.
+    public int TriangleCount => _triangles;
+    public int VertexCount => _vertices;
+    [SerializeField] int _triangles;
+    [SerializeField] int _vertices;
+
     public int SegmentCount => _segments;
     public int PartCount => _parts;
     public int WordModules => _wordModules;
@@ -46,6 +63,7 @@ public class PlantBuilder : MonoBehaviour
     [SerializeField] bool _truncated;
 
     const string kContainerName = "(generated)";
+    const string kMeshName = "mesh";
 
     Transform _container;
     readonly List<Transform> _pool = new List<Transform>();
@@ -128,8 +146,16 @@ public class PlantBuilder : MonoBehaviour
         _wordModules = word.Count;
         _skeleton = TurtleInterpreter.Build(word, profile.turtle, _skeleton);
 
-        BuildStems();
-        BuildMarkers();
+        if (renderMode == PlantRenderMode.SingleMesh)
+        {
+            BuildSingleMesh();
+        }
+        else
+        {
+            DestroyMeshChild();
+            BuildStems();
+            BuildMarkers();
+        }
 
         // Anything the pool still holds from a bigger previous plant.
         for (int i = _used; i < _pool.Count; i++)
@@ -158,6 +184,67 @@ public class PlantBuilder : MonoBehaviour
     {
         _status = status;
         if (status != "OK" && status != "") { /* left visible in the inspector */ }
+    }
+
+    // ---- single-mesh path ------------------------------------------------
+
+    MeshFilter _mf;
+    MeshRenderer _mr;
+    Mesh _mesh;
+
+    void BuildSingleMesh()
+    {
+        PlantMeshLod lod = lodLevel <= 0 ? PlantMeshLod.Lod0 : (lodLevel == 1 ? PlantMeshLod.Lod1 : PlantMeshLod.Lod2);
+        _mesh = PlantMeshBuilder.Build(_skeleton, profile, lod, _mesh);
+
+        EnsureMeshRenderer();
+        _mf.sharedMesh = _mesh;
+
+        // Submesh 0 is bark, submesh 1 is leaf cards. Per-part colour is baked
+        // into vertex colours as well, so a shader that reads them gets the
+        // variety back without a material per part.
+        Color leafColor = profile.stemColor;
+        foreach (var p in profile.parts)
+            if (p != null && p.enabled && p.shape != PlantPartShape.None) { leafColor = p.color; break; }
+        _mr.sharedMaterials = new[] { MaterialFor(profile.stemColor), MaterialFor(leafColor) };
+        _mr.enabled = true;
+
+        DestroyPrimitives();
+
+        _segments = _skeleton.Segments.Count;
+        _parts = _skeleton.Markers.Count;
+        _vertices = _mesh.vertexCount;
+        _triangles = (int)((_mesh.GetIndexCount(0) + _mesh.GetIndexCount(1)) / 3);
+
+        for (int i = 0; i < _skeleton.Markers.Count; i++)
+        {
+            char sym = _skeleton.Markers[i].Symbol;
+            if (profile.TryGetPart(sym, out _)) continue;
+            string t = sym.ToString();
+            if (!_unmappedSymbols.Contains(t)) _unmappedSymbols.Add(t);
+        }
+    }
+
+    void EnsureMeshRenderer()
+    {
+        EnsureContainer();
+        if (_mf != null && _mr != null) return;
+        Transform t = _container.Find(kMeshName);
+        GameObject go = t != null ? t.gameObject : null;
+        if (go == null)
+        {
+            go = new GameObject(kMeshName);
+            go.transform.SetParent(_container, false);
+            MarkGenerated(go);
+        }
+        _mf = go.GetComponent<MeshFilter>();  if (_mf == null) _mf = go.AddComponent<MeshFilter>();
+        _mr = go.GetComponent<MeshRenderer>(); if (_mr == null) _mr = go.AddComponent<MeshRenderer>();
+    }
+
+    void HideMeshRenderer()
+    {
+        if (_mr != null) _mr.enabled = false;
+        _vertices = 0; _triangles = 0;
     }
 
     void BuildStems()
@@ -232,23 +319,58 @@ public class PlantBuilder : MonoBehaviour
 
     // ---- pooled children -------------------------------------------------
 
+    // Rescans the container every time rather than trusting a cached pool.
+    //
+    // The cache was wrong in a way that was invisible until it mattered: after
+    // a domain reload _container could be repopulated while _pool stayed empty,
+    // so the "retire unused entries" sweep had nothing to sweep and 627
+    // primitives kept drawing underneath a mesh-mode plant. Rescanning costs a
+    // few ms on the largest plant here and cannot go stale.
     void EnsureContainer()
     {
-        if (_container != null) return;
-
-        Transform existing = transform.Find(kContainerName);
-        if (existing != null)
+        if (_container == null)
         {
-            _container = existing;
-            _pool.Clear();
-            for (int i = 0; i < _container.childCount; i++) _pool.Add(_container.GetChild(i));
-            return;
+            Transform existing = transform.Find(kContainerName);
+            if (existing != null) _container = existing;
+            else
+            {
+                var go = new GameObject(kContainerName);
+                go.transform.SetParent(transform, false);
+                _container = go.transform;
+                MarkGenerated(go);
+            }
         }
 
-        var go = new GameObject(kContainerName);
-        go.transform.SetParent(transform, false);
-        _container = go.transform;
-        MarkGenerated(go);
+        // The single-mesh child lives in the same container but is NOT a
+        // pooled primitive.
+        _pool.Clear();
+        for (int i = 0; i < _container.childCount; i++)
+        {
+            Transform c = _container.GetChild(i);
+            if (c == null || c.name == kMeshName) continue;
+            _pool.Add(c);
+        }
+    }
+
+    // Whichever representation is not in use gets DESTROYED, not hidden. A
+    // hidden primitive is still a GameObject with a MeshFilter and a
+    // MeshRenderer, and leaving 1255 of them parked under a plant is the exact
+    // bloat this whole step exists to remove.
+    void DestroyPrimitives()
+    {
+        for (int i = 0; i < _pool.Count; i++)
+            if (_pool[i] != null) DestroyImmediateSafe(_pool[i].gameObject);
+        _pool.Clear();
+        _used = 0;
+    }
+
+    void DestroyMeshChild()
+    {
+        if (_container == null) return;
+        Transform t = _container.Find(kMeshName);
+        if (t != null) DestroyImmediateSafe(t.gameObject);
+        _mf = null; _mr = null;
+        _vertices = 0; _triangles = 0;
     }
 
     // The whole subtree is derived data, rebuilt from the grammar on load. Not
