@@ -82,6 +82,9 @@ public class PlantProfile : ScriptableObject
     [Tooltip("Same grammar, different plant. Every instance is a pure function of this.")]
     public uint seed = 12345;
 
+    [Tooltip("Hard cap on derived word length. Branching grammars grow exponentially, and past this the rewriter returns the last COMPLETE generation instead -- so raising iterations beyond the cap changes nothing visible. Raise deliberately: the builder makes roughly one GameObject per drawn symbol.")]
+    public int maxModules = 250000;
+
     [Tooltip("Defaults for turtle symbols that carry no parameter of their own.")]
     public TurtleSettings turtle = TurtleSettings.Default;
 

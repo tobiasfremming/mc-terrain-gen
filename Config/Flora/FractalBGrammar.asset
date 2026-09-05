@@ -1,0 +1,89 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: FractalBGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// The second grammar, made three-dimensional the same way -- a golden-angle
+
+    //
+    roll at the head of every bracket, including the one inside F, since F is
+
+    //
+    itself branching here.
+
+    //
+
+    // Z is a structural placeholder that draws
+    nothing of its own; the profile
+
+    // maps it to None. X is a growth point,
+    and every X left at the final
+
+    // iteration is a tip that never expanded
+    -- which is where the leaves go.
+
+    //
+
+    // TAPER. A bare ! at the head
+    of each bracket multiplies width by
+
+    // TurtleSettings.widthFactor, and [
+    ] restore it on the way out, so width
+
+    // follows branch depth without the
+    rules needing any parameters. This grammar
+
+    // nests deeper per path than
+    A, so it wants a GENTLER factor: 0.82 gives a 6x
+
+    // trunk-to-twig ratio
+    here, where 0.7 would give 25x and twigs too thin to see.
+
+    //
+
+    // Original
+    rules, for reference:
+
+    //   F -> FX[FX[+XF]]
+
+    //   X -> FF[+XZ++X-F[+ZX]][-X++F-X]
+
+    //  
+    Z -> [+F-X-F][++ZX]
+
+    //
+
+    // Grows ~8x per iteration:  n=3 -> 296 stems, 
+    n=4 -> 2424,  n=5 -> 19852,
+
+    // n=6 -> 162588. At n=5 this is ~42000 GameObjects
+    and ~1.7s to rebuild, about
+
+    // as far as one-primitive-per-segment goes
+    comfortably.
+
+
+    #iterations: 5
+
+
+    #axiom: X
+
+
+    F -> FX[/(137.5)!FX[+XF]]
+
+    X
+    -> FF[/(137.5)!+XZ++X-F[/(275)!+ZX]][/(275)!-X++F-X]
+
+    Z -> [/(52.5)!+F-X-F][/(190)!++ZX]
+
+'
+  iterations: 4

@@ -10,59 +10,59 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 01db12252b7120b4281a3eaa4b96f2d2, type: 3}
-  m_Name: TreePlant
+  m_Name: BramblePlant
   m_EditorClassIdentifier: Assembly-CSharp::PlantProfile
-  grammar: {fileID: 11400000, guid: 2b745686ea6aec247a6c4287159e09a9, type: 2}
+  grammar: {fileID: 11400000, guid: 199c2a15d9ba9814ba253742749d8513, type: 2}
   iterations: -1
-  seed: 3278
+  seed: 10205
   turtle:
     stepLength: 1
     angleDegrees: 25
-    initialWidth: 0.34
+    initialWidth: 0.2
     widthFactor: 0.7
     lengthFactor: 0.9
     origin: {x: 0, y: 0, z: 0}
     heading: {x: 0, y: 1, z: 0}
     up: {x: 0, y: 0, z: -1}
   stemShape: 4
-  stemColor: {r: 0.33, g: 0.24, b: 0.16, a: 1}
-  stemRadiusScale: 2.46
-  minStemRadius: 0.006
+  stemColor: {r: 0.3, g: 0.17, b: 0.15, a: 1}
+  stemRadiusScale: 1.55
+  minStemRadius: 0.005
   taperStems: 1
   hideStemsBelowRadius: 0
   parts:
   - symbol: L
     shape: 5
     prefab: {fileID: 0}
-    color: {r: 0.3, g: 0.56, b: 0.2, a: 1}
-    scale: {x: -1.19, y: 0.56, z: 0.66}
+    color: {r: 0.24, g: 0.47, b: 0.19, a: 1}
+    scale: {x: 0.13, y: 0.19, z: 0.13}
     sizeFrom: 0
     paramIndex: 0
     sizeMultiplier: 1
     alignToHeading: 1
-    eulerOffset: {x: 68, y: 0, z: 0}
+    eulerOffset: {x: 64, y: 0, z: 0}
     localOffset: {x: 0, y: 0, z: 0}
     enabled: 1
-  - symbol: B
+  - symbol: K
     shape: 2
     prefab: {fileID: 0}
-    color: {r: 0.97, g: 0.9, b: 0.94, a: 1}
+    color: {r: 0.26, g: 0.09, b: 0.3, a: 1}
     scale: {x: 1, y: 1, z: 1}
     sizeFrom: 1
     paramIndex: 0
-    sizeMultiplier: 0.55
+    sizeMultiplier: 0.85
     alignToHeading: 0
     eulerOffset: {x: 0, y: 0, z: 0}
     localOffset: {x: 0, y: 0, z: 0}
     enabled: 1
-  - symbol: Q
+  - symbol: S
     shape: 2
     prefab: {fileID: 0}
-    color: {r: 0.78, g: 0.14, b: 0.13, a: 1}
+    color: {r: 0.8, g: 0.82, b: 0.55, a: 1}
     scale: {x: 1, y: 1, z: 1}
     sizeFrom: 1
     paramIndex: 0
-    sizeMultiplier: 0.75
+    sizeMultiplier: 0.35
     alignToHeading: 0
     eulerOffset: {x: 0, y: 0, z: 0}
     localOffset: {x: 0, y: 0, z: 0}

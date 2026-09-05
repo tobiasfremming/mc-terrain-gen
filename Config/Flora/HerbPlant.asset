@@ -24,9 +24,9 @@ MonoBehaviour:
     origin: {x: 0, y: 0, z: 0}
     heading: {x: 0, y: 1, z: 0}
     up: {x: 0, y: 0, z: -1}
-  stemShape: 4
+  stemShape: 1
   stemColor: {r: 0.4, g: 0.29, b: 0.17, a: 1}
-  stemRadiusScale: 0.74
+  stemRadiusScale: 2.04
   minStemRadius: 0.004
   taperStems: 1
   hideStemsBelowRadius: 0

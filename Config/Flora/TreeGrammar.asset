@@ -73,25 +73,50 @@ MonoBehaviour:
     #define PHI  137.5    // golden angle between
     siblings
 
+    #define BEND 9        // how far a length of wood may wander off
+    straight
 
-    #iterations: 13
+
+    // +1 over what the branching needs, because C(l) below costs
+    an iteration
+
+    // to expand. Press Check termination after changing either.
+
+    #iterations:
+    15
 
 
     #axiom: !(0.34) T(2.6, 0.34)
 
 
-    // T(length,
-    width) is live wood. Three variants -> an asymmetric tree.
+    // C(l): a CURVED step. F(l) draws
+    one straight line, so a bough between two
 
-    T(l,w) : l >=
-    MIN : 0.52 -> F(l) !(w*TP) [ &(FORK) /(PHI) T(l*SH, w*TP) ] [ &(-FORK*0.82) /(PHI*2)
+    // forks was a perfect ruler edge.
+    This expands into three short segments with
+
+    // a small random bend between
+    them, so wood arrives with a gentle wander.
+
+    // Costs one iteration to expand
+    -- hence the +1 above.
+
+    C(l) -> F(l*0.34) &(rand(0-BEND,BEND)) /(rand(360))
+    F(l*0.33) &(rand(0-BEND,BEND)) /(rand(360)) F(l*0.33)
+
+
+    // T(length, width)
+    is live wood. Three variants -> an asymmetric tree.
+
+    T(l,w) : l >= MIN :
+    0.52 -> C(l) !(w*TP) [ &(FORK) /(PHI) T(l*SH, w*TP) ] [ &(-FORK*0.82) /(PHI*2)
     T(l*SH*0.9, w*TP*0.94) ] L(w*3)
 
-    T(l,w) : l >= MIN : 0.26 -> F(l) !(w*TP)
+    T(l,w) : l >= MIN : 0.26 -> C(l) !(w*TP)
     [ &(FORK*1.5) \(PHI) T(l*SH*0.82, w*TP*0.86) ] T(l*SH, w*TP*0.97) L(w*3.4)
 
     T(l,w)
-    : l >= MIN : 0.22 -> F(l*1.12) ^(LEAN*0.5) /(PHI) T(l*SH, w*TP*0.97) L(w*3.2)
+    : l >= MIN : 0.22 -> C(l*1.12) ^(LEAN*0.5) /(PHI) T(l*SH, w*TP*0.97) L(w*3.2)
 
 
     //

@@ -1,0 +1,93 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: FractalAGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Classic fractal plant, made three-dimensional.
+
+    //
+
+    // AS GIVEN
+    it was planar, and that is inherent: the rules use only + and -,
+
+    // which
+    both turn about the turtle''s up axis, so every branch stays in one
+
+    // plane
+    no matter how deep it goes. No amount of iteration escapes a plane.
+
+    //
+
+    //
+    The fix is a ROLL -- / spins the turtle about its own heading, so the next
+
+    //
+    turn happens in a different plane. One roll at the head of each bracket is
+
+    //
+    enough. The amounts are multiples of the golden angle (137.5, 275, 52.5,
+
+    //
+    190), which is what spreads four branches evenly around the axis instead of
+
+    //
+    clumping them; it is the same trick real phyllotaxis uses.
+
+    //
+
+    // TAPER.
+    These rules carry no parameters, so there is no width to pass down
+
+    // like
+    the other plants do with !(w*TP). Instead each bracket opens with a
+
+    // BARE
+    ! , which multiplies the current width by TurtleSettings.widthFactor --
+
+    //
+    and since [ ] save and restore turtle state, that shrink applies only to
+
+    //
+    what is inside the branch. Width therefore tracks branch DEPTH, which for
+
+    //
+    this grammar reaches 10, giving a 6x trunk-to-twig ratio at widthFactor 0.7.
+
+    //
+
+    //
+    Original rule, for reference:
+
+    //   X -> F+[-F-XF-X][+FF][--XF[+X]][++F-X]
+
+    //
+
+    //
+    Grows ~5x per iteration:  n=4 -> 1421 stems,  n=5 -> 7217,  n=6 -> 36309.
+
+    //
+    At n=5 this is 10342 GameObjects and ~0.5s to rebuild.
+
+
+    #iterations: 5
+
+
+    #axiom:
+    X
+
+
+    F -> FF
+
+    X -> F+[/(137.5)!-F-XF-X][/(275)!+FF][/(52.5)!--XF[+X]][/(190)!++F-X]
+
+'
+  iterations: 5

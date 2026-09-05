@@ -35,6 +35,16 @@ public class PlantBuilder : MonoBehaviour
     [SerializeField] List<string> _unmappedSymbols = new List<string>();
     [SerializeField] string _status = "";
 
+    // Read by PlantBuilderEditor so it does not have to reflect over privates.
+    public int SegmentCount => _segments;
+    public int PartCount => _parts;
+    public int WordModules => _wordModules;
+    public string Status => _status;
+    public bool Truncated => _truncated;
+    public System.Collections.Generic.IReadOnlyList<string> UnmappedSymbols => _unmappedSymbols;
+
+    [SerializeField] bool _truncated;
+
     const string kContainerName = "(generated)";
 
     Transform _container;
@@ -96,6 +106,7 @@ public class PlantBuilder : MonoBehaviour
         _wordModules = 0;
         _unmappedSymbols.Clear();
 
+        _truncated = false;
         if (profile == null) { Finish("No profile assigned."); return; }
         if (profile.grammar == null) { Finish("Profile has no grammar."); return; }
         if (!profile.grammar.IsValid)
@@ -112,6 +123,7 @@ public class PlantBuilder : MonoBehaviour
         int iters = profile.iterations >= 0 ? profile.iterations : profile.grammar.EffectiveIterations;
 
         _rewriter = _rewriter ?? new LSystemRewriter();
+        _rewriter.MaxModules = Mathf.Max(1000, profile.maxModules);
         LModuleString word = _rewriter.Rewrite(g, iters, seed);
         _wordModules = word.Count;
         _skeleton = TurtleInterpreter.Build(word, profile.turtle, _skeleton);
@@ -123,8 +135,14 @@ public class PlantBuilder : MonoBehaviour
         for (int i = _used; i < _pool.Count; i++)
             if (_pool[i] != null) _pool[i].gameObject.SetActive(false);
 
-        Finish(_rewriter.Truncated
-            ? "Truncated at " + _rewriter.MaxModules + " modules -- lower iterations."
+        // Truncation is the trap this whole plant type invites: past the cap the
+        // rewriter returns the last COMPLETE generation, so raising iterations
+        // renders something IDENTICAL to the previous setting. That reads as
+        // "it stopped rebuilding" unless it is said loudly.
+        _truncated = _rewriter.Truncated;
+        Finish(_truncated
+            ? "Truncated at " + _rewriter.MaxModules + " modules: showing the last complete generation, "
+              + "so raising iterations changes nothing. Lower iterations, or raise the profile's maxModules."
             : "OK");
     }
 

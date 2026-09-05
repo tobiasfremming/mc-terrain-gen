@@ -10,60 +10,49 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 01db12252b7120b4281a3eaa4b96f2d2, type: 3}
-  m_Name: TreePlant
+  m_Name: FractalAPlant
   m_EditorClassIdentifier: Assembly-CSharp::PlantProfile
-  grammar: {fileID: 11400000, guid: 2b745686ea6aec247a6c4287159e09a9, type: 2}
-  iterations: -1
-  seed: 3278
+  grammar: {fileID: 11400000, guid: bcea5ea3ba94cee43a2135075806b2ef, type: 2}
+  iterations: 7
+  seed: 1
+  maxModules: 250000
   turtle:
-    stepLength: 1
+    stepLength: 0.065
     angleDegrees: 25
-    initialWidth: 0.34
+    initialWidth: 0.11
     widthFactor: 0.7
     lengthFactor: 0.9
     origin: {x: 0, y: 0, z: 0}
     heading: {x: 0, y: 1, z: 0}
     up: {x: 0, y: 0, z: -1}
-  stemShape: 4
-  stemColor: {r: 0.33, g: 0.24, b: 0.16, a: 1}
-  stemRadiusScale: 2.46
-  minStemRadius: 0.006
+  stemShape: 1
+  stemColor: {r: 0.2924528, g: 0.26254648, b: 0.24555, a: 1}
+  stemRadiusScale: 1
+  minStemRadius: 0.003
   taperStems: 1
   hideStemsBelowRadius: 0
   parts:
-  - symbol: L
+  - symbol: X
     shape: 5
     prefab: {fileID: 0}
-    color: {r: 0.3, g: 0.56, b: 0.2, a: 1}
-    scale: {x: -1.19, y: 0.56, z: 0.66}
+    color: {r: 0.5754717, g: 0.2618263, b: 0.23073158, a: 1}
+    scale: {x: 0.103999995, y: 0.14299999, z: 0.103999995}
     sizeFrom: 0
     paramIndex: 0
     sizeMultiplier: 1
     alignToHeading: 1
-    eulerOffset: {x: 68, y: 0, z: 0}
+    eulerOffset: {x: 70, y: 0, z: 0}
     localOffset: {x: 0, y: 0, z: 0}
     enabled: 1
-  - symbol: B
-    shape: 2
+  - symbol: Z
+    shape: 0
     prefab: {fileID: 0}
-    color: {r: 0.97, g: 0.9, b: 0.94, a: 1}
-    scale: {x: 1, y: 1, z: 1}
+    color: {r: 1, g: 1, b: 1, a: 1}
+    scale: {x: 0.25, y: 0.25, z: 0.25}
     sizeFrom: 1
     paramIndex: 0
-    sizeMultiplier: 0.55
-    alignToHeading: 0
-    eulerOffset: {x: 0, y: 0, z: 0}
-    localOffset: {x: 0, y: 0, z: 0}
-    enabled: 1
-  - symbol: Q
-    shape: 2
-    prefab: {fileID: 0}
-    color: {r: 0.78, g: 0.14, b: 0.13, a: 1}
-    scale: {x: 1, y: 1, z: 1}
-    sizeFrom: 1
-    paramIndex: 0
-    sizeMultiplier: 0.75
-    alignToHeading: 0
+    sizeMultiplier: 1
+    alignToHeading: 1
     eulerOffset: {x: 0, y: 0, z: 0}
     localOffset: {x: 0, y: 0, z: 0}
     enabled: 1
