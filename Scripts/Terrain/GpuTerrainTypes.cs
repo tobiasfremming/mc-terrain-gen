@@ -19,6 +19,7 @@ public enum GpuFieldType
     Canyon = 2,
     Frost = 3,
     Grove = 4,
+    Dolomite = 5,
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -140,7 +141,41 @@ public struct FrostGpuParams
     public float hummockAmp;
 }
 
-// Union of all 4 leaf types (mirrors LeafParams in DensityBiomeBlend.hlsl) --
+// Mirrors DolomiteParams in Shaders/Compute/DensityDolomite.hlsl.
+[StructLayout(LayoutKind.Sequential)]
+public struct DolomiteGpuParams
+{
+    public float seed;
+    public float baseHeight;
+    public float valleyScale;
+    public float valleyAmp;
+    public float meadowScale;
+    public float meadowAmp;
+    public float massifScale;
+    public float massifOffset;
+    public float warpScale;
+    public float warpAmp;
+    public float towerScale;
+    public float towerAmp;
+    public float screeLo;
+    public float wallLo;
+    public float wallHi;
+    public float screeHeight;
+    public float screeExp;
+    public float wallHeight;
+    public float ledgeCount;
+    public float ledgeSharp;
+    public float ledgeJitter;
+    public float ledgeJitterScale;
+    public float ridgeScale;
+    public float ridgeOctaves;
+    public float ridgeAmp;
+    public float spireScale;
+    public float spireOctaves;
+    public float spireAmp;
+}
+
+// Union of all leaf types (mirrors LeafParams in DensityBiomeBlend.hlsl) --
 // nested, not flattened, so field names never collide across types. Every
 // biome slot's buffer entry carries all four sub-structs; only the one
 // matching that slot's GpuFieldType is ever read on the GPU side.
@@ -151,7 +186,8 @@ public struct LeafGpuParams
     public AlienGpuParams alien;
     public CanyonGpuParams canyon;
     public FrostGpuParams frost;
-    public GroveGpuParams grove; // appended LAST: LeafParams in HLSL is positional
+    public GroveGpuParams grove;       // order is positional: LeafParams in HLSL must match
+    public DolomiteGpuParams dolomite; // appended LAST
 }
 
 // Mirrors GroveParams in Shaders/Compute/DensityGrove.hlsl.

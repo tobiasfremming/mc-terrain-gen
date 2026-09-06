@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1682c7ebabcc41c2a7389faf4af16bf7, type: 3}
+  m_Name: DolomiteField
+  m_EditorClassIdentifier:
+  isoLevel: 0
+  seed: 7331
+  baseHeight: 0
+  valleyScale: 900
+  valleyAmp: 30
+  meadowScale: 200
+  meadowAmp: 7
+  meadowLine: 40
+  meadowLineBlend: 20
+  massifScale: 950
+  massifOffset: 0.06
+  warpScale: 170
+  warpAmp: 0.22
+  towerScale: 70
+  towerAmp: 0.08
+  screeLo: 0.27
+  wallLo: 0.4
+  wallHi: 0.47
+  screeHeight: 48
+  screeExp: 2
+  wallHeight: 130
+  ledgeCount: 11
+  ledgeSharp: 0.4
+  ledgeJitter: 0.5
+  ledgeJitterScale: 35
+  ridgeScale: 120
+  ridgeOctaves: 4
+  ridgeAmp: 70
+  spireScale: 48
+  spireOctaves: 3
+  spireAmp: 30

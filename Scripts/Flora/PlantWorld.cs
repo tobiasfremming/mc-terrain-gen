@@ -36,6 +36,8 @@ public class PlantSpecies
     public bool useLod = true;
     public float lod1Distance = 40f;
     public float lod2Distance = 90f;
+    [Tooltip("Beyond this the plant is a baked card (impostor): two triangles showing the atlas frame nearest the view angle. This is what lets a species be seen from far away for almost nothing -- a mesh LOD still costs hundreds of triangles per plant. Needs impostors baked into the prototype set (the Bake button on the profile does it); without them the farthest mesh LOD carries on to cullDistance. Applies whether or not Use LOD is on.")]
+    public float impostorDistance = 120f;
     [Tooltip("Beyond this the species is not drawn at all. Plants pop at this distance -- there is deliberately no fade, because the only fade available without shader support is scaling, and a tree that is half its height at 90 m and grows as you walk up is exactly the 'looks different depending on where I stand' bug. Set it far enough that a plant of this species is a few pixels when it pops: tall species far, ground cover near. PlantWorld.radius follows the largest of these automatically.")]
     public float cullDistance = 160f;
 
@@ -73,6 +75,7 @@ public class PlantWorld : ScriptableObject
             {
                 if (s == null) continue;
                 s.cullDistance = Mathf.Max(0f, s.cullDistance);
+                s.impostorDistance = Mathf.Clamp(s.impostorDistance, 0f, s.cullDistance);
                 s.lod2Distance = Mathf.Min(s.lod2Distance, s.cullDistance);
                 s.lod1Distance = Mathf.Min(s.lod1Distance, s.lod2Distance);
                 if (s.enabled) maxCull = Mathf.Max(maxCull, s.cullDistance);

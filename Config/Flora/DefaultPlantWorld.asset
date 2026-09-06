@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlantWorld
   seed: 5150
   plotSize: 24
-  radius: 310
-  maxCachedPlots: 4096
+  radius: 750
+  maxCachedPlots: 16384
   species:
   - label: TreePlant
     prototypes: {fileID: 11400000, guid: 64aaff2b43c8c85429858d161a39e2a0, type: 2}
@@ -30,7 +30,8 @@ MonoBehaviour:
     useLod: 0
     lod1Distance: 45
     lod2Distance: 75
-    cullDistance: 260
+    impostorDistance: 120
+    cullDistance: 700
     enabled: 1
   - label: BramblePlant
     prototypes: {fileID: 11400000, guid: ae1f5275fbe87a048be2cea7863bf202, type: 2}
@@ -45,7 +46,8 @@ MonoBehaviour:
     useLod: 1
     lod1Distance: 45
     lod2Distance: 75
-    cullDistance: 100
+    impostorDistance: 70
+    cullDistance: 220
     enabled: 1
   - label: HerbPlant
     prototypes: {fileID: 11400000, guid: 338a70b2870034b45b6aca2674e5f76b, type: 2}
@@ -60,7 +62,8 @@ MonoBehaviour:
     useLod: 1
     lod1Distance: 45
     lod2Distance: 75
-    cullDistance: 100
+    impostorDistance: 70
+    cullDistance: 220
     enabled: 1
   - label: FernPlant
     prototypes: {fileID: 11400000, guid: c82b2375b6fdf6040bccf07599caf9cc, type: 2}
@@ -75,5 +78,6 @@ MonoBehaviour:
     useLod: 1
     lod1Distance: 45
     lod2Distance: 75
-    cullDistance: 100
+    impostorDistance: 70
+    cullDistance: 220
     enabled: 1

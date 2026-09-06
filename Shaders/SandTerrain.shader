@@ -86,6 +86,22 @@ Shader "MarchingCubes/Sand Terrain"
         _FrostWarpStrength ("Frost crack warp (organic wiggle)", Range(0, 3)) = 1.2
         _FrostBumpStrength ("Frost bump strength", Range(0, 5)) = 1.5
         _FrostSparkleStrength ("Frost sparkle strength", Range(0, 1)) = 0.35
+        // Dolomite: pale banded limestone walls, grey scree aprons, meadow floors
+        // (BiomeDolomite.hlsl). Flat/Steep colours of the channel are the
+        // meadow and the rock; these are the rest of its palette.
+        _DoloBandColor ("Dolomite band color (alternate stratum)", Color) = (0.86, 0.80, 0.72, 1)
+        _DoloScreeColor ("Dolomite scree color", Color) = (0.58, 0.56, 0.53, 1)
+        _DoloBandSpacing ("Dolomite band spacing (m)", Range(0.5, 40)) = 6.0
+        _DoloBandDistortion ("Dolomite band undulation (m)", Range(0, 20)) = 3.0
+        _DoloBandContrast ("Dolomite band contrast", Range(0, 1)) = 0.6
+        _DoloScreeStart ("Dolomite scree starts (steep)", Range(0, 1)) = 0.25
+        _DoloScreeEnd ("Dolomite scree ends / wall starts (steep)", Range(0, 1)) = 0.75
+        // NOTE: localHeight is the distance from the planet centre in globe mode (~radius), so this is absolute, not above-nominal.
+        _DoloSnowLine ("Dolomite snow line (local height, m; off by default)", Float) = 1000000000
+        _DoloSnowBlend ("Dolomite snow blend (m)", Range(1, 100)) = 25
+        // Pushed by MCChunkManager from DolomiteVolumeField.meadowLine (+ planet radius in globe mode).
+        _DoloRockLine ("Dolomite rock line (local height, m)", Float) = 40
+        _DoloRockLineBlend ("Dolomite rock line blend (m)", Float) = 20
         _VertexAO ("Baked vertex AO strength", Range(0, 1)) = 0.75
         _MainTex   ("Sand albedo (triplanar)", 2D) = "white" {}
         _NormalTex ("Sand normal (triplanar)", 2D) = "bump" {}
@@ -122,13 +138,14 @@ Shader "MarchingCubes/Sand Terrain"
             #include "Biomes/BiomeCanyon.hlsl"
             #include "Biomes/BiomeAlien.hlsl"
             #include "Biomes/BiomeFrost.hlsl"
+            #include "Biomes/BiomeDolomite.hlsl"
 
             // Dispatches ONE vertex-color channel's weight to whichever
             // shading module its STYLE (read from the Biome asset that
             // landed on this channel, via MCChunkManager) selects. This is
             // what makes rendering data-driven: style travels with the Biome
             // asset, not with a fixed channel/array-index assumption.
-            // Style values must match Biome.SurfaceStyle: 0=Sand,1=Canyon,2=Alien,3=Frost.
+            // Style values must match Biome.SurfaceStyle: 0=Sand,1=Canyon,2=Alien,3=Frost,4=Dolomite.
             #define EVALUATE_CHANNEL(STYLE, FLATCOL, STEEPCOL, CHW) \
                 if ((CHW) > 0.003h) \
                 { \
@@ -145,6 +162,14 @@ Shader "MarchingCubes/Sand Terrain"
                     else if (_style == 2) \
                         EvaluateAlien(i.positionWS, w, FLATCOL, STEEPCOL, _PebbleTexScale, steep, _NormalStrength, \
                                       CHW, albedo, tnX, tnY, tnZ); \
+                    else if (_style == 4) \
+                        EvaluateDolomite(i.positionWS, w, steep, localHeight, FLATCOL, STEEPCOL, \
+                                         _DoloBandColor.rgb, _DoloScreeColor.rgb, \
+                                         _DoloBandSpacing, _DoloBandDistortion, _DoloBandContrast, \
+                                         _DoloScreeStart, _DoloScreeEnd, _DoloSnowLine, _DoloSnowBlend, \
+                                         _DoloRockLine, _DoloRockLineBlend, \
+                                         _RockTexScale, _NormalStrength, \
+                                         CHW, albedo, tnX, tnY, tnZ); \
                     else \
                         EvaluateFrost(i.positionWS, w, steep, FLATCOL, STEEPCOL, _FrostCrackColor.rgb, \
                                       _FrostGlowColor.rgb, _FrostGlowStrength, _FrostScale, _FrostCrackFreq, _FrostCrackWidth, \
@@ -194,6 +219,17 @@ Shader "MarchingCubes/Sand Terrain"
                 float _FrostWarpStrength;
                 half _FrostBumpStrength;
                 half _FrostSparkleStrength;
+                half4 _DoloBandColor;
+                half4 _DoloScreeColor;
+                float _DoloBandSpacing;
+                float _DoloBandDistortion;
+                half _DoloBandContrast;
+                half _DoloScreeStart;
+                half _DoloScreeEnd;
+                float _DoloSnowLine;
+                half _DoloSnowBlend;
+                float _DoloRockLine;
+                float _DoloRockLineBlend;
                 half _VertexAO;
                 half _SlopeStart;
                 half _SlopeEnd;

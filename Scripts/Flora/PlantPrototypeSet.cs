@@ -19,6 +19,8 @@ public class PlantVariant
     [Tooltip("Index is the LOD level. Same plant, less of it.")]
     public Mesh[] lods = new Mesh[0];
     public Bounds bounds;
+    [Tooltip("Far LOD: one quad sized to this variant, uv-mapped onto its row of the set's impostor atlas. Drawn with the set's impostor material, which turns it to face the camera and picks the frame. Null until impostors are baked.")]
+    public Mesh impostor;
 
     public Mesh Lod(int level) => lods == null || lods.Length == 0
         ? null
@@ -33,6 +35,16 @@ public class PlantPrototypeSet : ScriptableObject
 
     public Material barkMaterial;
     public Material leafMaterial;
+
+    [Header("Impostors (far LOD)")]
+    [Tooltip("Every variant rendered from impostorFrames angles around its up axis: one row per variant, one column per frame. Baked by PlantPrototypeBaker as a PNG next to this asset.")]
+    public Texture2D impostorAtlas;
+    [Tooltip("MarchingCubes/Plant Impostor material bound to the atlas. Instancing on, like the mesh materials.")]
+    public Material impostorMaterial;
+    [Tooltip("Frames per variant row. The shader needs the same number, so it is set on the material at bake time.")]
+    public int impostorFrames;
+
+    public bool HasImpostor => impostorMaterial != null && variants != null && variants.Length > 0 && variants[0].impostor != null;
 
     public PlantVariant[] variants = new PlantVariant[0];
 

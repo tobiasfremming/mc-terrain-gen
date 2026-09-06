@@ -7,7 +7,7 @@ using UnityEngine;
 //   terrain       - the density field: a heightfield (dunes) or a pure 3D
 //                   SDF-style volume field (canyon, alien rock)
 //   surfaceStyle  - which shading module in SandTerrain.shader renders this
-//                   biome (Sand/Canyon/Alien/Frost). THIS is what makes the
+//                   biome (Sand/Canyon/Alien/Frost/Dolomite). THIS is what makes the
 //                   shader data-driven: it travels with the Biome asset, not
 //                   with the asset's position in BiomeWorld's biomes list.
 //                   Swap DesertBiome and FrostBiome's positions in that list
@@ -34,8 +34,8 @@ public class Biome : ScriptableObject
     [Tooltip("Positive = this biome claims more of the world.")]
     public float bias = 0f;
 
-    // Must match SandTerrain.shader's style dispatch (0=Sand,1=Canyon,2=Alien,3=Frost).
-    public enum SurfaceStyle { Sand, Canyon, Alien, Frost }
+    // Must match SandTerrain.shader's style dispatch (0=Sand,1=Canyon,2=Alien,3=Frost,4=Dolomite).
+    public enum SurfaceStyle { Sand, Canyon, Alien, Frost, Dolomite }
 
     [Header("Surface material")]
     [Tooltip("Which shading module renders this biome's surface. Independent of this biome's position in the BiomeWorld list.")]

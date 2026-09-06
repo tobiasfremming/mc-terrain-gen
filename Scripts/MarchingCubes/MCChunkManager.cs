@@ -468,6 +468,19 @@ public class MCChunkManager : MonoBehaviour
                     // fully procedural (BiomeFrost.hlsl) -- _Chan{i}Flat/Steep
                     // above already cover its ice palette.
                     break;
+                case Biome.SurfaceStyle.Dolomite:
+                    // procedural limestone (BiomeDolomite.hlsl): Flat is the
+                    // meadow, Steep the pale rock; scree and band colours are
+                    // material-level _Dolo* properties. The rock line is an
+                    // absolute localHeight, which in globe mode is the
+                    // distance from the planet centre -- hence the radius.
+                    {
+                        var dolo = b.terrain as DolomiteVolumeField;
+                        float line = (planet != null ? planet.radius : 0f) + (dolo != null ? dolo.baseHeight + dolo.meadowLine : 40f);
+                        m.SetFloat("_DoloRockLine", line);
+                        m.SetFloat("_DoloRockLineBlend", dolo != null ? dolo.meadowLineBlend : 20f);
+                    }
+                    break;
             }
         }
     }
