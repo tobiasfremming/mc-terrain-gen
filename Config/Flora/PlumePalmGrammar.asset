@@ -1,0 +1,92 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: PlumePalmGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Plume palm (red-fronded alien palm, flora board). A leaning scaly trunk
+
+    // topped by a bulb, a spiral crown of long pinnate fronds that arch over and
+
+    // hang, each frond a rachis with two leaflet pairs every segment and a
+
+    // glowing oval at its tip. A whorl of green spikes at the base.
+
+    //
+
+    // Per-seed variation: X draws the basal spike count, trunk segment count
+
+    // (7..16, so 3 to 7 m), trunk width, crown size c (5..7 steps of three
+
+    // fronds) and frond length r (11..16 segments) once.
+
+    
+
+    #define PHI 137.5
+
+    
+
+    // X 1, T up to 16 + 1, C 7, R 16 + 1. 42.
+
+    #iterations: 44
+
+    
+
+    #axiom: !(0.24) X
+
+    
+
+    X -> B(rand(6,11)) T(rand(7,16), rand(0.2,0.28), rand(5,7), rand(11,16))
+
+    
+
+    // B(n): basal spikes, a rosette of green cones.
+
+    B(n) : n > 0 -> [ /(PHI*n) &(rand(30,60)) f(0.3) K(rand(0.5,0.75)) ] B(n-1)
+
+    B(n) : n <= 0 -> $
+
+    
+
+    // T(k,w,c,r): trunk. Each segment leans a little, sheds a whorl of scales.
+
+    T(k,w,c,r) : k > 0 -> !(w) F(0.42) &(rand(-3,3)) /(rand(-15,15)) $ ^(rand(0,2)) W(5, w) T(k-1, w*0.975, c, r)
+
+    T(k,w,c,r) : k <= 0 -> !(w*1.35) F(0.35) O(w*4.5) C(c, r)
+
+    
+
+    // W(n,w): a whorl of five scale plates, tilted out and up from the trunk.
+
+    W(n,w) : n > 0 -> [ /(72*n + rand(-12,12)) &(rand(55,75)) f(w*0.95) S(w*2.6) ] W(n-1, w)
+
+    W(n,w) : n <= 0 -> $
+
+    
+
+    // C(n,r): crown, three fronds per step in a spiral; the first fronds shed
+
+    // are the lowest and lean out furthest (the ones that end up hanging).
+
+    C(n,r) : n > 0 -> [ /(PHI*3*n) &(20 + n*13 + rand(-6,6)) !(0.045) R(r, 0.26) ] [ /(PHI*(3*n+1)) &(18 + n*13 + rand(-6,6)) !(0.045) R(r-1, 0.25) ] [ /(PHI*(3*n+2)) &(22 + n*13 + rand(-6,6)) !(0.045) R(r, 0.27) ] C(n-1, r)
+
+    C(n,r) : n <= 0 -> $
+
+    
+
+    // R(k,l): rachis. Curves down under its own weight; two leaflet pairs a step.
+
+    R(k,l) : k > 0 -> F(l*0.5) [ +(rand(55,70)) f(0.17) L(rand(0.34,0.42)) ] [ -(rand(55,70)) f(0.17) M(rand(0.34,0.42)) ] F(l*0.5) [ +(rand(40,55)) f(0.15) M(rand(0.3,0.38)) ] [ -(rand(40,55)) f(0.15) L(rand(0.3,0.38)) ] &(rand(4,8)) R(k-1, l*0.98)
+
+    R(k,l) : k <= 0 -> F(l*0.5) [ +(30) f(0.12) L(0.3) ] [ -(30) f(0.12) M(0.3) ] f(0.16) E(0.24)
+
+'
+  iterations: 44

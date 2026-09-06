@@ -1,0 +1,88 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: ShelfTowerGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Shelf tower (the giant stacked-cap fungi painting, flora board). A tall
+
+    // tapering stalk that carries two to five bracket shelves at every node,
+
+    // crowned by a huge shallow cap with concentric tiers stacked on top, a ring
+
+    // of balls rounding its rim, and small caps sprouting from its centre.
+
+    //
+
+    // Per-seed variation: stalk segment count (12..20, so 9 to 15 m), stalk
+
+    // width, cap radius c (3.2..4.6; every tier and the rim scale with it) and
+
+    // the number of small caps on top.
+
+    
+
+    // X 1, T 20 + 1, K 1, Q 12. 35.
+
+    #iterations: 37
+
+    
+
+    #axiom: X
+
+    
+
+    X -> !(0.7) T(rand(12,20), rand(0.55,0.85))
+
+    
+
+    // T(k,w): stalk segment with a random bunch of shelves.
+
+    T(k,w) : k > 0 -> !(w) F(0.7) &(rand(-2,2)) /(rand(-20,20)) $ ^(rand(0,1)) [ Z(rand(2,5)) ] T(k-1, w*0.975)
+
+    T(k,w) : k <= 0 -> !(w*1.2) F(0.5) K(rand(3.2,4.6))
+
+    
+
+    // K(c): the cap. Cone H (apex down the stalk, half-height 0.22*c), then the
+
+    // tiers, each a thick disc sitting on the previous one.
+
+    K(c) -> H(c) f(c*0.3225) P(c*1.025) Q(12, c) f(c*0.18) P(c*0.775) f(c*0.1325) P(c*0.55) f(c*0.09) P(c*0.35) f(c*0.035) U(rand(2,4))
+
+    
+
+    // Z(n): shelves. Pitch to horizontal, step out, drop a disc half-buried in
+
+    // the stalk; the disc''s axis is the turtle''s up, vertical after the pitch.
+
+    Z(n) : n > 0 -> [ /(rand(360)) &(rand(78,95)) f(rand(0.35,0.7)) D(rand(0.5,1.1)) ] Z(n-1)
+
+    Z(n) : n <= 0 -> $
+
+    
+
+    // Q(n,c): a ring of balls along the rim of the big cap, rounding its lip.
+
+    Q(n,c) : n > 0 -> [ /(30*n) &(90) f(c*1.0125) B(c*0.225) ] Q(n-1, c)
+
+    Q(n,c) : n <= 0 -> $
+
+    
+
+    // U(n): small caps on top of the big one.
+
+    U(n) : n > 0 -> [ /(rand(360)) &(rand(20,60)) !(0.12) F(rand(0.5,0.9)) !(0.1) F(0.3) H(rand(0.6,1.1)) ] U(n-1)
+
+    U(n) : n <= 0 -> $
+
+'
+  iterations: 37

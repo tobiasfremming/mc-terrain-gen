@@ -1,0 +1,74 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: GlowGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Glowing plant. A low bush of dark, gnarled stems that fork and fork again,
+
+    // each tip swelling into a luminous club, deep blue at the base and white at
+
+    // the very tip; the stems themselves carry a scatter of tiny glowing beads.
+
+    // Reference: "Glowing Plants" (flora board).
+
+    //
+
+    // Per-seed variation: X draws the trunk height, the first arm length, the
+
+    // fork half-angle a (26..42) and the shrink s (0.78..0.81) once and carries
+
+    // a and s through every A. Every fork angle is jittered on top of that.
+
+    
+
+    #define UP   7
+
+    #define TP   0.78
+
+    #define MIN  0.24
+
+    
+
+    // 1.2 * (0.81*1.05)^n < 0.24 -> n = 10; +1 X, +1 tip. 12.
+
+    #iterations: 14
+
+    
+
+    #axiom: !(0.11) X
+
+    
+
+    X -> F(rand(0.2,0.7)) &(rand(-15,15)) /(rand(360)) A(rand(0.9,1.2), 0.11, rand(26,42), rand(0.78,0.81))
+
+    
+
+    // Fork, or fork-and-continue. Beads D along every segment.
+
+    A(l,w,a,s) : l >= MIN : 0.6 -> F(l*0.5) D(w) F(l*0.5) $ ^(UP) !(w*TP) [ +(a+rand(-12,12)) /(rand(360)) A(l*s*rand(0.85,1.05), w*TP, a, s) ] [ -(a+rand(-12,12)) /(rand(360)) A(l*s*rand(0.85,1.05), w*TP, a, s) ]
+
+    A(l,w,a,s) : l >= MIN : 0.4 -> F(l*0.5) D(w) F(l*0.5) $ ^(UP) !(w*TP) [ +(a*0.6+rand(-10,10)) /(rand(360)) A(l*s*0.9, w*TP*0.9, a, s) ] /(rand(360)) A(l*s*0.97, w*TP, a, s)
+
+    
+
+    // Tip: a short neck bent toward the sky, then the club: a blue capsule M
+
+    // with a shorter white capsule N overlapping its far end. Both are centred
+
+    // on their markers, so f() walks to each centre. Clubs are a fixed size
+
+    // (jittered), NOT width-driven: tip widths vary tenfold across the bush.
+
+    A(l,w,a,s) : l < MIN -> F(l*0.5) $ ^(rand(25,50)) f(0.25) M(rand(0.42,0.55)) f(0.22) N(0.34)
+
+'
+  iterations: 14

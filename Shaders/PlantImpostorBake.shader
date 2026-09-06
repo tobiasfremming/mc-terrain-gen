@@ -35,17 +35,26 @@ Shader "Hidden/MarchingCubes/Plant Impostor Bake"
             float4 _LightDir;
             float _Ambient;
 
+            struct appdata
+            {
+                float4 vertex : POSITION;
+                float3 normal : NORMAL;
+                fixed4 color : COLOR;
+            };
+
             struct v2f
             {
                 float4 pos : SV_POSITION;
                 float3 n : TEXCOORD0;
+                fixed4 col : COLOR;
             };
 
-            v2f vert(appdata_base v)
+            v2f vert(appdata v)
             {
                 v2f o;
                 o.pos = UnityObjectToClipPos(v.vertex);
                 o.n = v.normal;
+                o.col = v.color;
                 return o;
             }
 
@@ -53,7 +62,10 @@ Shader "Hidden/MarchingCubes/Plant Impostor Bake"
             {
                 float nl = abs(dot(normalize(i.n), normalize(_LightDir.xyz)));
                 float s = _Ambient + (1.0 - _Ambient) * nl;
-                return fixed4(_Color.rgb * s, 1.0);
+                // vertex alpha is the non-emission mask (see MarchingCubes/Plant):
+                // emissive parts bake at full brightness instead of being shaded.
+                float lit = lerp(1.0, s, i.col.a);
+                return fixed4(_Color.rgb * i.col.rgb * lit, 1.0);
             }
             ENDCG
         }

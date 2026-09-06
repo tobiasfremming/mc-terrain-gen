@@ -1,0 +1,98 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: OakGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Giant oak (the moon-and-wanderer painting, flora board). A short fat trunk
+
+    // splits into three or four heavy limbs that twist as they climb; every
+
+    // segment kinks and rolls, thick wood reaches up, thin wood droops. Leaves
+
+    // come in clusters of seven cards at every thin node and the tips, and a
+
+    // few moss strands hang from the heavy limbs.
+
+    //
+
+    // Per-seed variation: Y draws the trunk segment count (1..3), a limb-count
+
+    // coin p and the shrink s (0.74..0.79) once; s rides along in every A.
+
+    
+
+    #define TP  0.72
+
+    #define MIN 0.33
+
+    
+
+    // Y 1, T 3 + 1, X 1, A: 2.7 * 0.79^n < 0.33 -> 9, S 1, C 1. 17.
+
+    #iterations: 18
+
+    
+
+    #axiom: Y
+
+    
+
+    Y -> !(1.45) T(rand(1,3), 1.45, rand(0,1), rand(0.74,0.79))
+
+    
+
+    // T(k,w,p,s): the trunk.
+
+    T(k,w,p,s) : k > 0 -> !(w) F(rand(0.6,1.0)) &(rand(-6,6)) /(rand(-30,30)) T(k-1, w*0.85, p, s)
+
+    T(k,w,p,s) : k <= 0 -> X(p, s)
+
+    
+
+    // X(p,s): four limbs or three.
+
+    X(p,s) : p < 0.5 -> [ &(rand(35,55)) /(rand(360)) A(rand(2.2,2.7), 0.7, s) ] /(rand(90,140)) [ &(rand(35,55)) A(rand(2.2,2.7), 0.65, s) ] /(rand(90,140)) [ &(rand(30,50)) A(rand(2.2,2.7), 0.68, s) ] /(rand(90,140)) ^(rand(0,15)) A(rand(2.0,2.5), 0.6, s)
+
+    X(p,s) : p >= 0.5 -> [ &(rand(35,60)) /(rand(360)) A(rand(2.3,2.7), 0.72, s) ] /(rand(120,180)) [ &(rand(35,60)) A(rand(2.3,2.7), 0.7, s) ] /(rand(120,180)) ^(rand(0,20)) A(rand(2.2,2.7), 0.66, s)
+
+    
+
+    // A(l,w,s): fork or fork-and-continue. Every angle is drawn fresh.
+
+    A(l,w,s) : l >= MIN : 0.55 -> S(l,w) !(w*TP) [ +(rand(25,50)) /(rand(360)) A(l*s*rand(0.85,1.05), w*TP, s) ] [ -(rand(25,50)) /(rand(360)) A(l*s*rand(0.85,1.05), w*TP, s) ]
+
+    A(l,w,s) : l >= MIN : 0.45 -> S(l,w) !(w*TP) [ +(rand(35,60)) /(rand(360)) A(l*s*0.85, w*TP*0.85, s) ] /(rand(-40,40)) A(l*s*1.02, w*TP*1.05, s)
+
+    A(l,w,s) : l < MIN -> S(l,w) F(l*0.4) C(0.32)
+
+    
+
+    // S(l,w): one gnarled segment: two half-steps with a kink between. Thick
+
+    // wood pitches up a little (and sometimes grows a moss strand); thin wood
+
+    // droops and carries leaf clusters.
+
+    S(l,w) : w > 0.18 : 0.75 -> !(w) F(l*0.5) /(rand(-45,45)) &(rand(-14,14)) F(l*0.5) $ ^(6)
+
+    S(l,w) : w > 0.18 : 0.25 -> !(w) F(l*0.5) /(rand(-45,45)) &(rand(-14,14)) [ V(rand(0.6,1.1)) ] F(l*0.5) $ ^(6)
+
+    S(l,w) : w <= 0.18 -> !(w) F(l*0.5) /(rand(-45,45)) &(rand(-10,10)) C(0.28) F(l*0.5) $ &(10) C(0.32)
+
+    
+
+    // C(s): a cluster of seven leaves around the node.
+
+    C(s) -> [ +(50) &(20) f(s*0.5) L(s) ] [ -(50) &(20) f(s*0.5) L(s) ] [ ^(45) /(rand(360)) f(s*0.5) M(s) ] [ &(45) /(rand(360)) f(s*0.5) L(s) ] [ /(rand(360)) &(70) f(s*0.5) M(s) ] [ /(rand(360)) &(rand(20,60)) f(s*0.55) L(s*1.1) ] [ /(rand(360)) ^(rand(20,60)) f(s*0.55) M(s*1.1) ]
+
+'
+  iterations: 18

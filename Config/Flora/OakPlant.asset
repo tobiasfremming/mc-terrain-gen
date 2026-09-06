@@ -1,0 +1,73 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 01db12252b7120b4281a3eaa4b96f2d2, type: 3}
+  m_Name: OakPlant
+  m_EditorClassIdentifier: Assembly-CSharp::PlantProfile
+  grammar: {fileID: 11400000, guid: 8f0a1b2c3d4e5f60718293a4b5c6def0, type: 2}
+  iterations: -1
+  seed: 1965
+  maxModules: 250000
+  turtle:
+    stepLength: 1
+    angleDegrees: 25
+    initialWidth: 1.45
+    widthFactor: 0.7
+    lengthFactor: 0.9
+    origin: {x: 0, y: 0, z: 0}
+    heading: {x: 0, y: 1, z: 0}
+    up: {x: 0, y: 0, z: -1}
+  stemShape: 4
+  stemColor: {r: 0.3, g: 0.24, b: 0.18, a: 1}
+  stemRadiusScale: 1.0
+  minStemRadius: 0.014
+  taperStems: 1
+  hideStemsBelowRadius: 0
+  parts:
+  - symbol: L
+    shape: 5
+    prefab: {fileID: 0}
+    color: {r: 0.13, g: 0.26, b: 0.09, a: 1}
+    scale: {x: 0.9, y: 1.0, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 90, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: M
+    shape: 5
+    prefab: {fileID: 0}
+    color: {r: 0.22, g: 0.36, b: 0.13, a: 1}
+    scale: {x: 0.9, y: 1.0, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 90, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: V
+    shape: 5
+    prefab: {fileID: 0}
+    color: {r: 0.3, g: 0.38, b: 0.16, a: 1}
+    scale: {x: 0.06, y: 1.0, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 0
+    eulerOffset: {x: 0, y: 0, z: 0}
+    localOffset: {x: 0, y: -0.5, z: 0}
+    enabled: 1

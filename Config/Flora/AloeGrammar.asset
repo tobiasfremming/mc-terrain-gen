@@ -1,0 +1,98 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: AloeGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Aloe. No branching at all: a rosette of thick tapered leaves shed from one
+
+    // crown, outer leaves leaning further out than inner ones, and one to three
+
+    // flower stalks rising from the middle carrying a dense raceme of small
+
+    // tubes, orange low on the spike and red at the top.
+
+    //
+
+    // Leaves are CONES in the profile (base at the crown, apex outward), so the
+
+    // grammar moves the turtle half a leaf forward with f before dropping the
+
+    // marker -- a cone is centred on its marker, and the crown must sit at its
+
+    // base, not its middle.
+
+    //
+
+    // Per-seed variation: leaf count (18..28), innermost leaf length and lean,
+
+    // stalk count (1..3), stalk height and raceme length.
+
+    
+
+    #define PHI    137.5
+
+    #define SPREAD 2.4    // extra lean per leaf going outward
+
+    
+
+    // X 1; crown C up to 14 (two leaves a step); stalks Q 3, S 1, R 8, V 5, +1.
+
+    #iterations: 20
+
+    
+
+    #axiom: !(0.05) X
+
+    
+
+    X -> f(0.08) C(rand(18,28), rand(0.75,1.05), rand(10,20)) Q(rand(1,3))
+
+    
+
+    // C(n,len,lean): the crown. n counts DOWN from the outermost leaf, so early
+
+    // leaves are long and splayed and the last ones stand up in the middle.
+
+    C(n,len,lean) : n > 0 -> [ /(PHI*n + rand(-12,12)) &(lean + n*SPREAD + rand(-5,5)) f((len + n*0.03)*0.5) L(len + n*0.03) ] [ /(PHI*(n-1) + rand(-12,12)) &(lean + (n-1)*SPREAD + rand(-5,5)) f((len + (n-1)*0.03)*0.5) L(len + (n-1)*0.03) ] C(n-2, len, lean)
+
+    C(n,len,lean) : n <= 0 -> $
+
+    
+
+    // Q(n): one flower stalk per step.
+
+    Q(n) : n > 0 -> [ ^(rand(2,10)) /(rand(360)) S ] Q(n-1)
+
+    Q(n) : n <= 0 -> $
+
+    
+
+    // S: a flower stalk. Bare for most of its height, then the raceme.
+
+    S -> !(0.04) F(rand(0.5,0.95)) &(rand(2,6)) F(rand(0.4,0.7)) &(rand(2,6)) F(0.4) !(0.03) R(rand(4,8))
+
+    
+
+    // R(n): four tubes per step hanging outward and a little down, then the
+
+    // stalk climbs a step. V(n): the same, red, at the top.
+
+    R(n) : n > 0 -> [ /(PHI) &(rand(70,105)) f(0.045) K(0.09) ] /(PHI) F(0.03) [ /(PHI) &(rand(70,105)) f(0.045) K(0.09) ] /(PHI) F(0.03) [ /(PHI) &(rand(70,105)) f(0.045) K(0.09) ] /(PHI) F(0.03) [ /(PHI) &(rand(70,105)) f(0.045) K(0.09) ] /(PHI) F(0.03) R(n-1)
+
+    R(n) : n <= 0 -> V(rand(3,5))
+
+    V(n) : n > 0 -> [ /(PHI) &(rand(40,80)) f(0.04) J(0.08) ] /(PHI) F(0.028) [ /(PHI) &(rand(40,80)) f(0.04) J(0.08) ] /(PHI) F(0.028) [ /(PHI) &(rand(40,80)) f(0.04) J(0.08) ] /(PHI) F(0.028) [ /(PHI) &(rand(40,80)) f(0.04) J(0.08) ] /(PHI) F(0.028) V(n-1)
+
+    V(n) : n <= 0 -> F(0.03) f(0.03) J(0.07)
+
+'
+  iterations: 20

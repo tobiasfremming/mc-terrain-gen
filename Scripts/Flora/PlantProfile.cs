@@ -26,6 +26,8 @@ public enum PlantPartShape
     Cylinder,
     Quad,
     Prefab,
+    Cone,     // base radius 0.5 at the bottom, apex at the top, height 2
+    Funnel,   // the same cone with no base disc and a finer ring: open, hollow; eulerOffset x=-90 puts the apex on the stem
 }
 
 // How a marker's own parameter feeds the part's size. A grammar that writes
@@ -60,8 +62,12 @@ public class PlantPart
     [Tooltip("Multiplies whatever sizeFrom produces.")]
     public float sizeMultiplier = 1f;
 
+    [Tooltip("Self-illumination, 0..1. Baked into the mesh's vertex alpha and read by the MarchingCubes/Plant shader; 0 for leaves, 1 for a bioluminescent club.")]
+    [Range(0f, 1f)] public float emission = 0f;
+
     [Tooltip("Face the way the turtle was facing. Off leaves the part world-axis aligned, which reads better for hanging fruit.")]
     public bool alignToHeading = true;
+    [Tooltip("Applied in the turtle's frame: +Z is the heading, +Y the turtle's up. Primitives are built along +Y, so x=90 lays a capsule, cone or cylinder along the stem and x=-90 against it (a funnel with its apex on the stem).")]
     public Vector3 eulerOffset;
     [Tooltip("Offset along the turtle's own axes, so it follows the branch.")]
     public Vector3 localOffset;

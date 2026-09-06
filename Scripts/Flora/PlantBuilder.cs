@@ -203,10 +203,10 @@ public class PlantBuilder : MonoBehaviour
         // Submesh 0 is bark, submesh 1 is leaf cards. Per-part colour is baked
         // into vertex colours as well, so a shader that reads them gets the
         // variety back without a material per part.
-        Color leafColor = profile.stemColor;
-        foreach (var p in profile.parts)
-            if (p != null && p.enabled && p.shape != PlantPartShape.None) { leafColor = p.color; break; }
-        _mr.sharedMaterials = new[] { MaterialFor(profile.stemColor), MaterialFor(leafColor) };
+        // Colours live in the mesh's vertices now (one per part), so both
+        // submeshes take the same white plant material and the shader reads
+        // them; the old per-submesh flat colour could only show one part colour.
+        _mr.sharedMaterials = new[] { MaterialFor(Color.white), MaterialFor(Color.white) };
         _mr.enabled = true;
 
         DestroyPrimitives();
@@ -426,6 +426,8 @@ public class PlantBuilder : MonoBehaviour
             case PlantPartShape.Sphere:   type = PrimitiveType.Sphere; break;
             case PlantPartShape.Cube:     type = PrimitiveType.Cube; break;
             case PlantPartShape.Cylinder: type = PrimitiveType.Cylinder; break;
+            case PlantPartShape.Cone:     type = PrimitiveType.Cylinder; break; // no cone primitive; the baked mesh tapers it
+            case PlantPartShape.Funnel:   type = PrimitiveType.Cylinder; break;
             case PlantPartShape.Quad:     type = PrimitiveType.Quad; break;
             default: return null;
         }
@@ -452,7 +454,7 @@ public class PlantBuilder : MonoBehaviour
     {
         if (_materials.TryGetValue(color, out Material m) && m != null) return m;
 
-        Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+        Shader shader = Shader.Find("MarchingCubes/Plant") ?? Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
         m = new Material(shader) { name = "Plant " + ColorUtility.ToHtmlStringRGB(color), hideFlags = HideFlags.DontSave };
         if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", color);
         if (m.HasProperty("_Color")) m.SetColor("_Color", color);

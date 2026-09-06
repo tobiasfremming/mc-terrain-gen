@@ -156,8 +156,10 @@ public static class PlantPrototypeBaker
         int variants = set.variants.Length;
         int atlasW = frames * fs, atlasH = variants * fs;
 
-        Color bark = MaterialColor(set.barkMaterial, profile.stemColor);
-        Color leaf = MaterialColor(set.leafMaterial, bark);
+        // The bake shader multiplies _Color by the mesh's vertex colour, which is
+        // where per-part colour lives now; white lets it through untouched.
+        Color bark = Color.white;
+        Color leaf = Color.white;
 
         var bakeMat = new Material(bakeShader) { hideFlags = HideFlags.HideAndDontSave };
         var barkProps = new MaterialPropertyBlock(); barkProps.SetColor("_Color", bark);
@@ -172,7 +174,10 @@ public static class PlantPrototypeBaker
         // colour it is invisible.
         var cmd = new UnityEngine.Rendering.CommandBuffer { name = "PlantImpostorBake" };
         cmd.SetRenderTarget(rt);
-        cmd.ClearRenderTarget(true, true, new Color(leaf.r, leaf.g, leaf.b, 0f));
+        Color bg = Color.white;
+        foreach (var part in profile.parts)
+            if (part != null && part.enabled && part.shape != PlantPartShape.None) { bg = part.color; break; }
+        cmd.ClearRenderTarget(true, true, new Color(bg.r, bg.g, bg.b, 0f));
 
         var cards = new Mesh[variants];
         for (int v = 0; v < variants; v++)
@@ -323,7 +328,8 @@ public static class PlantPrototypeBaker
         Material m = existing;
         if (m == null)
         {
-            Shader sh = Shader.Find("Universal Render Pipeline/Lit");
+            Shader sh = Shader.Find("MarchingCubes/Plant");
+            if (sh == null) sh = Shader.Find("Universal Render Pipeline/Lit");
             if (sh == null) sh = Shader.Find("Standard");
             m = new Material(sh) { name = set.name + " " + name };
             AssetDatabase.AddObjectToAsset(m, set);
@@ -332,8 +338,11 @@ public static class PlantPrototypeBaker
         // "Material needs to enable instancing". Every prototype material
         // exists to be instanced, so it is never not wanted.
         m.enableInstancing = true;
-        if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", color);
-        if (m.HasProperty("_Color")) m.SetColor("_Color", color);
+        // The plant shader reads colour from the vertices; its _BaseColor is
+        // a tint and stays white. Fallback shaders get the flat colour.
+        Color tint = m.shader.name == "MarchingCubes/Plant" ? Color.white : color;
+        if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", tint);
+        if (m.HasProperty("_Color")) m.SetColor("_Color", tint);
         EditorUtility.SetDirty(m);
         return m;
     }

@@ -1,0 +1,112 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 01db12252b7120b4281a3eaa4b96f2d2, type: 3}
+  m_Name: PlumePalmPlant
+  m_EditorClassIdentifier: Assembly-CSharp::PlantProfile
+  grammar: {fileID: 11400000, guid: 4b6c7d8e9f0a1b2c3d4e5f60718293ab, type: 2}
+  iterations: -1
+  seed: 31
+  maxModules: 250000
+  turtle:
+    stepLength: 1
+    angleDegrees: 25
+    initialWidth: 0.24
+    widthFactor: 0.7
+    lengthFactor: 0.9
+    origin: {x: 0, y: 0, z: 0}
+    heading: {x: 0, y: 1, z: 0}
+    up: {x: 0, y: 0, z: -1}
+  stemShape: 4
+  stemColor: {r: 0.42, g: 0.3, b: 0.34, a: 1}
+  stemRadiusScale: 1.0
+  minStemRadius: 0.012
+  taperStems: 1
+  hideStemsBelowRadius: 0
+  parts:
+  - symbol: K
+    shape: 7
+    prefab: {fileID: 0}
+    color: {r: 0.3, g: 0.45, b: 0.18, a: 1}
+    scale: {x: 0.16, y: 0.5, z: 0.08}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 90, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: S
+    shape: 3
+    prefab: {fileID: 0}
+    color: {r: 0.6, g: 0.44, b: 0.42, a: 1}
+    scale: {x: 1.0, y: 0.6, z: 0.15}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 0, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: O
+    shape: 2
+    prefab: {fileID: 0}
+    color: {r: 0.45, g: 0.38, b: 0.24, a: 1}
+    scale: {x: 1, y: 1, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 0, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: L
+    shape: 5
+    prefab: {fileID: 0}
+    color: {r: 0.62, g: 0.08, b: 0.12, a: 1}
+    scale: {x: 0.2, y: 1.0, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 90, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: M
+    shape: 5
+    prefab: {fileID: 0}
+    color: {r: 0.8, g: 0.16, b: 0.18, a: 1}
+    scale: {x: 0.2, y: 1.0, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 90, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: E
+    shape: 2
+    prefab: {fileID: 0}
+    color: {r: 0.72, g: 0.7, b: 1.0, a: 1}
+    scale: {x: 1, y: 1.6, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0.9
+    alignToHeading: 1
+    eulerOffset: {x: 90, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1

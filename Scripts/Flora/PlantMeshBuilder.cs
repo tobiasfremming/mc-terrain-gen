@@ -11,7 +11,9 @@ using UnityEngine;
 // and that is one plant.
 //
 // What comes out is a single mesh with two submeshes: bark (swept tubes) and
-// leaves (cards). Everything the mesh needs is already in the skeleton, which
+// parts (leaf cards, and since the flora board plants: spheres, capsules,
+// cylinders, cones and prefab meshes, all baked in with their own vertex
+// colour and an emission mask in vertex alpha -- see MarchingCubes/Plant). Everything the mesh needs is already in the skeleton, which
 // is the payoff for having kept LSkeleton as the pivot rather than letting the
 // turtle emit geometry directly:
 //
@@ -219,6 +221,7 @@ public static class PlantMeshBuilder
 
         // Pass 2: emit a ring per used node.
         Color32 bark = profile.stemColor;
+        bark.a = 255; // vertex alpha is the NON-emission mask: 255 = unlit by itself
         for (int i = 0; i < n; i++)
         {
             if (!_nodeUsed[i]) continue;
@@ -311,19 +314,26 @@ public static class PlantMeshBuilder
                 case PlantPartSizeSource.MarkerParam: size *= skel.GetMarkerParam(mk, part.paramIndex, 1f); break;
                 case PlantPartSizeSource.TurtleWidth: size *= mk.Width; break;
             }
-            Vector3 half = new Vector3(part.scale.x, part.scale.y, 1f) * size * 0.5f;
-            if (half.x <= 1e-6f || half.y <= 1e-6f) continue;
-
             Quaternion rot = (part.alignToHeading ? mk.Orientation : Quaternion.identity) * Quaternion.Euler(part.eulerOffset);
             Vector3 c = mk.Position + (part.alignToHeading ? mk.Orientation : Quaternion.identity) * part.localOffset;
+            Color32 col = part.color;
+            col.a = (byte)Mathf.RoundToInt(255f * (1f - Mathf.Clamp01(part.emission)));
+            // Tips sway most; a leaf inherits the stiffness of the node it hangs on.
+            float stiff = skel.MaxDepth > 0 ? 1f - Mathf.Clamp01(mk.Depth / (float)skel.MaxDepth) : 1f;
+
+            if (part.shape != PlantPartShape.Quad)
+            {
+                AppendPrimitive(part, c, rot, part.scale * size, col, stiff);
+                continue;
+            }
+
+            Vector3 half = new Vector3(part.scale.x, part.scale.y, 1f) * size * 0.5f;
+            if (half.x <= 1e-6f || half.y <= 1e-6f) continue;
             Vector3 ex = rot * Vector3.right * half.x;
             Vector3 ey = rot * Vector3.up * half.y;
             Vector3 nrm = rot * Vector3.back;
 
             int v0 = _verts.Count;
-            Color32 col = part.color;
-            // Tips sway most; a leaf inherits the stiffness of the node it hangs on.
-            float stiff = skel.MaxDepth > 0 ? 1f - Mathf.Clamp01(mk.Depth / (float)skel.MaxDepth) : 1f;
 
             _verts.Add(c - ex - ey); _verts.Add(c + ex - ey); _verts.Add(c + ex + ey); _verts.Add(c - ex + ey);
             for (int k = 0; k < 4; k++) { _normals.Add(nrm); _colors.Add(col); _uv2.Add(new Vector2(stiff, 0f)); }
@@ -334,5 +344,190 @@ public static class PlantMeshBuilder
             _leafTris.Add(v0); _leafTris.Add(v0 + 2); _leafTris.Add(v0 + 1);
             _leafTris.Add(v0); _leafTris.Add(v0 + 3); _leafTris.Add(v0 + 2);
         }
+    }
+
+    // ---- solid parts ---------------------------------------------------------
+    //
+    // Unit shapes match Unity's primitives so a profile tuned in the lab's
+    // Primitives view bakes identically: sphere diameter 1, cube 1, capsule
+    // and cylinder radius 0.5 and height 2 (scale.y is HALF the height), cone
+    // base radius 0.5 at y=-1 and apex at y=+1. Segment counts are deliberately
+    // low: a bramble has hundreds of parts and each one is instanced by the
+    // thousand.
+    const int kRingSegs = 8;
+    const int kSphereRows = 5;
+
+    static void AppendPrimitive(PlantPart part, Vector3 c, Quaternion rot, Vector3 scale, Color32 col, float stiff)
+    {
+        if (scale.x <= 1e-6f || scale.y <= 1e-6f || scale.z <= 1e-6f) return;
+        switch (part.shape)
+        {
+            case PlantPartShape.Sphere:   AppendSphere(c, rot, scale, col, stiff); break;
+            case PlantPartShape.Capsule:  AppendCapsule(c, rot, scale, col, stiff); break;
+            case PlantPartShape.Cylinder: AppendCylinder(c, rot, scale, col, stiff, 0.5f, 0.5f, kRingSegs, true); break;
+            case PlantPartShape.Cone:     AppendCylinder(c, rot, scale, col, stiff, 0.5f, 0f, kRingSegs, true); break;
+            case PlantPartShape.Funnel:   AppendCylinder(c, rot, scale, col, stiff, 0.5f, 0f, kRingSegs * 2, false); break;
+            case PlantPartShape.Cube:     AppendCube(c, rot, scale, col, stiff); break;
+            case PlantPartShape.Prefab:   AppendPrefab(part.prefab, c, rot, scale, col, stiff); break;
+        }
+    }
+
+    // Emit one vertex of a unit shape: position scaled then rotated, normal
+    // rotated (inverse-scaled first so non-uniform scale keeps it outward).
+    static int Emit(Vector3 c, Quaternion rot, Vector3 scale, Vector3 pLocal, Vector3 nLocal, Vector2 uv, Color32 col, float stiff)
+    {
+        Vector3 n = new Vector3(nLocal.x / scale.x, nLocal.y / scale.y, nLocal.z / scale.z);
+        _verts.Add(c + rot * Vector3.Scale(pLocal, scale));
+        _normals.Add((rot * n).normalized);
+        _uv.Add(uv);
+        _uv2.Add(new Vector2(stiff, 0f));
+        _colors.Add(col);
+        return _verts.Count - 1;
+    }
+
+    static void Tri(int a, int b, int d) { _leafTris.Add(a); _leafTris.Add(b); _leafTris.Add(d); }
+
+    static void AppendSphere(Vector3 c, Quaternion rot, Vector3 scale, Color32 col, float stiff)
+    {
+        int rows = kSphereRows, segs = kRingSegs;
+        int start = _verts.Count;
+        for (int r = 0; r <= rows; r++)
+        {
+            float phi = Mathf.PI * r / rows;
+            float y = Mathf.Cos(phi) * 0.5f, rad = Mathf.Sin(phi) * 0.5f;
+            for (int k = 0; k <= segs; k++)
+            {
+                float th = 2f * Mathf.PI * k / segs;
+                Vector3 p = new Vector3(Mathf.Cos(th) * rad, y, Mathf.Sin(th) * rad);
+                Emit(c, rot, scale, p, p.normalized, new Vector2(k / (float)segs, r / (float)rows), col, stiff);
+            }
+        }
+        for (int r = 0; r < rows; r++)
+            for (int k = 0; k < segs; k++)
+            {
+                int a = start + r * (segs + 1) + k, b = a + segs + 1;
+                Tri(a, a + 1, b); Tri(a + 1, b + 1, b);
+            }
+    }
+
+    // Cylinder (r0 == r1) or cone (r1 == 0): a side strip plus, when closed,
+    // a fan on each end. An open one is a hollow shell (the plant shader is
+    // two-sided, so the inside renders lit).
+    static void AppendCylinder(Vector3 c, Quaternion rot, Vector3 scale, Color32 col, float stiff, float r0, float r1, int segs, bool closed)
+    {
+        float slope = (r0 - r1) / 2f; // radius change per unit height, for the side normal
+        int start = _verts.Count;
+        for (int k = 0; k <= segs; k++)
+        {
+            float th = 2f * Mathf.PI * k / segs;
+            Vector3 dir = new Vector3(Mathf.Cos(th), 0f, Mathf.Sin(th));
+            Vector3 n = (dir + Vector3.up * slope).normalized;
+            Emit(c, rot, scale, dir * r0 + Vector3.down, n, new Vector2(k / (float)segs, 0f), col, stiff);
+            Emit(c, rot, scale, dir * r1 + Vector3.up, n, new Vector2(k / (float)segs, 1f), col, stiff);
+        }
+        for (int k = 0; k < segs; k++)
+        {
+            int a = start + k * 2;
+            Tri(a, a + 2, a + 1); Tri(a + 1, a + 2, a + 3);
+        }
+        if (!closed) return;
+        AppendFan(c, rot, scale, col, stiff, -1f, r0, Vector3.down, true);
+        if (r1 > 1e-6f) AppendFan(c, rot, scale, col, stiff, 1f, r1, Vector3.up, false);
+    }
+
+    static void AppendFan(Vector3 c, Quaternion rot, Vector3 scale, Color32 col, float stiff, float y, float radius, Vector3 n, bool flip)
+    {
+        int segs = kRingSegs;
+        int centre = Emit(c, rot, scale, new Vector3(0f, y, 0f), n, new Vector2(0.5f, 0.5f), col, stiff);
+        int start = _verts.Count;
+        for (int k = 0; k <= segs; k++)
+        {
+            float th = 2f * Mathf.PI * k / segs;
+            Emit(c, rot, scale, new Vector3(Mathf.Cos(th) * radius, y, Mathf.Sin(th) * radius), n, new Vector2(k / (float)segs, 0f), col, stiff);
+        }
+        for (int k = 0; k < segs; k++)
+        {
+            if (flip) Tri(centre, start + k, start + k + 1); else Tri(centre, start + k + 1, start + k);
+        }
+    }
+
+    static void AppendCapsule(Vector3 c, Quaternion rot, Vector3 scale, Color32 col, float stiff)
+    {
+        // Cylinder body between y=-0.5 and y=0.5 (in unit space the caps add
+        // 0.5 each, so the whole thing spans -1..1 like Unity's capsule).
+        int segs = kRingSegs, rows = 3;
+        int start = _verts.Count;
+        // top cap rows (y from 1 down to 0.5), body, bottom cap rows (0.5 down to -1)
+        var ys = new List<float>(); var rads = new List<float>();
+        for (int r = 0; r <= rows; r++) { float phi = 0.5f * Mathf.PI * r / rows; ys.Add(0.5f + Mathf.Cos(phi) * 0.5f); rads.Add(Mathf.Sin(phi) * 0.5f); }
+        for (int r = 0; r <= rows; r++) { float phi = 0.5f * Mathf.PI + 0.5f * Mathf.PI * r / rows; ys.Add(-0.5f + Mathf.Cos(phi) * 0.5f); rads.Add(Mathf.Sin(phi) * 0.5f); }
+        int ringCount = ys.Count;
+        for (int r = 0; r < ringCount; r++)
+        {
+            float capY = r <= rows ? 0.5f : -0.5f;
+            for (int k = 0; k <= segs; k++)
+            {
+                float th = 2f * Mathf.PI * k / segs;
+                Vector3 p = new Vector3(Mathf.Cos(th) * rads[r], ys[r], Mathf.Sin(th) * rads[r]);
+                Vector3 n = new Vector3(p.x, p.y - capY, p.z);
+                if (n.sqrMagnitude < 1e-8f) n = ys[r] > 0f ? Vector3.up : Vector3.down;
+                Emit(c, rot, scale, p, n.normalized, new Vector2(k / (float)segs, r / (float)(ringCount - 1)), col, stiff);
+            }
+        }
+        for (int r = 0; r < ringCount - 1; r++)
+            for (int k = 0; k < segs; k++)
+            {
+                int a = start + r * (segs + 1) + k, b = a + segs + 1;
+                Tri(a, a + 1, b); Tri(a + 1, b + 1, b);
+            }
+    }
+
+    static readonly Vector3[] kCubeNormals = { Vector3.right, Vector3.left, Vector3.up, Vector3.down, Vector3.forward, Vector3.back };
+
+    static void AppendCube(Vector3 c, Quaternion rot, Vector3 scale, Color32 col, float stiff)
+    {
+        for (int f = 0; f < 6; f++)
+        {
+            Vector3 n = kCubeNormals[f];
+            Vector3 u = Vector3.Cross(n, Mathf.Abs(n.y) > 0.5f ? Vector3.right : Vector3.up).normalized * 0.5f;
+            Vector3 v = Vector3.Cross(n, u).normalized * 0.5f;
+            Vector3 o = n * 0.5f;
+            int a = Emit(c, rot, scale, o - u - v, n, new Vector2(0, 0), col, stiff);
+            int b = Emit(c, rot, scale, o + u - v, n, new Vector2(1, 0), col, stiff);
+            int d = Emit(c, rot, scale, o + u + v, n, new Vector2(1, 1), col, stiff);
+            int e = Emit(c, rot, scale, o - u + v, n, new Vector2(0, 1), col, stiff);
+            Tri(a, d, b); Tri(a, e, d);
+        }
+    }
+
+    // Merges every readable MeshFilter mesh under the prefab, in the prefab's
+    // own local space, scaled by `scale`. Meshes without Read/Write enabled
+    // cannot be read at bake time; those fall back to a cube so the part is
+    // at least visible and the importer setting is the obvious fix.
+    static void AppendPrefab(GameObject prefab, Vector3 c, Quaternion rot, Vector3 scale, Color32 col, float stiff)
+    {
+        if (prefab == null) { AppendCube(c, rot, scale, col, stiff); return; }
+        bool any = false;
+        foreach (var mf in prefab.GetComponentsInChildren<MeshFilter>(true))
+        {
+            Mesh m = mf.sharedMesh;
+            if (m == null || !m.isReadable) continue;
+            Matrix4x4 local = prefab.transform.worldToLocalMatrix * mf.transform.localToWorldMatrix;
+            var verts = m.vertices; var norms = m.normals; var uvs = m.uv;
+            int start = _verts.Count;
+            for (int i = 0; i < verts.Length; i++)
+            {
+                Vector3 p = local.MultiplyPoint3x4(verts[i]);
+                Vector3 n = norms != null && norms.Length == verts.Length ? local.MultiplyVector(norms[i]).normalized : Vector3.up;
+                Emit(c, rot, scale, p, n, uvs != null && uvs.Length == verts.Length ? uvs[i] : Vector2.zero, col, stiff);
+            }
+            for (int sm = 0; sm < m.subMeshCount; sm++)
+            {
+                var tris = m.GetTriangles(sm);
+                for (int i = 0; i < tris.Length; i++) _leafTris.Add(start + tris[i]);
+            }
+            any = true;
+        }
+        if (!any) AppendCube(c, rot, scale, col, stiff);
     }
 }

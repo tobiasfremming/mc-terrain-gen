@@ -1,0 +1,70 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: HorsetailGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Giant horsetail (the blue-pillar swamp painting, foreground). A jointed
+
+    // stem with a dark sheath ring at every node and a whorl of thin branches,
+
+    // each branch itself jointed and dressed with needle quads on three sides;
+
+    // a brown cone on top. Lower whorls are longer than upper ones.
+
+    //
+
+    // Per-seed variation: X draws the node count (10..20, so 2 to 4.5 m), stem
+
+    // width, branches per whorl b (6..9) and a branch length factor s once.
+
+    
+
+    #define PHI 137.5
+
+    
+
+    // X 1, M 20 + 1, Y up to 9 (one branch a step), R 6 + 1. 38.
+
+    #iterations: 40
+
+    
+
+    #axiom: X
+
+    
+
+    X -> !(0.07) M(rand(10,20), rand(0.055,0.085), rand(6,9), rand(0.8,1.2))
+
+    
+
+    M(k,w,b,s) : k > 0 -> !(w) F(0.22) N(w*2.6) [ Y(b, b, k, s) ] /(PHI) &(rand(-2,2)) M(k-1, w*0.96, b, s)
+
+    M(k,w,b,s) : k <= 0 -> !(w) F(0.15) f(0.12) K(0.3)
+
+    
+
+    // Y(n,t,k,s): whorl of t branches at node k (k counts down, so low = long).
+
+    Y(n,t,k,s) : n > 0 -> [ /(360/t*n + rand(-6,6)) &(rand(52,68)) !(0.02) R(rand(4,6), (0.1 + k*0.014)*s) ] Y(n-1, t, k, s)
+
+    Y(n,t,k,s) : n <= 0 -> $
+
+    
+
+    // R(j,l): a branch: draw, curl up, three needles.
+
+    R(j,l) : j > 0 -> F(l) ^(rand(3,8)) [ +(55) f(l*0.55) Q(l*1.1) ] [ -(55) f(l*0.55) Q(l*1.1) ] [ ^(50) f(l*0.55) Q(l*1.1) ] R(j-1, l*0.95)
+
+    R(j,l) : j <= 0 -> f(0.06) Q(0.14)
+
+'
+  iterations: 40

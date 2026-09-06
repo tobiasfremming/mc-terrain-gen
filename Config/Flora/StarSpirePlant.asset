@@ -1,0 +1,112 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 01db12252b7120b4281a3eaa4b96f2d2, type: 3}
+  m_Name: StarSpirePlant
+  m_EditorClassIdentifier: Assembly-CSharp::PlantProfile
+  grammar: {fileID: 11400000, guid: e5607182939ab5c6d7e8f9a0b1c23456, type: 2}
+  iterations: -1
+  seed: 12
+  maxModules: 250000
+  turtle:
+    stepLength: 1
+    angleDegrees: 25
+    initialWidth: 0.3
+    widthFactor: 0.7
+    lengthFactor: 0.9
+    origin: {x: 0, y: 0, z: 0}
+    heading: {x: 0, y: 1, z: 0}
+    up: {x: 0, y: 0, z: -1}
+  stemShape: 4
+  stemColor: {r: 0.3, g: 0.34, b: 0.42, a: 1}
+  stemRadiusScale: 1.0
+  minStemRadius: 0.01
+  taperStems: 1
+  hideStemsBelowRadius: 0
+  parts:
+  - symbol: N
+    shape: 4
+    prefab: {fileID: 0}
+    color: {r: 0.22, g: 0.25, b: 0.32, a: 1}
+    scale: {x: 1.0, y: 0.25, z: 1.0}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 90, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: O
+    shape: 2
+    prefab: {fileID: 0}
+    color: {r: 0.35, g: 0.38, b: 0.44, a: 1}
+    scale: {x: 1, y: 1, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 0, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: V
+    shape: 7
+    prefab: {fileID: 0}
+    color: {r: 0.85, g: 0.22, b: 0.14, a: 1}
+    scale: {x: 0.14, y: 0.5, z: 0.05}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 90, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: Y
+    shape: 7
+    prefab: {fileID: 0}
+    color: {r: 0.95, g: 0.45, b: 0.15, a: 1}
+    scale: {x: 0.14, y: 0.5, z: 0.05}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 90, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: Z
+    shape: 7
+    prefab: {fileID: 0}
+    color: {r: 0.98, g: 0.8, b: 0.3, a: 1}
+    scale: {x: 0.14, y: 0.5, z: 0.05}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 90, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: U
+    shape: 7
+    prefab: {fileID: 0}
+    color: {r: 0.42, g: 0.2, b: 0.14, a: 1}
+    scale: {x: 0.12, y: 0.5, z: 0.04}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 90, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
