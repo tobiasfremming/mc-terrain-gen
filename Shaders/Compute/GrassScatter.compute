@@ -5,8 +5,10 @@
 //              reads the chunk's own vertex/index buffers (MarchingChunk
 //              creates them with GraphicsBuffer.Target.Raw for exactly this
 //              kind of access), decides how many blades that triangle gets
-//              from its area, slope and vertex-baked biome weights, and
-//              appends them to this chunk's slot in the shared blade pool.
+//              from its area, slope and the biome weights at its centroid
+//              (BiomeSelect.hlsl, the same selection the density and the
+//              terrain shader use -- see BIOME_SHADING.md), and appends them
+//              to this chunk's slot in the shared blade pool.
 //   CSCull     runs every frame over the slots whose chunk bounds passed the
 //              CPU frustum test: distance fade (stochastic, per blade, so the
 //              density thins out instead of popping), frustum test, LOD bin,
@@ -19,9 +21,9 @@
 //   pos        world-space root
 //   normalOct  oct-encoded blade "up" (terrain normal blended toward gravity)
 //   seed       24 random bits (facing, height, width, phase) + 8 bits AO
-//   weights    4 x 8-bit biome channel weights (0=implicit, 1=R, 2=G, 3=B),
-//              already scaled by that channel's grass density so the palette
-//              blend in the shader only sees grassy channels
+//   colors     base and tip colour as two RGB565, blended over the biomes
+//              at the centroid weighted by their grass density, so the draw
+//              shader never needs to know about biomes at all
 
 #pragma kernel CSClearSlot
 #pragma kernel CSMeasure
@@ -31,9 +33,10 @@
 #pragma kernel CSFinalizeArgs
 
 #include "GrassCommon.hlsl"
+#include "../Biomes/BiomeSelectGlobals.hlsl"
 
 // ------------------------------------------------------------ scatter inputs
-ByteAddressBuffer _Verts;    // MarchingChunk layout: pos(3f) normal(3f) color(4f) = 40 B
+ByteAddressBuffer _Verts;    // MarchingChunk layout: pos(3f) normal(3f) color(4f) = 40 B; color.a is baked AO
 ByteAddressBuffer _Indices;  // UInt32 triangle list
 RWStructuredBuffer<Blade> _Blades;
 RWStructuredBuffer<uint> _SlotCounts;
@@ -46,9 +49,11 @@ uint _SlotCapacity;
 float4x4 _LocalToWorld;
 
 float4 _PlanetCenter;  // w = 1 when up is radial from here, 0 for world Y
-float4 _ChanDensity;   // blades per m^2 for vertex-color channels 0..3
-float4 _ChanHeightLine;   // local height above which that channel's grass stops
-float4 _ChanHeightBlend;  // metres over which it fades out
+// Per-biome grass table, slot i = BiomeWorld.biomes[i] (TerrainGrass.BuildBiomeParams):
+float4 _GrassBiome[MC_MAX_BIOMES];   // x blades per m^2, y local height where grass stops (radius added), z fade metres
+float4 _GrassBase[MC_MAX_BIOMES];    // Biome.grassColorBase
+float4 _GrassTip[MC_MAX_BIOMES];     // Biome.grassColorTip
+float _GrassUseBiomes;               // 0: no biome world (GrassLab, plain heightfields) -> slot 0 everywhere
 float _SlopeCosStart;  // cos of the slope angle where thinning starts (flat side)
 float _SlopeCosEnd;    // cos of the angle where grass is gone
 float _DensityScale;   // per-LOD-level multiplier x global scale
@@ -75,8 +80,8 @@ void CSClearSlot(uint3 id : SV_DispatchThreadID)
 }
 
 // Everything CSMeasure and CSScatter agree on about one triangle: its
-// world-space corners, the expected blade count and the packed channel
-// weights. Returns false when the triangle grows nothing.
+// world-space corners, the expected blade count and the packed blade
+// colours. Returns false when the triangle grows nothing.
 bool EvaluateTriangle(uint t, out float3 p0, out float3 p1, out float3 p2,
                       out float3 n0, out float3 n1, out float3 n2,
                       out float4 c0, out float4 c1, out float4 c2,
@@ -109,13 +114,34 @@ bool EvaluateTriangle(uint t, out float3 p0, out float3 p1, out float3 p2,
     float slopeMask = smoothstep(_SlopeCosEnd, _SlopeCosStart, dot(faceN, up));
     if (slopeMask <= 0.0) return false;
 
-    // Biome weights: channel 0 is the implicit remainder (BiomeDensityField.GetVertexColor).
-    float4 cAvg = (c0 + c1 + c2) * (1.0 / 3.0);
-    float4 w = float4(saturate(1.0 - cAvg.r - cAvg.g - cAvg.b), cAvg.r, cAvg.g, cAvg.b);
+    // Biome weights at the centroid: the same partition of unity the density
+    // blend and the terrain shader evaluate, so grass and meadow shading agree
+    // on every boundary by construction. Never read from vertex data.
+    float w[MC_MAX_BIOMES];
+    int nb = 1;
+    if (_GrassUseBiomes > 0.5)
+    {
+        BiomeSelectParams P = MC_BiomeSelectFromGlobals();
+        nb = max(P.count, 1);
+        MC_BiomeWeights(centroidW, P, w);
+    }
+    else
+    {
+        w[0] = 1.0;
+        [unroll] for (int z = 1; z < MC_MAX_BIOMES; z++) w[z] = 0.0;
+    }
     float localHeight = _PlanetCenter.w > 0.5 ? length(centroidW - _PlanetCenter.xyz) : centroidW.y;
-    float4 heightMask = 1.0 - smoothstep(_ChanHeightLine, _ChanHeightLine + max(_ChanHeightBlend, 0.01), localHeight.xxxx);
-    float4 wd = w * _ChanDensity * heightMask;   // per-channel effective density
-    float density = dot(wd, 1.0);
+    float density = 0.0;
+    float3 baseCol = 0.0, tipCol = 0.0;
+    [loop] for (int i = 0; i < nb; i++)
+    {
+        float4 g = _GrassBiome[i];
+        float heightMask = 1.0 - smoothstep(g.y, g.y + max(g.z, 0.01), localHeight);
+        float wd = w[i] * g.x * heightMask;   // this biome's effective density here
+        density += wd;
+        baseCol += _GrassBase[i].rgb * wd;
+        tipCol += _GrassTip[i].rgb * wd;
+    }
     if (density <= 0.0) return false;
 
     expected = area * density * slopeMask * _DensityScale;
@@ -125,8 +151,9 @@ bool EvaluateTriangle(uint t, out float3 p0, out float3 p1, out float3 p2,
     // triangles that did not change.
     seed = GrassHashInt3(int3(floor(centroidW * 64.0))) ^ asuint(_SeedSalt);
 
-    // Channel weights as bytes, normalised so the palette blend sums to 1.
-    packedW = GrassPackUnorm4x8(wd / max(density, 1e-6));
+    // Density-weighted colour blend, so a boundary fades between the two
+    // biomes' grass rather than through the grassless one's colour.
+    packedW = GrassPack565(baseCol / density) | (GrassPack565(tipCol / density) << 16);
     return true;
 }
 
@@ -182,7 +209,7 @@ void CSScatter(uint3 id : SV_DispatchThreadID)
         b.pos = pos;
         b.normalOct = GrassPackOct(bladeUp);
         b.seed = (GrassHash(s ^ 0x2545F491u) & 0x00FFFFFFu) | ((uint)(ao * 255.0 + 0.5) << 24);
-        b.weights = packedW;
+        b.colors = packedW;
         _Blades[_SlotBase + k] = b;
     }
 }

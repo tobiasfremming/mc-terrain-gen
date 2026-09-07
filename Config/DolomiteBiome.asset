@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: DolomiteBiome
   m_EditorClassIdentifier:
   displayName: Dolomites
-  terrain: {fileID: 11400000, guid: a03556c36a624acb9ce59d247af70e6b, type: 2}
+  terrain: {fileID: 11400000, guid: 397b96c22969487886772b6d93b8a2e5, type: 2}
   bias: 0.35
   surfaceStyle: 4
   hardness: 0.85

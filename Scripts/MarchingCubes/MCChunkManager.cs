@@ -480,7 +480,8 @@ public class MCChunkManager : MonoBehaviour
         Shader.SetGlobalVector("_BiomeSelPlanet", planet != null
             ? new Vector4(planet.center.x, planet.center.y, planet.center.z, planet.radius)
             : Vector4.zero);
-        Shader.SetGlobalVector("_BiomeSelFlags", new Vector4(planet != null ? 1f : 0f, 0f, 0f, 0f));
+        Shader.SetGlobalVector("_BiomeSelFlags", new Vector4(planet != null ? 1f : 0f,
+            world != null ? world.edgeBand : 0f, world != null ? world.edgeHeight : 0f, 0f));
 
         var bias = new float[max];
         var a = new Vector4[max];
@@ -499,9 +500,16 @@ public class MCChunkManager : MonoBehaviour
             {
                 case Biome.SurfaceStyle.Dolomite:
                 {
-                    var dolo = b.terrain as DolomiteVolumeField;
-                    float line = r + (dolo != null ? dolo.baseHeight + dolo.meadowLine : 40f);
-                    lines[i] = new Vector4(line, dolo != null ? dolo.meadowLineBlend : 20f, 0f, 0f);
+                    // meadow/rock line: DolomiteVolumeField.meadowLine, or an
+                    // ErodedHeightField's grassLine (the eroded Dolomites)
+                    if (b.terrain is ErodedHeightField eroDolo)
+                        lines[i] = new Vector4(r + eroDolo.baseHeight + eroDolo.grassLine, Mathf.Max(1f, eroDolo.grassLineBlend), 0f, 0f);
+                    else
+                    {
+                        var dolo = b.terrain as DolomiteVolumeField;
+                        float line = r + (dolo != null ? dolo.baseHeight + dolo.meadowLine : 40f);
+                        lines[i] = new Vector4(line, dolo != null ? dolo.meadowLineBlend : 20f, 0f, 0f);
+                    }
                     break;
                 }
                 case Biome.SurfaceStyle.Mountain:

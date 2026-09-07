@@ -45,6 +45,8 @@ struct BiomeBlendParams
     float regionScale;
     float sharpness;
     float biomeCount; // n, as float (cast to int at use)
+    float edgeHeight; // BiomeDensityField.edgeHeight / edgeBand: border relief fade
+    float edgeBand;
 };
 
 // Persistent world/biome-blend configuration -- rebuilt only when
@@ -108,6 +110,7 @@ BiomeSelectParams MC_BiomeSelectFromBuffers(int n)
     P.isPlanet = 0.0;      // callers pass the already-projected position
     P.center = 0.0;
     P.radius = 0.0;
+    P.edgeBand = _BiomeBlendBuf[0].edgeBand;
     [unroll] for (int i = 0; i < MC_MAX_BIOMES; i++) P.bias[i] = _BiomeBias[i];
     return P;
 }
@@ -115,6 +118,13 @@ BiomeSelectParams MC_BiomeSelectFromBuffers(int n)
 void MC_ComputeBiomeWeights(float wx, float wz, out float w[MC_MAX_BIOMES], int n)
 {
     MC_BiomeWeightsFlat(wx, wz, MC_BiomeSelectFromBuffers(n), w);
+}
+
+// With the relief factors (see BiomeDensityField.ComputeWeights): what the
+// density blend itself uses.
+void MC_ComputeBiomeWeightsRelief(float wx, float wz, out float w[MC_MAX_BIOMES], out float r[MC_MAX_BIOMES], int n)
+{
+    MC_BiomeWeightsFlatRelief(wx, wz, MC_BiomeSelectFromBuffers(n), w, r);
 }
 
 // Density blend using externally supplied weights (e.g. from
@@ -133,18 +143,33 @@ void MC_ComputeBiomeWeights(float wx, float wz, out float w[MC_MAX_BIOMES], int 
 // out entirely. [loop] forces a real runtime loop instead: one compiled
 // copy of the loop body per call site, executed up to 8 times, not
 // unrolled into 8 copies.
-float EvaluateBiomeBlendWithWeights(float3 worldPos, float w[MC_MAX_BIOMES], int n, float fw)
+float EvaluateBiomeBlendWithRelief(float3 worldPos, float w[MC_MAX_BIOMES], float r[MC_MAX_BIOMES], int n, float fw)
 {
     if (n <= 0) return -worldPos.y;
     float d = 0.0, used = 0.0;
+    float plane = _BiomeBlendBuf[0].edgeHeight - worldPos.y;
     [loop]
     for (int i = 0; i < n; i++)
     {
         if (w[i] < 0.004) continue;
-        d += w[i] * EvaluateLeafDensity(_BiomeFieldType[i], worldPos, _LeafParams[i], fw);
+        // Port of BiomeDensityField.SampleWithWeights(p, w, relief, n, fw):
+        // each biome fades toward the flat edge plane by its relief factor
+        // before weighting, so neighbours meet at edgeHeight at the border.
+        float ri = r[i];
+        float di = ri > 0.0 ? EvaluateLeafDensity(_BiomeFieldType[i], worldPos, _LeafParams[i], fw) : 0.0;
+        d += w[i] * (ri * di + (1.0 - ri) * plane);
         used += w[i];
     }
     return used > 0.0 ? d / used : -worldPos.y;
+}
+
+// Plain weighted blend (relief 1 everywhere) -- kept for callers that do
+// not fade borders.
+float EvaluateBiomeBlendWithWeights(float3 worldPos, float w[MC_MAX_BIOMES], int n, float fw)
+{
+    float r[MC_MAX_BIOMES];
+    [unroll] for (int i = 0; i < MC_MAX_BIOMES; i++) r[i] = 1.0;
+    return EvaluateBiomeBlendWithRelief(worldPos, w, r, n, fw);
 }
 
 // Port of BiomeDensityField.Sample: skip negligible biomes (same 0.004
@@ -155,8 +180,9 @@ float EvaluateBiomeBlend(float3 worldPos, float fw)
     if (n <= 0) return -worldPos.y;
 
     float w[MC_MAX_BIOMES];
-    MC_ComputeBiomeWeights(worldPos.x, worldPos.z, w, n);
-    return EvaluateBiomeBlendWithWeights(worldPos, w, n, fw);
+    float r[MC_MAX_BIOMES];
+    MC_ComputeBiomeWeightsRelief(worldPos.x, worldPos.z, w, r, n);
+    return EvaluateBiomeBlendWithRelief(worldPos, w, r, n, fw);
 }
 
 // Sphere-coherent selection for PlanetField: `pos` is normalize(rel) * radius,
@@ -164,6 +190,11 @@ float EvaluateBiomeBlend(float3 worldPos, float fw)
 void MC_ComputeBiomeWeights3D(float3 pos, out float w[MC_MAX_BIOMES], int n)
 {
     MC_BiomeWeightsSphere(pos, MC_BiomeSelectFromBuffers(n), w);
+}
+
+void MC_ComputeBiomeWeightsRelief3D(float3 pos, out float w[MC_MAX_BIOMES], out float r[MC_MAX_BIOMES], int n)
+{
+    MC_BiomeWeightsSphereRelief(pos, MC_BiomeSelectFromBuffers(n), w, r);
 }
 
 #endif

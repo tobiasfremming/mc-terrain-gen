@@ -216,6 +216,31 @@ public struct ErodedGpuParams
     public float sandOctaves;
     public float sandAmp;
     public float sandBlend;
+    // massif base (ErodedHeightField.BaseMode.Massif), appended
+    public float baseMode;
+    public float valleyScale;
+    public float valleyAmp;
+    public float meadowScale;
+    public float meadowAmp;
+    public float massifScale;
+    public float massifOffset;
+    public float warpScale;
+    public float warpAmp;
+    public float towerScale;
+    public float towerAmp;
+    public float screeLo;
+    public float wallLo;
+    public float wallHi;
+    public float screeHeight;
+    public float screeExp;
+    public float wallHeight;
+    public float ridgeScale;
+    public float ridgeAmp;
+    public float spireScale;
+    public float spireAmp;
+    public float erosionOnsetRelief;
+    public float ledgeAmp;
+    public float ledgeSpacing;
 }
 
 // Union of all leaf types (mirrors LeafParams in DensityBiomeBlend.hlsl) --
@@ -307,6 +332,8 @@ public struct BiomeBlendGpuParams
     public float regionScale;
     public float sharpness;
     public float biomeCount;
+    public float edgeHeight; // BiomeDensityField.edgeHeight / edgeBand -- border relief fade
+    public float edgeBand;
 }
 
 // Mirrors PlanetParams in DensityPlanet.hlsl. HLSL float3 is 12 bytes with

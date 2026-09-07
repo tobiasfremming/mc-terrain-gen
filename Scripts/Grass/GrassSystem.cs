@@ -23,7 +23,7 @@ public sealed class GrassSystem : System.IDisposable
 {
     // Must match GrassCommon.hlsl's Blade.
     [StructLayout(LayoutKind.Sequential)]
-    struct Blade { public Vector3 pos; public uint normalOct; public uint seed; public uint weights; }
+    struct Blade { public Vector3 pos; public uint normalOct; public uint seed; public uint colors; }
     public const int BladeStride = 24;
 
     [StructLayout(LayoutKind.Sequential)]
@@ -32,38 +32,42 @@ public sealed class GrassSystem : System.IDisposable
     public const int LodCount = 3;
     static readonly int[] kLodSegments = { 5, 3, 1 };
 
-    // Which vertex-color channels grow grass, how densely, and in what colours.
+    // Which biomes grow grass, how densely, and in what colours. Slot i is
+    // BiomeWorld.biomes[i]; the compute shader weights the slots with the
+    // biome selection at each triangle (BiomeSelect.hlsl via the shader
+    // globals MCChunkManager publishes -- see BIOME_SHADING.md).
     public struct BiomeParams
     {
-        public Vector4 density;      // blades per m^2, channels 0..3
-        public Vector4 heightLine;   // local height where that channel's grass ends
-        public Vector4 heightBlend;  // metres of fade below the line
-        public Vector4[] baseColors; // 4
-        public Vector4[] tipColors;  // 4
+        public const int MaxBiomes = 8; // = BiomeDensityField.MaxBiomes = MC_MAX_BIOMES
 
-        public static BiomeParams Uniform(float density, Color baseColor, Color tipColor)
-        {
-            var p = new BiomeParams
-            {
-                density = Vector4.one * density,
-                heightLine = Vector4.one * 1e9f,
-                heightBlend = Vector4.one,
-                baseColors = new Vector4[4],
-                tipColors = new Vector4[4],
-            };
-            for (int i = 0; i < 4; i++) { p.baseColors[i] = baseColor; p.tipColors[i] = tipColor; }
-            return p;
-        }
+        public Vector4[] table;      // x blades per m^2, y local height where grass stops (radius added), z fade metres
+        public Vector4[] baseColors;
+        public Vector4[] tipColors;
+        // False: no biome world (GrassLab, plain heightfields). Slot 0 applies
+        // everywhere and the biome globals are never read.
+        public bool useBiomeSelect;
 
         public static BiomeParams Empty()
         {
-            return new BiomeParams
-            {
-                heightLine = Vector4.one * 1e9f,
-                heightBlend = Vector4.one,
-                baseColors = new Vector4[4],
-                tipColors = new Vector4[4],
-            };
+            var p = new BiomeParams { table = new Vector4[MaxBiomes], baseColors = new Vector4[MaxBiomes], tipColors = new Vector4[MaxBiomes] };
+            for (int i = 0; i < MaxBiomes; i++) p.table[i] = new Vector4(0f, 1e9f, 1f, 0f);
+            return p;
+        }
+
+        public static BiomeParams Uniform(float density, Color baseColor, Color tipColor)
+        {
+            var p = Empty();
+            p.table[0] = new Vector4(density, 1e9f, 1f, 0f);
+            p.baseColors[0] = baseColor;
+            p.tipColors[0] = tipColor;
+            return p;
+        }
+
+        public void Set(int slot, float density, float heightLine, float heightBlend, Color baseColor, Color tipColor)
+        {
+            table[slot] = new Vector4(Mathf.Max(0f, density), heightLine, Mathf.Max(0.01f, heightBlend), 0f);
+            baseColors[slot] = baseColor;
+            tipColors[slot] = tipColor;
         }
     }
 
@@ -109,8 +113,9 @@ public sealed class GrassSystem : System.IDisposable
         kTriCount = Shader.PropertyToID("_TriCount"), kSlotIndex = Shader.PropertyToID("_SlotIndex"),
         kSlotBase = Shader.PropertyToID("_SlotBase"), kSlotCapacity = Shader.PropertyToID("_SlotCapacity"),
         kLocalToWorld = Shader.PropertyToID("_LocalToWorld"), kPlanetCenter = Shader.PropertyToID("_PlanetCenter"),
-        kChanDensity = Shader.PropertyToID("_ChanDensity"), kChanHeightLine = Shader.PropertyToID("_ChanHeightLine"),
-        kChanHeightBlend = Shader.PropertyToID("_ChanHeightBlend"), kSlopeCosStart = Shader.PropertyToID("_SlopeCosStart"),
+        kGrassBiome = Shader.PropertyToID("_GrassBiome"), kGrassBase = Shader.PropertyToID("_GrassBase"),
+        kGrassTip = Shader.PropertyToID("_GrassTip"), kGrassUseBiomes = Shader.PropertyToID("_GrassUseBiomes"),
+        kSlopeCosStart = Shader.PropertyToID("_SlopeCosStart"),
         kSlopeCosEnd = Shader.PropertyToID("_SlopeCosEnd"), kDensityScale = Shader.PropertyToID("_DensityScale"),
         kUpBlend = Shader.PropertyToID("_UpBlend"), kSeedSalt = Shader.PropertyToID("_SeedSalt"),
         kVisibleSlots = Shader.PropertyToID("_VisibleSlots"), kVisibleSlotCount = Shader.PropertyToID("_VisibleSlotCount"),
@@ -120,7 +125,6 @@ public sealed class GrassSystem : System.IDisposable
         kFadeEnd = Shader.PropertyToID("_FadeEnd"), kLod0Dist = Shader.PropertyToID("_Lod0Dist"),
         kLod1Dist = Shader.PropertyToID("_Lod1Dist"), kBoundsRadius = Shader.PropertyToID("_BoundsRadius"),
         kLodOffset = Shader.PropertyToID("_LodOffset"), kSegments = Shader.PropertyToID("_Segments"),
-        kChanBase = Shader.PropertyToID("_ChanBase"), kChanTip = Shader.PropertyToID("_ChanTip"),
         kBladeSize = Shader.PropertyToID("_BladeSize"), kWindDir = Shader.PropertyToID("_WindDir"),
         kWindParams = Shader.PropertyToID("_WindParams"), kBendPos = Shader.PropertyToID("_BendPos"),
         kFadeParams = Shader.PropertyToID("_FadeParams");
@@ -267,9 +271,10 @@ public sealed class GrassSystem : System.IDisposable
         _cs.SetInt(kSlotCapacity, _capacity);
         _cs.SetMatrix(kLocalToWorld, localToWorld);
         _cs.SetVector(kPlanetCenter, planetCenter);
-        _cs.SetVector(kChanDensity, biome.density);
-        _cs.SetVector(kChanHeightLine, biome.heightLine);
-        _cs.SetVector(kChanHeightBlend, biome.heightBlend);
+        _cs.SetVectorArray(kGrassBiome, biome.table);
+        _cs.SetVectorArray(kGrassBase, biome.baseColors);
+        _cs.SetVectorArray(kGrassTip, biome.tipColors);
+        _cs.SetFloat(kGrassUseBiomes, biome.useBiomeSelect ? 1f : 0f);
         _cs.SetFloat(kSlopeCosStart, Mathf.Cos(_settings.slopeStartDeg * Mathf.Deg2Rad));
         _cs.SetFloat(kSlopeCosEnd, Mathf.Cos(_settings.slopeEndDeg * Mathf.Deg2Rad));
         _cs.SetFloat(kDensityScale, _settings.densityScale * levelScale);
@@ -368,8 +373,6 @@ public sealed class GrassSystem : System.IDisposable
             m.SetBuffer(kVisibleBlades, _visibleBlades);
             m.SetInt(kLodOffset, l * _lodCapacity);
             m.SetInt(kSegments, kLodSegments[l]);
-            m.SetVectorArray(kChanBase, biome.baseColors);
-            m.SetVectorArray(kChanTip, biome.tipColors);
             m.SetVector(kBladeSize, bladeSize);
             m.SetVector(kWindDir, windV);
             m.SetVector(kWindParams, windP);

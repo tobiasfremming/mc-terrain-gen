@@ -6,9 +6,11 @@ using UnityEngine;
 // register themselves in MarchingChunk.Active), gives each near-ring chunk a
 // slot in the GrassSystem pool, re-scatters a slot whenever its chunk's mesh
 // is rebuilt (MeshVersion), and drops it when the chunk is pooled. Which
-// biomes grow grass comes from Biome.grassDensity: the compute shader reads the
-// same vertex-baked biome weights the terrain shader shades with, so grass
-// stops exactly where the meadow does.
+// biomes grow grass comes from Biome.grassDensity:
+// the compute shader evaluates the same biome selection (BiomeSelect.hlsl,
+// through the globals MCChunkManager publishes) that the density blend and
+// the terrain shader use, so grass stops exactly where the meadow does. See
+// BIOME_SHADING.md.
 //
 // Sits next to PlantScatter in the scene. Costs nothing when
 // WorldConfig.enablePlants is off.
@@ -110,9 +112,12 @@ public class TerrainGrass : MonoBehaviour
         return null;
     }
 
-    // Per-channel grass parameters from the Biome assets. Channel i is
-    // biomes[i] (0 = implicit remainder, 1..3 = vertex R/G/B), the same
-    // mapping MCChunkManager.WriteBiomeMaterialProps uses for shading.
+    // Per-biome grass table from the Biome assets. Slot i is biomes[i], the
+    // same slot order the biome selection and MCChunkManager's shading globals
+    // use. Where grass stops with height mirrors the terrain shader's own
+    // ground shading: the Dolomite meadow line and the Mountain grass line
+    // (radius added, as the shader's localHeight is the distance from the
+    // planet centre in globe mode).
     void BuildBiomeParams(DensityField field, PlanetField planet)
     {
         var world = BiomeFieldOf(field);
@@ -125,34 +130,41 @@ public class TerrainGrass : MonoBehaviour
         }
         else
         {
+            p.useBiomeSelect = true;
             float radius = planet != null ? planet.radius : 0f;
-            int n = Mathf.Min(world.BiomeCount, 4);
+            int n = Mathf.Min(world.BiomeCount, GrassSystem.BiomeParams.MaxBiomes);
             for (int i = 0; i < n; i++)
             {
                 var b = world.biomes[i];
                 if (b == null) continue;
-                p.density[i] = Mathf.Max(0f, b.grassDensity);
-                p.baseColors[i] = b.grassColorBase;
-                p.tipColors[i] = b.grassColorTip;
-                // Meadows stop at the Dolomite rock line, exactly as the
-                // terrain shader's meadow shading does (MCChunkManager pushes
-                // the same number as _DoloRockLine).
-                if (b.terrain is DolomiteVolumeField dolo)
+                float line = 1e9f, blend = 1f;
+                switch (b.terrain)
                 {
-                    p.heightLine[i] = radius + dolo.baseHeight + dolo.meadowLine;
-                    p.heightBlend[i] = Mathf.Max(1f, dolo.meadowLineBlend);
+                    case DolomiteVolumeField dolo:
+                        line = radius + dolo.baseHeight + dolo.meadowLine;
+                        blend = Mathf.Max(1f, dolo.meadowLineBlend);
+                        break;
+                    case ErodedHeightField ero:
+                        line = radius + ero.baseHeight + ero.grassLine;
+                        blend = Mathf.Max(1f, ero.grassLineBlend);
+                        break;
                 }
-                else
-                {
-                    p.heightLine[i] = 1e9f;
-                    p.heightBlend[i] = 1f;
-                }
-                hash = HashCode.Combine(hash, b.grassDensity, b.grassColorBase, b.grassColorTip, p.heightLine[i], p.heightBlend[i]);
+                p.Set(i, b.grassDensity, line, blend, b.grassColorBase, b.grassColorTip);
+                hash = HashCode.Combine(hash, b.grassDensity, b.grassColorBase, b.grassColorTip, line, blend, i);
             }
+            hash = HashCode.Combine(hash, world.seed, world.regionScale, world.sharpness, world.BiomeCount, radius);
         }
         hash = HashCode.Combine(hash, settings.densityScale, settings.slopeStartDeg, settings.slopeEndDeg, settings.upBlend, settings.maxLevel);
         for (int i = 0; i < settings.levelDensity.Length; i++) hash = HashCode.Combine(hash, settings.levelDensity[i]);
-        if (hash != _biomeHash) { _biomeHash = hash; _rescatterAll = true; }
+        if (hash != _biomeHash)
+        {
+            _biomeHash = hash;
+            _rescatterAll = true;
+            // The scatter reads the biome selection from shader globals. The
+            // manager publishes them on TerrainTuning, which may not have
+            // fired yet this session; publishing again is idempotent.
+            if (world != null) MCChunkManager.PublishBiomeShadingGlobals(world, planet);
+        }
         _biome = p;
     }
 

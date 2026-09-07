@@ -39,19 +39,34 @@ float EvaluatePlanetWrap(float3 worldPos, float fw)
 
     int n = (int)_BiomeBlendBuf[0].biomeCount;
     float bw[MC_MAX_BIOMES];
+    float br[MC_MAX_BIOMES]; // relief factors (border fade), see BiomeDensityField.ComputeWeights
     // normalize(rel)*radius, NOT rel -- biome selection must be a function of
     // WHERE ON THE SPHERE you are, not how high above it. See PlanetField.
     // Sample's comment for why feeding `rel` directly stacks one biome on top
     // of another in the same column at blendSharpness ~200.
-    MC_ComputeBiomeWeights3D(normalize(rel) * _PlanetBuf[0].radius, bw, n);
+    MC_ComputeBiomeWeightsRelief3D(normalize(rel) * _PlanetBuf[0].radius, bw, br, n);
 
     const float eps = 0.0005;
     float d = 0.0;
     // The triplanar permutation is a rigid relabelling of axes, so the sample
     // spacing survives it unchanged -- fw passes straight through.
-    if (w.x > eps) d += w.x * EvaluateBiomeBlendWithWeights(float3(rel.z, localHeight, rel.y), bw, n, fw);
-    if (w.y > eps) d += w.y * EvaluateBiomeBlendWithWeights(float3(rel.x, localHeight, rel.z), bw, n, fw);
-    if (w.z > eps) d += w.z * EvaluateBiomeBlendWithWeights(float3(rel.x, localHeight, rel.y), bw, n, fw);
+    //
+    // [loop] over the three faces, NOT three straight-line calls: each call
+    // inlines the ENTIRE leaf tree (every biome type's full evaluation), and
+    // three copies of it per density sample -- times every density sample a
+    // kernel takes -- is what timed out FXC on TerrainMesh.compute's
+    // CSTransition. One copy, executed up to three times, compiles in
+    // seconds. Same accumulation order as PlanetField.Sample (x, y, z).
+    [loop]
+    for (int face = 0; face < 3; face++)
+    {
+        float wf = face == 0 ? w.x : (face == 1 ? w.y : w.z);
+        if (wf <= eps) continue;
+        float3 lp = face == 0 ? float3(rel.z, localHeight, rel.y)
+                  : (face == 1 ? float3(rel.x, localHeight, rel.z)
+                               : float3(rel.x, localHeight, rel.y));
+        d += wf * EvaluateBiomeBlendWithRelief(lp, bw, br, n, fw);
+    }
     return d;
 }
 

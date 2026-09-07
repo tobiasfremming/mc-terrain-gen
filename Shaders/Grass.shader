@@ -1,6 +1,6 @@
 // Procedural grass blades (URP). Drawn with Graphics.RenderPrimitivesIndexedIndirect
 // by GrassSystem: there is no blade mesh. Each instance is one blade whose
-// 24-byte record (root, up, seed, biome weights) the vertex shader turns into
+// 24-byte record (root, up, seed, colours) the vertex shader turns into
 // a tapered, bent, wind-swept strip of 1/3/5 segments depending on the LOD.
 //
 //   _Blades        the pool GrassScatter.compute filled
@@ -49,8 +49,6 @@ Shader "MarchingCubes/Grass"
         StructuredBuffer<uint> _VisibleBlades;
         uint _LodOffset;
         uint _Segments;
-        float4 _ChanBase[4];
-        float4 _ChanTip[4];
         float4 _BladeSize;    // x height, y width, z height variation, w width variation
         float4 _WindDir;      // xyz world direction (unit), w strength (dimensionless lean)
         float4 _WindParams;   // x speed, y gust scale (m), z flutter, w static lean
@@ -141,9 +139,9 @@ Shader "MarchingCubes/Grass"
             float taper = 1.0 - t * (0.4 + 0.6 * t);   // slender: 0.86 at a quarter, 0.65 halfway, 0 at the tip
             posWS += sideDir * (side * 0.5 * width * widen * taper);
 
-            float4 w = GrassUnpackUnorm4x8(b.weights);
-            half3 base = (half3)(_ChanBase[0].rgb * w.x + _ChanBase[1].rgb * w.y + _ChanBase[2].rgb * w.z + _ChanBase[3].rgb * w.w);
-            half3 tipC = (half3)(_ChanTip[0].rgb * w.x + _ChanTip[1].rgb * w.y + _ChanTip[2].rgb * w.z + _ChanTip[3].rgb * w.w);
+            // Colours were biome-blended when the blade was scattered.
+            half3 base = (half3)GrassUnpack565(b.colors & 0xFFFFu);
+            half3 tipC = (half3)GrassUnpack565(b.colors >> 16);
             half tint = (half)lerp(0.8, 1.2, GrassHash01(b.seed ^ 0x51ED270Bu));
 
             BladeVertex o;

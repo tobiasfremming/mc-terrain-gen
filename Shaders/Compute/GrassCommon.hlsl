@@ -10,7 +10,7 @@ struct Blade
     float3 pos;      // world-space root
     uint normalOct;  // oct-encoded blade up (2 x 16 bit)
     uint seed;       // low 24 bits random, high 8 bits baked AO
-    uint weights;    // 4 x unorm8 biome channel weights (already density-scaled, sum 1)
+    uint colors;     // RGB565 base colour (low 16) | RGB565 tip colour (high 16), biome-blended at scatter time
 };
 
 // ------------------------------------------------------------------ hashing
@@ -52,6 +52,20 @@ float3 GrassUnpackOct(uint p)
     float t = saturate(-n.z);
     n.xy += n.xy >= 0.0 ? -t : t;
     return normalize(n);
+}
+
+// Two RGB565 colours in one word: 5/6/5 bits is plenty for grass that gets
+// a +-20% random tint per blade anyway, and it keeps the blade record at
+// 24 bytes without caring how many biomes exist.
+uint GrassPack565(float3 c)
+{
+    uint3 q = (uint3)(saturate(c) * float3(31.0, 63.0, 31.0) + 0.5);
+    return q.x | (q.y << 5) | (q.z << 11);
+}
+
+float3 GrassUnpack565(uint p)
+{
+    return float3(p & 31u, (p >> 5) & 63u, (p >> 11) & 31u) * float3(1.0 / 31.0, 1.0 / 63.0, 1.0 / 31.0);
 }
 
 uint GrassPackUnorm4x8(float4 v)

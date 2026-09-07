@@ -12,7 +12,7 @@
 // Selection (feeds BiomeSelectParams):
 float4 _BiomeSelParams;   // x seed, y regionScale, z sharpness, w biome count
 float4 _BiomeSelPlanet;   // xyz planet centre, w radius
-float4 _BiomeSelFlags;    // x 1 = planet mode, 0 = flat
+float4 _BiomeSelFlags;    // x 1 = planet mode, 0 = flat; y edgeBand; z edgeHeight (BiomeDensityField border relief fade)
 float4 _BiomeSelBias0;    // biases of biome slots 0..3
 float4 _BiomeSelBias1;    // biases of biome slots 4..7
 
@@ -35,6 +35,7 @@ BiomeSelectParams MC_BiomeSelectFromGlobals()
     P.isPlanet = _BiomeSelFlags.x;
     P.center = _BiomeSelPlanet.xyz;
     P.radius = _BiomeSelPlanet.w;
+    P.edgeBand = _BiomeSelFlags.y;
     P.bias[0] = _BiomeSelBias0.x; P.bias[1] = _BiomeSelBias0.y; P.bias[2] = _BiomeSelBias0.z; P.bias[3] = _BiomeSelBias0.w;
     P.bias[4] = _BiomeSelBias1.x; P.bias[5] = _BiomeSelBias1.y; P.bias[6] = _BiomeSelBias1.z; P.bias[7] = _BiomeSelBias1.w;
     return P;

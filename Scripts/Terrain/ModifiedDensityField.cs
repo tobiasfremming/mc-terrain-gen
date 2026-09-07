@@ -124,9 +124,6 @@ public class ModifiedDensityField : DensityField
     public override float SurfaceHardness(Vector3 p) =>
         source != null ? source.SurfaceHardness(p) : 0f;
 
-    public override bool HasVertexColors => source != null && source.HasVertexColors;
-    public override Color GetVertexColor(Vector3 worldPos) =>
-        source != null ? source.GetVertexColor(worldPos) : new Color(0, 0, 0, 1);
 
     // Reports the BASE terrain's bounds only. Edits are handled per chunk via
     // ChunkMeshJob.modsOverlapChunk (a local overlap test), which is both

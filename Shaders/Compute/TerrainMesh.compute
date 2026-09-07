@@ -315,34 +315,12 @@ float3 MC_ApplySecondaryOffset(float3 pLocal, float3 n, uint mask, float step, f
 
 // ------------------------------------------------------------ vertex color --
 
-// Port of PlanetField.GetVertexColor / BiomeDensityField.GetVertexColor:
-// RGB = biome weights for channels 1..3 (channel 0's weight is the implicit
-// remainder), A = the baked AO term from ChunkMesher.VertexColorWithAO.
-//
-// The planet branch selects on `normalize(rel) * radius`, NOT rel -- biome
-// selection is a function of where on the sphere you are, not how high above
-// it. See PlanetField.Sample's comment; getting this wrong stacks one biome
-// on top of another in the same column.
+// Port of ChunkMesher.VertexColorWithAO: RGB unused (biome identity is
+// evaluated from world position by every consumer -- BiomeSelect.hlsl, see
+// BIOME_SHADING.md -- never baked per vertex), A = the baked AO term.
 float4 MC_VertexColor(float3 worldPos, float3 n, float probeStep, float fw)
 {
-    int nb = (int)_BiomeBlendBuf[0].biomeCount;
     float4 c = float4(0.0, 0.0, 0.0, 1.0);
-    if (nb > 1)
-    {
-        float bw[MC_MAX_BIOMES];
-        if (_PlanetBuf[0].isPlanet > 0.5)
-        {
-            float3 rel = worldPos - _PlanetBuf[0].center;
-            MC_ComputeBiomeWeights3D(normalize(rel) * _PlanetBuf[0].radius, bw, nb);
-        }
-        else
-        {
-            MC_ComputeBiomeWeights(worldPos.x, worldPos.z, bw, nb);
-        }
-        c.r = bw[1];
-        c.g = nb > 2 ? bw[2] : 0.0;
-        c.b = nb > 3 ? bw[3] : 0.0;
-    }
 
     // One full field evaluation per vertex -- THE cost this whole kernel
     // exists to move off the worker thread. Probe distance and the 0.25/0.75

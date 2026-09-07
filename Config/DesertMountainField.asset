@@ -11,10 +11,11 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ec83c43179fcc764f8150426fd34b04e, type: 3}
   m_Name: DesertMountainField
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   isoLevel: 0
   seed: 9157
   baseHeight: 60
+  baseMode: 0
   baseScale: 1400
   baseOctaves: 3
   baseAmp: 200
@@ -33,6 +34,29 @@ MonoBehaviour:
     gain: 0.5
     lacunarity: 2
     normalization: 0.5
+  valleyScale: 900
+  valleyAmp: 46
+  meadowScale: 200
+  meadowAmp: 7
+  massifScale: 950
+  massifOffset: 0.06
+  warpScale: 170
+  warpAmp: 0.22
+  towerScale: 70
+  towerAmp: 0.08
+  screeLo: 0.27
+  wallLo: 0.4
+  wallHi: 0.47
+  screeHeight: 48
+  screeExp: 2
+  wallHeight: 130
+  ridgeScale: 120
+  ridgeAmp: 70
+  spireScale: 48
+  spireAmp: 30
+  erosionOnsetRelief: 12
+  ledgeAmp: 0
+  ledgeSpacing: 12
   sandEnabled: 1
   sandLevel: 0
   sandScale: 420

@@ -10,16 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f8f466a16e914c69b089b30799a8ebce, type: 3}
-  m_Name: BiomeWorld
-  m_EditorClassIdentifier: 
+  m_Name: DesertMountainsWorld
+  m_EditorClassIdentifier:
   isoLevel: 0
   biomes:
-  - {fileID: 11400000, guid: 0cefd04ec5a24c7fbaab5487fb114eb9, type: 2}
   - {fileID: 11400000, guid: 7cbf784fd00b4eb59d38614718b2d995, type: 2}
-  - {fileID: 11400000, guid: 91a7ee9e2c937a0a1bb7dab3f76c4f38, type: 2}
-  - {fileID: 11400000, guid: dc9d5065e83845678787d613434a0878, type: 2}
-  - {fileID: 11400000, guid: af0705236a0543c0a817c648feb768ad, type: 2}
-  - {fileID: 11400000, guid: 53981ef6846846d9b5517967a52a3457, type: 2}
   seed: 99
   regionScale: 1000
   sharpness: 150

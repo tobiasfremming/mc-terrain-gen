@@ -68,7 +68,7 @@ public class Biome : ScriptableObject
     [Range(0.01f, 1f)] public float coverSoftness = 0.3f;
 
     [Header("Grass")]
-    [Tooltip("Blades per m^2 of flat ground in this biome. 0 = no grass. Scattered on the GPU by TerrainGrass wherever this biome's vertex weight is, thinning out over slopes and across the biome's cross-fade; a Dolomite terrain also stops it at its meadow line.")]
+    [Tooltip("Blades per m^2 of flat ground in this biome. 0 = no grass. Scattered on the GPU by TerrainGrass wherever the biome selection puts this biome, thinning out over slopes and across the biome's cross-fade; a Dolomite terrain also stops it at its meadow line and a Mountain (ErodedHeightField) terrain at its grass line.")]
     public float grassDensity = 0f;
     public Color grassColorBase = new Color(0.13f, 0.30f, 0.06f);
     public Color grassColorTip = new Color(0.58f, 0.74f, 0.27f);
