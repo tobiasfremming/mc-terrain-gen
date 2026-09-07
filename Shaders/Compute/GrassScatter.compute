@@ -1,0 +1,255 @@
+// GPU grass: scatter blades over a terrain mesh, then cull them per frame.
+//
+// The whole pipeline never touches the CPU:
+//   CSScatter  runs ONCE per (re)built chunk mesh. One thread per triangle
+//              reads the chunk's own vertex/index buffers (MarchingChunk
+//              creates them with GraphicsBuffer.Target.Raw for exactly this
+//              kind of access), decides how many blades that triangle gets
+//              from its area, slope and vertex-baked biome weights, and
+//              appends them to this chunk's slot in the shared blade pool.
+//   CSCull     runs every frame over the slots whose chunk bounds passed the
+//              CPU frustum test: distance fade (stochastic, per blade, so the
+//              density thins out instead of popping), frustum test, LOD bin,
+//              and writes the surviving blade indices into the visible list
+//              while bumping the instance count of that LOD's indirect draw.
+//   Grass.shader then builds each blade in the vertex shader from a 24-byte
+//              record -- no per-blade mesh, no CPU-side instance arrays.
+//
+// Blade record (must match GrassSystem.Blade / Grass.shader):
+//   pos        world-space root
+//   normalOct  oct-encoded blade "up" (terrain normal blended toward gravity)
+//   seed       24 random bits (facing, height, width, phase) + 8 bits AO
+//   weights    4 x 8-bit biome channel weights (0=implicit, 1=R, 2=G, 3=B),
+//              already scaled by that channel's grass density so the palette
+//              blend in the shader only sees grassy channels
+
+#pragma kernel CSClearSlot
+#pragma kernel CSMeasure
+#pragma kernel CSScatter
+#pragma kernel CSClearArgs
+#pragma kernel CSCull
+#pragma kernel CSFinalizeArgs
+
+#include "GrassCommon.hlsl"
+
+// ------------------------------------------------------------ scatter inputs
+ByteAddressBuffer _Verts;    // MarchingChunk layout: pos(3f) normal(3f) color(4f) = 40 B
+ByteAddressBuffer _Indices;  // UInt32 triangle list
+RWStructuredBuffer<Blade> _Blades;
+RWStructuredBuffer<uint> _SlotCounts;
+RWStructuredBuffer<uint> _SlotExpected;  // CSMeasure: sum of expected blades per slot, fixed point x64
+
+uint _TriCount;
+uint _SlotIndex;
+uint _SlotBase;        // first blade of this slot in _Blades
+uint _SlotCapacity;
+float4x4 _LocalToWorld;
+
+float4 _PlanetCenter;  // w = 1 when up is radial from here, 0 for world Y
+float4 _ChanDensity;   // blades per m^2 for vertex-color channels 0..3
+float4 _ChanHeightLine;   // local height above which that channel's grass stops
+float4 _ChanHeightBlend;  // metres over which it fades out
+float _SlopeCosStart;  // cos of the slope angle where thinning starts (flat side)
+float _SlopeCosEnd;    // cos of the angle where grass is gone
+float _DensityScale;   // per-LOD-level multiplier x global scale
+float _UpBlend;        // 0 = blades follow the terrain normal, 1 = gravity up
+float _SeedSalt;
+
+#define VERT_STRIDE 40u
+#define MAX_PER_TRI 96u
+#define EXPECTED_FIXED 64.0
+
+void LoadVertex(uint i, out float3 p, out float3 n, out float4 c)
+{
+    uint a = i * VERT_STRIDE;
+    p = asfloat(_Verts.Load3(a));
+    n = asfloat(_Verts.Load3(a + 12u));
+    c = asfloat(_Verts.Load4(a + 24u));
+}
+
+[numthreads(1, 1, 1)]
+void CSClearSlot(uint3 id : SV_DispatchThreadID)
+{
+    _SlotCounts[_SlotIndex] = 0u;
+    _SlotExpected[_SlotIndex] = 0u;
+}
+
+// Everything CSMeasure and CSScatter agree on about one triangle: its
+// world-space corners, the expected blade count and the packed channel
+// weights. Returns false when the triangle grows nothing.
+bool EvaluateTriangle(uint t, out float3 p0, out float3 p1, out float3 p2,
+                      out float3 n0, out float3 n1, out float3 n2,
+                      out float4 c0, out float4 c1, out float4 c2,
+                      out float3 up, out float expected, out uint packedW, out uint seed)
+{
+    p0 = p1 = p2 = n0 = n1 = n2 = 0; c0 = c1 = c2 = 0; up = float3(0, 1, 0); expected = 0; packedW = 0; seed = 0;
+
+    uint3 tri = _Indices.Load3(t * 12u);
+    LoadVertex(tri.x, p0, n0, c0);
+    LoadVertex(tri.y, p1, n1, c1);
+    LoadVertex(tri.z, p2, n2, c2);
+
+    p0 = mul(_LocalToWorld, float4(p0, 1.0)).xyz;
+    p1 = mul(_LocalToWorld, float4(p1, 1.0)).xyz;
+    p2 = mul(_LocalToWorld, float4(p2, 1.0)).xyz;
+    float3x3 rot = (float3x3)_LocalToWorld;
+    n0 = mul(rot, n0); n1 = mul(rot, n1); n2 = mul(rot, n2);
+
+    float3 cr = cross(p1 - p0, p2 - p0);
+    float area2 = length(cr);
+    if (area2 < 1e-7) return false;
+    float3 faceN = cr / area2;
+    float area = 0.5 * area2;
+
+    float3 centroidW = (p0 + p1 + p2) * (1.0 / 3.0);
+    up = _PlanetCenter.w > 0.5 ? normalize(centroidW - _PlanetCenter.xyz) : float3(0.0, 1.0, 0.0);
+
+    // Slope: 1 on flat ground, 0 past the end angle. Back-facing triangles
+    // (cave ceilings) have a negative dot and get nothing.
+    float slopeMask = smoothstep(_SlopeCosEnd, _SlopeCosStart, dot(faceN, up));
+    if (slopeMask <= 0.0) return false;
+
+    // Biome weights: channel 0 is the implicit remainder (BiomeDensityField.GetVertexColor).
+    float4 cAvg = (c0 + c1 + c2) * (1.0 / 3.0);
+    float4 w = float4(saturate(1.0 - cAvg.r - cAvg.g - cAvg.b), cAvg.r, cAvg.g, cAvg.b);
+    float localHeight = _PlanetCenter.w > 0.5 ? length(centroidW - _PlanetCenter.xyz) : centroidW.y;
+    float4 heightMask = 1.0 - smoothstep(_ChanHeightLine, _ChanHeightLine + max(_ChanHeightBlend, 0.01), localHeight.xxxx);
+    float4 wd = w * _ChanDensity * heightMask;   // per-channel effective density
+    float density = dot(wd, 1.0);
+    if (density <= 0.0) return false;
+
+    expected = area * density * slopeMask * _DensityScale;
+
+    // Seed from the quantised world centroid, not the triangle index: a chunk
+    // rebuilt for an edit elsewhere keeps the exact same blades on the
+    // triangles that did not change.
+    seed = GrassHashInt3(int3(floor(centroidW * 64.0))) ^ asuint(_SeedSalt);
+
+    // Channel weights as bytes, normalised so the palette blend sums to 1.
+    packedW = GrassPackUnorm4x8(wd / max(density, 1e-6));
+    return true;
+}
+
+// Pass 1: how many blades does this mesh want in total? CSScatter scales the
+// density down uniformly when that exceeds the slot, so an overfull chunk
+// thins evenly instead of leaving whole triangles bare.
+[numthreads(64, 1, 1)]
+void CSMeasure(uint3 id : SV_DispatchThreadID)
+{
+    uint t = id.x;
+    if (t >= _TriCount) return;
+    float3 p0, p1, p2, n0, n1, n2, up; float4 c0, c1, c2; float expected; uint packedW, seed;
+    if (!EvaluateTriangle(t, p0, p1, p2, n0, n1, n2, c0, c1, c2, up, expected, packedW, seed)) return;
+    InterlockedAdd(_SlotExpected[_SlotIndex], (uint)(min(expected, (float)MAX_PER_TRI) * EXPECTED_FIXED + 0.5));
+}
+
+[numthreads(64, 1, 1)]
+void CSScatter(uint3 id : SV_DispatchThreadID)
+{
+    uint t = id.x;
+    if (t >= _TriCount) return;
+    float3 p0, p1, p2, n0, n1, n2, up; float4 c0, c1, c2; float expected; uint packedW, seed;
+    if (!EvaluateTriangle(t, p0, p1, p2, n0, n1, n2, c0, c1, c2, up, expected, packedW, seed)) return;
+
+    float total = (float)_SlotExpected[_SlotIndex] / EXPECTED_FIXED;
+    float scale = total > (float)_SlotCapacity ? (float)_SlotCapacity / total : 1.0;
+    expected = min(expected, (float)MAX_PER_TRI) * scale;
+
+    uint count = (uint)floor(expected);
+    if (GrassHash01(seed) < frac(expected)) count++;
+    if (count == 0u) return;
+
+    uint first;
+    InterlockedAdd(_SlotCounts[_SlotIndex], count, first);
+    if (first >= _SlotCapacity) return;
+    uint last = min(first + count, _SlotCapacity);
+
+    for (uint k = first; k < last; k++)
+    {
+        uint s = GrassHash(seed + (k - first) * 0x9E3779B9u);
+        // Uniform point on the triangle (square-root warp of two uniforms).
+        float su0 = sqrt(GrassHash01(s));
+        float b0 = 1.0 - su0;
+        float b1 = GrassHash01(s ^ 0x68BC21EBu) * su0;
+        float b2 = 1.0 - b0 - b1;
+
+        float3 pos = b0 * p0 + b1 * p1 + b2 * p2;
+        float3 n = normalize(b0 * n0 + b1 * n1 + b2 * n2);
+        float3 bladeUp = normalize(lerp(n, up, _UpBlend));
+        float ao = saturate(b0 * c0.a + b1 * c1.a + b2 * c2.a);
+
+        Blade b;
+        b.pos = pos;
+        b.normalOct = GrassPackOct(bladeUp);
+        b.seed = (GrassHash(s ^ 0x2545F491u) & 0x00FFFFFFu) | ((uint)(ao * 255.0 + 0.5) << 24);
+        b.weights = packedW;
+        _Blades[_SlotBase + k] = b;
+    }
+}
+
+// --------------------------------------------------------------- cull inputs
+StructuredBuffer<uint4> _VisibleSlots;   // x = slot index, y = blade base; one per slot that passed CPU culling
+uint _VisibleSlotCount;
+RWStructuredBuffer<uint> _VisibleBlades; // GRASS_LOD_COUNT regions of _LodCapacity blade indices
+RWStructuredBuffer<uint> _Counters;      // GRASS_LOD_COUNT x IndirectDrawIndexedArgs (5 uints each); GrassSystem copies it into the real args buffer
+uint _LodCapacity;
+float4 _FrustumPlanes[6];
+float4 _CamPos;
+float _FadeStart;
+float _FadeEnd;
+float _Lod0Dist;
+float _Lod1Dist;
+float _BoundsRadius;   // blade height: sphere radius for the frustum test
+
+[numthreads(1, 1, 1)]
+void CSClearArgs(uint3 id : SV_DispatchThreadID)
+{
+    [unroll]
+    for (uint l = 0; l < GRASS_LOD_COUNT; l++)
+        _Counters[l * 5u + 1u] = 0u;
+}
+
+[numthreads(64, 1, 1)]
+void CSCull(uint3 id : SV_DispatchThreadID)
+{
+    uint t = id.x;
+    uint s = t / _SlotCapacity;
+    if (s >= _VisibleSlotCount) return;
+    uint local = t - s * _SlotCapacity;
+    uint4 slot = _VisibleSlots[s];
+    uint count = min(_SlotCounts[slot.x], _SlotCapacity);
+    if (local >= count) return;
+
+    uint gi = slot.y + local;
+    Blade b = _Blades[gi];
+
+    float d = distance(b.pos, _CamPos.xyz);
+    // Stochastic distance fade: each blade has a fixed random threshold, so
+    // for a still camera the same blades stay and the field thins smoothly.
+    float fade = smoothstep(_FadeStart, _FadeEnd, d);
+    if (fade >= 1.0) return;
+    if (fade > 0.0 && GrassHash01(b.seed & 0x00FFFFFFu) < fade) return;
+
+    [unroll]
+    for (int i = 0; i < 6; i++)
+        if (dot(_FrustumPlanes[i].xyz, b.pos) + _FrustumPlanes[i].w < -_BoundsRadius) return;
+
+    uint lod = d < _Lod0Dist ? 0u : (d < _Lod1Dist ? 1u : 2u);
+    uint idx;
+    InterlockedAdd(_Counters[lod * 5u + 1u], 1u, idx);
+    if (idx >= _LodCapacity) return;
+    _VisibleBlades[lod * _LodCapacity + idx] = gi;
+}
+
+// The counters can overshoot the visible list when it is full; clamp so the
+// draw never reads past its region.
+[numthreads(1, 1, 1)]
+void CSFinalizeArgs(uint3 id : SV_DispatchThreadID)
+{
+    [unroll]
+    for (uint l = 0; l < GRASS_LOD_COUNT; l++)
+    {
+        uint a = l * 5u + 1u;
+        _Counters[a] = min(_Counters[a], _LodCapacity);
+    }
+}

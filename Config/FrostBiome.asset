@@ -28,6 +28,8 @@ MonoBehaviour:
     rarity: 1
     perPlot: 8
     plotChance: 0.85
+    symbol: w
+    minSpacing: 1.8
     minUpness: 0.75
     minHeight: -1000
     maxHeight: 1000
@@ -45,6 +47,8 @@ MonoBehaviour:
     rarity: 1
     perPlot: 8
     plotChance: 0.85
+    symbol: p
+    minSpacing: 0.8
     minUpness: 0.7
     minHeight: -1000
     maxHeight: 1000
@@ -62,6 +66,8 @@ MonoBehaviour:
     rarity: 1
     perPlot: 8
     plotChance: 0.85
+    symbol: e
+    minSpacing: 0.8
     minUpness: 0.7
     minHeight: -1000
     maxHeight: 1000
@@ -74,11 +80,32 @@ MonoBehaviour:
     impostorDistance: 70
     cullDistance: 220
     enabled: 1
+  - label: CrozierPlant
+    prototypes: {fileID: 11400000, guid: 0bf88fcba5f3c0e4d8f0d842b87f88fb, type: 2}
+    rarity: 1
+    perPlot: 8
+    plotChance: 0.85
+    symbol: z
+    minSpacing: 1.8
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 1
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
+    enabled: 1
   - label: CoralFungusPlant
     prototypes: {fileID: 11400000, guid: 6c304b3b98a55b84aa1ad931eeb24d9b, type: 2}
     rarity: 2
     perPlot: 3
     plotChance: 0.5
+    symbol: c
+    minSpacing: 0.8
     minUpness: 0.7
     minHeight: -1000
     maxHeight: 1000
@@ -96,6 +123,8 @@ MonoBehaviour:
     rarity: 2
     perPlot: 3
     plotChance: 0.5
+    symbol: b
+    minSpacing: 1.8
     minUpness: 0.75
     minHeight: -1000
     maxHeight: 1000
@@ -113,6 +142,8 @@ MonoBehaviour:
     rarity: 2
     perPlot: 3
     plotChance: 0.5
+    symbol: i
+    minSpacing: 0.8
     minUpness: 0.7
     minHeight: -1000
     maxHeight: 1000
@@ -130,6 +161,8 @@ MonoBehaviour:
     rarity: 2
     perPlot: 3
     plotChance: 0.5
+    symbol: y
+    minSpacing: 1.8
     minUpness: 0.75
     minHeight: -1000
     maxHeight: 1000
@@ -147,6 +180,8 @@ MonoBehaviour:
     rarity: 2
     perPlot: 3
     plotChance: 0.5
+    symbol: s
+    minSpacing: 1.8
     minUpness: 0.75
     minHeight: -1000
     maxHeight: 1000
@@ -164,6 +199,8 @@ MonoBehaviour:
     rarity: 3
     perPlot: 1
     plotChance: 0.25
+    symbol: m
+    minSpacing: 1.8
     minUpness: 0.75
     minHeight: -1000
     maxHeight: 1000
@@ -181,6 +218,8 @@ MonoBehaviour:
     rarity: 3
     perPlot: 1
     plotChance: 0.25
+    symbol: t
+    minSpacing: 1.8
     minUpness: 0.75
     minHeight: -1000
     maxHeight: 1000
@@ -198,6 +237,8 @@ MonoBehaviour:
     rarity: 4
     perPlot: 1
     plotChance: 0.04
+    symbol: Q
+    minSpacing: 40.0
     minUpness: 0.75
     minHeight: -1000
     maxHeight: 1000
@@ -215,6 +256,8 @@ MonoBehaviour:
     rarity: 4
     perPlot: 1
     plotChance: 0.04
+    symbol: Z
+    minSpacing: 40.0
     minUpness: 0.75
     minHeight: -1000
     maxHeight: 1000
@@ -227,3 +270,8 @@ MonoBehaviour:
     impostorDistance: 150
     cullDistance: 900
     enabled: 1
+  colony: {fileID: 11400000, guid: 03e24f5a6b7c8d9e0f1a2b3c4d5e6f70, type: 2}
+  colonyChance: 0.45
+  coverScale: 140
+  coverThreshold: 0.05
+  coverSoftness: 0.25

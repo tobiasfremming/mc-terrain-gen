@@ -10,18 +10,18 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b3fbd777630b4533bc0bdbd0291ce18b, type: 3}
-  m_Name: CanyonBiome
-  m_EditorClassIdentifier: 
-  displayName: Canyon
-  terrain: {fileID: 11400000, guid: 38e6df7878c0418d98448edeb705b1d0, type: 2}
+  m_Name: DesertMountainBiome
+  m_EditorClassIdentifier:
+  displayName: Desert Mountains
+  terrain: {fileID: 11400000, guid: 6c653551465c41a49d223ba8c410b76a, type: 2}
   bias: 0.4
-  surfaceStyle: 1
-  hardness: 0.92
+  surfaceStyle: 6
+  hardness: 0.6
   blendSharpness: 1
-  colorFlat: {r: 0.84, g: 0.58, b: 0.34, a: 1}
-  colorSteep: {r: 0.6, g: 0.35, b: 0.22, a: 1}
-  albedo: {fileID: 2800000, guid: 67eb7a3ca22d4ba08f41264a03b161f3, type: 3}
-  normalMap: {fileID: 2800000, guid: 011e801778644347bf1dca23794c2241, type: 3}
+  colorFlat: {r: 0.86, g: 0.62, b: 0.36, a: 1}
+  colorSteep: {r: 0.8, g: 0.52, b: 0.32, a: 1}
+  albedo: {fileID: 0}
+  normalMap: {fileID: 0}
   flora:
   - label: ThicketPlant
     prototypes: {fileID: 11400000, guid: 5050cad1f1bba8a49b45716e005f1096, type: 2}

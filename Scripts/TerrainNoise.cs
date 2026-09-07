@@ -162,6 +162,71 @@ public static class TerrainNoise
         return s / norm;
     }
 
+    // ---- analytic-derivative variants ----
+    // GNoiseD returns the same value as GNoise in x and its exact partial
+    // derivatives d/dx, d/dy in yz (Quilez's "Noise - Gradient - 2D - Deriv"
+    // form applied to this project's hash and gradient LUT). The erosion
+    // filter needs the slope of the terrain it erodes, and finite differences
+    // would cost four extra evaluations per sample and still be wrong at the
+    // grid's own cell corners. Mirrored by MC_GNoiseD in TerrainNoiseGPU.hlsl.
+    static void Grad(long cx, long cy, uint seed, out float gx, out float gy)
+    {
+        uint h = Hash(unchecked((uint)cx), unchecked((uint)cy), seed);
+        int g = (int)(h >> 27);
+        gx = kGradX[g];
+        gy = kGradY[g];
+    }
+
+    public static Vector3 GNoiseD(float x, float y, uint seed)
+    {
+        long ix = (long)Mathf.Floor(x);
+        long iy = (long)Mathf.Floor(y);
+        float fx = x - ix, fy = y - iy;
+        float ux = fx * fx * fx * (fx * (fx * 6f - 15f) + 10f);
+        float uy = fy * fy * fy * (fy * (fy * 6f - 15f) + 10f);
+        float dux = 30f * fx * fx * (fx * (fx - 2f) + 1f);
+        float duy = 30f * fy * fy * (fy * (fy - 2f) + 1f);
+
+        Grad(ix,     iy,     seed, out float gax, out float gay);
+        Grad(ix + 1, iy,     seed, out float gbx, out float gby);
+        Grad(ix,     iy + 1, seed, out float gcx, out float gcy);
+        Grad(ix + 1, iy + 1, seed, out float gdx, out float gdy);
+
+        float va = gax * fx + gay * fy;
+        float vb = gbx * (fx - 1f) + gby * fy;
+        float vc = gcx * fx + gcy * (fy - 1f);
+        float vd = gdx * (fx - 1f) + gdy * (fy - 1f);
+        float k = va - vb - vc + vd;
+
+        float v = va + ux * (vb - va) + uy * (vc - va) + ux * uy * k;
+        float dx = gax + ux * (gbx - gax) + uy * (gcx - gax) + ux * uy * (gdx - gbx - gcx + gax) + dux * (uy * k + vb - va);
+        float dy = gay + ux * (gby - gay) + uy * (gcy - gay) + ux * uy * (gdy - gby - gcy + gay) + duy * (ux * k + vc - va);
+        return new Vector3(v * 1.6f, dx * 1.6f, dy * 1.6f);
+    }
+
+    // Fbm with derivatives: x is identical to Fbm(x, y, octaves, seed,
+    // filterWidth) (same offsets, seeds, normalisation and fade), yz is the
+    // gradient in the caller's units. Mirrored by MC_FbmD.
+    public static Vector3 FbmD(float x, float y, int octaves, uint seed, float filterWidth = 0f)
+    {
+        float s = 0f, sx = 0f, sy = 0f, amp = 1f, freq = 1f, norm = 0f;
+        for (int i = 0; i < octaves; i++)
+        {
+            norm += amp;
+            float w = DetailFade(filterWidth * freq, 1f);
+            if (w > 0f)
+            {
+                Vector3 n = GNoiseD(x * freq + i * 19.19f, y * freq - i * 7.77f, seed + (uint)(i * 131));
+                s += amp * w * n.x;
+                sx += amp * w * freq * n.y;
+                sy += amp * w * freq * n.z;
+            }
+            amp *= 0.5f;
+            freq *= 2f;
+        }
+        return new Vector3(s / norm, sx / norm, sy / norm);
+    }
+
     public static float Smoothstep(float a, float b, float x)
     {
         float t = Mathf.Clamp01((x - a) / (b - a));

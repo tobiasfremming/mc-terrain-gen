@@ -14,29 +14,13 @@ Shader "MarchingCubes/Sand Terrain"
 {
     Properties
     {
-        // --- Per vertex-color CHANNEL identity -------------------------------
-        // Channel 0 = implicit remainder weight, 1 = vertex R, 2 = G, 3 = B
-        // (fixed by BiomeDensityField.GetVertexColor). WHICH biome asset landed
-        // on a channel, and therefore its style/colors/sharpness, is pushed at
-        // runtime by MCChunkManager from that Biome asset's own fields — these
-        // defaults just mirror the original Desert/Canyon/Alien/Frost setup.
-        // Style: 0 = Sand, 1 = Canyon, 2 = Alien, 3 = Frost (Biome.SurfaceStyle).
-        _Chan0Style ("Channel 0 (implicit) style", Float) = 0
-        _Chan0Flat  ("Channel 0 flat color",  Color) = (0.83, 0.55, 0.26, 1)
-        _Chan0Steep ("Channel 0 steep color", Color) = (0.68, 0.40, 0.17, 1)
-        _Chan0Sharpness ("Channel 0 blend sharpness", Range(0.2, 6)) = 1
-        _Chan1Style ("Channel 1 (vertex R) style", Float) = 1
-        _Chan1Flat  ("Channel 1 flat color",  Color) = (0.84, 0.58, 0.34, 1)
-        _Chan1Steep ("Channel 1 steep color", Color) = (0.60, 0.35, 0.22, 1)
-        _Chan1Sharpness ("Channel 1 blend sharpness", Range(0.2, 6)) = 1
-        _Chan2Style ("Channel 2 (vertex G) style", Float) = 2
-        _Chan2Flat  ("Channel 2 flat color",  Color) = (0.47, 0.45, 0.44, 1)
-        _Chan2Steep ("Channel 2 steep color", Color) = (0.32, 0.30, 0.32, 1)
-        _Chan2Sharpness ("Channel 2 blend sharpness", Range(0.2, 6)) = 1
-        _Chan3Style ("Channel 3 (vertex B) style", Float) = 3
-        _Chan3Flat  ("Channel 3 flat color",  Color) = (0.80, 0.90, 0.96, 1)
-        _Chan3Steep ("Channel 3 steep color", Color) = (0.55, 0.70, 0.82, 1)
-        _Chan3Sharpness ("Channel 3 blend sharpness", Range(0.2, 6)) = 1
+        // --- Per-biome identity is NOT a material property ---------------------
+        // Which biome a pixel belongs to is evaluated from world position
+        // (Biomes/BiomeSelectGlobals.hlsl -> Compute/BiomeSelect.hlsl), and each
+        // biome's style, palette, blend sharpness and height lines arrive as
+        // shader globals published by MCChunkManager. See BIOME_SHADING.md.
+        // Below: only the global, style-level tuning shared by whichever
+        // biomes use a style.
 
         // Planet mode: when enabled, "up" for slope tinting and sediment
         // banding is radial from a center point instead of world Y. Pushed
@@ -99,9 +83,24 @@ Shader "MarchingCubes/Sand Terrain"
         // NOTE: localHeight is the distance from the planet centre in globe mode (~radius), so this is absolute, not above-nominal.
         _DoloSnowLine ("Dolomite snow line (local height, m; off by default)", Float) = 1000000000
         _DoloSnowBlend ("Dolomite snow blend (m)", Range(1, 100)) = 25
-        // Pushed by MCChunkManager from DolomiteVolumeField.meadowLine (+ planet radius in globe mode).
-        _DoloRockLine ("Dolomite rock line (local height, m)", Float) = 40
-        _DoloRockLineBlend ("Dolomite rock line blend (m)", Float) = 20
+        // Mountain: eroded alpine rock (BiomeMountain.hlsl). The biome's Flat is
+        // the grass, Steep the rock; its snow/grass lines come from the globals.
+        _MtnRockColor2 ("Mountain rock stratum color", Color) = (0.42, 0.40, 0.38, 1)
+        _MtnScreeColor ("Mountain scree color", Color) = (0.50, 0.47, 0.43, 1)
+        _MtnSnowColor ("Mountain snow color", Color) = (0.93, 0.95, 0.98, 1)
+        _MtnRockSlope ("Mountain rock starts (cos slope)", Range(0, 1)) = 0.80
+        _MtnRockSlopeWidth ("Mountain rock slope band", Range(0.01, 0.5)) = 0.14
+        _MtnBandSpacing ("Mountain strata spacing (m)", Range(0.5, 60)) = 9
+        _MtnBandContrast ("Mountain strata contrast", Range(0, 1)) = 0.35
+        // Desert Mountain: eroded sandstone (BiomeDesertMountain.hlsl). The biome's
+        // Flat is the sand tint, Steep the rock tint over the canyon rock texture.
+        _DsrtBandColor ("Desert mountain stratum color", Color) = (0.62, 0.36, 0.22, 1)
+        _DsrtVarnishColor ("Desert varnish color", Color) = (0.30, 0.20, 0.16, 1)
+        _DsrtBandSpacing ("Desert mountain strata spacing (m)", Range(0.5, 60)) = 7
+        _DsrtBandContrast ("Desert mountain strata contrast", Range(0, 1)) = 0.45
+        _DsrtVarnish ("Desert varnish strength", Range(0, 1)) = 0.45
+        _DsrtSandSlope ("Desert mountain sand holds up to (cos slope)", Range(0, 1)) = 0.86
+        _DsrtSandSlopeWidth ("Desert mountain sand slope band", Range(0.01, 0.5)) = 0.12
         _VertexAO ("Baked vertex AO strength", Range(0, 1)) = 0.75
         _MainTex   ("Sand albedo (triplanar)", 2D) = "white" {}
         _NormalTex ("Sand normal (triplanar)", 2D) = "bump" {}
@@ -124,6 +123,7 @@ Shader "MarchingCubes/Sand Terrain"
             Cull Off
 
             HLSLPROGRAM
+            #pragma target 4.5
             #pragma vertex Vert
             #pragma fragment Frag
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
@@ -133,23 +133,29 @@ Shader "MarchingCubes/Sand Terrain"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
+            #include "Biomes/BiomeSelectGlobals.hlsl"
             #include "Biomes/BiomeCommon.hlsl"
             #include "Biomes/BiomeSand.hlsl"
             #include "Biomes/BiomeCanyon.hlsl"
             #include "Biomes/BiomeAlien.hlsl"
             #include "Biomes/BiomeFrost.hlsl"
             #include "Biomes/BiomeDolomite.hlsl"
+            #include "Biomes/BiomeMountain.hlsl"
+            #include "Biomes/BiomeDesertMountain.hlsl"
 
-            // Dispatches ONE vertex-color channel's weight to whichever
-            // shading module its STYLE (read from the Biome asset that
-            // landed on this channel, via MCChunkManager) selects. This is
-            // what makes rendering data-driven: style travels with the Biome
-            // asset, not with a fixed channel/array-index assumption.
-            // Style values must match Biome.SurfaceStyle: 0=Sand,1=Canyon,2=Alien,3=Frost,4=Dolomite.
-            #define EVALUATE_CHANNEL(STYLE, FLATCOL, STEEPCOL, CHW) \
-                if ((CHW) > 0.003h) \
+            // Per-pixel biome weights (1) or per-vertex weights interpolated
+            // across the triangle (0). Per-pixel gives exact boundaries on every
+            // LOD ring; per-vertex is free and looks like the old vertex-colour
+            // bake. Flip to 0 if the selection noise measures too costly.
+            #define MC_BIOME_WEIGHTS_PER_PIXEL 1
+
+            // Shades ONE biome slot with whichever module its style selects.
+            // Style values must match Biome.SurfaceStyle:
+            // 0=Sand,1=Canyon,2=Alien,3=Frost,4=Dolomite,5=Mountain,6=DesertMountain.
+            // FLATCOL/STEEPCOL/LINES are that biome's table entries.
+            #define EVALUATE_STYLE(STYLE, FLATCOL, STEEPCOL, LINES, CHW) \
                 { \
-                    int _style = (int)round(STYLE); \
+                    int _style = (STYLE); \
                     if (_style == 0) \
                         EvaluateSand(uvX, uvY, uvZ, mX, mY, mZ, texAlb, FLATCOL, STEEPCOL, steep, _NormalStrength, \
                                      CHW, albedo, tnX, tnY, tnZ); \
@@ -167,7 +173,21 @@ Shader "MarchingCubes/Sand Terrain"
                                          _DoloBandColor.rgb, _DoloScreeColor.rgb, \
                                          _DoloBandSpacing, _DoloBandDistortion, _DoloBandContrast, \
                                          _DoloScreeStart, _DoloScreeEnd, _DoloSnowLine, _DoloSnowBlend, \
-                                         _DoloRockLine, _DoloRockLineBlend, \
+                                         (LINES).x, (LINES).y, \
+                                         _RockTexScale, _NormalStrength, \
+                                         CHW, albedo, tnX, tnY, tnZ); \
+                    else if (_style == 5) \
+                        EvaluateMountain(i.positionWS, w, n, up, localHeight, FLATCOL, STEEPCOL, \
+                                         _MtnRockColor2.rgb, _MtnScreeColor.rgb, _MtnSnowColor.rgb, \
+                                         _MtnRockSlope, _MtnRockSlopeWidth, _MtnBandSpacing, _MtnBandContrast, \
+                                         (LINES).x, (LINES).y, (LINES).z, (LINES).w, \
+                                         _RockTexScale, _NormalStrength, \
+                                         CHW, albedo, tnX, tnY, tnZ); \
+                    else if (_style == 6) \
+                        EvaluateDesertMountain(i.positionWS, w, n, up, localHeight, uvX, uvY, uvZ, mX, mY, mZ, texAlb, \
+                                         FLATCOL, STEEPCOL, _DsrtBandColor.rgb, _DsrtVarnishColor.rgb, \
+                                         _DsrtBandSpacing, _DsrtBandContrast, _DsrtVarnish, \
+                                         _DsrtSandSlope, _DsrtSandSlopeWidth, (LINES).x, (LINES).y, \
                                          _RockTexScale, _NormalStrength, \
                                          CHW, albedo, tnX, tnY, tnZ); \
                     else \
@@ -180,22 +200,6 @@ Shader "MarchingCubes/Sand Terrain"
             CBUFFER_START(UnityPerMaterial)
                 half _UseSphericalUp;
                 float4 _PlanetCenter;
-                half _Chan0Style;
-                half4 _Chan0Flat;
-                half4 _Chan0Steep;
-                half _Chan0Sharpness;
-                half _Chan1Style;
-                half4 _Chan1Flat;
-                half4 _Chan1Steep;
-                half _Chan1Sharpness;
-                half _Chan2Style;
-                half4 _Chan2Flat;
-                half4 _Chan2Steep;
-                half _Chan2Sharpness;
-                half _Chan3Style;
-                half4 _Chan3Flat;
-                half4 _Chan3Steep;
-                half _Chan3Sharpness;
                 half4 _SheenColor;
                 half4 _CanyonFloorColor;
                 half4 _Layer1Color;
@@ -228,8 +232,20 @@ Shader "MarchingCubes/Sand Terrain"
                 half _DoloScreeEnd;
                 float _DoloSnowLine;
                 half _DoloSnowBlend;
-                float _DoloRockLine;
-                float _DoloRockLineBlend;
+                half4 _MtnRockColor2;
+                half4 _MtnScreeColor;
+                half4 _MtnSnowColor;
+                half _MtnRockSlope;
+                half _MtnRockSlopeWidth;
+                float _MtnBandSpacing;
+                half _MtnBandContrast;
+                half4 _DsrtBandColor;
+                half4 _DsrtVarnishColor;
+                float _DsrtBandSpacing;
+                half _DsrtBandContrast;
+                half _DsrtVarnish;
+                half _DsrtSandSlope;
+                half _DsrtSandSlopeWidth;
                 half _VertexAO;
                 half _SlopeStart;
                 half _SlopeEnd;
@@ -249,7 +265,7 @@ Shader "MarchingCubes/Sand Terrain"
             {
                 float4 positionOS : POSITION;
                 float3 normalOS   : NORMAL;
-                float4 color      : COLOR;   // channel weights: R/G/B = channels 1/2/3, A = baked AO
+                float4 color      : COLOR;   // A = baked AO. RGB still carry the old biome weights for the grass scatter (transitional, see BIOME_SHADING.md); this shader ignores them.
             };
 
             struct Varyings
@@ -258,7 +274,11 @@ Shader "MarchingCubes/Sand Terrain"
                 float3 positionWS : TEXCOORD0;
                 float3 normalWS   : TEXCOORD1;
                 half   fogFactor  : TEXCOORD2;
-                half4  biome      : COLOR;
+                half4  vcol       : COLOR;      // .a = baked AO
+            #if !MC_BIOME_WEIGHTS_PER_PIXEL
+                float4 bw0        : TEXCOORD3;  // biome weights 0..3 (per-vertex variant)
+                float4 bw1        : TEXCOORD4;  // biome weights 4..7
+            #endif
             };
 
             Varyings Vert(Attributes v)
@@ -268,7 +288,13 @@ Shader "MarchingCubes/Sand Terrain"
                 o.positionCS = TransformWorldToHClip(o.positionWS);
                 o.normalWS = TransformObjectToWorldNormal(v.normalOS);
                 o.fogFactor = ComputeFogFactor(o.positionCS.z);
-                o.biome = (half4)v.color;
+                o.vcol = (half4)v.color;
+            #if !MC_BIOME_WEIGHTS_PER_PIXEL
+                float vw[MC_MAX_BIOMES]; int vn;
+                MC_BiomeShadeWeights(o.positionWS, vw, vn);
+                o.bw0 = float4(vw[0], vw[1], vw[2], vw[3]);
+                o.bw1 = float4(vw[4], vw[5], vw[6], vw[7]);
+            #endif
                 return o;
             }
 
@@ -305,23 +331,18 @@ Shader "MarchingCubes/Sand Terrain"
                 half cosEnd = cos(radians(_SlopeEnd));
                 half steep = 1.0h - smoothstep(cosEnd, cosStart, (half)saturate(dot(n, up)));
 
-                // vertex-baked channel weights (partition of unity): channel 0
-                // is the implicit remainder, 1/2/3 are vertex R/G/B. Each is
-                // independently re-sharpened using ITS OWN biome's sharpness,
-                // then renormalized so they still sum to 1.
-                half w1raw = i.biome.r;
-                half w2raw = i.biome.g;
-                half w3raw = i.biome.b;
-                half w0raw = saturate(1.0h - w1raw - w2raw - w3raw);
-                half w0s = BiomeSharpen(w0raw, _Chan0Sharpness);
-                half w1s = BiomeSharpen(w1raw, _Chan1Sharpness);
-                half w2s = BiomeSharpen(w2raw, _Chan2Sharpness);
-                half w3s = BiomeSharpen(w3raw, _Chan3Sharpness);
-                half wSum = max(w0s + w1s + w2s + w3s, 1e-4h);
-                half chan0W = w0s / wSum;
-                half chan1W = w1s / wSum;
-                half chan2W = w2s / wSum;
-                half chan3W = w3s / wSum;
+                // Biome weights from world position (BiomeSelect.hlsl), sharpened
+                // per biome and renormalised. No vertex data involved: the same
+                // function the density compute selected the geometry with.
+                float bw[MC_MAX_BIOMES];
+                int biomeCount;
+            #if MC_BIOME_WEIGHTS_PER_PIXEL
+                MC_BiomeShadeWeights(i.positionWS, bw, biomeCount);
+            #else
+                biomeCount = (int)_BiomeSelParams.w;
+                bw[0] = i.bw0.x; bw[1] = i.bw0.y; bw[2] = i.bw0.z; bw[3] = i.bw0.w;
+                bw[4] = i.bw1.x; bw[5] = i.bw1.y; bw[6] = i.bw1.z; bw[7] = i.bw1.w;
+            #endif
 
                 half3 texAlb = SandDetailAlbedo(uvX, uvY, uvZ, mX, mY, mZ, w);
 
@@ -329,10 +350,26 @@ Shader "MarchingCubes/Sand Terrain"
                 half3 emissive = 0;
                 half3 tnX = 0, tnY = 0, tnZ = 0;
 
-                EVALUATE_CHANNEL(_Chan0Style, _Chan0Flat.rgb, _Chan0Steep.rgb, chan0W)
-                EVALUATE_CHANNEL(_Chan1Style, _Chan1Flat.rgb, _Chan1Steep.rgb, chan1W)
-                EVALUATE_CHANNEL(_Chan2Style, _Chan2Flat.rgb, _Chan2Steep.rgb, chan2W)
-                EVALUATE_CHANNEL(_Chan3Style, _Chan3Flat.rgb, _Chan3Steep.rgb, chan3W)
+                // Sheen/glitter below is a Sand-style-only effect: `sandy` sums the
+                // weight of every Sand-styled biome present at this pixel.
+                half sandy = 0.0h;
+                // The trip count is uniform (a global), so this is not divergent
+                // flow control around the texture samples inside the modules;
+                // the per-pixel weight test is an ordinary branch.
+                [loop] for (int b = 0; b < biomeCount; b++)
+                {
+                    half chw = (half)bw[b];
+                    if (chw > 0.003h)
+                    {
+                        int style = (int)round(_BiomeShadeA[b].x);
+                        half3 flatCol = (half3)_BiomeShadeFlat[b].rgb;
+                        half3 steepCol = (half3)_BiomeShadeSteep[b].rgb;
+                        float4 lines = _BiomeShadeLines[b];
+                        EVALUATE_STYLE(style, flatCol, steepCol, lines, chw)
+                        if (style == 0) sandy += chw;
+                    }
+                }
+                sandy = saturate(sandy);
 
                 tnX = half3(tnX.xy + (half2)n.zy, abs(tnX.z) * (half)n.x);
                 tnY = half3(tnY.xy + (half2)n.xz, abs(tnY.z) * (half)n.y);
@@ -363,7 +400,7 @@ Shader "MarchingCubes/Sand Terrain"
 
                 // baked vertex AO: darkens crevices, strata seams, overhang
                 // undersides (the raymarchers' curvature/occlusion analog)
-                half occ = lerp(1.0h, i.biome.a, _VertexAO);
+                half occ = lerp(1.0h, i.vcol.a, _VertexAO);
                 ambient *= occ;
                 lighting *= lerp(1.0h, occ, 0.35h);
 
@@ -374,15 +411,6 @@ Shader "MarchingCubes/Sand Terrain"
                 float3 V = normalize(_WorldSpaceCameraPos - i.positionWS);
                 half fres = pow(1.0h - (half)saturate(dot(n, V)), _SheenPower);
                 half sunlit = saturate(dot(nDetail, mainLight.direction)) * mainLight.shadowAttenuation;
-                // Sheen/glitter is a Sand-style-only effect: sum the weight of
-                // whichever channel(s) actually are Sand-styled right now
-                // (data-driven -- not tied to a fixed channel index).
-                half sandy = 0.0h;
-                sandy += (round(_Chan0Style) < 0.5h) ? chan0W : 0.0h;
-                sandy += (round(_Chan1Style) < 0.5h) ? chan1W : 0.0h;
-                sandy += (round(_Chan2Style) < 0.5h) ? chan2W : 0.0h;
-                sandy += (round(_Chan3Style) < 0.5h) ? chan3W : 0.0h;
-                sandy = saturate(sandy);
                 color += _SheenColor.rgb * mainLight.color *
                          (fres * _SheenStrength * sandy * (0.25h + 0.75h * sunlit));
 

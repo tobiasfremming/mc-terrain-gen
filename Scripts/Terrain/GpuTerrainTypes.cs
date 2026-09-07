@@ -20,6 +20,7 @@ public enum GpuFieldType
     Frost = 3,
     Grove = 4,
     Dolomite = 5,
+    Eroded = 6,
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -175,6 +176,48 @@ public struct DolomiteGpuParams
     public float spireAmp;
 }
 
+// Mirrors ErodedParams in Shaders/Compute/DensityEroded.hlsl: the
+// ErodedHeightField's own fields followed by its ErosionParams flattened to
+// scalars (Vector4/Vector2 would pack the same, but scalars make the HLSL
+// twin's positional layout impossible to misread).
+[StructLayout(LayoutKind.Sequential)]
+public struct ErodedGpuParams
+{
+    public float seed;
+    public float baseHeight;
+    public float baseScale;
+    public float baseOctaves;
+    public float baseAmp;
+    public float fadeRange;
+    public float heightOffsetX;
+    public float heightOffsetY;
+    public float eScale;
+    public float eStrength;
+    public float eGullyWeight;
+    public float eDetail;
+    public float eRoundingX;
+    public float eRoundingY;
+    public float eRoundingZ;
+    public float eRoundingW;
+    public float eOnsetX;
+    public float eOnsetY;
+    public float eOnsetZ;
+    public float eOnsetW;
+    public float eAssumedSlopeX;
+    public float eAssumedSlopeY;
+    public float eCellScale;
+    public float eOctaves;
+    public float eGain;
+    public float eLacunarity;
+    public float eNormalization;
+    public float sandEnabled;
+    public float sandLevel;
+    public float sandScale;
+    public float sandOctaves;
+    public float sandAmp;
+    public float sandBlend;
+}
+
 // Union of all leaf types (mirrors LeafParams in DensityBiomeBlend.hlsl) --
 // nested, not flattened, so field names never collide across types. Every
 // biome slot's buffer entry carries all four sub-structs; only the one
@@ -187,7 +230,8 @@ public struct LeafGpuParams
     public CanyonGpuParams canyon;
     public FrostGpuParams frost;
     public GroveGpuParams grove;       // order is positional: LeafParams in HLSL must match
-    public DolomiteGpuParams dolomite; // appended LAST
+    public DolomiteGpuParams dolomite;
+    public ErodedGpuParams eroded;     // appended LAST
 }
 
 // Mirrors GroveParams in Shaders/Compute/DensityGrove.hlsl.

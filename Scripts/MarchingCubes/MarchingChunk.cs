@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -23,6 +24,29 @@ public class MarchingChunk : MonoBehaviour
     public bool generateCollider = false; // set by MCChunkManager for LOD0 chunks
 
     public DensityField densityField;
+
+    // Clipmap level this chunk was generated for (0 = finest ring). Set by
+    // MCChunkManager.ApplyLevelSettings; consumers such as TerrainGrass use
+    // it to decide which rings deserve per-blade detail.
+    [System.NonSerialized] public int lodLevel;
+
+    // Every enabled chunk, so systems that decorate the terrain (grass) can
+    // walk the live set without MCChunkManager exposing its bookkeeping.
+    // Pooled chunks are inactive and therefore absent; retiring chunks stay
+    // until they are actually released, which is exactly when their
+    // decoration should go too.
+    public static readonly List<MarchingChunk> Active = new();
+
+    // Bumped every time ApplyBuild changes what _mesh holds. A consumer that
+    // caches derived data per chunk compares this to know it is stale.
+    public int MeshVersion { get; private set; }
+
+    // The render mesh (null until the first build). Its vertex/index buffers
+    // are Raw-addressable, see EnsureMesh.
+    public Mesh RenderMesh => _mesh;
+
+    void OnEnable() { Active.Add(this); }
+    void OnDisable() { Active.Remove(this); }
 
     // Optional separate field for collision. When set, the collider is meshed
     // from THIS field instead of sharing the render mesh — used to keep
@@ -206,6 +230,7 @@ public class MarchingChunk : MonoBehaviour
         {
             _mesh.Clear(); // empty chunk: no buffers to size
         }
+        MeshVersion++;
 
         if (!generateCollider)
         {

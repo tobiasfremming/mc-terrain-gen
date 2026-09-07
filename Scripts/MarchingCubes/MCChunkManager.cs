@@ -337,8 +337,6 @@ public class MCChunkManager : MonoBehaviour
     Material _runtimeMaterial;
     Material _runtimeMaterialSource; // what _runtimeMaterial was copied from, so a changed source is detected
 
-    static readonly string[] ChannelSuffix = { "0", "1", "2", "3" };
-
     // The material a chunk should render with if we cannot make a runtime
     // copy: the BiomeWorld choice, else whatever the prefab itself carries.
     Material SourceTerrainMaterial
@@ -402,18 +400,20 @@ public class MCChunkManager : MonoBehaviour
         _runtimeMaterialSource = null;
     }
 
-    // Push per-biome material data (palette, style, detail textures) from the
-    // Biome assets onto the shared runtime material — no asset
-    // mutation; the .mat on disk is never touched.
-    //
-    // DATA-DRIVEN by design: biomes[i] maps to vertex-color CHANNEL i (0 =
-    // implicit remainder, 1 = R, 2 = G, 3 = B) — that mapping is fixed and
-    // just reflects how BiomeDensityField.GetVertexColor bakes weights. But
-    // WHICH SHADER MODULE renders channel i is read from that biome's own
-    // Biome.surfaceStyle, not hardcoded per channel. Swap which Biome asset
-    // sits at an index and its style follows it to whatever channel it lands
-    // on — SandTerrain.shader's EVALUATE_CHANNEL macro dispatches on this
-    // per-channel style tag at runtime.
+    // Push biome data for rendering. Two destinations:
+    //  - shader GLOBALS (PublishBiomeShadingGlobals): biome selection
+    //    parameters and the per-biome table (style, palette, sharpness, height
+    //    lines). Globals because the terrain shader, the grass shaders and any
+    //    future reader all evaluate "which biome is here" from world position
+    //    with the same function (Shaders/Compute/BiomeSelect.hlsl) and none of
+    //    it is per-material data. There is no per-vertex biome channel any
+    //    more, so there is no channel cap: BiomeDensityField.MaxBiomes is the
+    //    only limit. See BIOME_SHADING.md.
+    //  - the shared runtime material: the few style-level textures a biome
+    //    can supply (sand albedo/normal, alien pebbles, canyon floor tint).
+    //    These are per STYLE, not per biome -- the last biome using a style
+    //    wins -- which is the remaining known limitation.
+    // No asset mutation; the .mat on disk is never touched.
     void WriteBiomeMaterialProps(Material m)
     {
         var world = ActiveBiomeWorld;
@@ -437,20 +437,11 @@ public class MCChunkManager : MonoBehaviour
             m.SetVector("_PlanetCenter", Vector4.zero);
         }
 
-        int n = Mathf.Min(world.biomes.Length, ChannelSuffix.Length);
+        int n = world.BiomeCount;
         for (int i = 0; i < n; i++)
         {
             var b = world.biomes[i];
             if (b == null) continue;
-            string suf = ChannelSuffix[i];
-
-            m.SetFloat("_Chan" + suf + "Style", (float)b.surfaceStyle);
-            m.SetFloat("_Chan" + suf + "Sharpness", Mathf.Max(0.01f, b.blendSharpness));
-            m.SetColor("_Chan" + suf + "Flat", b.colorFlat);
-            m.SetColor("_Chan" + suf + "Steep", b.colorSteep);
-
-            // Style-specific extras that stay global material properties
-            // (only one active source per style — see Biome.albedo's tooltip).
             switch (b.surfaceStyle)
             {
                 case Biome.SurfaceStyle.Sand:
@@ -464,25 +455,81 @@ public class MCChunkManager : MonoBehaviour
                     if (b.albedo != null) m.SetTexture("_PebbleTex", b.albedo);
                     if (b.normalMap != null) m.SetTexture("_PebbleNormal", b.normalMap);
                     break;
-                case Biome.SurfaceStyle.Frost:
-                    // fully procedural (BiomeFrost.hlsl) -- _Chan{i}Flat/Steep
-                    // above already cover its ice palette.
-                    break;
+                default:
+                    break; // Frost, Dolomite, Mountain, DesertMountain: fully driven by the table
+            }
+        }
+
+        PublishBiomeShadingGlobals(world, planet);
+    }
+
+    // Publishes the selection parameters and the per-biome shading table as
+    // shader globals. Mirrors Shaders/Biomes/BiomeSelectGlobals.hlsl field
+    // for field; keep the two in lockstep. Height lines are ABSOLUTE local
+    // heights, which in globe mode means distance from the planet centre --
+    // hence the radius added here, once, rather than in every shader.
+    public static void PublishBiomeShadingGlobals(BiomeDensityField world, PlanetField planet)
+    {
+        int max = BiomeDensityField.MaxBiomes;
+        int n = world != null ? world.BiomeCount : 0;
+        float r = planet != null ? planet.radius : 0f;
+
+        Shader.SetGlobalVector("_BiomeSelParams", world != null
+            ? new Vector4(world.seed, world.regionScale, world.sharpness, n)
+            : new Vector4(0f, 1f, 1f, 0f));
+        Shader.SetGlobalVector("_BiomeSelPlanet", planet != null
+            ? new Vector4(planet.center.x, planet.center.y, planet.center.z, planet.radius)
+            : Vector4.zero);
+        Shader.SetGlobalVector("_BiomeSelFlags", new Vector4(planet != null ? 1f : 0f, 0f, 0f, 0f));
+
+        var bias = new float[max];
+        var a = new Vector4[max];
+        var flat = new Vector4[max];
+        var steep = new Vector4[max];
+        var lines = new Vector4[max];
+        for (int i = 0; i < max; i++)
+        {
+            var b = world != null && i < n ? world.biomes[i] : null;
+            bias[i] = b != null ? b.bias : -10f; // same "unassigned" bias the CPU softmax uses
+            if (b == null) { a[i] = new Vector4(0f, 1f, 0f, 0f); continue; }
+            a[i] = new Vector4((float)b.surfaceStyle, Mathf.Max(0.01f, b.blendSharpness), b.hardness, 0f);
+            flat[i] = b.colorFlat;
+            steep[i] = b.colorSteep;
+            switch (b.surfaceStyle)
+            {
                 case Biome.SurfaceStyle.Dolomite:
-                    // procedural limestone (BiomeDolomite.hlsl): Flat is the
-                    // meadow, Steep the pale rock; scree and band colours are
-                    // material-level _Dolo* properties. The rock line is an
-                    // absolute localHeight, which in globe mode is the
-                    // distance from the planet centre -- hence the radius.
-                    {
-                        var dolo = b.terrain as DolomiteVolumeField;
-                        float line = (planet != null ? planet.radius : 0f) + (dolo != null ? dolo.baseHeight + dolo.meadowLine : 40f);
-                        m.SetFloat("_DoloRockLine", line);
-                        m.SetFloat("_DoloRockLineBlend", dolo != null ? dolo.meadowLineBlend : 20f);
-                    }
+                {
+                    var dolo = b.terrain as DolomiteVolumeField;
+                    float line = r + (dolo != null ? dolo.baseHeight + dolo.meadowLine : 40f);
+                    lines[i] = new Vector4(line, dolo != null ? dolo.meadowLineBlend : 20f, 0f, 0f);
+                    break;
+                }
+                case Biome.SurfaceStyle.Mountain:
+                {
+                    var ero = b.terrain as ErodedHeightField;
+                    float b0 = r + (ero != null ? ero.baseHeight : 0f);
+                    lines[i] = new Vector4(b0 + (ero != null ? ero.snowLine : 140f), ero != null ? ero.snowBlend : 35f,
+                                           b0 + (ero != null ? ero.grassLine : 110f), ero != null ? ero.grassLineBlend : 60f);
+                    break;
+                }
+                case Biome.SurfaceStyle.DesertMountain:
+                {
+                    var ero = b.terrain as ErodedHeightField;
+                    bool sand = ero != null && ero.sandEnabled;
+                    lines[i] = new Vector4(sand ? r + ero.sandLevel + ero.sandAmp : -1e9f, sand ? Mathf.Max(1f, ero.sandBlend) : 1f, 0f, 0f);
+                    break;
+                }
+                default:
+                    lines[i] = Vector4.zero;
                     break;
             }
         }
+        Shader.SetGlobalVector("_BiomeSelBias0", new Vector4(bias[0], bias[1], bias[2], bias[3]));
+        Shader.SetGlobalVector("_BiomeSelBias1", new Vector4(bias[4], bias[5], bias[6], bias[7]));
+        Shader.SetGlobalVectorArray("_BiomeShadeA", a);
+        Shader.SetGlobalVectorArray("_BiomeShadeFlat", flat);
+        Shader.SetGlobalVectorArray("_BiomeShadeSteep", steep);
+        Shader.SetGlobalVectorArray("_BiomeShadeLines", lines);
     }
 
     // Lets a BiomeWorld asset pick which material (and therefore shader) the
@@ -1981,6 +2028,7 @@ public class MCChunkManager : MonoBehaviour
     {
         float S = LevelChunkSize(key.level);
         chunk.transform.position = (Vector3)key.coord * S;
+        chunk.lodLevel = key.level;
         chunk.cells = CellsPerChunk;
         chunk.cellSize = S / CellsPerChunk.x;
         chunk.densitySampling = 1;

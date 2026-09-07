@@ -1,0 +1,106 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: CanyonColonyGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Canyon colonies. Ledges: a dragon or stilt tree with thicket and brambles
+
+    // crowding its base and antler corals a little out. Hedges: a bramble and
+
+    // thicket run along a curve. Bone patches: dead fingers and snare lilies
+
+    // together in a tight group. Antler coral fans of three to five. Heroes: a
+
+    // bonsai on its own, or a root cathedral with thicket under it. Fewer
+
+    // colonies, each bigger.
+
+    
+
+    #iterations: 18
+
+    #axiom: X
+
+    
+
+    X -> +(rand(360)) f(rand(0,4)) K
+
+    
+
+    K : 0.34 -> V(rand(2,4))
+
+    K : 0.24 -> W(rand(10,15), rand(1.5,2.5))
+
+    K : 0.16 -> P(rand(4,7))
+
+    K : 0.16 -> N(rand(3,5))
+
+    K : 0.02 -> H
+
+    K : 0.08 -> f(0)
+
+    
+
+    // ledge
+
+    V(n) : n > 0 -> A [ +(rand(360)) f(rand(2,3.5)) h(1) ] [ +(rand(360)) f(rand(2,3.5)) h(1) ] [ +(rand(360)) f(rand(3,5)) b(1) ] [ +(rand(360)) f(rand(5,8)) n(1) ] +(rand(-70,70)) f(rand(10,16)) V(n-1)
+
+    V(n) : n <= 0 -> A [ +(rand(360)) f(rand(2,3.5)) h(1) ]
+
+    A : 0.55 -> d(rand(0.9,1.2))
+
+    A : 0.35 -> t(1)
+
+    A : 0.10 -> l(1)
+
+    
+
+    // hedge
+
+    W(n,l) : n > 0 -> +(rand(-35,35)) f(l) [ +(rand(-90,90)) f(rand(0,1)) M ] W(n-1, l)
+
+    W(n,l) : n <= 0 -> f(0)
+
+    M : 0.55 -> h(rand(0.8,1.2))
+
+    M : 0.45 -> b(1)
+
+    
+
+    // bone patch
+
+    P(n) : n > 0 -> [ +(rand(360)) f(rand(1,4)) E ] P(n-1)
+
+    P(n) : n <= 0 -> f(0)
+
+    E : 0.5 -> k(1)
+
+    E : 0.35 -> s(1)
+
+    E : 0.15 -> n(1)
+
+    
+
+    // antler coral fan
+
+    N(n) : n > 0 -> [ +(360/5*n + rand(-20,20)) f(rand(1.5,4)) n(rand(0.8,1.2)) ] N(n-1)
+
+    N(n) : n <= 0 -> f(0)
+
+    
+
+    // hero
+
+    H : 0.6 -> Y(1) [ +(rand(360)) f(rand(6,10)) n(1) ] [ +(rand(360)) f(rand(14,20)) A ]
+
+    H : 0.4 -> Z(1) [ +(rand(360)) f(rand(5,9)) h(1) ] [ +(rand(360)) f(rand(5,9)) h(1) ] [ +(rand(360)) f(rand(5,9)) b(1) ]'
+  iterations: 20

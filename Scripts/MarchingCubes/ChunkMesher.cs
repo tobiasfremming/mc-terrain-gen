@@ -545,6 +545,11 @@ public static class ChunkMesher
     // where the probe still reaches out by the coarse step but the density
     // must be filtered at the fine face spacing so both sides of the seam
     // agree.
+    // TRANSITIONAL: the RGB biome weights baked here are no longer read by the
+    // terrain shader (it selects biomes from world position, see
+    // BIOME_SHADING.md); only the grass scatter still consumes them. When
+    // grass calls MC_BiomeWeights itself, bake Color(0, 0, 0, ao) here and
+    // drop the GetVertexColor call (one softmax per vertex saved).
     static Color VertexColorWithAO(DensityField field, Vector3 worldPos, Vector3 n, float step, float fw)
     {
         Color c = field.HasVertexColors ? field.GetVertexColor(worldPos) : new Color(0, 0, 0, 1);

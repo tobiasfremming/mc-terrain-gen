@@ -28,7 +28,9 @@ MonoBehaviour:
     rarity: 1
     perPlot: 8
     plotChance: 0.85
-    minUpness: 0.75
+    symbol: s
+    minSpacing: 1.8
+    minUpness: 0.88
     minHeight: -1000
     maxHeight: 1000
     scaleRange: {x: 0.85, y: 1.2}
@@ -45,7 +47,9 @@ MonoBehaviour:
     rarity: 1
     perPlot: 8
     plotChance: 0.85
-    minUpness: 0.75
+    symbol: e
+    minSpacing: 1.8
+    minUpness: 0.88
     minHeight: -1000
     maxHeight: 1000
     scaleRange: {x: 0.85, y: 1.2}
@@ -57,29 +61,14 @@ MonoBehaviour:
     impostorDistance: 100
     cullDistance: 400
     enabled: 1
-  - label: DandelionPlant
-    prototypes: {fileID: 11400000, guid: 03b0c757365a1304a8ce11d849200d83, type: 2}
-    rarity: 1
-    perPlot: 8
-    plotChance: 0.85
-    minUpness: 0.75
-    minHeight: -1000
-    maxHeight: 1000
-    scaleRange: {x: 0.85, y: 1.2}
-    leanDegrees: 6
-    sink: 0.4
-    useLod: 1
-    lod1Distance: 45
-    lod2Distance: 90
-    impostorDistance: 120
-    cullDistance: 700
-    enabled: 1
   - label: PlumePalmPlant
     prototypes: {fileID: 11400000, guid: 1d6ecc4fe43990e49830c9135758d34a, type: 2}
     rarity: 2
     perPlot: 3
     plotChance: 0.5
-    minUpness: 0.85
+    symbol: p
+    minSpacing: 4.0
+    minUpness: 0.88
     minHeight: -1000
     maxHeight: 1000
     scaleRange: {x: 0.85, y: 1.2}
@@ -96,7 +85,9 @@ MonoBehaviour:
     rarity: 2
     perPlot: 3
     plotChance: 0.5
-    minUpness: 0.85
+    symbol: w
+    minSpacing: 4.0
+    minUpness: 0.88
     minHeight: -1000
     maxHeight: 1000
     scaleRange: {x: 0.85, y: 1.2}
@@ -113,7 +104,9 @@ MonoBehaviour:
     rarity: 2
     perPlot: 3
     plotChance: 0.5
-    minUpness: 0.75
+    symbol: q
+    minSpacing: 1.8
+    minUpness: 0.88
     minHeight: -1000
     maxHeight: 1000
     scaleRange: {x: 0.85, y: 1.2}
@@ -130,7 +123,9 @@ MonoBehaviour:
     rarity: 2
     perPlot: 3
     plotChance: 0.5
-    minUpness: 0.7
+    symbol: j
+    minSpacing: 0.8
+    minUpness: 0.88
     minHeight: -1000
     maxHeight: 1000
     scaleRange: {x: 0.85, y: 1.2}
@@ -147,7 +142,9 @@ MonoBehaviour:
     rarity: 3
     perPlot: 1
     plotChance: 0.25
-    minUpness: 0.75
+    symbol: i
+    minSpacing: 1.8
+    minUpness: 0.88
     minHeight: -1000
     maxHeight: 1000
     scaleRange: {x: 0.85, y: 1.2}
@@ -164,7 +161,9 @@ MonoBehaviour:
     rarity: 3
     perPlot: 1
     plotChance: 0.25
-    minUpness: 0.85
+    symbol: o
+    minSpacing: 4.0
+    minUpness: 0.88
     minHeight: -1000
     maxHeight: 1000
     scaleRange: {x: 0.85, y: 1.2}
@@ -175,30 +174,15 @@ MonoBehaviour:
     lod2Distance: 90
     impostorDistance: 120
     cullDistance: 700
-    enabled: 1
-  - label: TremorReedPlant
-    prototypes: {fileID: 11400000, guid: 1bb852dc704f58e41a0f9dd1a3c04d95, type: 2}
-    rarity: 3
-    perPlot: 1
-    plotChance: 0.25
-    minUpness: 0.75
-    minHeight: -1000
-    maxHeight: 1000
-    scaleRange: {x: 0.85, y: 1.2}
-    leanDegrees: 6
-    sink: 0.2
-    useLod: 1
-    lod1Distance: 40
-    lod2Distance: 80
-    impostorDistance: 100
-    cullDistance: 400
     enabled: 1
   - label: StarSpirePlant
     prototypes: {fileID: 11400000, guid: 2f664e18b37663c45826de14e715d86a, type: 2}
     rarity: 3
     perPlot: 1
     plotChance: 0.25
-    minUpness: 0.85
+    symbol: z
+    minSpacing: 4.0
+    minUpness: 0.88
     minHeight: -1000
     maxHeight: 1000
     scaleRange: {x: 0.85, y: 1.2}
@@ -210,29 +194,14 @@ MonoBehaviour:
     impostorDistance: 120
     cullDistance: 700
     enabled: 1
-  - label: PagodaTreePlant
-    prototypes: {fileID: 11400000, guid: 76b9562f4fe6dc041b439a9f7c22f9c4, type: 2}
-    rarity: 4
-    perPlot: 1
-    plotChance: 0.04
-    minUpness: 0.85
-    minHeight: -1000
-    maxHeight: 1000
-    scaleRange: {x: 0.9, y: 1.1}
-    leanDegrees: 3
-    sink: 0.4
-    useLod: 0
-    lod1Distance: 60
-    lod2Distance: 120
-    impostorDistance: 150
-    cullDistance: 900
-    enabled: 1
   - label: SailTreePlant
     prototypes: {fileID: 11400000, guid: a6460be57410d8d4ebd795b2a5315419, type: 2}
     rarity: 4
     perPlot: 1
     plotChance: 0.04
-    minUpness: 0.85
+    symbol: Z
+    minSpacing: 40.0
+    minUpness: 0.88
     minHeight: -1000
     maxHeight: 1000
     scaleRange: {x: 0.9, y: 1.1}
@@ -244,3 +213,8 @@ MonoBehaviour:
     impostorDistance: 150
     cullDistance: 900
     enabled: 1
+  colony: {fileID: 11400000, guid: e1c02d3e4f5a6b7c8d9e0f1a2b3c4d5e, type: 2}
+  colonyChance: 0.3
+  coverScale: 180
+  coverThreshold: 0.08
+  coverSoftness: 0.25

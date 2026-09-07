@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ec83c43179fcc764f8150426fd34b04e, type: 3}
+  m_Name: MountainField
+  m_EditorClassIdentifier:
+  isoLevel: 0
+  seed: 4242
+  baseHeight: 0
+  baseScale: 1600
+  baseOctaves: 3
+  baseAmp: 240
+  fadeRange: 0.6
+  heightOffset: {x: 0, y: 0}
+  erosion:
+    scale: 400
+    strength: 0.16
+    gullyWeight: 0.5
+    detail: 1.5
+    rounding: {x: 0.1, y: 0, z: 0.1, w: 2}
+    onset: {x: 1.25, y: 1.25, z: 2.8, w: 1.5}
+    assumedSlope: {x: 0.7, y: 1}
+    cellScale: 0.7
+    octaves: 7
+    gain: 0.5
+    lacunarity: 2
+    normalization: 0.5
+  sandEnabled: 0
+  sandLevel: 0
+  sandScale: 420
+  sandOctaves: 3
+  sandAmp: 12
+  sandBlend: 25
+  snowLine: 140
+  snowBlend: 35
+  grassLine: 110
+  grassLineBlend: 60

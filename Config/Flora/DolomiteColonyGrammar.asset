@@ -1,0 +1,136 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: DolomiteColonyGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Dolomite colonies. Groves: a chain of three to five anchor trees eight to
+
+    // sixteen metres apart, each with moss, red moss and horsetails at its feet
+
+    // and three to five satellites (blooms, anemones, coral shrubs, a kraken
+
+    // vine, a dandelion) within eight metres. Veins: a long meandering runner of
+
+    // moss and small things. Reed beds: tremor reeds in a tight patch. Heroes:
+
+    // one landmark with two anchor trees, a coral shrub and a curtain tree kept
+
+    // well back. Thickets: a tight cluster of coral shrubs and anemones. Fewer
+
+    // colonies, each bigger: the space between them is the point.
+
+    
+
+    #iterations: 22
+
+    #axiom: X
+
+    
+
+    X -> +(rand(360)) f(rand(0,4)) K
+
+    
+
+    K : 0.44 -> V(rand(3,5))
+
+    K : 0.22 -> W(rand(12,18), rand(1.5,3))
+
+    K : 0.04 -> H
+
+    K : 0.16 -> C(rand(6,10))
+
+    K : 0.08 -> R(rand(5,9))
+
+    K : 0.06 -> f(0)
+
+    
+
+    // grove
+
+    V(n) : n > 0 -> A [ +(rand(360)) f(rand(2.5,4)) m(rand(0.8,1.3)) ] [ +(rand(360)) f(rand(3,5)) r(1) ] [ +(rand(360)) f(rand(3,6)) x(1) ] S(rand(3,5)) +(rand(-60,60)) f(rand(9,16)) V(n-1)
+
+    V(n) : n <= 0 -> A [ +(rand(360)) f(rand(2.5,4)) m(1) ] [ +(rand(360)) f(rand(3,6)) x(1) ]
+
+    A : 0.55 -> T(rand(0.9,1.3))
+
+    A : 0.25 -> t(rand(0.9,1.2))
+
+    A : 0.12 -> d(1)
+
+    A : 0.08 -> l(1)
+
+    S(n) : n > 0 -> [ +(rand(360)) f(rand(4,8)) B ] S(n-1)
+
+    S(n) : n <= 0 -> f(0)
+
+    B : 0.35 -> n(1)
+
+    B : 0.25 -> a(1)
+
+    B : 0.2 -> c(1)
+
+    B : 0.1 -> k(1)
+
+    B : 0.1 -> y(1)
+
+    
+
+    // vein
+
+    W(n,l) : n > 0 -> +(rand(-45,45)) f(l) [ +(rand(-90,90)) f(rand(0,1.5)) M ] W(n-1, l)
+
+    W(n,l) : n <= 0 -> f(0)
+
+    M : 0.45 -> m(rand(0.7,1.2))
+
+    M : 0.3 -> r(1)
+
+    M : 0.15 -> x(1)
+
+    M : 0.1 -> a(0.8)
+
+    
+
+    // reed bed
+
+    R(n) : n > 0 -> [ +(rand(360)) f(rand(1,4)) v(rand(0.8,1.2)) ] R(n-1)
+
+    R(n) : n <= 0 -> f(0)
+
+    
+
+    // hero
+
+    H -> L [ +(rand(360)) f(rand(14,22)) A ] [ +(rand(360)) f(rand(14,22)) A ] [ +(rand(360)) f(rand(10,18)) c(1) ] [ +(rand(360)) f(rand(8,14)) u(1) ] [ +(rand(360)) f(rand(6,10)) b(1) ]
+
+    L : 0.35 -> O(1)
+
+    L : 0.30 -> P(1)
+
+    L : 0.20 -> Q(1)
+
+    L : 0.15 -> U(1)
+
+    
+
+    // thicket
+
+    C(n) : n > 0 -> [ +(rand(360)) f(rand(1.5,5)) E ] C(n-1)
+
+    C(n) : n <= 0 -> f(0)
+
+    E : 0.5 -> c(rand(0.8,1.2))
+
+    E : 0.3 -> a(1)
+
+    E : 0.2 -> n(1)'
+  iterations: 22

@@ -2,12 +2,14 @@
 #define MC_DENSITY_BIOME_BLEND_INCLUDED
 
 #include "TerrainNoiseGPU.hlsl"
+#include "BiomeSelect.hlsl"
 #include "DensityDune.hlsl"
 #include "DensityAlien.hlsl"
 #include "DensityCanyon.hlsl"
 #include "DensityFrost.hlsl"
 #include "DensityGrove.hlsl"
 #include "DensityDolomite.hlsl"
+#include "DensityEroded.hlsl"
 
 // Matches Biome.SurfaceStyle-style dispatch already proven in
 // SandTerrain.shader's EVALUATE_CHANNEL macro -- density's analogue. Values
@@ -19,7 +21,8 @@
 #define MC_FIELDTYPE_FROST  3
 #define MC_FIELDTYPE_GROVE  4
 #define MC_FIELDTYPE_DOLOMITE 5
-#define MC_MAX_BIOMES 8
+#define MC_FIELDTYPE_ERODED 6
+// MC_MAX_BIOMES comes from BiomeSelect.hlsl
 
 // Union of all 4 leaf types' params in one struct (nested, not flattened, so
 // field names never collide across types). Small in absolute terms (~380
@@ -32,7 +35,8 @@ struct LeafParams
     CanyonParams canyon;
     FrostParams frost;
     GroveParams grove;
-    DolomiteParams dolomite; // appended LAST -- mirrors LeafGpuParams
+    DolomiteParams dolomite;
+    ErodedParams eroded;     // appended LAST -- mirrors LeafGpuParams
 };
 
 struct BiomeBlendParams
@@ -85,34 +89,32 @@ float EvaluateLeafDensity(int fieldType, float3 worldPos, LeafParams p, float fw
         d = EvaluateGroveDensity(worldPos, p.grove, fw); // volumetric, not a heightfield
     else if (fieldType == MC_FIELDTYPE_DOLOMITE)
         d = EvaluateDolomiteHeight(worldPos.x, worldPos.z, p.dolomite, fw) - worldPos.y;
+    else if (fieldType == MC_FIELDTYPE_ERODED)
+        d = EvaluateErodedHeight(worldPos.x, worldPos.z, p.eroded, fw) - worldPos.y;
     return d;
 }
 
-// Port of BiomeDensityField.ComputeWeights: softmax over per-biome low-freq
-// noise + bias, numerically stabilized by subtracting the max before exp.
+// Biome selection lives in BiomeSelect.hlsl (shared with the terrain shader
+// and the grass scatter, so all three agree on every boundary). These two
+// keep the historical names and read their parameters from this pipeline's
+// StructuredBuffers.
+BiomeSelectParams MC_BiomeSelectFromBuffers(int n)
+{
+    BiomeSelectParams P;
+    P.seed = _BiomeBlendBuf[0].seed;
+    P.regionScale = _BiomeBlendBuf[0].regionScale;
+    P.sharpness = _BiomeBlendBuf[0].sharpness;
+    P.count = n;
+    P.isPlanet = 0.0;      // callers pass the already-projected position
+    P.center = 0.0;
+    P.radius = 0.0;
+    [unroll] for (int i = 0; i < MC_MAX_BIOMES; i++) P.bias[i] = _BiomeBias[i];
+    return P;
+}
+
 void MC_ComputeBiomeWeights(float wx, float wz, out float w[MC_MAX_BIOMES], int n)
 {
-    uint s = (uint)(int)_BiomeBlendBuf[0].seed;
-    float maxA = -3.402823e38;
-    float raw[MC_MAX_BIOMES];
-    [loop] for (int i = 0; i < n; i++)
-    {
-        // Biome SELECTION is deliberately NOT band-limited: regionScale is
-        // kilometres, far coarser than any sample spacing the clipmap uses,
-        // and fading it would make biome boundaries themselves shift with LOD
-        // -- a far worse artifact than the aliasing it would prevent.
-        float a = MC_Fbm(wx / _BiomeBlendBuf[0].regionScale + i * 13.7, wz / _BiomeBlendBuf[0].regionScale - i * 7.3,
-                          2, s + (uint)(i * 191), 0.0) + _BiomeBias[i];
-        raw[i] = a;
-        if (a > maxA) maxA = a;
-    }
-    float sum = 0.0;
-    [loop] for (int j = 0; j < n; j++)
-    {
-        w[j] = exp(_BiomeBlendBuf[0].sharpness * (raw[j] - maxA));
-        sum += w[j];
-    }
-    [loop] for (int k = 0; k < n; k++) w[k] /= sum;
+    MC_BiomeWeightsFlat(wx, wz, MC_BiomeSelectFromBuffers(n), w);
 }
 
 // Density blend using externally supplied weights (e.g. from
@@ -157,33 +159,11 @@ float EvaluateBiomeBlend(float3 worldPos, float fw)
     return EvaluateBiomeBlendWithWeights(worldPos, w, n, fw);
 }
 
-// Port of BiomeDensityField.ComputeWeights3D -- biome SELECTION as a
-// function of a single 3D position (a point on the planet's surface),
-// instead of 3 independent per-triplanar-face 2D positions. See the C#
-// method's comment (BiomeDensityField.cs) for why this must be shared across
-// all 3 faces rather than recomputed per face. `pos` divides by regionScale
-// exactly like the 2D case, so regionScale keeps the same meaning in both
-// flat and globe modes.
+// Sphere-coherent selection for PlanetField: `pos` is normalize(rel) * radius,
+// the same point for all three triplanar faces (see BiomeDensityField.cs).
 void MC_ComputeBiomeWeights3D(float3 pos, out float w[MC_MAX_BIOMES], int n)
 {
-    uint s = (uint)(int)_BiomeBlendBuf[0].seed;
-    float3 q = pos / _BiomeBlendBuf[0].regionScale;
-    float maxA = -3.402823e38;
-    float raw[MC_MAX_BIOMES];
-    [loop] for (int i = 0; i < n; i++)
-    {
-        // Unfiltered, same reasoning as the 2D selection above.
-        float a = MC_Fbm3(q.x + i * 13.7, q.y - i * 7.3, q.z + i * 5.1, 2, s + (uint)(i * 191), 0.0) + _BiomeBias[i];
-        raw[i] = a;
-        if (a > maxA) maxA = a;
-    }
-    float sum = 0.0;
-    [loop] for (int j = 0; j < n; j++)
-    {
-        w[j] = exp(_BiomeBlendBuf[0].sharpness * (raw[j] - maxA));
-        sum += w[j];
-    }
-    [loop] for (int k = 0; k < n; k++) w[k] /= sum;
+    MC_BiomeWeightsSphere(pos, MC_BiomeSelectFromBuffers(n), w);
 }
 
 #endif

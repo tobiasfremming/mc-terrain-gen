@@ -7,7 +7,8 @@ using UnityEngine;
 //   terrain       - the density field: a heightfield (dunes) or a pure 3D
 //                   SDF-style volume field (canyon, alien rock)
 //   surfaceStyle  - which shading module in SandTerrain.shader renders this
-//                   biome (Sand/Canyon/Alien/Frost/Dolomite). THIS is what makes the
+//                   biome (Sand/Canyon/Alien/Frost/Dolomite/
+//                   Mountain/DesertMountain). THIS is what makes the
 //                   shader data-driven: it travels with the Biome asset, not
 //                   with the asset's position in BiomeWorld's biomes list.
 //                   Swap DesertBiome and FrostBiome's positions in that list
@@ -34,8 +35,8 @@ public class Biome : ScriptableObject
     [Tooltip("Positive = this biome claims more of the world.")]
     public float bias = 0f;
 
-    // Must match SandTerrain.shader's style dispatch (0=Sand,1=Canyon,2=Alien,3=Frost,4=Dolomite).
-    public enum SurfaceStyle { Sand, Canyon, Alien, Frost, Dolomite }
+    // Must match SandTerrain.shader's style dispatch (0=Sand,1=Canyon,2=Alien,3=Frost,4=Dolomite,5=Mountain,6=DesertMountain).
+    public enum SurfaceStyle { Sand, Canyon, Alien, Frost, Dolomite, Mountain, DesertMountain }
 
     [Header("Surface material")]
     [Tooltip("Which shading module renders this biome's surface. Independent of this biome's position in the BiomeWorld list.")]
@@ -54,9 +55,29 @@ public class Biome : ScriptableObject
     [Tooltip("Species that grow in this biome. Each candidate plant is accepted with probability equal to this biome's weight at its spot, so stands thin out over the few metres where two biomes cross-fade. Species for every biome go on PlantWorld.species instead. Edits rebuild the forest.")]
     public PlantSpecies[] flora = new PlantSpecies[0];
 
+    [Tooltip("Colony grammar: a 2D L-system (yaw and f only) walked over the ground once per plot, plus the neighbouring plots' colonies reaching in, whose markers are species letters from the Flora list. Set, it is the ONLY thing that places this biome's plants and the rarity presets are ignored. Unset: uniform scatter by perPlot/plotChance.")]
+    public LSystems.LSystemGrammarAsset colony;
+    [Tooltip("Chance a given plot seeds a colony at all. Lower = more empty ground between stands.")]
+    [Range(0f, 1f)] public float colonyChance = 0.6f;
+
+    [Tooltip("Metres. Size of the thicket-and-glade pattern that gates every plant of this biome (colony or uniform): a world-anchored noise, so glades run across plot edges.")]
+    public float coverScale = 140f;
+    [Tooltip("Noise value below which ground is a glade. 0 covers about half the biome; raise it for more open ground.")]
+    [Range(-1f, 1f)] public float coverThreshold = 0f;
+    [Tooltip("Width of the soft edge between glade and thicket, in noise units.")]
+    [Range(0.01f, 1f)] public float coverSoftness = 0.3f;
+
+    [Header("Grass")]
+    [Tooltip("Blades per m^2 of flat ground in this biome. 0 = no grass. Scattered on the GPU by TerrainGrass wherever this biome's vertex weight is, thinning out over slopes and across the biome's cross-fade; a Dolomite terrain also stops it at its meadow line.")]
+    public float grassDensity = 0f;
+    public Color grassColorBase = new Color(0.13f, 0.30f, 0.06f);
+    public Color grassColorTip = new Color(0.58f, 0.74f, 0.27f);
+
     void OnValidate()
     {
         PlantSpecies.ValidateAll(flora);
+        coverScale = Mathf.Max(1f, coverScale);
+        grassDensity = Mathf.Max(0f, grassDensity);
         TerrainTuning.NotifyChanged();
     }
 }

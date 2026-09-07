@@ -94,6 +94,56 @@ float MC_Fbm(float x, float y, int octaves, uint seed, float filterWidth)
     return s / norm;
 }
 
+// ---- analytic-derivative variants: 1:1 ports of TerrainNoise.GNoiseD/FbmD ----
+// x = the same value MC_GNoise returns, yz = d/dx, d/dy. See the C# comment.
+float3 MC_GNoiseD(float x, float y, uint seed)
+{
+    int ix = (int)floor(x);
+    int iy = (int)floor(y);
+    float fx = x - ix, fy = y - iy;
+    float ux = fx * fx * fx * (fx * (fx * 6.0 - 15.0) + 10.0);
+    float uy = fy * fy * fy * (fy * (fy * 6.0 - 15.0) + 10.0);
+    float dux = 30.0 * fx * fx * (fx * (fx - 2.0) + 1.0);
+    float duy = 30.0 * fy * fy * (fy * (fy - 2.0) + 1.0);
+
+    float2 ga = MC_GradDir(MC_Hash((uint)ix,       (uint)iy,       seed));
+    float2 gb = MC_GradDir(MC_Hash((uint)(ix + 1), (uint)iy,       seed));
+    float2 gc = MC_GradDir(MC_Hash((uint)ix,       (uint)(iy + 1), seed));
+    float2 gd = MC_GradDir(MC_Hash((uint)(ix + 1), (uint)(iy + 1), seed));
+
+    float va = ga.x * fx + ga.y * fy;
+    float vb = gb.x * (fx - 1.0) + gb.y * fy;
+    float vc = gc.x * fx + gc.y * (fy - 1.0);
+    float vd = gd.x * (fx - 1.0) + gd.y * (fy - 1.0);
+    float k = va - vb - vc + vd;
+
+    float v = va + ux * (vb - va) + uy * (vc - va) + ux * uy * k;
+    float dx = ga.x + ux * (gb.x - ga.x) + uy * (gc.x - ga.x) + ux * uy * (gd.x - gb.x - gc.x + ga.x) + dux * (uy * k + vb - va);
+    float dy = ga.y + ux * (gb.y - ga.y) + uy * (gc.y - ga.y) + ux * uy * (gd.y - gb.y - gc.y + ga.y) + duy * (ux * k + vc - va);
+    return float3(v, dx, dy) * 1.6;
+}
+
+// x is identical to MC_Fbm with the same arguments; yz is its gradient in
+// the caller's units.
+float3 MC_FbmD(float x, float y, int octaves, uint seed, float filterWidth)
+{
+    float3 s = 0.0;
+    float amp = 1.0, freq = 1.0, norm = 0.0;
+    [loop] for (int i = 0; i < octaves; i++)
+    {
+        norm += amp;
+        float w = MC_DetailFade(filterWidth * freq, 1.0);
+        if (w > 0.0)
+        {
+            float3 n = MC_GNoiseD(x * freq + i * 19.19, y * freq - i * 7.77, seed + (uint)(i * 131));
+            s += amp * w * float3(n.x, n.y * freq, n.z * freq);
+        }
+        amp *= 0.5;
+        freq *= 2.0;
+    }
+    return s / norm;
+}
+
 float MC_Smoothstep(float a, float b, float x)
 {
     float t = saturate((x - a) / (b - a));

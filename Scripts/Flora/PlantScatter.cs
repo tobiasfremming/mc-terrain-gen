@@ -67,6 +67,27 @@ using UnityEngine;
 // cross-fade instead of stopping at a line. The acceptance draw happens
 // before the ground search (it is far cheaper), and like every other draw
 // it is taken whether or not the candidate survives.
+//
+// COLONIES. Uniform scatter inside a 24 m square has no structure below the
+// plot and none above it. Where a Biome (or the PlantWorld) sets a colony
+// grammar, placement is instead:
+//   1. cover mask -- a world-anchored fbm at Biome.coverScale, thresholded
+//      with a soft edge, gates every candidate: glades and thickets that
+//      run across plot edges, one noise sample per candidate.
+//   2. colony -- each plot seeds (with colonyChance) one 2D L-system per
+//      colony source from its plot hash, walks it in the ground plane and
+//      turns its markers into candidates: letter -> species, parameter ->
+//      scale. A plot also walks its EIGHT NEIGHBOURS' colonies and keeps
+//      the markers that land inside it, so a stand crossing a plot edge is
+//      identical from both sides (the Worley trick). The grammars are tiny;
+//      the ground search still runs only for markers that survive.
+//   3. spacing -- candidates are taken largest-spacing first, and one is
+//      dropped when it stands closer to an accepted plant than the SMALLER
+//      of their two spacings: two trees keep a tree's distance, moss may
+//      sit at a tree's foot. Affinity ("moss under trees") is the grammar's
+//      job; exclusion is this.
+// Everything is still a pure function of (world, plot id): the colony seed
+// is the plot hash, the neighbour walk is symmetric, the mask is noise.
 [ExecuteAlways]
 public class PlantScatter : MonoBehaviour
 {
@@ -112,6 +133,17 @@ public class PlantScatter : MonoBehaviour
         public Matrix4x4 trs;
         public Vector3 pos;
         public int variant;
+    }
+
+    // A colony marker turned into a candidate. Every random number it can
+    // consume is drawn when it is made, so survival never shifts a
+    // neighbour's look.
+    struct Candidate
+    {
+        public int species;
+        public Vector3 anchor;    // flat: (x, 0, z); globe: unit direction
+        public float scale, yaw, leanX, leanZ, accept, cover, spacing;
+        public int variant, order;
     }
 
     // Instances are stored species-major: species s occupies
@@ -387,6 +419,19 @@ public class PlantScatter : MonoBehaviour
         return PackGlobe(nf, nu, nv);
     }
 
+    // Worker-side neighbour, from the context's cell size rather than the
+    // component's fields. Same seam handling as Neighbour().
+    static long NeighbourStatic(BuildContext ctx, long key, int da, int db)
+    {
+        Unpack(key, out int face, out int a, out int b);
+        if (face == kFlatFace) return PackFlat(a + da, b + db);
+        int cells = Mathf.RoundToInt(2f / ctx.cellInv);
+        float u = -1f + (a + da + 0.5f) * ctx.cellInv;
+        float v = -1f + (b + db + 0.5f) * ctx.cellInv;
+        DirToFaceCell(FaceUVToDir(face, u, v), cells, out int nf, out int nu, out int nv);
+        return PackGlobe(nf, nu, nv);
+    }
+
     // Horizontal (flat) or tangential (globe) distance from the eye's vertical
     // axis to the plot's centre. Height is deliberately ignored, in both
     // worlds: a player on a rise must not lose the plants at their feet.
@@ -634,12 +679,25 @@ public class PlantScatter : MonoBehaviour
         public BiomeDensityField biomeField;   // null: no biome species can grow
         public int biomeCount;
         public Species[] species;
+        public Source[] sources;               // index 0 = everywhere (PlantWorld), 1 + b = biome b
 
         public struct Species
         {
             public bool enabled;
             public int variants, perPlot, biome;   // biome -1: everywhere
-            public float plotChance, minUpness, minHeight, maxHeight, scaleMin, scaleMax, lean, sink;
+            public float plotChance, minUpness, minHeight, maxHeight, scaleMin, scaleMax, lean, sink, spacing;
+            public char symbol;
+        }
+
+        // One colony source: a grammar and the letter table of its species.
+        public sealed class Source
+        {
+            public LSystemGrammar grammar;     // null: this source scatters uniformly
+            public int iterations;
+            public float colonyChance;
+            public bool hasCover;
+            public float coverScale, coverThreshold, coverSoftness;
+            public int[][] bySymbol = new int[128][];   // letter -> species indices
         }
 
         public static BuildContext Capture(Entry[] table, PlantWorld world, DensityField field, BiomeDensityField biomeField, PlanetField planet, float cellInv, float fw, int generation)
@@ -657,6 +715,24 @@ public class PlantScatter : MonoBehaviour
                 biomeCount = biomeField != null ? biomeField.BiomeCount : 0,
                 species = new Species[table.Length],
             };
+            c.sources = new Source[1 + c.biomeCount];
+            c.sources[0] = new Source { colonyChance = world.colonyChance };
+            if (world.colony != null && world.colony.IsValid) { c.sources[0].grammar = world.colony.Grammar; c.sources[0].iterations = world.colony.EffectiveIterations; }
+            for (int b = 0; b < c.biomeCount; b++)
+            {
+                Biome biome = biomeField.biomes[b];
+                var src = new Source();
+                if (biome != null)
+                {
+                    src.colonyChance = biome.colonyChance;
+                    src.hasCover = true;
+                    src.coverScale = Mathf.Max(1f, biome.coverScale);
+                    src.coverThreshold = biome.coverThreshold;
+                    src.coverSoftness = Mathf.Max(0.01f, biome.coverSoftness);
+                    if (biome.colony != null && biome.colony.IsValid) { src.grammar = biome.colony.Grammar; src.iterations = biome.colony.EffectiveIterations; }
+                }
+                c.sources[1 + b] = src;
+            }
             if (planet != null)
             {
                 c.planetCentre = planet.center;
@@ -688,10 +764,144 @@ public class PlantScatter : MonoBehaviour
                     scaleMax = on ? Mathf.Max(sp.scaleRange.x, sp.scaleRange.y) : 1f,
                     lean = on ? sp.leanDegrees : 0f,
                     sink = on ? sp.sink : 0f,
+                    spacing = on ? Mathf.Max(0f, sp.minSpacing) : 0f,
+                    symbol = on ? sp.SymbolChar() : '\0',
                 };
+                if (on && c.species[i].symbol != '\0' && c.species[i].symbol < 128)
+                {
+                    Source src = c.sources[1 + biome];
+                    int[] old = src.bySymbol[c.species[i].symbol];
+                    int[] grown = new int[(old != null ? old.Length : 0) + 1];
+                    if (old != null) old.CopyTo(grown, 0);
+                    grown[grown.Length - 1] = i;
+                    src.bySymbol[c.species[i].symbol] = grown;
+                }
             }
             return c;
         }
+    }
+
+    // ---- colonies -----------------------------------------------------------
+
+    [ThreadStatic] static LSystemRewriter _rewriter;
+    [ThreadStatic] static LSkeleton _skeleton;
+    [ThreadStatic] static List<Candidate> _candidates;
+    [ThreadStatic] static List<Candidate> _accepted;
+    [ThreadStatic] static List<long> _neighbourKeys;
+
+    // The turtle walks the ground plane: heading +Z, up +Y, so + and - yaw
+    // in the plane and f moves. Grammars must not pitch or roll.
+    static readonly TurtleSettings kGroundTurtle = new TurtleSettings
+    {
+        stepLength = 1f, angleDegrees = 90f, initialWidth = 0.1f, widthFactor = 0.7f, lengthFactor = 0.9f,
+        origin = Vector3.zero, heading = Vector3.forward, up = Vector3.up,
+    };
+
+    // The cover mask: 0 in a glade, 1 in a thicket, soft between. Flat
+    // worlds sample the ground plane, globes the sphere position (never the
+    // height), so a mask is a function of where, like biome selection.
+    static float CoverMask(BuildContext ctx, BuildContext.Source src, Vector3 anchor, bool globe)
+    {
+        if (!src.hasCover) return 1f;
+        uint seed = unchecked((uint)ctx.seed * 2654435761u + 0xC0FEu);
+        float v = globe
+            ? TerrainNoise.Fbm3(anchor.x * ctx.planetRadius / src.coverScale + 31.7f, anchor.y * ctx.planetRadius / src.coverScale, anchor.z * ctx.planetRadius / src.coverScale - 11.3f, 3, seed)
+            : TerrainNoise.Fbm(anchor.x / src.coverScale + 31.7f, anchor.z / src.coverScale - 11.3f, 3, seed);
+        float t = Mathf.Clamp01((v - (src.coverThreshold - src.coverSoftness)) / (2f * src.coverSoftness));
+        return t * t * (3f - 2f * t);
+    }
+
+    // Walks every colony source seeded by plot `nkey` and appends the
+    // candidates whose anchor lands in plot `key`. Called for the plot and
+    // its eight neighbours, so a stand reaching over an edge is whole.
+    static void ColonyCandidates(BuildContext ctx, long nkey, long key, List<Candidate> outList)
+    {
+        Unpack(nkey, out int face, out int a, out int b);
+        bool globe = face != kFlatFace;
+        float size = ctx.size;
+        uint plotHash = TerrainNoise.Hash(unchecked((uint)(face * 73856093 + a)), unchecked((uint)b), unchecked((uint)ctx.seed));
+
+        // Tangent frame of the neighbour cell, for laying a flat walk on the sphere.
+        Vector3 up = Vector3.up, east = Vector3.right, north = Vector3.forward;
+        float u0 = 0f, v0 = 0f;
+        if (globe)
+        {
+            u0 = -1f + a * ctx.cellInv; v0 = -1f + b * ctx.cellInv;
+            up = FaceUVToDir(face, u0 + 0.5f * ctx.cellInv, v0 + 0.5f * ctx.cellInv);
+            east = (FaceUVToDir(face, u0 + 0.5f * ctx.cellInv + 1e-3f, v0 + 0.5f * ctx.cellInv) - up);
+            east = (east - up * Vector3.Dot(east, up)).normalized;
+            north = Vector3.Cross(up, east).normalized;
+        }
+
+        if (_rewriter == null) _rewriter = new LSystemRewriter { MaxModules = 20000 };
+        if (_skeleton == null) _skeleton = new LSkeleton();
+
+        for (int s = 0; s < ctx.sources.Length; s++)
+        {
+            BuildContext.Source src = ctx.sources[s];
+            if (src.grammar == null) continue;
+            var rng = new LRandom(plotHash, unchecked((uint)(0x51ED27u + (uint)s * 0x9E3779B9u)));
+            if (rng.NextFloat() > src.colonyChance) continue;
+            float fa = rng.NextFloat(), fb = rng.NextFloat();
+            uint colonySeed = rng.NextUInt();
+
+            LModuleString word = _rewriter.Rewrite(src.grammar, src.iterations, colonySeed);
+            LSkeleton skel = TurtleInterpreter.Build(word, kGroundTurtle, _skeleton);
+
+            Vector3 originDir = Vector3.zero;
+            float ox = 0f, oz = 0f;
+            if (globe) originDir = FaceUVToDir(face, u0 + fa * ctx.cellInv, v0 + fb * ctx.cellInv);
+            else { ox = (a + fa) * size; oz = (b + fb) * size; }
+
+            for (int m = 0; m < skel.Markers.Count; m++)
+            {
+                LSkeletonMarker mk = skel.Markers[m];
+                if (mk.Symbol >= 128) continue;
+                int[] choices = src.bySymbol[mk.Symbol];
+                // Draw first, decide after: the stream must not depend on the letter table.
+                float pick = rng.NextFloat();
+                var cand = new Candidate
+                {
+                    scale = skel.GetMarkerParam(mk, 0, 1f),
+                    yaw = rng.Range(0f, 360f),
+                    accept = rng.NextFloat(),
+                    cover = rng.NextFloat(),
+                    order = outList.Count,
+                };
+                float leanA = rng.NextFloat(), leanB = rng.NextFloat(), scaleT = rng.NextFloat();
+                uint variantDraw = rng.NextUInt();
+                if (choices == null) continue;
+                int si = choices[(int)(pick * choices.Length) % choices.Length];
+                BuildContext.Species sp = ctx.species[si];
+                cand.species = si;
+                cand.scale *= sp.scaleMin + (sp.scaleMax - sp.scaleMin) * scaleT;
+                cand.leanX = (leanA * 2f - 1f) * sp.lean;
+                cand.leanZ = (leanB * 2f - 1f) * sp.lean;
+                cand.variant = (int)(variantDraw % (uint)sp.variants);
+                cand.spacing = sp.spacing;
+
+                if (globe)
+                {
+                    Vector3 dir = (originDir * ctx.planetRadius + east * mk.Position.x + north * mk.Position.z).normalized;
+                    DirToFaceCell(dir, ctx.cellInv > 0f ? Mathf.RoundToInt(2f / ctx.cellInv) : 1, out int cf, out int cu, out int cv);
+                    if (PackGlobe(cf, cu, cv) != key) continue;
+                    cand.anchor = dir;
+                }
+                else
+                {
+                    float x = ox + mk.Position.x, z = oz + mk.Position.z;
+                    if (PackFlat(Mathf.FloorToInt(x / size), Mathf.FloorToInt(z / size)) != key) continue;
+                    cand.anchor = new Vector3(x, 0f, z);
+                }
+                outList.Add(cand);
+            }
+        }
+    }
+
+    static int CompareCandidates(Candidate x, Candidate y)
+    {
+        int c = y.spacing.CompareTo(x.spacing);
+        return c != 0 ? c : x.order.CompareTo(y.order);
     }
 
     // Worker thread. Pure function of (ctx, key); no Unity externs.
@@ -720,11 +930,87 @@ public class PlantScatter : MonoBehaviour
 
         Span<float> bw = stackalloc float[BiomeDensityField.MaxBiomes];
 
+        // ---- colonies: this plot's and its eight neighbours' -----------------
+        bool anyColony = false;
+        for (int s = 0; s < ctx.sources.Length; s++) if (ctx.sources[s].grammar != null) { anyColony = true; break; }
+        List<Instance>[] perSpecies = null;
+        if (anyColony)
+        {
+            if (_candidates == null) { _candidates = new List<Candidate>(128); _accepted = new List<Candidate>(128); _neighbourKeys = new List<long>(9); }
+            _candidates.Clear(); _accepted.Clear(); _neighbourKeys.Clear();
+            for (int da = -1; da <= 1; da++)
+                for (int db = -1; db <= 1; db++)
+                {
+                    long nk = globe ? NeighbourStatic(ctx, key, da, db) : PackFlat(a + da, b + db);
+                    if (!_neighbourKeys.Contains(nk)) _neighbourKeys.Add(nk);
+                }
+            for (int n = 0; n < _neighbourKeys.Count; n++) ColonyCandidates(ctx, _neighbourKeys[n], key, _candidates);
+            _candidates.Sort(CompareCandidates);
+
+            perSpecies = new List<Instance>[ctx.species.Length];
+            for (int i = 0; i < _candidates.Count; i++)
+            {
+                Candidate cand = _candidates[i];
+                BuildContext.Species sp = ctx.species[cand.species];
+                BuildContext.Source src = ctx.sources[1 + sp.biome];
+
+                if (sp.biome >= 0)
+                {
+                    if (globe) ctx.biomeField.ComputeWeights3D(cand.anchor * ctx.planetRadius, bw, ctx.biomeCount);
+                    else ctx.biomeField.ComputeWeights(cand.anchor.x, cand.anchor.z, bw, ctx.biomeCount);
+                    if (cand.accept > bw[sp.biome]) continue;
+                }
+                if (cand.cover > CoverMask(ctx, src, cand.anchor, globe)) continue;
+
+                bool blocked = false;
+                for (int j = 0; j < _accepted.Count && !blocked; j++)
+                {
+                    Candidate o = _accepted[j];
+                    float need = Mathf.Min(cand.spacing, o.spacing);   // the smaller: moss may sit at a tree's foot, two trees keep 4 m
+                    float d = globe ? (cand.anchor - o.anchor).magnitude * ctx.planetRadius
+                                    : Mathf.Sqrt((cand.anchor.x - o.anchor.x) * (cand.anchor.x - o.anchor.x) + (cand.anchor.z - o.anchor.z) * (cand.anchor.z - o.anchor.z));
+                    if (d < need) blocked = true;
+                }
+                if (blocked) continue;
+
+                Vector3 pos; Quaternion rot;
+                if (globe)
+                {
+                    Vector3 dir = cand.anchor;
+                    if (!FindSurface(ctx.field, ctx.planetCentre + dir * ctx.rHi, -dir, ctx.rHi - ctx.rLo, ctx.filterWidth, out float depth, out Vector3 normal)) continue;
+                    float rad = ctx.rHi - depth;
+                    float height = rad - ctx.planetRadius;
+                    if (height < sp.minHeight || height > sp.maxHeight) continue;
+                    if (Vector3.Dot(normal, dir) < sp.minUpness) continue;
+                    rot = FromTo(Vector3.up, dir) * AxisAngle(Vector3.up, cand.yaw);
+                    if (sp.lean > 0f) rot = rot * AxisAngle(Vector3.right, cand.leanX) * AxisAngle(Vector3.forward, cand.leanZ);
+                    pos = ctx.planetCentre + dir * (rad - sp.sink * cand.scale);
+                }
+                else
+                {
+                    if (!FindSurface(ctx.field, new Vector3(cand.anchor.x, ctx.flatTop, cand.anchor.z), Vector3.down, ctx.flatTop - ctx.flatBottom, ctx.filterWidth, out float depth, out Vector3 normal)) continue;
+                    float y = ctx.flatTop - depth;
+                    if (y < sp.minHeight || y > sp.maxHeight) continue;
+                    if (normal.y < sp.minUpness) continue;
+                    rot = AxisAngle(Vector3.up, cand.yaw);
+                    if (sp.lean > 0f) rot = AxisAngle(Vector3.right, cand.leanX) * AxisAngle(Vector3.forward, cand.leanZ) * rot;
+                    pos = new Vector3(cand.anchor.x, y - sp.sink * cand.scale, cand.anchor.z);
+                }
+                _accepted.Add(cand);
+                if (perSpecies[cand.species] == null) perSpecies[cand.species] = new List<Instance>(8);
+                perSpecies[cand.species].Add(new Instance { trs = TRS(pos, rot, cand.scale), pos = pos, variant = cand.variant });
+            }
+        }
+
+        // ---- uniform scatter for sources without a colony grammar ------------
         for (int si = 0; si < ctx.species.Length; si++)
         {
             runs.Add(scratch.Count);
             BuildContext.Species sp = ctx.species[si];
             if (!sp.enabled) continue;
+            if (perSpecies != null && perSpecies[si] != null) scratch.AddRange(perSpecies[si]);
+            BuildContext.Source source = ctx.sources[1 + sp.biome];
+            if (source.grammar != null) continue;   // the colony placed it
 
             // Each species gets its own stream off the plot hash, so adding a
             // species does not reshuffle the ones already placed.
@@ -748,6 +1034,7 @@ public class PlantScatter : MonoBehaviour
                 float leanZ = rng.Range(-sp.lean, sp.lean);
                 int variant = (int)(rng.NextUInt() % (uint)sp.variants);
                 float accept = rng.NextFloat();
+                float cover = rng.NextFloat();
 
                 Vector3 pos;
                 Quaternion rot;
@@ -761,6 +1048,7 @@ public class PlantScatter : MonoBehaviour
                         ctx.biomeField.ComputeWeights3D(dir * ctx.planetRadius, bw, ctx.biomeCount);
                         if (accept > bw[sp.biome]) continue;
                     }
+                    if (cover > CoverMask(ctx, source, dir, true)) continue;
                     if (!FindSurface(ctx.field, ctx.planetCentre + dir * ctx.rHi, -dir, ctx.rHi - ctx.rLo, ctx.filterWidth,
                                      out float depth, out Vector3 normal)) continue;
                     float rad = ctx.rHi - depth;
@@ -781,6 +1069,7 @@ public class PlantScatter : MonoBehaviour
                         ctx.biomeField.ComputeWeights(x, z, bw, ctx.biomeCount);
                         if (accept > bw[sp.biome]) continue;
                     }
+                    if (cover > CoverMask(ctx, source, new Vector3(x, 0f, z), false)) continue;
                     if (!FindSurface(ctx.field, new Vector3(x, ctx.flatTop, z), Vector3.down, ctx.flatTop - ctx.flatBottom, ctx.filterWidth,
                                      out float depth, out Vector3 normal)) continue;
                     float y = ctx.flatTop - depth;
@@ -1026,6 +1315,7 @@ public class PlantScatter : MonoBehaviour
             h = h * 31 + (world.species != null ? world.species.Length : 0);
             if (world.species != null)
                 foreach (PlantSpecies sp in world.species) h = h * 31 + SpeciesHash(sp);
+            h = h * 31 + ColonyHash(world.colony, world.colonyChance);
             if (biomeField != null)
             {
                 // The weights themselves move when these move.
@@ -1039,11 +1329,29 @@ public class PlantScatter : MonoBehaviour
                     Biome biome = biomeField.biomes[b];
                     if (biome == null) { h = h * 31; continue; }
                     h = h * 31 + biome.bias.GetHashCode();
+                    h = h * 31 + ColonyHash(biome.colony, biome.colonyChance);
+                    h = h * 31 + biome.coverScale.GetHashCode();
+                    h = h * 31 + biome.coverThreshold.GetHashCode();
+                    h = h * 31 + biome.coverSoftness.GetHashCode();
                     h = h * 31 + (biome.flora != null ? biome.flora.Length : 0);
                     if (biome.flora != null)
                         foreach (PlantSpecies sp in biome.flora) h = h * 31 + SpeciesHash(sp);
                 }
             }
+            return h;
+        }
+    }
+
+    // The grammar text itself, so editing a colony in the inspector rebuilds.
+    static int ColonyHash(LSystemGrammarAsset colony, float chance)
+    {
+        unchecked
+        {
+            int h = chance.GetHashCode();
+            if (colony == null) return h;
+            h = h * 31 + colony.GetInstanceID();
+            h = h * 31 + (colony.source != null ? colony.source.GetHashCode() : 0);
+            h = h * 31 + colony.iterations;
             return h;
         }
     }
@@ -1054,6 +1362,8 @@ public class PlantScatter : MonoBehaviour
         {
             if (sp == null) return 0;
             int h = sp.enabled ? 1 : 0;
+            h = h * 31 + (sp.symbol != null ? sp.symbol.GetHashCode() : 0);
+            h = h * 31 + sp.minSpacing.GetHashCode();
             h = h * 31 + (sp.prototypes != null ? sp.prototypes.GetInstanceID() : 0);
             h = h * 31 + (sp.prototypes != null && sp.prototypes.variants != null ? sp.prototypes.variants.Length : 0);
             h = h * 31 + sp.perPlot;

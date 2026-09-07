@@ -22,6 +22,8 @@ MonoBehaviour:
     rarity: 2
     perPlot: 3
     plotChance: 0.5
+    symbol: h
+    minSpacing: 1.8
     minUpness: 0.75
     minHeight: -1000
     maxHeight: 1000
@@ -34,3 +36,5 @@ MonoBehaviour:
     impostorDistance: 100
     cullDistance: 400
     enabled: 1
+  colony: {fileID: 11400000, guid: 25a46b7c8d9e0f1a2b3c4d5e6f708192, type: 2}
+  colonyChance: 0.4

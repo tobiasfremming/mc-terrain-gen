@@ -52,6 +52,11 @@ public class BiomeDensityField : DensityField
     protected override void OnValidate()
     {
         base.OnValidate();
+        // Loud, not silent: the density blend, the shader's selection loop and
+        // the published biome table all stop at MaxBiomes. Anything past it is
+        // ignored everywhere, so say so here instead of shading it as biome 0.
+        if (biomes != null && biomes.Length > kMaxBiomes)
+            Debug.LogWarning($"[BiomeDensityField] '{name}': {biomes.Length} biomes assigned but only the first {kMaxBiomes} are used (MaxBiomes).", this);
         _nullSlotWarned = false; // biomes[] may have just been fixed -- allow a fresh warning if not
     }
 
@@ -283,6 +288,14 @@ public class BiomeDensityField : DensityField
         return true;
     }
 
+    // TRANSITIONAL. The terrain shader no longer reads biome weights from
+    // vertex colours -- it evaluates BiomeSelect.hlsl from world position --
+    // but the grass scatter (Shaders/Compute/GrassScatter.compute) still reads
+    // the R/G/B bake. Once grass calls MC_BiomeWeights itself, delete this
+    // override, GetVertexColor/GetVertexColorWithWeights, PlanetField's
+    // GetVertexColor, and the per-vertex weight code in ChunkMesher.
+    // VertexColorWithAO and TerrainMesh.compute (keep the AO in .a). See
+    // BIOME_SHADING.md.
     public override bool HasVertexColors => biomes.Length > 1;
 
     // Vertex color channels R/G/B carry the weights of biomes 1..3 (biome 0 is

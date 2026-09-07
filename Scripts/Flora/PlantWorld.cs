@@ -27,6 +27,12 @@ public class PlantSpecies
     [Tooltip("Chance a given plot grows this species at all. Below 1 it clumps into stands instead of spreading evenly.")]
     [Range(0f, 1f)] public float plotChance = 0.7f;
 
+    [Header("Colony")]
+    [Tooltip("The letter this species answers to in the colony grammar of the Biome (or PlantWorld) that lists it. Where a colony grammar is set, ONLY grammar markers place plants and perPlot/plotChance are ignored; several species may share a letter and the marker picks one at random. Never F, G, f or g (turtle commands).")]
+    public string symbol = "";
+    [Tooltip("Metres. Two plants are never closer than the SMALLER of their two spacings, so two trees keep a tree's distance while moss may sit at a tree's foot; the larger-spaced plant claims its ground first.")]
+    public float minSpacing = 1.5f;
+
     [Header("Where")]
     [Tooltip("Ground must be at least this upright. 1 = flat only, 0 = anything. Cos of the max slope angle.")]
     [Range(0f, 1f)] public float minUpness = 0.75f;
@@ -64,6 +70,9 @@ public class PlantSpecies
             case PlantRarity.Rare:     perPlot = 1; plotChance = 0.25f; break;
             case PlantRarity.Landmark: perPlot = 1; plotChance = 0.04f; useLod = false; break;
         }
+        if (symbol != null && symbol.Length > 1) symbol = symbol.Substring(0, 1);
+        if (symbol == "F" || symbol == "G" || symbol == "f" || symbol == "g") symbol = "";
+        minSpacing = Mathf.Max(0f, minSpacing);
         cullDistance = Mathf.Max(0f, cullDistance);
         impostorDistance = Mathf.Clamp(impostorDistance, 0f, cullDistance);
         lod2Distance = Mathf.Min(lod2Distance, cullDistance);
@@ -78,6 +87,12 @@ public class PlantSpecies
 }
 
 public enum PlantRarity { Custom, Common, Uncommon, Rare, Landmark }
+
+public static class PlantSpeciesExt
+{
+    // The colony letter as a char, or '\0' when the species has none.
+    public static char SymbolChar(this PlantSpecies sp) => sp != null && !string.IsNullOrEmpty(sp.symbol) ? sp.symbol[0] : '\0';
+}
 
 [CreateAssetMenu(fileName = "PlantWorld", menuName = "Marching Cubes/Plant World")]
 public class PlantWorld : ScriptableObject
@@ -97,6 +112,11 @@ public class PlantWorld : ScriptableObject
 
     [Tooltip("Species that grow EVERYWHERE, regardless of biome. Species that belong to one biome go on that Biome asset's Flora list instead; PlantScatter merges both.")]
     public PlantSpecies[] species = new PlantSpecies[0];
+
+    [Tooltip("Colony grammar for the everywhere species: a 2D L-system walked over the ground once per plot whose markers are species letters. Unset: the everywhere species are scattered uniformly.")]
+    public LSystems.LSystemGrammarAsset colony;
+    [Tooltip("Chance a plot seeds an everywhere colony at all.")]
+    [Range(0f, 1f)] public float colonyChance = 0.5f;
 
     // A plant cannot be drawn before its plot exists, so the populated radius
     // must exceed every draw distance. The draw distance is the number an

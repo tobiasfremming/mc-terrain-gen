@@ -1,0 +1,44 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1bb92a7eff5745ee87f0ed25def62c3f, type: 3}
+  m_Name: GrassSettings
+  m_EditorClassIdentifier: 
+  bladeHeight: 0.55
+  bladeWidth: 0.05
+  heightVariation: 0.35
+  widthVariation: 0.25
+  lean: 0.25
+  upBlend: 0.6
+  windStrength: 0.45
+  windSpeed: 1.2
+  gustScale: 14
+  flutter: 0.06
+  slopeStartDeg: 22
+  slopeEndDeg: 45
+  densityScale: 1
+  levelDensity:
+  - 1
+  - 0.3
+  maxLevel: 1
+  fadeStart: 28
+  fadeEnd: 70
+  lod0Distance: 10
+  lod1Distance: 26
+  trampleRadius: 1.1
+  slotCapacity: 20480
+  maxSlots: 96
+  maxVisiblePerLod: 1048576
+  scattersPerFrame: 24
+  material: {fileID: 2100000, guid: c13ccce4a42d4502a862b9d37bf6c6ba, type: 2}
+  compute: {fileID: 7200000, guid: e0f06f91da464ac1afc861d2b94e8337, type: 3}
+  castShadows: 0
+  receiveShadows: 1

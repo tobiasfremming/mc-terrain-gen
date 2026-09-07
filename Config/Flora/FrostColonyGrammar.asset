@@ -1,0 +1,106 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: FrostColonyGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Frost colonies. Fairy rings: eight to twelve puffballs or coral fungi in a
+
+    // ring four to seven metres across, a glow plant at the centre. Fern beds:
+
+    // a meander of ferns and cordyceps. Coral banks: white coral shrubs and sea
+
+    // fans clustered. Mist stands: two or three mist trees with bellows below.
+
+    // Heroes: a lattice fan or chanterelle with a fairy ring around it. One plot
+
+    // in eight is bare snow.
+
+    
+
+    #iterations: 20
+
+    #axiom: X
+
+    
+
+    X -> +(rand(360)) f(rand(0,4)) K
+
+    
+
+    K : 0.28 -> R(rand(8,12), rand(2,3.5))
+
+    K : 0.28 -> W(rand(12,18), rand(1.2,2.2))
+
+    K : 0.16 -> C(rand(6,10))
+
+    K : 0.13 -> N
+
+    K : 0.03 -> H
+
+    K : 0.12 -> f(0)
+
+    
+
+    // fairy ring: n mushrooms round a circle of radius r, glow in the middle
+
+    R(n,r) -> [ w(1) ] O(n, n, r)
+
+    O(n,t,r) : n > 0 -> [ +(360/t*n + rand(-10,10)) f(r + rand(-0.4,0.4)) M ] O(n-1, t, r)
+
+    O(n,t,r) : n <= 0 -> f(0)
+
+    M : 0.6 -> p(rand(0.8,1.2))
+
+    M : 0.4 -> c(rand(0.8,1.2))
+
+    
+
+    // fern bed
+
+    W(n,l) : n > 0 -> +(rand(-40,40)) f(l) [ +(rand(-90,90)) f(rand(0,1.2)) E ] W(n-1, l)
+
+    W(n,l) : n <= 0 -> f(0)
+
+    E : 0.45 -> e(rand(0.7,1.2))
+
+    E : 0.25 -> z(rand(0.8,1.2))
+
+    E : 0.2 -> y(1)
+
+    E : 0.1 -> w(0.9)
+
+    
+
+    // coral bank
+
+    C(n) : n > 0 -> [ +(rand(360)) f(rand(1.5,4.5)) B ] C(n-1)
+
+    C(n) : n <= 0 -> f(0)
+
+    B : 0.6 -> i(rand(0.8,1.2))
+
+    B : 0.4 -> s(1)
+
+    
+
+    // mist stand
+
+    N -> m(1) [ +(rand(360)) f(rand(5,8)) m(rand(0.8,1.1)) ] [ +(rand(360)) f(rand(5,8)) m(rand(0.8,1.1)) ] [ +(rand(360)) f(rand(2,4)) b(1) ] [ +(rand(360)) f(rand(2,4)) b(1) ] [ +(rand(360)) f(rand(6,10)) t(1) ]
+
+    
+
+    // hero
+
+    H : 0.5 -> Q(1) R(rand(8,10), rand(5,7))
+
+    H : 0.5 -> Z(1) R(rand(8,10), rand(6,8))'
+  iterations: 22

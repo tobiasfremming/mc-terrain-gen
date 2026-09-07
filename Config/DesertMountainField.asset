@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ec83c43179fcc764f8150426fd34b04e, type: 3}
+  m_Name: DesertMountainField
+  m_EditorClassIdentifier:
+  isoLevel: 0
+  seed: 9157
+  baseHeight: 60
+  baseScale: 1400
+  baseOctaves: 3
+  baseAmp: 200
+  fadeRange: 0.55
+  heightOffset: {x: 0, y: 0}
+  erosion:
+    scale: 300
+    strength: 0.15
+    gullyWeight: 0.55
+    detail: 1.2
+    rounding: {x: 0.15, y: 0.6, z: 0.15, w: 1.6}
+    onset: {x: 1.1, y: 1.25, z: 2.8, w: 1.5}
+    assumedSlope: {x: 0.6, y: 1}
+    cellScale: 0.7
+    octaves: 6
+    gain: 0.5
+    lacunarity: 2
+    normalization: 0.5
+  sandEnabled: 1
+  sandLevel: 0
+  sandScale: 420
+  sandOctaves: 3
+  sandAmp: 12
+  sandBlend: 25
+  snowLine: 1000000
+  snowBlend: 40
+  grassLine: 1000000
+  grassLineBlend: 50
