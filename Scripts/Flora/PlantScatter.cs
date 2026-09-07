@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
@@ -57,6 +58,15 @@ using UnityEngine;
 // NOTHING IS A GAMEOBJECT. A forest is instance matrices grouped by
 // (species, variant, LOD) and handed to Graphics.RenderMeshInstanced -- one
 // draw call per group, per submesh.
+//
+// BIOMES. The species table is PlantWorld.species (everywhere) followed by
+// every Biome's flora list, in BiomeWorld order. A biome species' candidate
+// is accepted with probability equal to that biome's weight at the
+// candidate's spot -- the same ComputeWeights the terrain blends with, so
+// flora and ground agree exactly, and stands thin out over the few-metre
+// cross-fade instead of stopping at a line. The acceptance draw happens
+// before the ground search (it is far cheaper), and like every other draw
+// it is taken whether or not the candidate survives.
 [ExecuteAlways]
 public class PlantScatter : MonoBehaviour
 {
@@ -92,6 +102,8 @@ public class PlantScatter : MonoBehaviour
     // filled; if it keeps rising, plots are being thrown away and rebuilt.
     public int PlotsBuiltTotal => _plotsBuiltTotal;
     public string Status => _status;
+    public int SpeciesCount => _table.Length;
+    public int BiomeSpeciesCount => _biomeSpeciesCount;
 
     // One placed plant. A struct in a flat array: a forest is tens of
     // thousands of these.
@@ -117,6 +129,15 @@ public class PlantScatter : MonoBehaviour
     }
 
     readonly Dictionary<long, Plot> _plots = new Dictionary<long, Plot>();
+
+    // ---- species table ---------------------------------------------------
+    // One entry per species, merged from PlantWorld.species (biome -1) and
+    // each Biome's flora (biome = its index in the BiomeDensityField).
+    // Rebuilt whenever the placement hash changes.
+    struct Entry { public PlantSpecies sp; public int biome; }
+    Entry[] _table = new Entry[0];
+    int _biomeSpeciesCount;
+    float _radius;       // world.radius raised above every species' cull distance
 
     // ---- draw batches -------------------------------------------------------
     // One list per (species, variant, lod), addressed by index rather than a
@@ -180,10 +201,11 @@ public class PlantScatter : MonoBehaviour
         if (!cfg.enablePlants) { _status = "disabled in WorldConfig"; return; }
 
         PlantWorld world = cfg.plantWorld;
-        if (world == null || world.species == null || world.species.Length == 0) { _status = "no PlantWorld / no species"; return; }
+        if (world == null) { _status = "no PlantWorld"; return; }
 
         DensityField field = cfg.EffectiveDensity;
         if (field == null) { _status = "no density field"; return; }
+        BiomeDensityField biomeField = BiomeFieldOf(field);
 
         // The ground is found on the field band-limited to LOD0's spacing --
         // the surface the player actually stands on. Coarser rings differ
@@ -205,9 +227,10 @@ public class PlantScatter : MonoBehaviour
         _cellsPerFace = cellsPerFace;
         _cellInv = cellsPerFace > 0 ? 2f / cellsPerFace : 0f;
 
-        int hash = PlacementHash(world, field, _filterWidth);
-        if (hash != _settingsHash) { _settingsHash = hash; ClearCache(); }
-        if (_ctx == null || _ctx.generation != _generation) _ctx = BuildContext.Capture(world, field, _planet, _cellInv, _filterWidth, _generation);
+        int hash = PlacementHash(world, field, biomeField, _filterWidth);
+        if (hash != _settingsHash || _table.Length == 0) { _settingsHash = hash; BuildTable(world, biomeField); ClearCache(); }
+        if (_table.Length == 0) { _status = "no species on the PlantWorld or any Biome"; return; }
+        if (_ctx == null || _ctx.generation != _generation) _ctx = BuildContext.Capture(_table, world, field, biomeField, _planet, _cellInv, _filterWidth, _generation);
 
         Transform v = ResolveViewer();
         if (v == null) { _status = "no viewer and no target"; return; }
@@ -215,9 +238,13 @@ public class PlantScatter : MonoBehaviour
 
         if (_planet != null && (eye - _planet.center).sqrMagnitude < 1e-6f) { _status = "viewer is at the planet centre"; return; }
 
-        PrepareSpecies(world);
+        PrepareSpecies();
         float maxCull = 0f;
         for (int i = 0; i < _cull.Length; i++) maxCull = Mathf.Max(maxCull, _cull[i]);
+        // A plot must exist before its plants can draw: keep the populated
+        // radius two plots beyond the farthest cull, biome species included
+        // (PlantWorld.OnValidate can only see its own list).
+        _radius = Mathf.Max(world.radius, maxCull + PlotSize(world) * 2f);
 
         // Bounds for the instanced draws, in WORLD space around the eye: on a
         // globe the plants sit 100 km from the origin, so a box around this
@@ -228,7 +255,7 @@ public class PlantScatter : MonoBehaviour
         DrainResults();
         EnsureRegion(world, eye);
         Gather(world, eye);
-        Draw(world);
+        Draw();
         EvictFarPlots(world);
     }
 
@@ -253,9 +280,39 @@ public class PlantScatter : MonoBehaviour
         return Camera.main != null ? Camera.main.transform : target;
     }
 
-    void PrepareSpecies(PlantWorld world)
+    // The biome world behind the effective field: either the field itself
+    // or the surface a PlanetField wraps. Null means no biome flora.
+    static BiomeDensityField BiomeFieldOf(DensityField field)
     {
-        int n = world.species.Length;
+        if (field is BiomeDensityField b) return b;
+        if (field is PlanetField p) return p.surface as BiomeDensityField;
+        return null;
+    }
+
+    void BuildTable(PlantWorld world, BiomeDensityField biomeField)
+    {
+        var list = new List<Entry>();
+        if (world.species != null)
+            foreach (PlantSpecies sp in world.species) list.Add(new Entry { sp = sp, biome = -1 });
+        _biomeSpeciesCount = 0;
+        if (biomeField != null)
+        {
+            int n = biomeField.BiomeCount;
+            for (int b = 0; b < n; b++)
+            {
+                Biome biome = biomeField.biomes[b];
+                if (biome == null || biome.flora == null) continue;
+                foreach (PlantSpecies sp in biome.flora) { list.Add(new Entry { sp = sp, biome = b }); _biomeSpeciesCount++; }
+            }
+        }
+        _table = list.ToArray();
+        // Batches are addressed by table index; a new table means new slots.
+        _cull = new float[0];
+    }
+
+    void PrepareSpecies()
+    {
+        int n = _table.Length;
         if (_cull.Length != n)
         {
             _cull = new float[n]; _cull2 = new float[n]; _imp2 = new float[n]; _lod1sq = new float[n]; _lod2sq = new float[n];
@@ -264,7 +321,7 @@ public class PlantScatter : MonoBehaviour
         }
         for (int i = 0; i < n; i++)
         {
-            PlantSpecies sp = world.species[i];
+            PlantSpecies sp = _table[i].sp;
             bool on = sp != null && sp.enabled && sp.prototypes != null;
             _cull[i] = on ? sp.cullDistance : 0f;
             _cull2[i] = _cull[i] * _cull[i];
@@ -366,7 +423,7 @@ public class PlantScatter : MonoBehaviour
         // still missing on every pass. Re-flooding while pending cost 2.3 ms
         // a frame for the whole cold fill, for nothing.
         bool stale = !_regionValid
-                  || !Mathf.Approximately(_regionRadius, world.radius)
+                  || !Mathf.Approximately(_regionRadius, _radius)
                   || (eye - _regionEye).sqrMagnitude > (size * 0.25f) * (size * 0.25f);
         if (!stale) return;
 
@@ -375,7 +432,7 @@ public class PlantScatter : MonoBehaviour
         _floodQueue.Clear();
 
         Vector3 up = _planet != null ? (eye - _planet.center).normalized : Vector3.up;
-        float reach = world.radius + CellDiagonal(size);
+        float reach = _radius + CellDiagonal(size);
 
         long start = CellOf(eye, size);
         _regionSet.Add(start);
@@ -395,7 +452,7 @@ public class PlantScatter : MonoBehaviour
         }
 
         _regionEye = eye;
-        _regionRadius = world.radius;
+        _regionRadius = _radius;
         _regionValid = true;
     }
 
@@ -403,9 +460,9 @@ public class PlantScatter : MonoBehaviour
 
     void Gather(PlantWorld world, Vector3 eye)
     {
-        float radiusSqr = world.radius * world.radius;
+        float radiusSqr = _radius * _radius;
         Vector3 up = _planet != null ? (eye - _planet.center).normalized : Vector3.up;
-        int speciesCount = world.species.Length;
+        int speciesCount = _table.Length;
 
         for (int i = 0; i < _batches.Length; i++) _batches[i]?.Clear();
         int requested = 0;
@@ -436,6 +493,7 @@ public class PlantScatter : MonoBehaviour
 
             Instance[] items = plot.items;
             int[] runs = plot.runStart;
+            if (runs.Length != speciesCount + 1) continue; // built against a previous table; ClearCache is on its way
             for (int si = 0; si < speciesCount; si++)
             {
                 int start = runs[si], end = runs[si + 1];
@@ -573,16 +631,18 @@ public class PlantScatter : MonoBehaviour
         public Vector3 planetCentre;
         public float planetRadius, rLo, rHi;
         public float flatBottom, flatTop;
+        public BiomeDensityField biomeField;   // null: no biome species can grow
+        public int biomeCount;
         public Species[] species;
 
         public struct Species
         {
             public bool enabled;
-            public int variants, perPlot;
+            public int variants, perPlot, biome;   // biome -1: everywhere
             public float plotChance, minUpness, minHeight, maxHeight, scaleMin, scaleMax, lean, sink;
         }
 
-        public static BuildContext Capture(PlantWorld world, DensityField field, PlanetField planet, float cellInv, float fw, int generation)
+        public static BuildContext Capture(Entry[] table, PlantWorld world, DensityField field, BiomeDensityField biomeField, PlanetField planet, float cellInv, float fw, int generation)
         {
             var c = new BuildContext
             {
@@ -593,7 +653,9 @@ public class PlantScatter : MonoBehaviour
                 filterWidth = fw,
                 field = field,
                 planet = planet,
-                species = new Species[world.species.Length],
+                biomeField = biomeField,
+                biomeCount = biomeField != null ? biomeField.BiomeCount : 0,
+                species = new Species[table.Length],
             };
             if (planet != null)
             {
@@ -606,13 +668,16 @@ public class PlantScatter : MonoBehaviour
                 if (field.TryGetHeightBounds(out float minH, out float maxH)) { c.flatBottom = minH - 1f; c.flatTop = maxH + 1f; }
                 else { c.flatBottom = -128f; c.flatTop = 256f; }
             }
-            for (int i = 0; i < world.species.Length; i++)
+            for (int i = 0; i < table.Length; i++)
             {
-                PlantSpecies sp = world.species[i];
-                bool on = sp != null && sp.enabled && sp.prototypes != null && sp.prototypes.variants != null && sp.prototypes.variants.Length > 0;
+                PlantSpecies sp = table[i].sp;
+                int biome = table[i].biome;
+                bool on = sp != null && sp.enabled && sp.prototypes != null && sp.prototypes.variants != null && sp.prototypes.variants.Length > 0
+                       && (biome < 0 || (biomeField != null && biome < c.biomeCount));
                 c.species[i] = new Species
                 {
                     enabled = on,
+                    biome = biome,
                     variants = on ? sp.prototypes.variants.Length : 0,
                     perPlot = on ? sp.perPlot : 0,
                     plotChance = on ? sp.plotChance : 0f,
@@ -653,6 +718,8 @@ public class PlantScatter : MonoBehaviour
             areaFactor = edge * edge / (s * Mathf.Sqrt(s)) / (size * size);
         }
 
+        Span<float> bw = stackalloc float[BiomeDensityField.MaxBiomes];
+
         for (int si = 0; si < ctx.species.Length; si++)
         {
             runs.Add(scratch.Count);
@@ -680,12 +747,20 @@ public class PlantScatter : MonoBehaviour
                 float leanX = rng.Range(-sp.lean, sp.lean);
                 float leanZ = rng.Range(-sp.lean, sp.lean);
                 int variant = (int)(rng.NextUInt() % (uint)sp.variants);
+                float accept = rng.NextFloat();
 
                 Vector3 pos;
                 Quaternion rot;
                 if (globe)
                 {
                     Vector3 dir = FaceUVToDir(face, -1f + (a + fa) * ctx.cellInv, -1f + (b + fb) * ctx.cellInv);
+                    // Biome selection is a function of where on the sphere,
+                    // never of height -- the same call PlanetField makes.
+                    if (sp.biome >= 0)
+                    {
+                        ctx.biomeField.ComputeWeights3D(dir * ctx.planetRadius, bw, ctx.biomeCount);
+                        if (accept > bw[sp.biome]) continue;
+                    }
                     if (!FindSurface(ctx.field, ctx.planetCentre + dir * ctx.rHi, -dir, ctx.rHi - ctx.rLo, ctx.filterWidth,
                                      out float depth, out Vector3 normal)) continue;
                     float rad = ctx.rHi - depth;
@@ -701,6 +776,11 @@ public class PlantScatter : MonoBehaviour
                 else
                 {
                     float x = (a + fa) * size, z = (b + fb) * size;
+                    if (sp.biome >= 0)
+                    {
+                        ctx.biomeField.ComputeWeights(x, z, bw, ctx.biomeCount);
+                        if (accept > bw[sp.biome]) continue;
+                    }
                     if (!FindSurface(ctx.field, new Vector3(x, ctx.flatTop, z), Vector3.down, ctx.flatTop - ctx.flatBottom, ctx.filterWidth,
                                      out float depth, out Vector3 normal)) continue;
                     float y = ctx.flatTop - depth;
@@ -854,7 +934,7 @@ public class PlantScatter : MonoBehaviour
 
     // ---- drawing -----------------------------------------------------------
 
-    void Draw(PlantWorld world)
+    void Draw()
     {
         for (int b = 0; b < _batches.Length; b++)
         {
@@ -864,10 +944,10 @@ public class PlantScatter : MonoBehaviour
             int lod = b % kLodSlots;
             int variant = (b / kLodSlots) % kMaxVariants;
             int species = b / (kLodSlots * kMaxVariants);
-            if (species >= world.species.Length) continue;
+            if (species >= _table.Length) continue;
 
-            PlantSpecies sp = world.species[species];
-            PlantPrototypeSet set = sp.prototypes;
+            PlantSpecies sp = _table[species].sp;
+            PlantPrototypeSet set = sp != null ? sp.prototypes : null;
             if (set == null) continue;
             PlantVariant pv = set.Variant(variant);
             if (pv == null) continue;
@@ -935,7 +1015,7 @@ public class PlantScatter : MonoBehaviour
     // watching the values is the only way to make its inspector live. Draw
     // distances and LOD are deliberately NOT in here -- they change nothing
     // about where a plant is.
-    static int PlacementHash(PlantWorld world, DensityField field, float filterWidth)
+    static int PlacementHash(PlantWorld world, DensityField field, BiomeDensityField biomeField, float filterWidth)
     {
         unchecked
         {
@@ -943,22 +1023,47 @@ public class PlantScatter : MonoBehaviour
             h = h * 31 + world.plotSize.GetHashCode();
             h = h * 31 + filterWidth.GetHashCode();
             h = h * 31 + field.GetInstanceID();
-            h = h * 31 + world.species.Length;
-            foreach (PlantSpecies sp in world.species)
+            h = h * 31 + (world.species != null ? world.species.Length : 0);
+            if (world.species != null)
+                foreach (PlantSpecies sp in world.species) h = h * 31 + SpeciesHash(sp);
+            if (biomeField != null)
             {
-                if (sp == null) { h = h * 31; continue; }
-                h = h * 31 + (sp.enabled ? 1 : 0);
-                h = h * 31 + (sp.prototypes != null ? sp.prototypes.GetInstanceID() : 0);
-                h = h * 31 + (sp.prototypes != null && sp.prototypes.variants != null ? sp.prototypes.variants.Length : 0);
-                h = h * 31 + sp.perPlot;
-                h = h * 31 + sp.plotChance.GetHashCode();
-                h = h * 31 + sp.minUpness.GetHashCode();
-                h = h * 31 + sp.minHeight.GetHashCode();
-                h = h * 31 + sp.maxHeight.GetHashCode();
-                h = h * 31 + sp.scaleRange.GetHashCode();
-                h = h * 31 + sp.leanDegrees.GetHashCode();
-                h = h * 31 + sp.sink.GetHashCode();
+                // The weights themselves move when these move.
+                h = h * 31 + biomeField.seed;
+                h = h * 31 + biomeField.regionScale.GetHashCode();
+                h = h * 31 + biomeField.sharpness.GetHashCode();
+                int n = biomeField.BiomeCount;
+                h = h * 31 + n;
+                for (int b = 0; b < n; b++)
+                {
+                    Biome biome = biomeField.biomes[b];
+                    if (biome == null) { h = h * 31; continue; }
+                    h = h * 31 + biome.bias.GetHashCode();
+                    h = h * 31 + (biome.flora != null ? biome.flora.Length : 0);
+                    if (biome.flora != null)
+                        foreach (PlantSpecies sp in biome.flora) h = h * 31 + SpeciesHash(sp);
+                }
             }
+            return h;
+        }
+    }
+
+    static int SpeciesHash(PlantSpecies sp)
+    {
+        unchecked
+        {
+            if (sp == null) return 0;
+            int h = sp.enabled ? 1 : 0;
+            h = h * 31 + (sp.prototypes != null ? sp.prototypes.GetInstanceID() : 0);
+            h = h * 31 + (sp.prototypes != null && sp.prototypes.variants != null ? sp.prototypes.variants.Length : 0);
+            h = h * 31 + sp.perPlot;
+            h = h * 31 + sp.plotChance.GetHashCode();
+            h = h * 31 + sp.minUpness.GetHashCode();
+            h = h * 31 + sp.minHeight.GetHashCode();
+            h = h * 31 + sp.maxHeight.GetHashCode();
+            h = h * 31 + sp.scaleRange.GetHashCode();
+            h = h * 31 + sp.leanDegrees.GetHashCode();
+            h = h * 31 + sp.sink.GetHashCode();
             return h;
         }
     }

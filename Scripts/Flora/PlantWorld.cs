@@ -6,6 +6,13 @@ using UnityEngine;
 // Deliberately separate from PlantPrototypeSet: a set is "what this species
 // looks like", this is "where it belongs". The same tree can be dense in one
 // world and absent from another without rebaking a single mesh.
+//
+// A species entry lives in one of two places: a Biome asset's `flora` list
+// (grows only where that biome's weight is high -- the usual case) or
+// PlantWorld.species (grows everywhere, whatever the biome). PlantScatter
+// merges both into one table; every entry is its own species with its own
+// draw batches, so the same prototype set listed on two biomes costs two
+// sets of draw calls where the biomes meet.
 [Serializable]
 public class PlantSpecies
 {
@@ -13,6 +20,8 @@ public class PlantSpecies
     public PlantPrototypeSet prototypes;
 
     [Header("How many")]
+    [Tooltip("A preset for perPlot and plotChance, applied whenever this entry is validated. Custom leaves them alone. Landmark is one plant in roughly every twenty-fifth plot: for hero assets over the triangle budget, and it also turns mesh LOD off so the silhouette never swaps.")]
+    public PlantRarity rarity = PlantRarity.Custom;
     [Tooltip("Instances per plot before any filter rejects them. The plot is plotSize metres square, so this is density, not a world total.")]
     [Range(0, 64)] public int perPlot = 6;
     [Tooltip("Chance a given plot grows this species at all. Below 1 it clumps into stands instead of spreading evenly.")]
@@ -42,7 +51,33 @@ public class PlantSpecies
     public float cullDistance = 160f;
 
     public bool enabled = true;
+
+    // Clamps the distances into a sane order and applies the rarity preset.
+    // Called from every asset that holds a species list, so a Biome and a
+    // PlantWorld agree on what "rare" means.
+    public void Validate()
+    {
+        switch (rarity)
+        {
+            case PlantRarity.Common:   perPlot = 8; plotChance = 0.85f; break;
+            case PlantRarity.Uncommon: perPlot = 3; plotChance = 0.5f; break;
+            case PlantRarity.Rare:     perPlot = 1; plotChance = 0.25f; break;
+            case PlantRarity.Landmark: perPlot = 1; plotChance = 0.04f; useLod = false; break;
+        }
+        cullDistance = Mathf.Max(0f, cullDistance);
+        impostorDistance = Mathf.Clamp(impostorDistance, 0f, cullDistance);
+        lod2Distance = Mathf.Min(lod2Distance, cullDistance);
+        lod1Distance = Mathf.Min(lod1Distance, lod2Distance);
+    }
+
+    public static void ValidateAll(PlantSpecies[] list)
+    {
+        if (list == null) return;
+        foreach (var s in list) s?.Validate();
+    }
 }
+
+public enum PlantRarity { Custom, Common, Uncommon, Rare, Landmark }
 
 [CreateAssetMenu(fileName = "PlantWorld", menuName = "Marching Cubes/Plant World")]
 public class PlantWorld : ScriptableObject
@@ -60,6 +95,7 @@ public class PlantWorld : ScriptableObject
     [Tooltip("Plots kept built. Exceeding it clears the cache; plots are deterministic so nothing is lost but the work.")]
     public int maxCachedPlots = 4096;
 
+    [Tooltip("Species that grow EVERYWHERE, regardless of biome. Species that belong to one biome go on that Biome asset's Flora list instead; PlantScatter merges both.")]
     public PlantSpecies[] species = new PlantSpecies[0];
 
     // A plant cannot be drawn before its plot exists, so the populated radius
@@ -69,17 +105,13 @@ public class PlantWorld : ScriptableObject
     void OnValidate()
     {
         plotSize = Mathf.Max(2f, plotSize);
+        PlantSpecies.ValidateAll(species);
         float maxCull = 0f;
         if (species != null)
             foreach (var s in species)
-            {
-                if (s == null) continue;
-                s.cullDistance = Mathf.Max(0f, s.cullDistance);
-                s.impostorDistance = Mathf.Clamp(s.impostorDistance, 0f, s.cullDistance);
-                s.lod2Distance = Mathf.Min(s.lod2Distance, s.cullDistance);
-                s.lod1Distance = Mathf.Min(s.lod1Distance, s.lod2Distance);
-                if (s.enabled) maxCull = Mathf.Max(maxCull, s.cullDistance);
-            }
+                if (s != null && s.enabled) maxCull = Mathf.Max(maxCull, s.cullDistance);
+        // Biome flora lists are not visible from here; PlantScatter raises
+        // its working radius above their cull distances at runtime.
         radius = Mathf.Max(radius, maxCull + plotSize * 2f, plotSize * 2f);
     }
 }

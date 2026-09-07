@@ -1,0 +1,78 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: MossCarpetGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Tessellated moss carpet: ground cover. Five to seven runners crawl out
+
+    // from the centre along the ground, wandering and forking, and every step
+
+    // drops a flat eight-sided pad, spaced closer than a pad is wide so they
+
+    // overlap like scales; each pad is tilted a little so the carpet is lumpy.
+
+    // Two greens are mixed. One pad in eight raises a short rust spore stalk
+
+    // with a pale glowing head.
+
+    //
+
+    // Per-seed variation: facing, runner count, every wander, fork, pad size,
+
+    // colour mix, which pads carry stalks.
+
+    
+
+    // X 1, N 10, R 12. 23.
+
+    #iterations: 24
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) f(0.05) N(rand(7,10), rand(0.35,0.5))
+
+    
+
+    N(n,s) : n > 0 -> [ /(rand(360)) &(90) $ R(rand(7,12), s*rand(0.8,1.2)) ] N(n-1, s)
+
+    N(n,s) : n <= 0 -> $
+
+    
+
+    // R(k,s): a runner: yaw-wander, pad, maybe a stalk, maybe a fork.
+
+    R(k,s) : k > 0 : 0.55 -> $ +(rand(-40,40)) f(s*0.55) [ &(rand(-12,12)) +(rand(-12,12)) M(s*rand(1.0,1.5)) ] T(s) R(k-1, s*rand(0.92,1.04))
+
+    R(k,s) : k > 0 : 0.45 -> $ +(rand(-40,40)) f(s*0.55) [ &(rand(-12,12)) +(rand(-12,12)) M(s*rand(1.0,1.5)) ] T(s) [ +(rand(50,90)) R(k-3, s*0.9) ] R(k-1, s*rand(0.92,1.04))
+
+    R(k,s) : k <= 0 -> $
+
+    
+
+    // M(s): the pad, one of two greens.
+
+    M(s) : 0.6 -> P(s)
+
+    M(s) : 0.4 -> Q(s)
+
+    
+
+    // T(s): spore stalk, one in eight pads.
+
+    T(s) : 0.125 -> [ ^(90) +(rand(-15,15)) &(rand(-15,15)) f(s*0.6) K(s*1.2) f(s*0.6) O(s*0.32) ]
+
+    T(s) : 0.875 -> $'
+  iterations: 24

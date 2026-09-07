@@ -22,3 +22,208 @@ MonoBehaviour:
   colorSteep: {r: 0.55, g: 0.7, b: 0.82, a: 1}
   albedo: {fileID: 0}
   normalMap: {fileID: 0}
+  flora:
+  - label: GlowPlant
+    prototypes: {fileID: 11400000, guid: 894caf04fbd3dfa4aa425b2e2ea86af1, type: 2}
+    rarity: 1
+    perPlot: 8
+    plotChance: 0.85
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 1
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
+    enabled: 1
+  - label: PuffballPlant
+    prototypes: {fileID: 11400000, guid: 0ebb5a791b60bdc49b4cb207c51dc39c, type: 2}
+    rarity: 1
+    perPlot: 8
+    plotChance: 0.85
+    minUpness: 0.7
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.1
+    useLod: 1
+    lod1Distance: 25
+    lod2Distance: 50
+    impostorDistance: 70
+    cullDistance: 220
+    enabled: 1
+  - label: FernPlant
+    prototypes: {fileID: 11400000, guid: c82b2375b6fdf6040bccf07599caf9cc, type: 2}
+    rarity: 1
+    perPlot: 8
+    plotChance: 0.85
+    minUpness: 0.7
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.1
+    useLod: 1
+    lod1Distance: 25
+    lod2Distance: 50
+    impostorDistance: 70
+    cullDistance: 220
+    enabled: 1
+  - label: CoralFungusPlant
+    prototypes: {fileID: 11400000, guid: 6c304b3b98a55b84aa1ad931eeb24d9b, type: 2}
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
+    minUpness: 0.7
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.1
+    useLod: 1
+    lod1Distance: 25
+    lod2Distance: 50
+    impostorDistance: 70
+    cullDistance: 220
+    enabled: 1
+  - label: BellowsPlant
+    prototypes: {fileID: 11400000, guid: c49494154a0751d439bde78279b00ced, type: 2}
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 1
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
+    enabled: 1
+  - label: WhiteCoralShrubPlant
+    prototypes: {fileID: 11400000, guid: bd1acda1396dfdb41a776c726e9f8b6c, type: 2}
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
+    minUpness: 0.7
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.1
+    useLod: 1
+    lod1Distance: 25
+    lod2Distance: 50
+    impostorDistance: 70
+    cullDistance: 220
+    enabled: 1
+  - label: CordycepsPlant
+    prototypes: {fileID: 11400000, guid: 81ac9fa5580f69647937a4b46b4a8de4, type: 2}
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 1
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
+    enabled: 1
+  - label: SeaFanPlant
+    prototypes: {fileID: 11400000, guid: 8ca94fc45d42d1e479e11a0227d3a5fd, type: 2}
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 1
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
+    enabled: 1
+  - label: MistTreePlant
+    prototypes: {fileID: 11400000, guid: 93d10730662bf4a498f2680100e24509, type: 2}
+    rarity: 3
+    perPlot: 1
+    plotChance: 0.25
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 1
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
+    enabled: 1
+  - label: FrondTowerPlant
+    prototypes: {fileID: 11400000, guid: c6a3eefe16dd0cf488997e5b63f2b178, type: 2}
+    rarity: 3
+    perPlot: 1
+    plotChance: 0.25
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 1
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
+    enabled: 1
+  - label: LatticeFanPlant
+    prototypes: {fileID: 11400000, guid: 4c9b8c5577e855c4eaca2b0ca385f02f, type: 2}
+    rarity: 4
+    perPlot: 1
+    plotChance: 0.04
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.9, y: 1.1}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 0
+    lod1Distance: 60
+    lod2Distance: 120
+    impostorDistance: 150
+    cullDistance: 900
+    enabled: 1
+  - label: ChanterellePlant
+    prototypes: {fileID: 11400000, guid: 10f537d3423984e4e8b3763a051c064e, type: 2}
+    rarity: 4
+    perPlot: 1
+    plotChance: 0.04
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.9, y: 1.1}
+    leanDegrees: 6
+    sink: 0.4
+    useLod: 0
+    lod1Distance: 60
+    lod2Distance: 120
+    impostorDistance: 150
+    cullDistance: 900
+    enabled: 1

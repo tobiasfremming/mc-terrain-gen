@@ -10,46 +10,33 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 01db12252b7120b4281a3eaa4b96f2d2, type: 3}
-  m_Name: StarSpirePlant
+  m_Name: BonsaiPlant
   m_EditorClassIdentifier: Assembly-CSharp::PlantProfile
-  grammar: {fileID: 11400000, guid: e5607182939ab5c6d7e8f9a0b1c23456, type: 2}
+  grammar: {fileID: 11400000, guid: c0ae1f2b3c4d5e6f708192031425364a, type: 2}
   iterations: -1
-  seed: 12
+  seed: 501
   maxModules: 250000
   turtle:
     stepLength: 1
     angleDegrees: 25
-    initialWidth: 1.7
+    initialWidth: 1.9
     widthFactor: 0.7
     lengthFactor: 0.9
     origin: {x: 0, y: 0, z: 0}
     heading: {x: 0, y: 1, z: 0}
     up: {x: 0, y: 0, z: -1}
   stemShape: 4
-  stemColor: {r: 0.62, g: 0.63, b: 0.66, a: 1}
+  stemColor: {r: 0.34, g: 0.27, b: 0.23, a: 1}
   stemRadiusScale: 1.0
-  minStemRadius: 0.008
+  minStemRadius: 0.02
   taperStems: 1
   hideStemsBelowRadius: 0
   parts:
-  - symbol: K
-    shape: 8
+  - symbol: E
+    shape: 2
     prefab: {fileID: 0}
-    color: {r: 0.3, g: 0.28, b: 0.3, a: 1}
-    scale: {x: 1, y: 0.5, z: 1}
-    sizeFrom: 1
-    paramIndex: 0
-    sizeMultiplier: 1
-    emission: 0
-    alignToHeading: 1
-    eulerOffset: {x: -90, y: 0, z: 0}
-    localOffset: {x: 0, y: 0, z: 0}
-    enabled: 1
-  - symbol: O
-    shape: 9
-    prefab: {fileID: 0}
-    color: {r: 0.55, g: 0.52, b: 0.5, a: 1}
-    scale: {x: 1, y: 1.2, z: 1}
+    color: {r: 0.62, g: 0.13, b: 0.13, a: 1}
+    scale: {x: 1, y: 0.42, z: 1}
     sizeFrom: 1
     paramIndex: 0
     sizeMultiplier: 1
@@ -58,24 +45,11 @@ MonoBehaviour:
     eulerOffset: {x: 90, y: 0, z: 0}
     localOffset: {x: 0, y: 0, z: 0}
     enabled: 1
-  - symbol: B
+  - symbol: J
     shape: 7
     prefab: {fileID: 0}
-    color: {r: 0.88, g: 0.25, b: 0.12, a: 1}
-    scale: {x: 0.3, y: 0.5, z: 0.05}
-    sizeFrom: 1
-    paramIndex: 0
-    sizeMultiplier: 1
-    emission: 0
-    alignToHeading: 1
-    eulerOffset: {x: 90, y: 0, z: 0}
-    localOffset: {x: 0, y: 0, z: 0}
-    enabled: 1
-  - symbol: Y
-    shape: 7
-    prefab: {fileID: 0}
-    color: {r: 0.96, g: 0.48, b: 0.15, a: 1}
-    scale: {x: 0.3, y: 0.5, z: 0.05}
+    color: {r: 0.86, g: 0.82, b: 0.74, a: 1}
+    scale: {x: 0.14, y: 1, z: 0.14}
     sizeFrom: 1
     paramIndex: 0
     sizeMultiplier: 1

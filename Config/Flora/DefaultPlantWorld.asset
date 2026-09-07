@@ -17,67 +17,20 @@ MonoBehaviour:
   radius: 750
   maxCachedPlots: 16384
   species:
-  - label: TreePlant
-    prototypes: {fileID: 11400000, guid: 64aaff2b43c8c85429858d161a39e2a0, type: 2}
-    perPlot: 2
-    plotChance: 0.45
-    minUpness: 0.86
-    minHeight: -1000
-    maxHeight: 1000
-    scaleRange: {x: 0.8, y: 1.25}
-    leanDegrees: 5
-    sink: 0.4
-    useLod: 0
-    lod1Distance: 45
-    lod2Distance: 75
-    impostorDistance: 120
-    cullDistance: 700
-    enabled: 1
-  - label: BramblePlant
-    prototypes: {fileID: 11400000, guid: ae1f5275fbe87a048be2cea7863bf202, type: 2}
-    perPlot: 3
-    plotChance: 0.35
-    minUpness: 0.8
-    minHeight: -1000
-    maxHeight: 1000
-    scaleRange: {x: 0.8, y: 1.25}
-    leanDegrees: 8
-    sink: 0.3
-    useLod: 1
-    lod1Distance: 45
-    lod2Distance: 75
-    impostorDistance: 70
-    cullDistance: 220
-    enabled: 1
   - label: HerbPlant
     prototypes: {fileID: 11400000, guid: 338a70b2870034b45b6aca2674e5f76b, type: 2}
-    perPlot: 6
-    plotChance: 0.7
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
     minUpness: 0.75
     minHeight: -1000
     maxHeight: 1000
-    scaleRange: {x: 0.8, y: 1.25}
-    leanDegrees: 10
-    sink: 0.15
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
     useLod: 1
-    lod1Distance: 45
-    lod2Distance: 75
-    impostorDistance: 70
-    cullDistance: 220
-    enabled: 1
-  - label: FernPlant
-    prototypes: {fileID: 11400000, guid: c82b2375b6fdf6040bccf07599caf9cc, type: 2}
-    perPlot: 5
-    plotChance: 0.6
-    minUpness: 0.72
-    minHeight: -1000
-    maxHeight: 1000
-    scaleRange: {x: 0.8, y: 1.25}
-    leanDegrees: 12
-    sink: 0.1
-    useLod: 1
-    lod1Distance: 45
-    lod2Distance: 75
-    impostorDistance: 70
-    cullDistance: 220
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
     enabled: 1

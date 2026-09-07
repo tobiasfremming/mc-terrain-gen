@@ -77,8 +77,10 @@ public class BiomeDensityField : DensityField
         return biomes[i].terrain;
     }
 
-    // Thread-safe: pure math on stack memory, no shared scratch.
-    void ComputeWeights(float wx, float wz, Span<float> w, int n)
+    // Thread-safe: pure math on stack memory, no shared scratch. Public for
+    // PlantScatter, which accepts a candidate plant with probability equal
+    // to its biome's weight at that spot.
+    public void ComputeWeights(float wx, float wz, Span<float> w, int n)
     {
         uint s = unchecked((uint)seed);
         float maxA = float.MinValue;

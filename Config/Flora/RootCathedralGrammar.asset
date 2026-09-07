@@ -1,0 +1,132 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: RootCathedralGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Root cathedral: a landmark with no canopy. A short, thick, crooked column
+
+    // rises to a hub ten metres up; every hub segment sheds three to five
+
+    // arching roots that leave near horizontal, are pulled down harder each
+
+    // segment and land twenty to thirty metres out, forking twice on the way,
+
+    // so the ground under the hub is a hall of arches. From the hub top, two
+
+    // to four high arches leave climbing and fall further out. From the third
+
+    // segment on, some arch segments drop straight columns to the ground. The
+
+    // column ends in a dead crooked spike with a few dull red cards.
+
+    //
+
+    // Per-seed variation: facing, hub height, root count per segment, every
+
+    // launch, kink, fork and pull, which segments drop columns.
+
+    
+
+    // X 1, W 1, H 6, E 5, R 20, A 1, P 13, D 8. 55.
+
+    #iterations: 58
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) W(rand(2.2,3.0))
+
+    W(w) -> !(w) H(rand(4,6), 2.6, w)
+
+    
+
+    // H(k,l,w): the column to the hub, shedding arches every segment.
+
+    H(k,l,w) : k > 0 -> !(w*rand(0.9,1.15)) F(l*rand(0.7,1.2)) &(rand(-10,10)) +(rand(-10,10)) /(rand(-40,40)) $ ^(rand(2,6)) [ E(rand(3,5), w) ] H(k-1, l, w*0.96)
+
+    H(k,l,w) : k <= 0 -> [ B(rand(2,4), w) ] S(rand(3,5), 1.4, w*0.5)
+
+    
+
+    E(n,w) : n > 0 -> [ /(rand(360)) &(rand(70,95)) R(rand(10,12), 2.4, w*rand(0.35,0.55), rand(7,10), 0) ] E(n-1, w)
+
+    E(n,w) : n <= 0 -> $
+
+    
+
+    B(n,w) : n > 0 -> [ /(rand(360)) &(rand(25,50)) R(rand(17,20), 2.4, w*0.5, rand(8,10), 0) ] B(n-1, w)
+
+    B(n,w) : n <= 0 -> $
+
+    
+
+    // S(k,l,w): the dead spike above the hub.
+
+    S(k,l,w) : k > 0 -> !(w*rand(0.85,1.15)) F(l*rand(0.7,1.3)) &(rand(-15,15)) +(rand(-15,15)) /(rand(-40,40)) $ ^(rand(4,10)) [ /(rand(360)) &(rand(40,70)) f(0.6) Y(rand(0.8,1.4)) ] S(k-1, l, w*0.7)
+
+    S(k,l,w) : k <= 0 -> !(w) F(l*0.6)
+
+    
+
+    // R(k,l,w,u,i): the arch: crooked, pulled to the ground, forks at k = 7
+
+    // and k = 4; the hook A may drop a column.
+
+    R(k,l,w,u,i) : k > 7.5 : 0.75 -> !(w*rand(0.8,1.2)) F(l*rand(0.6,1.4)) &(rand(-15,15)) +(rand(-15,15)) /(rand(-40,40)) $ &(u*rand(0.3,1.9)) A(i, w) R(k-1, l*0.98, w*0.95, u, i+1)
+
+    R(k,l,w,u,i) : k > 7.5 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(15,35)) $ &(u*rand(0.5,1.5)) A(i, w) R(k-1, l*0.98, w*0.95, u, i+1)
+
+    R(k,l,w,u,i) : k > 6.5 && k <= 7.5 -> !(w) F(l*rand(0.7,1.1)) $ &(u) !(w*0.75) [ +(rand(20,40)) /(rand(-30,30)) R(k-1, l*0.96, w*0.75, u, i+1) ] [ -(rand(20,40)) /(rand(-30,30)) R(k-1, l*0.96, w*0.75, u, i+1) ]
+
+    R(k,l,w,u,i) : k > 4.5 && k <= 6.5 : 0.75 -> !(w*rand(0.8,1.2)) F(l*rand(0.6,1.4)) &(rand(-15,15)) +(rand(-15,15)) /(rand(-40,40)) $ &(u*rand(0.3,1.9)) A(i, w) R(k-1, l*0.98, w*0.95, u, i+1)
+
+    R(k,l,w,u,i) : k > 4.5 && k <= 6.5 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(15,35)) $ &(u*rand(0.5,1.5)) A(i, w) R(k-1, l*0.98, w*0.95, u, i+1)
+
+    R(k,l,w,u,i) : k > 3.5 && k <= 4.5 -> !(w) F(l*rand(0.7,1.1)) $ &(u) !(w*0.75) [ +(rand(15,35)) /(rand(-30,30)) R(k-1, l*0.96, w*0.75, u, i+1) ] [ -(rand(15,35)) /(rand(-30,30)) R(k-1, l*0.96, w*0.75, u, i+1) ]
+
+    R(k,l,w,u,i) : k > 0 && k <= 3.5 : 0.75 -> !(w*rand(0.8,1.2)) F(l*rand(0.6,1.4)) &(rand(-15,15)) +(rand(-15,15)) /(rand(-40,40)) $ &(u*rand(0.6,1.9)) A(i, w) R(k-1, l*0.98, w*0.95, u, i+1)
+
+    R(k,l,w,u,i) : k > 0 && k <= 3.5 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(15,35)) $ &(u*rand(0.5,1.5)) A(i, w) R(k-1, l*0.98, w*0.95, u, i+1)
+
+    R(k,l,w,u,i) : k <= 0 -> !(w) F(l*0.6) !(w*0.5) [ +(rand(20,40)) F(l*0.6) ] [ -(rand(20,40)) F(l*0.6) ]
+
+    
+
+    // A(i,w): column hook: from the third segment on, one in six.
+
+    A(i,w) : i >= 2 : 0.17 -> [ P(12) D(rand(5,8), 1.6, w*0.4, rand(4,7)) ]
+
+    A(i,w) : i >= 2 : 0.83 -> $
+
+    A(i,w) : i < 2 -> $
+
+    
+
+    // P(n): point at the ground in 10-degree steps ("$ &(90)" is relative to
+
+    // the arch, which is already heading down).
+
+    P(n) : n > 0 -> $ &(10) P(n-1)
+
+    P(n) : n <= 0 -> /(rand(360))
+
+    
+
+    // D(k,l,w,u): a column: nearly straight down, kinked, pulled down.
+
+    D(k,l,w,u) : k > 0 -> !(w*rand(0.85,1.15)) F(l*rand(0.7,1.3)) &(rand(-8,8)) +(rand(-8,8)) /(rand(-40,40)) $ &(u) D(k-1, l, w*0.97, u)
+
+    D(k,l,w,u) : k <= 0 -> !(w) F(l)'
+  iterations: 58

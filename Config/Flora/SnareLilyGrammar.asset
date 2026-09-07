@@ -1,0 +1,112 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: SnareLilyGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Snare colony. A rosette of strap leaves and two to four crooked stalks
+
+    // that arch over (in-plane pitch past the vertical), throwing coiling
+
+    // tendrils from a third of their segments, each ending in a trap: two
+
+    // ribbed jaw plates open seventy degrees, a row of fangs across each rim
+
+    // and a shorter row inside, three glowing lure beads in the throat and two
+
+    // beaded lure filaments hanging from it. (Plausible: several traps per
+
+    // plant, each fishing its own patch of air.)
+
+    //
+
+    // Per-seed variation: facing, leaf count, stalk count, per stalk the
+
+    // length, arch and kinks, tendril placement, trap size.
+
+    
+
+    #define PHI 137.5
+
+    
+
+    // X 1, Q 4, S 11 + 1, T 1, K 7; L coils 9. 25.
+
+    #iterations: 28
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) !(0.08) [ B(rand(6,10)) ] Q(rand(2,4))
+
+    
+
+    B(n) : n > 0 -> [ /(PHI*n) &(rand(50,80)) f(0.5) L(1.0) ] B(n-1)
+
+    B(n) : n <= 0 -> $
+
+    
+
+    Q(n) : n > 0 -> [ /(rand(360)) &(rand(5,20)) S(rand(7,11), 0.3, 0.08, rand(7,11)) ] Q(n-1)
+
+    Q(n) : n <= 0 -> $
+
+    
+
+    S(k,l,w,u) : k > 0 : 0.5 -> !(w*rand(0.85,1.2)) F(l*rand(0.7,1.3)) ^(u*rand(0.6,1.4)) +(rand(-8,8)) S(k-1, l, w*0.97, u)
+
+    S(k,l,w,u) : k > 0 : 0.2 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) ^(u*1.3) +(rand(-14,14)) S(k-1, l, w*0.97, u)
+
+    S(k,l,w,u) : k > 0 : 0.3 -> !(w*rand(0.85,1.2)) F(l*rand(0.7,1.3)) ^(u*rand(0.6,1.4)) +(rand(-8,8)) [ /(rand(360)) +(rand(40,80)) !(0.008) C(rand(6,9), 0.12, 10, 0.008) ] S(k-1, l, w*0.97, u)
+
+    S(k,l,w,u) : k <= 0 -> !(w) F(l*0.5) T(rand(0.6,0.85))
+
+    
+
+    // C(k,l,a,w): a tendril coil that tightens.
+
+    C(k,l,a,w) : k > 0 -> !(w) F(l) &(a) /(rand(-8,8)) C(k-1, l*0.93, a*1.1, w*0.95)
+
+    C(k,l,a,w) : k <= 0 -> !(w) F(l) f(0.02) D(0.03)
+
+    
+
+    // T(s): the trap.
+
+    T(s) -> [ ^(35) f(s*0.5) J(s) K(6, s) I(5, s) V(4, s) ] [ &(35) f(s*0.5) J(s) K(6, s) I(5, s) V(4, s) ] f(s*0.12) M(s*0.14) f(s*0.1) M(s*0.11) f(s*0.1) M(s*0.09) [ &(90) /(rand(360)) !(0.005) F(0.05) A(4, 0.12) ] [ &(90) /(rand(360)) !(0.005) F(0.05) A(4, 0.12) ]
+
+    
+
+    // K(n,s): the rim fangs; I(n,s): the inner row; V(n,s): ribs on the plate.
+
+    K(n,s) : n > 0 -> [ +(-54 + 18*n) f(s*0.62) &(rand(-30,-15)) Z(s*0.38) ] K(n-1, s)
+
+    K(n,s) : n <= 0 -> $
+
+    I(n,s) : n > 0 -> [ +(-45 + 18*n) f(s*0.45) &(-20) Z(s*0.22) ] I(n-1, s)
+
+    I(n,s) : n <= 0 -> $
+
+    V(n,s) : n > 0 -> [ +(-40 + 20*n) f(s*0.3) R(s*0.5) ] V(n-1, s)
+
+    V(n,s) : n <= 0 -> $
+
+    
+
+    // A(k,l): a lure filament hanging from the throat, beaded.
+
+    A(k,l) : k > 0 -> F(l) &(rand(-6,6)) +(rand(-6,6)) $ &(20) D(0.025) A(k-1, l)
+
+    A(k,l) : k <= 0 -> f(0.02) M(0.04)'
+  iterations: 28

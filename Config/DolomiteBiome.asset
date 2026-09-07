@@ -22,3 +22,259 @@ MonoBehaviour:
   colorSteep: {r: 0.8, g: 0.76, b: 0.7, a: 1}
   albedo: {fileID: 0}
   normalMap: {fileID: 0}
+  flora:
+  - label: MossCarpetPlant
+    prototypes: {fileID: 11400000, guid: a9c71353467abdb47802be5d4b2992e1, type: 2}
+    rarity: 1
+    perPlot: 8
+    plotChance: 0.85
+    minUpness: 0.7
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.1
+    useLod: 1
+    lod1Distance: 25
+    lod2Distance: 50
+    impostorDistance: 70
+    cullDistance: 220
+    enabled: 1
+  - label: RedMossPlant
+    prototypes: {fileID: 11400000, guid: 60881100569fd8243b00e384897d0518, type: 2}
+    rarity: 1
+    perPlot: 8
+    plotChance: 0.85
+    minUpness: 0.7
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.1
+    useLod: 1
+    lod1Distance: 25
+    lod2Distance: 50
+    impostorDistance: 70
+    cullDistance: 220
+    enabled: 1
+  - label: TreePlant
+    prototypes: {fileID: 11400000, guid: 64aaff2b43c8c85429858d161a39e2a0, type: 2}
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
+    minUpness: 0.85
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 3
+    sink: 0.4
+    useLod: 1
+    lod1Distance: 45
+    lod2Distance: 90
+    impostorDistance: 120
+    cullDistance: 700
+    enabled: 1
+  - label: NestedBloomPlant
+    prototypes: {fileID: 11400000, guid: 281f8249eb28979468f39a9d3d4c7cc8, type: 2}
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 1
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
+    enabled: 1
+  - label: AnemonePlant
+    prototypes: {fileID: 11400000, guid: 8437eddf2f1a8db4a8e44feb53570b8d, type: 2}
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 1
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
+    enabled: 1
+  - label: RedCoralShrubPlant
+    prototypes: {fileID: 11400000, guid: b781e7be01cd53d40b0a31f094bbb391, type: 2}
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
+    minUpness: 0.7
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.1
+    useLod: 1
+    lod1Distance: 25
+    lod2Distance: 50
+    impostorDistance: 70
+    cullDistance: 220
+    enabled: 1
+  - label: TendrilTreePlant
+    prototypes: {fileID: 11400000, guid: bda4c9c6e1f2c2c4ab8ba01d01bfb36f, type: 2}
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
+    minUpness: 0.85
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 3
+    sink: 0.4
+    useLod: 1
+    lod1Distance: 45
+    lod2Distance: 90
+    impostorDistance: 120
+    cullDistance: 700
+    enabled: 1
+  - label: FanTreePlant
+    prototypes: {fileID: 11400000, guid: 4723bd22fdb843b478bc9e18870ce673, type: 2}
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
+    minUpness: 0.85
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 3
+    sink: 0.4
+    useLod: 1
+    lod1Distance: 45
+    lod2Distance: 90
+    impostorDistance: 120
+    cullDistance: 700
+    enabled: 1
+  - label: BanyanPlant
+    prototypes: {fileID: 11400000, guid: bf5ee3b5ef333bc47a4503b069551c63, type: 2}
+    rarity: 3
+    perPlot: 1
+    plotChance: 0.25
+    minUpness: 0.85
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 3
+    sink: 0.4
+    useLod: 1
+    lod1Distance: 45
+    lod2Distance: 90
+    impostorDistance: 120
+    cullDistance: 700
+    enabled: 1
+  - label: CurtainTreePlant
+    prototypes: {fileID: 11400000, guid: 2b67ba35492f495469ab2ed1c62413c4, type: 2}
+    rarity: 3
+    perPlot: 1
+    plotChance: 0.25
+    minUpness: 0.85
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 3
+    sink: 0.4
+    useLod: 1
+    lod1Distance: 45
+    lod2Distance: 90
+    impostorDistance: 120
+    cullDistance: 700
+    enabled: 1
+  - label: KrakenVinePlant
+    prototypes: {fileID: 11400000, guid: b9c59cc627a077e4fabf18a2e1429740, type: 2}
+    rarity: 3
+    perPlot: 1
+    plotChance: 0.25
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 1
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
+    enabled: 1
+  - label: LanternTreePlant
+    prototypes: {fileID: 11400000, guid: b732a5f16a8bd234082c58c9f7ce957b, type: 2}
+    rarity: 3
+    perPlot: 1
+    plotChance: 0.25
+    minUpness: 0.85
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 3
+    sink: 0.4
+    useLod: 1
+    lod1Distance: 45
+    lod2Distance: 90
+    impostorDistance: 120
+    cullDistance: 700
+    enabled: 1
+  - label: OakPlant
+    prototypes: {fileID: 11400000, guid: 5ed2b0d9ed9993c4e96c029c686b1ea6, type: 2}
+    rarity: 4
+    perPlot: 1
+    plotChance: 0.04
+    minUpness: 0.85
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.9, y: 1.1}
+    leanDegrees: 3
+    sink: 0.4
+    useLod: 0
+    lod1Distance: 60
+    lod2Distance: 120
+    impostorDistance: 150
+    cullDistance: 900
+    enabled: 1
+  - label: PodTreePlant
+    prototypes: {fileID: 11400000, guid: 4e2527b6a797c37429eae749d7cf03ae, type: 2}
+    rarity: 4
+    perPlot: 1
+    plotChance: 0.04
+    minUpness: 0.85
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.9, y: 1.1}
+    leanDegrees: 3
+    sink: 0.4
+    useLod: 0
+    lod1Distance: 60
+    lod2Distance: 120
+    impostorDistance: 150
+    cullDistance: 900
+    enabled: 1
+  - label: RedUmbrellaPlant
+    prototypes: {fileID: 11400000, guid: 574ec35772f3e7e41a514b476cb6dc91, type: 2}
+    rarity: 4
+    perPlot: 1
+    plotChance: 0.04
+    minUpness: 0.85
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.9, y: 1.1}
+    leanDegrees: 3
+    sink: 0.4
+    useLod: 0
+    lod1Distance: 60
+    lod2Distance: 120
+    impostorDistance: 150
+    cullDistance: 900
+    enabled: 1

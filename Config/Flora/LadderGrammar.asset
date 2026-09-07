@@ -1,0 +1,84 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: LadderGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Rung spire. One kinked stem, nine to thirteen segments; at every segment
+
+    // three pads in a golden-angle spiral, each a level tank rimmed with six
+
+    // spines and holding two beads of water, bigger toward the ground; a spiny
+
+    // corona around a bud on top. (Plausible: stacked tanks that catch what
+
+    // falls from the ones above.)
+
+    //
+
+    // Per-seed variation: facing, segment count, every kink, pad angles and
+
+    // tilts, bead placement, corona size.
+
+    
+
+    #define PHI 137.5
+
+    
+
+    // X 1, S 13 + 1, P 1, R 6; Y 10. 22.
+
+    #iterations: 25
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) !(0.14) S(rand(9,13), 0.4, 0.14, 0)
+
+    
+
+    S(k,l,w,i) : k > 0 : 0.75 -> !(w*rand(0.85,1.2)) F(l*rand(0.7,1.3)) &(rand(-10,10)) +(rand(-10,10)) /(rand(-40,40)) $ ^(rand(2,6)) P(i, w) S(k-1, l, w*0.94, i+1)
+
+    S(k,l,w,i) : k > 0 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(12,25)) $ ^(rand(2,6)) P(i, w) S(k-1, l, w*0.94, i+1)
+
+    S(k,l,w,i) : k <= 0 -> !(w) F(l*0.4) Y(10) f(0.12) E(0.2)
+
+    
+
+    // P(i,w): three pads round the node, each on the golden spiral.
+
+    P(i,w) -> [ /(PHI*i) +(90) &(rand(-8,8)) $ T(0.35 + 0.05*(12-i)) ] [ /(PHI*i + 120) +(90) &(rand(-8,8)) $ T(0.33 + 0.05*(12-i)) ] [ /(PHI*i + 240) +(90) &(rand(-8,8)) $ T(0.3 + 0.05*(12-i)) ]
+
+    
+
+    // T(r): a pad: walk out, drop the tank, rim spines, two water beads.
+
+    T(r) -> f(r*0.5 + 0.05) D(r) R(6, r) [ +(rand(0,360)) f(r*rand(0.08,0.25)) ^(90) f(0.03) V(0.06 + r*0.04) ] [ +(rand(0,360)) f(r*rand(0.08,0.25)) ^(90) f(0.03) V(0.05 + r*0.04) ]
+
+    
+
+    // R(n,r): spines around the rim, tilted up and out.
+
+    R(n,r) : n > 0 -> [ +(60*n + rand(-10,10)) f(r*0.48) ^(rand(25,45)) Z(r*0.3) ] R(n-1, r)
+
+    R(n,r) : n <= 0 -> $
+
+    
+
+    // Y(n): the corona: spines in a spiral around the bud.
+
+    Y(n) : n > 0 -> [ /(PHI*n) &(rand(25,60)) f(0.08) Z(0.3) ] Y(n-1)
+
+    Y(n) : n <= 0 -> $'
+  iterations: 25

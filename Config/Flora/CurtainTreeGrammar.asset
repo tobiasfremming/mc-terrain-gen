@@ -1,0 +1,132 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: CurtainTreeGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Curtain tree: a squat, wide, crooked trunk, four to six crooked limbs
+
+    // leaving level or dipping and sweeping up, and from every limb segment
+
+    // one to three thin cords hang straight down, swaying a little, each ending
+
+    // in a glowing amber seed lantern. Cords are crossed card strips (a thin
+
+    // F would taper into a cone); their length is drawn per cord so the curtain
+
+    // has a ragged hem. A small teal needle tuft ends each limb; that is all
+
+    // the foliage.
+
+    //
+
+    // Per-seed variation: facing, trunk height and lumps, limb count, launch,
+
+    // every kink, which segments drop how many cords, cord lengths and sway.
+
+    
+
+    // X 1, W 1, T 6, Q 6, L 12, A 1, P 16, D 12, then E. 56.
+
+    #iterations: 59
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) W(rand(0.9,1.3))
+
+    W(w) -> !(w) [ G(rand(4,7), w) ] T(rand(4,6), 1.0, w)
+
+    
+
+    // G(n,w): short roots splayed over the ground.
+
+    G(n,w) : n > 0 -> [ /(rand(360)) f(rand(0.3,0.8)) &(rand(80,100)) !(w*rand(0.35,0.5)) F(rand(1.2,2.2)) &(rand(0,15)) +(rand(-25,25)) !(w*0.2) F(rand(1,1.8)) ] G(n-1, w)
+
+    G(n,w) : n <= 0 -> $
+
+    
+
+    // T(k,l,w): the trunk: lumpy, kinked, short.
+
+    T(k,l,w) : k > 0 : 0.7 -> !(w*rand(0.85,1.15)) F(l*rand(0.7,1.3)) &(rand(-12,12)) +(rand(-12,12)) /(rand(-40,40)) $ ^(rand(2,6)) T(k-1, l, w*0.96)
+
+    T(k,l,w) : k > 0 : 0.3 -> !(w*rand(0.9,1.2)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(10,25)) $ ^(rand(3,8)) T(k-1, l, w*0.96)
+
+    T(k,l,w) : k <= 0 -> Q(rand(4,6), w)
+
+    
+
+    // Q(n,w): limbs, leaving level or dipping.
+
+    Q(n,w) : n > 0 -> [ /(rand(360)) &(rand(75,105)) L(rand(9,12), 0.8, w*0.55, rand(3,6), 0) ] /(rand(60,120)) Q(n-1, w)
+
+    Q(n,w) : n <= 0 -> $
+
+    
+
+    // L(k,l,w,u,i): the crooked limb, forking once at k = 6, cords from the
+
+    // second segment on.
+
+    L(k,l,w,u,i) : k > 6.5 : 0.75 -> !(w*rand(0.85,1.2)) F(l*rand(0.6,1.4)) &(rand(-20,20)) +(rand(-20,20)) /(rand(-40,40)) $ ^(u*rand(0.3,1.9)) A(i, w) L(k-1, l*0.97, w*0.95, u, i+1)
+
+    L(k,l,w,u,i) : k > 6.5 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(20,40)) $ ^(u*rand(0.5,1.5)) A(i, w) L(k-1, l*0.97, w*0.95, u, i+1)
+
+    L(k,l,w,u,i) : k > 5.5 && k <= 6.5 -> !(w*rand(0.9,1.2)) F(l*rand(0.7,1.2)) $ ^(u) !(w*0.8) [ +(rand(20,45)) /(rand(-40,40)) &(rand(-15,15)) L(k-1, l*0.95, w*0.75, u, i+1) ] [ -(rand(20,45)) /(rand(-40,40)) &(rand(-15,15)) L(k-1, l*0.95, w*0.75, u, i+1) ]
+
+    L(k,l,w,u,i) : k > 0 && k <= 5.5 : 0.75 -> !(w*rand(0.85,1.2)) F(l*rand(0.6,1.4)) &(rand(-20,20)) +(rand(-20,20)) /(rand(-40,40)) $ ^(u*rand(0.3,1.9)) A(i, w) L(k-1, l*0.97, w*0.93, u, i+1)
+
+    L(k,l,w,u,i) : k > 0 && k <= 5.5 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(20,40)) $ ^(u*rand(0.5,1.5)) A(i, w) L(k-1, l*0.97, w*0.93, u, i+1)
+
+    L(k,l,w,u,i) : k <= 0 -> !(w) F(l*0.5) V(5, 0.5)
+
+    
+
+    // V(n,s): the needle tuft.
+
+    V(n,s) : n > 0 -> [ /(72*n + rand(-20,20)) &(rand(20,60)) f(s*0.5) Y(s) ] V(n-1, s)
+
+    V(n,s) : n <= 0 -> $
+
+    
+
+    // A(i,w): the cord hook: from the second segment, one to three cords.
+
+    // "$ &(90)" is relative to the limb: off a limb sweeping up it points back
+
+    // at the trunk. P(n) pitches toward the ground in 10-degree steps instead.
+
+    A(i,w) : i >= 1 : 0.35 -> [ P(15) D(rand(5,10), rand(0.4,0.6)) ]
+
+    A(i,w) : i >= 1 : 0.4 -> [ P(15) D(rand(5,10), rand(0.4,0.6)) ] [ P(15) D(rand(5,10), rand(0.4,0.6)) ]
+
+    A(i,w) : i >= 1 : 0.25 -> [ P(15) D(rand(5,10), rand(0.4,0.6)) ] [ P(15) D(rand(5,10), rand(0.4,0.6)) ] [ P(15) D(rand(5,10), rand(0.4,0.6)) ]
+
+    A(i,w) : i < 1 -> $
+
+    
+
+    P(n) : n > 0 -> $ &(10) P(n-1)
+
+    P(n) : n <= 0 -> /(rand(360)) &(rand(-6,6))
+
+    
+
+    // D(n,l): a cord: crossed card strips, a little sway, a lantern at the end.
+
+    D(n,l) : n > 0 -> f(l*0.5) C(l) /(90) C(l) f(l*0.5) &(rand(-5,5)) +(rand(-5,5)) D(n-1, l)
+
+    D(n,l) : n <= 0 -> f(0.12) E(rand(0.16,0.28))'
+  iterations: 59

@@ -1,0 +1,82 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: TremorReedGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Tremor reeds. Eight to fourteen tall jointed reeds from one clump: a
+
+    // kinked stem with a ring and a sheath-leaf pair at every joint, a pair of
+
+    // side-whips at every third joint (each drooping under a small
+
+    // weight), thinning to a whip that droops under the seed-weight at the tip.
+
+    // (Plausible: pendulum dispersal at two scales.)
+
+    //
+
+    // Per-seed variation: facing, reed count, per reed the offset, lean,
+
+    // height, every kink, which joints throw whips.
+
+    
+
+    // X 1, C 14, R 16, then N 1, Y 2, U 6 + 1 from the last joint = 41.
+
+    #iterations: 45
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) C(rand(8,14))
+
+    
+
+    C(n) : n > 0 -> [ /(rand(360)) &(90) f(rand(0,0.8)) ^(90) /(rand(360)) &(rand(2,15)) R(rand(10,16), 0.32, rand(0.02,0.035), 0) ] C(n-1)
+
+    C(n) : n <= 0 -> $
+
+    
+
+    R(k,l,w,i) : k > 0 : 0.8 -> !(w*rand(0.9,1.15)) F(l*rand(0.8,1.2)) J(w*2.4) &(rand(-6,6)) +(rand(-6,6)) /(rand(-40,40)) $ ^(rand(2,5)) N(i, w) R(k-1, l, w*0.97, i+1)
+
+    R(k,l,w,i) : k > 0 : 0.2 -> !(w) F(l) J(w*2.4) /(rand(360)) &(rand(10,20)) $ ^(rand(2,5)) N(i, w) R(k-1, l, w*0.97, i+1)
+
+    R(k,l,w,i) : k <= 0 -> !(w*0.5) F(l) $ &(rand(30,60)) !(w*0.4) F(l*0.8) $ &(rand(30,60)) F(l*0.6) f(0.07) W(0.14)
+
+    
+
+    // N(i,w): at a joint: a sheath-leaf pair always; a whorl of side-whips on
+
+    // one joint in three.
+
+    N(i,w) : 0.33 -> [ +(90) ^(rand(20,50)) f(0.1) L(0.3) ] [ -(90) ^(rand(20,50)) f(0.1) L(0.3) ] Y(2, w)
+
+    N(i,w) : 0.67 -> [ +(90) ^(rand(20,50)) f(0.1) L(0.3) ] [ -(90) ^(rand(20,50)) f(0.1) L(0.3) ]
+
+    
+
+    Y(n,w) : n > 0 -> [ /(180*n + rand(-40,40)) ^(rand(30,60)) !(w*0.45) U(rand(4,6), 0.2) ] Y(n-1, w)
+
+    Y(n,w) : n <= 0 -> $
+
+    
+
+    // U(k,l): a side-whip: kinked, drooping, a small weight at the end.
+
+    U(k,l) : k > 0 -> F(l*rand(0.8,1.2)) &(rand(-8,8)) +(rand(-8,8)) $ &(rand(8,16)) U(k-1, l*0.95)
+
+    U(k,l) : k <= 0 -> F(l*0.5) f(0.04) K(0.07)'
+  iterations: 45

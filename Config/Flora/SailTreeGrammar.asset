@@ -1,0 +1,106 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: SailTreeGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Sail colony. A crooked rhizome crawls along the ground for six to ten
+
+    // segments; every other segment raises a short kinked mast carrying one
+
+    // vertical sail: twelve ribs fanned across a plane, each rib webbed with
+
+    // strips that widen to the rim, throwing side-veins with their own small
+
+    // webbing, and ending in two fringe filaments. Root pegs and guy-roots pin
+
+    // the whole thing down. (Plausible: many small panels on a creeping stem,
+
+    // each turned its own way.)
+
+    //
+
+    // Per-seed variation: facing, rhizome length and every kink, which segments
+
+    // raise masts, mast heights, sail tilts and sizes, guy-root counts.
+
+    
+
+    // X 1, H 10, M 7 + 1, N 12, B 6, V 3. 40.
+
+    #iterations: 42
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) !(0.12) f(0.15) H(rand(6,10), 0.5, 0.12, 0)
+
+    
+
+    // H(k,l,w,i): the rhizome: level, kinked; a mast or a root peg each step.
+
+    H(k,l,w,i) : k > 0 : 0.5 -> !(w*rand(0.85,1.2)) F(l*rand(0.6,1.4)) +(rand(-30,30)) &(rand(-4,4)) $ &(2) [ ^(rand(60,85)) /(rand(-30,30)) M(rand(3,6), 0.45, w*0.9) ] H(k-1, l, w*0.97, i+1)
+
+    H(k,l,w,i) : k > 0 : 0.5 -> !(w*rand(0.85,1.2)) F(l*rand(0.6,1.4)) +(rand(-30,30)) &(rand(-4,4)) $ &(2) [ /(rand(360)) &(90) f(w*0.6) !(w*0.3) F(rand(0.2,0.5)) ] H(k-1, l, w*0.97, i+1)
+
+    H(k,l,w,i) : k <= 0 -> !(w) F(l*0.5) [ ^(rand(60,85)) M(rand(4,7), 0.45, w*0.9) ]
+
+    
+
+    // M(k,l,w): a mast: crooked, lifting, then guy-roots and the sail.
+
+    M(k,l,w) : k > 0 : 0.75 -> !(w*rand(0.85,1.2)) F(l*rand(0.7,1.3)) &(rand(-12,12)) +(rand(-12,12)) /(rand(-40,40)) $ ^(rand(4,9)) M(k-1, l, w*0.93)
+
+    M(k,l,w) : k > 0 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(15,30)) $ ^(rand(4,9)) M(k-1, l, w*0.93)
+
+    M(k,l,w) : k <= 0 -> !(w) F(0.2) [ G(rand(2,3), w) ] /(rand(360)) &(rand(5,25)) $ O(w*2) N(12, 12, rand(1.4,2.4))
+
+    
+
+    G(n,w) : n > 0 -> [ /(rand(360)) &(rand(120,140)) R(rand(8,12), 0.5, w*0.25, rand(2,4)) ] G(n-1, w)
+
+    G(n,w) : n <= 0 -> $
+
+    R(k,l,w,u) : k > 0 -> !(w*rand(0.9,1.1)) F(l*rand(0.8,1.2)) &(rand(-6,6)) +(rand(-6,6)) /(rand(-30,30)) $ &(u) R(k-1, l, w*0.98, u)
+
+    R(k,l,w,u) : k <= 0 -> !(w) F(l)
+
+    
+
+    // N(n,t,s): the sail: t ribs fanned by pitch, middle ribs longest.
+
+    N(n,t,s) : n > 0 -> [ ^(-80 + 160*n/t + rand(-3,3)) !(0.015) B(6, s*(0.5 + 0.5*(1 - (2*n/t - 1)*(2*n/t - 1)))/6, 1) ] N(n-1, t, s)
+
+    N(n,t,s) : n <= 0 -> $
+
+    
+
+    // B(k,l,j): a rib: strips both sides, a side-vein to one side or the
+
+    // other, two fringe filaments at the end.
+
+    B(k,l,j) : k > 0 : 0.5 -> F(l) [ +(90) f(0.04 + j*0.03) Q(0.08 + j*0.06) ] [ -(90) f(0.04 + j*0.03) Q(0.08 + j*0.06) ] [ +(rand(35,55)) !(0.006) V(3, l*0.6) ] B(k-1, l, j+1)
+
+    B(k,l,j) : k > 0 : 0.5 -> F(l) [ +(90) f(0.04 + j*0.03) Q(0.08 + j*0.06) ] [ -(90) f(0.04 + j*0.03) Q(0.08 + j*0.06) ] [ -(rand(35,55)) !(0.006) V(3, l*0.6) ] B(k-1, l, j+1)
+
+    B(k,l,j) : k <= 0 -> [ ^(20) !(0.004) F(l*0.8) f(0.02) E(0.04) ] [ &(20) !(0.004) F(l*0.8) f(0.02) E(0.04) ]
+
+    
+
+    // V(k,l): a side-vein with its own tiny strips.
+
+    V(k,l) : k > 0 -> F(l) [ +(90) f(0.03) Q(0.06) ] [ -(90) f(0.03) Q(0.06) ] V(k-1, l*0.9)
+
+    V(k,l) : k <= 0 -> $'
+  iterations: 42

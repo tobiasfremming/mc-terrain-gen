@@ -12,71 +12,99 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
   m_Name: StarSpireGrammar
   m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
-  source: '// Star spires (the red star-crowned stalks in the savanna painting, flora
+  source: '// Star crowns on a fallen log (reference: the red star-crowned stalks in
 
-    // board). Three to six stalks rise from one root in a loose fan, each ringed
+    // the savanna). A massive grey log, torn open at its raised root end into
 
-    // at every joint, each ending in a bulb and a crown of three whorls of flat
+    // jagged splinters, slopes down to the ground over ten to thirteen metres.
 
-    // pointed blades: eight crimson outer blades near horizontal, eight orange
+    // From along it, eight to fifteen pale stalks rise nearly straight, each
 
-    // inner ones steeper, five yellow ones almost upright, and a centre spike,
+    // leaning its own way so they fan out like a bouquet, with a fibrous cuff
 
-    // with a skirt of dead blades hanging below.
+    // hanging round the stalk below the crown: a bulb and a spherical burst of
+
+    // nine to twelve wide, flat, pointed crimson blades in every direction,
+
+    // each with a slight curve, and five short orange blades in the middle.
 
     //
 
-    // Per-seed variation: stalk count, per stalk the segment count (5..14, so
+    // Per-seed variation: facing, log length, splinters, which segments throw
 
-    // 2.5 to 6.5 m), width and lean, and per crown the whorl angles and blade
+    // stalks, per stalk the lean, height (12..20 segments) and gentle curve,
 
-    // lengths.
-
-    
-
-    // X 1, Q 6, S 14 + 1, W/I/J/D 8. 30.
-
-    #iterations: 32
+    // blade count and lengths.
 
     
 
-    #axiom: !(0.3) X
+    // X 1, G 11, V 1, S 20 + 1, W 12. 46. J 9 in parallel.
+
+    #iterations: 48
 
     
 
-    X -> /(rand(360)) Q(rand(3,6))
+    #axiom: X
 
     
 
-    // Q(n): one stalk per step.
-
-    Q(n) : n > 0 -> [ &(rand(0,45)) /(rand(360)) S(rand(5,14), rand(0.1,0.17)) ] Q(n-1)
-
-    Q(n) : n <= 0 -> $
+    X -> /(rand(360)) f(rand(1.5,2.2)) [ J(rand(6,9)) ] &(rand(94,100)) !(rand(1.5,1.9)) G(rand(8,11), 1.2, 1.7, 0)
 
     
 
-    // S(k,w): stalk segment with a joint ring, wandering and righting itself.
+    // J(n): the torn root end: splinters up and out.
 
-    S(k,w) : k > 0 -> !(w*rand(0.88,1.12)) F(0.45*rand(0.7,1.3)) N(w*2.2) &(rand(-10,10)) +(rand(-10,10)) /(rand(-40,40)) $ ^(rand(1,3)) S(k-1, w*0.965)
+    J(n) : n > 0 -> [ /(rand(360)) &(rand(10,80)) !(rand(0.15,0.35)) F(rand(0.8,2.0)) &(rand(-15,15)) !(rand(0.08,0.15)) F(rand(0.5,1.2)) ] J(n-1)
 
-    S(k,w) : k <= 0 -> !(w*1.3) F(0.25) O(w*3) D(6, rand(105,125), rand(0.9,1.2)) /(30) W(8, rand(62,80), rand(1.1,1.5)) /(22) I(8, rand(35,50), rand(0.85,1.15)) /(36) J(5, rand(10,22), rand(0.6,0.8)) f(0.1) Y(0.8)
+    J(n) : n <= 0 -> $
 
     
 
-    W(n,a,l) : n > 0 -> [ /(45*n + rand(-8,8)) &(a + rand(-5,5)) f(l*0.5) V(l) ] W(n-1, a, l)
+    // G(k,l,w,i): the log, sloping down to the ground, tapering; stalks from V.
 
-    W(n,a,l) : n <= 0 -> $
+    G(k,l,w,i) : k > 0 -> !(w*rand(0.88,1.12)) F(l*rand(0.7,1.3)) &(rand(-4,4)) +(rand(-10,10)) /(rand(-15,15)) V(i, w) G(k-1, l, w*0.92, i+1)
 
-    I(n,a,l) : n > 0 -> [ /(45*n + rand(-8,8)) &(a + rand(-5,5)) f(l*0.5) Y(l) ] I(n-1, a, l)
+    G(k,l,w,i) : k <= 0 -> !(w*0.6) F(l*0.5) [ ^(rand(5,25)) !(w*0.25) F(l*0.8) ] [ +(rand(10,30)) !(w*0.2) F(l*0.6) ] [ -(rand(10,30)) !(w*0.2) F(l*0.5) ]
 
-    I(n,a,l) : n <= 0 -> $
+    
 
-    J(n,a,l) : n > 0 -> [ /(72*n + rand(-8,8)) &(a + rand(-5,5)) f(l*0.5) Z(l) ] J(n-1, a, l)
+    // V(i,w): one or two stalks from a log segment, leaning any way.
 
-    J(n,a,l) : n <= 0 -> $
+    V(i,w) : 0.55 -> [ $ /(rand(-90,90)) ^(rand(55,85)) S(rand(12,20), 0.55, rand(0.09,0.13), rand(1,3)) ]
 
-    D(n,a,l) : n > 0 -> [ /(60*n + rand(-10,10)) &(a + rand(-8,8)) f(l*0.5) U(l) ] D(n-1, a, l)
+    V(i,w) : 0.25 -> [ $ /(rand(-90,90)) ^(rand(55,85)) S(rand(12,20), 0.55, rand(0.09,0.13), rand(1,3)) ] [ $ /(rand(-90,90)) ^(rand(50,80)) S(rand(9,15), 0.55, rand(0.08,0.11), rand(1,3)) ]
 
-    D(n,a,l) : n <= 0 -> $'
-  iterations: 32
+    V(i,w) : 0.2 -> $
+
+    
+
+    // S(k,l,w,u): a stalk: nearly straight, a gentle lift; then the cuff, the
+
+    // bulb and the crown.
+
+    S(k,l,w,u) : k > 2.5 -> !(w*rand(0.95,1.05)) F(l*rand(0.8,1.2)) &(rand(-3,3)) +(rand(-3,3)) /(rand(-30,30)) $ ^(u*rand(0.5,1.5)) S(k-1, l, w*0.99, u)
+
+    S(k,l,w,u) : k > 0 && k <= 2.5 -> !(w*rand(0.95,1.05)) F(l) $ ^(u) S(k-1, l, w*0.99, u)
+
+    S(k,l,w,u) : k <= 0 -> !(w*1.2) F(0.3) K(w*9) F(0.1) H(14, w) F(0.25) !(w*1.4) F(0.2) O(w*3.5) W(rand(9,12), rand(1.6,2.4)) I(5, rand(0.7,1.0))
+
+    
+
+    // H(n,w): cuff fibres hanging round the stalk.
+
+    H(n,w) : n > 0 -> [ /(25.7*n + rand(-8,8)) &(90) f(w*1.6) &(rand(60,90)) !(0.012) F(rand(0.4,0.9)) ] H(n-1, w)
+
+    H(n,w) : n <= 0 -> $
+
+    
+
+    // W(n,l): blades in a spherical burst: two cone parts with a slight bend.
+
+    W(n,l) : n > 0 -> [ /(137.5*n + rand(-10,10)) &(rand(35,125)) f(l*0.32) B(l*0.64) f(l*0.32) ^(rand(6,14)) f(l*0.2) B(l*0.4) ] W(n-1, l)
+
+    W(n,l) : n <= 0 -> $
+
+    I(n,l) : n > 0 -> [ /(72*n + rand(-10,10)) &(rand(10,40)) f(l*0.5) Y(l) ] I(n-1, l)
+
+    I(n,l) : n <= 0 -> $'
+  iterations: 48

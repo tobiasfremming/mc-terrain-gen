@@ -1,0 +1,104 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: LatticeFanGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Lattice fan fungus (reference: orange lace fans on a ridged stump). A
+
+    // dark, lumpy stump of five short segments with buttress ridges; five to
+
+    // seven short stubby limbs that each fork once, so ten to fourteen caps
+
+    // packed close together at different heights. Every limb end carries a
+
+    // ribbed cuff (an open cup around the neck, with rings), then the cap: a
+
+    // scoop-shaped fan of fifteen veins spread sideways by yaw across 140
+
+    // degrees, every vein curling upward so the fan cups, forking once, and
+
+    // bridged by webbing strips sized to the gap between neighbouring veins
+
+    // with a little slack, so the membrane is continuous but holed: lace.
+
+    //
+
+    // Per-seed variation: facing, buttress count, stump lumps, limb count and
+
+    // angles, cap sizes and curl, every kink.
+
+    
+
+    // X 1, T 5, Q 7, L 4 + 1, C 1, N 15, V 8. 42.
+
+    #iterations: 45
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) !(rand(0.8,1.0)) B(rand(5,8)) T(5, 0.45, 0.9)
+
+    
+
+    B(n) : n > 0 -> [ /(rand(360)) &(rand(95,110)) !(rand(0.25,0.4)) F(rand(0.6,1.2)) &(rand(-10,10)) +(rand(-20,20)) !(rand(0.15,0.25)) F(rand(0.4,0.8)) ] B(n-1)
+
+    B(n) : n <= 0 -> $
+
+    
+
+    T(k,l,w) : k > 0 -> !(w*rand(0.8,1.3)) F(l*rand(0.7,1.3)) &(rand(-10,10)) +(rand(-10,10)) /(rand(360)) $ ^(rand(1,4)) T(k-1, l, w*0.93)
+
+    T(k,l,w) : k <= 0 -> Q(rand(5,7), w)
+
+    
+
+    Q(n,w) : n > 0 -> [ /(rand(360)) &(rand(25,70)) L(rand(2,4), 0.7, w*0.5, rand(3,7), 0) ] /(60) Q(n-1, w)
+
+    Q(n,w) : n <= 0 -> $
+
+    
+
+    L(k,l,w,u,i) : k > 1.5 -> !(w*rand(0.85,1.2)) F(l*rand(0.7,1.3)) &(rand(-14,14)) +(rand(-14,14)) /(rand(-40,40)) $ ^(u*rand(0.3,1.9)) L(k-1, l, w*0.95, u, i+1)
+
+    L(k,l,w,u,i) : k > 0.5 && k <= 1.5 -> !(w) F(l*rand(0.7,1.1)) $ ^(u) !(w*0.85) [ +(rand(25,50)) /(rand(-30,30)) L(k-1, l, w*0.85, u, i+1) ] [ -(rand(25,50)) /(rand(-30,30)) L(k-1, l, w*0.85, u, i+1) ]
+
+    L(k,l,w,u,i) : k > 0 && k <= 0.5 -> !(w*rand(0.85,1.2)) F(l*rand(0.7,1.3)) &(rand(-14,14)) +(rand(-14,14)) /(rand(-40,40)) $ ^(u*rand(0.3,1.9)) L(k-1, l, w*0.95, u, i+1)
+
+    L(k,l,w,u,i) : k <= 0 -> !(w*1.1) F(0.15) K(w*4.5) R(w*3.4) F(0.12) R(w*3.1) F(0.15) !(w*0.7) F(0.12) C(rand(1.3,2.0))
+
+    
+
+    C(s) -> $ N(15, 15, s)
+
+    
+
+    N(n,t,s) : n > 0 -> [ +(-70 + 140*n/t + rand(-2,2)) !(0.025) V(7, s/7, 1, rand(6,10)) ] N(n-1, t, s)
+
+    N(n,t,s) : n <= 0 -> $
+
+    
+
+    V(k,l,j,a) : k > 0 && j < 3.5 -> f(l*0.5) Y(l) f(l*0.5) ^(a) S(j, l) V(k-1, l, j+1, a)
+
+    V(k,l,j,a) : k > 0 && j >= 3.5 && j < 4.5 -> f(l*0.5) Y(l) f(l*0.5) ^(a) S(j, l) [ +(5) V(k-1, l*0.9, j+1, a) ] [ -(5) V(k-1, l*0.9, j+1, a) ]
+
+    V(k,l,j,a) : k > 0 && j >= 4.5 -> f(l*0.5) Y(l*0.9) f(l*0.5) ^(a) S(j, l) V(k-1, l*0.92, j+1, a)
+
+    V(k,l,j,a) : k <= 0 -> f(0.02) E(0.03)
+
+    
+
+    S(j,l) -> [ +(90) f(0.06*j*l + 0.02) W(0.12*j*l + 0.03) ] [ -(90) f(0.06*j*l + 0.02) W(0.12*j*l + 0.03) ]'
+  iterations: 45

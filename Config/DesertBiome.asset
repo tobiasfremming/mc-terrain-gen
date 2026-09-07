@@ -22,3 +22,225 @@ MonoBehaviour:
   colorSteep: {r: 0.68, g: 0.4, b: 0.17, a: 1}
   albedo: {fileID: 2800000, guid: 67eb7a3ca22d4ba08f41264a03b161f3, type: 3}
   normalMap: {fileID: 2800000, guid: 011e801778644347bf1dca23794c2241, type: 3}
+  flora:
+  - label: SandCandlePlant
+    prototypes: {fileID: 11400000, guid: 6dca449adf5c549408e568e46c97ebce, type: 2}
+    rarity: 1
+    perPlot: 8
+    plotChance: 0.85
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 1
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
+    enabled: 1
+  - label: AloePlant
+    prototypes: {fileID: 11400000, guid: a1c272665a9ce1549adae6353463b664, type: 2}
+    rarity: 1
+    perPlot: 8
+    plotChance: 0.85
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 1
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
+    enabled: 1
+  - label: DandelionPlant
+    prototypes: {fileID: 11400000, guid: 03b0c757365a1304a8ce11d849200d83, type: 2}
+    rarity: 1
+    perPlot: 8
+    plotChance: 0.85
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.4
+    useLod: 1
+    lod1Distance: 45
+    lod2Distance: 90
+    impostorDistance: 120
+    cullDistance: 700
+    enabled: 1
+  - label: PlumePalmPlant
+    prototypes: {fileID: 11400000, guid: 1d6ecc4fe43990e49830c9135758d34a, type: 2}
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
+    minUpness: 0.85
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 3
+    sink: 0.4
+    useLod: 1
+    lod1Distance: 45
+    lod2Distance: 90
+    impostorDistance: 120
+    cullDistance: 700
+    enabled: 1
+  - label: CorkscrewPlant
+    prototypes: {fileID: 11400000, guid: 295709b7c2f34ff498a315e9bc5b281e, type: 2}
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
+    minUpness: 0.85
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 3
+    sink: 0.4
+    useLod: 1
+    lod1Distance: 45
+    lod2Distance: 90
+    impostorDistance: 120
+    cullDistance: 700
+    enabled: 1
+  - label: PodClusterPlant
+    prototypes: {fileID: 11400000, guid: 059e767c32d42d941b69450900d5470c, type: 2}
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 1
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
+    enabled: 1
+  - label: CagePlant
+    prototypes: {fileID: 11400000, guid: fa8a7e866e1d74d4a8dfb4e730871738, type: 2}
+    rarity: 2
+    perPlot: 3
+    plotChance: 0.5
+    minUpness: 0.7
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.1
+    useLod: 1
+    lod1Distance: 25
+    lod2Distance: 50
+    impostorDistance: 70
+    cullDistance: 220
+    enabled: 1
+  - label: StriderPlant
+    prototypes: {fileID: 11400000, guid: 3f3e007decc9e0248b9789a2f92efd6e, type: 2}
+    rarity: 3
+    perPlot: 1
+    plotChance: 0.25
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 1
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
+    enabled: 1
+  - label: BaobabPlant
+    prototypes: {fileID: 11400000, guid: 866d8ff1e9fbdf54baea7ee3d00ceb43, type: 2}
+    rarity: 3
+    perPlot: 1
+    plotChance: 0.25
+    minUpness: 0.85
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 3
+    sink: 0.4
+    useLod: 1
+    lod1Distance: 45
+    lod2Distance: 90
+    impostorDistance: 120
+    cullDistance: 700
+    enabled: 1
+  - label: TremorReedPlant
+    prototypes: {fileID: 11400000, guid: 1bb852dc704f58e41a0f9dd1a3c04d95, type: 2}
+    rarity: 3
+    perPlot: 1
+    plotChance: 0.25
+    minUpness: 0.75
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 6
+    sink: 0.2
+    useLod: 1
+    lod1Distance: 40
+    lod2Distance: 80
+    impostorDistance: 100
+    cullDistance: 400
+    enabled: 1
+  - label: StarSpirePlant
+    prototypes: {fileID: 11400000, guid: 2f664e18b37663c45826de14e715d86a, type: 2}
+    rarity: 3
+    perPlot: 1
+    plotChance: 0.25
+    minUpness: 0.85
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.85, y: 1.2}
+    leanDegrees: 3
+    sink: 0.4
+    useLod: 1
+    lod1Distance: 45
+    lod2Distance: 90
+    impostorDistance: 120
+    cullDistance: 700
+    enabled: 1
+  - label: PagodaTreePlant
+    prototypes: {fileID: 11400000, guid: 76b9562f4fe6dc041b439a9f7c22f9c4, type: 2}
+    rarity: 4
+    perPlot: 1
+    plotChance: 0.04
+    minUpness: 0.85
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.9, y: 1.1}
+    leanDegrees: 3
+    sink: 0.4
+    useLod: 0
+    lod1Distance: 60
+    lod2Distance: 120
+    impostorDistance: 150
+    cullDistance: 900
+    enabled: 1
+  - label: SailTreePlant
+    prototypes: {fileID: 11400000, guid: a6460be57410d8d4ebd795b2a5315419, type: 2}
+    rarity: 4
+    perPlot: 1
+    plotChance: 0.04
+    minUpness: 0.85
+    minHeight: -1000
+    maxHeight: 1000
+    scaleRange: {x: 0.9, y: 1.1}
+    leanDegrees: 3
+    sink: 0.4
+    useLod: 0
+    lod1Distance: 60
+    lod2Distance: 120
+    impostorDistance: 150
+    cullDistance: 900
+    enabled: 1

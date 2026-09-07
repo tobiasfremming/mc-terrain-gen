@@ -1,0 +1,132 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: ChanterelleGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Chanterelle giant (reference: golden frilled plates on a dark mossy
+
+    // mound). A huge dark olive mound: buttress lumps, then a short trunk as
+
+    // wide as a house, three lumpy segments, every one throwing two to four
+
+    // thick limbs and the top throwing four to six more; each limb is a metre
+
+    // thick, crooked, forks four times in ten, drops a moss strand now and
+
+    // then, and flares into a chanterelle: fourteen orange gill ridges running
+
+    // up the column under the cap, a shallow funnel, a plump dome plate on
+
+    // top of it, two rows of big ruffled lobes drooping from the rim, and
+
+    // glowing drips. Everything golden glows.
+
+    //
+
+    // Per-seed variation: facing, buttress count, mound lumps, limb counts,
+
+    // forks, moss, cap sizes and ruffle.
+
+    
+
+    // X 1, T 3, Q 4, L 6 + 1, G 1, U 22. 38.
+
+    #iterations: 56
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) !(rand(2.4,3.0)) B(rand(6,9)) T(3, 1.6, 2.7)
+
+    
+
+    B(n) : n > 0 -> [ /(rand(360)) &(rand(95,115)) !(rand(0.8,1.3)) F(rand(1.5,3)) &(rand(-10,10)) +(rand(-20,20)) !(rand(0.4,0.7)) F(rand(1,2)) ] B(n-1)
+
+    B(n) : n <= 0 -> $
+
+    
+
+    T(k,l,w) : k > 0 -> !(w*rand(0.8,1.25)) F(l*rand(0.7,1.3)) &(rand(-8,8)) +(rand(-8,8)) /(rand(360)) $ ^(rand(1,3)) [ Q(rand(2,4), w) ] T(k-1, l, w*0.85)
+
+    T(k,l,w) : k <= 0 -> Q(rand(4,6), w)
+
+    
+
+    Q(n,w) : n > 0 -> [ /(rand(360)) &(rand(25,65)) L(rand(3,6), 1.4, w*0.35, rand(3,8), 0) ] Q(n-1, w)
+
+    Q(n,w) : n <= 0 -> $
+
+    
+
+    // L(k,l,w,u,i): a thick crooked limb; forks four in ten as k passes 2;
+
+    // the hook H may drop a moss strand.
+
+    L(k,l,w,u,i) : k > 2.5 : 0.75 -> !(w*rand(0.85,1.2)) F(l*rand(0.7,1.3)) &(rand(-12,12)) +(rand(-12,12)) /(rand(-40,40)) $ ^(u*rand(0.3,1.9)) H(i, w) L(k-1, l, w*0.94, u, i+1)
+
+    L(k,l,w,u,i) : k > 2.5 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(15,30)) $ ^(u*rand(0.5,1.5)) H(i, w) L(k-1, l, w*0.94, u, i+1)
+
+    L(k,l,w,u,i) : k > 1.5 && k <= 2.5 : 0.4 -> !(w) F(l*rand(0.7,1.1)) $ ^(u) !(w*0.8) [ +(rand(25,45)) /(rand(-30,30)) L(k-1, l, w*0.8, u, i+1) ] [ -(rand(25,45)) /(rand(-30,30)) L(k-1, l, w*0.8, u, i+1) ]
+
+    L(k,l,w,u,i) : k > 1.5 && k <= 2.5 : 0.6 -> !(w*rand(0.85,1.2)) F(l*rand(0.7,1.3)) &(rand(-12,12)) +(rand(-12,12)) /(rand(-40,40)) $ ^(u*rand(0.3,1.9)) H(i, w) L(k-1, l, w*0.94, u, i+1)
+
+    L(k,l,w,u,i) : k > 0 && k <= 1.5 -> !(w*rand(0.85,1.2)) F(l*rand(0.7,1.3)) &(rand(-12,12)) +(rand(-12,12)) /(rand(-40,40)) $ ^(u*rand(0.3,1.9)) H(i, w) L(k-1, l, w*0.94, u, i+1)
+
+    L(k,l,w,u,i) : k <= 0 -> !(w*0.95) F(l*0.3) N(14) G(w*2.4)
+
+    
+
+    // N(n): level the heading in 5-degree steps; repeated "$ ^(45)" oscillates.
+
+    N(n) : n > 0 -> $ ^(5) N(n-1)
+
+    N(n) : n <= 0 -> $
+
+    
+
+    H(i,w) : 0.25 -> [ /(rand(360)) &(90) f(w*0.9) &(90) f(0.6) V(rand(0.8,1.6)) ]
+
+    H(i,w) : 0.75 -> $
+
+    
+
+    // G(s): the cap. Gill ridges up the column from the funnel''s apex along
+
+    // its slope (radius 1.6 s, height 0.8 s: 63 degrees from up, slant 1.79 s),
+
+    // the funnel, the plump top plate, two rows of ruffled lobes at the rim,
+
+    // drips.
+
+    G(s) -> D(14, s) f(s*0.4) M(s) f(s*0.25) P(s) U(22, 22, s, 0.42) J(rand(4,7), s)
+
+    
+
+    D(n,s) : n > 0 -> [ /(25.7*n + rand(-4,4)) &(63 + rand(-3,3)) f(s*0.85) Y(s*1.7) ] D(n-1, s)
+
+    D(n,s) : n <= 0 -> $
+
+    
+
+    U(n,t,s,p) : n > 0 -> [ /(360/t*n + rand(-3,3)) &(rand(86,92)) f(s*1.45) &(rand(20,35)) /(rand(-18,18)) f(s*p*0.45) W(s*p) ] U(n-1, t, s, p)
+
+    U(n,t,s,p) : n <= 0 -> $
+
+    
+
+    J(n,s) : n > 0 -> [ /(rand(360)) &(rand(80,95)) f(s*1.5) &(rand(70,100)) f(0.3) Y(rand(0.4,0.9)) f(0.35) E(0.07) ] J(n-1, s)
+
+    J(n,s) : n <= 0 -> $'
+  iterations: 56

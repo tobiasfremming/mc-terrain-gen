@@ -25,6 +25,8 @@ public class PlantScatterEditor : Editor
 
         using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
         {
+            EditorGUILayout.LabelField("species", s.SpeciesCount.ToString("N0")
+                + "   (" + s.BiomeSpeciesCount + " from biome flora lists, " + (s.SpeciesCount - s.BiomeSpeciesCount) + " everywhere)");
             EditorGUILayout.LabelField("plots visible", s.VisiblePlots.ToString("N0")
                 + (s.PlotsPending > 0 ? "   (" + s.PlotsPending + " still to build)" : ""));
             EditorGUILayout.LabelField("instances", s.Instances.ToString("N0"));

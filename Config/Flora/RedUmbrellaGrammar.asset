@@ -1,0 +1,130 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: RedUmbrellaGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Red umbrella giant (reference: the colossal red-capped tree with ruins in
+
+    // it). There is no trunk. Sixteen to twenty-two pink limbs rise from a rock
+
+    // mound within three metres of the centre, nearly vertical, twisting round
+
+    // each other as a column. The two limbs launched last climb straight on and
+
+    // each carries a share of the enormous top plate; every other limb turns out
+
+    // and sweeps up to its own smaller plate at its own height, sometimes
+
+    // forking on the way. A plate is thick and flat: an orange underside dome, a
+
+    // red top dome and a rounded rim. Roots crawl out over the mound.
+
+    //
+
+    // Levelling a plate: "$ ^(45)" three times does NOT stop at vertical; once
+
+    // the heading passes vertical "$" flips local up and the next "^" pitches
+
+    // back, so the tilt oscillates by up to a step. N(n) levels in 5-degree
+
+    // steps, so the worst tilt is 5 degrees.
+
+    //
+
+    // Per-seed variation: facing, root count, limb count and every twist,
+
+    // plate sizes and heights.
+
+    
+
+    // X 1, A 22, L 7 / M 9, S 4, N 16, C 1, B 16. 67.
+
+    #iterations: 77
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) !(1.2) R(rand(10,16)) A(rand(16,22))
+
+    
+
+    // Roots leave the column a metre or two up and crawl outward over the
+
+    // mound, dipping gently; launched below the horizon they vanished into the
+
+    // flat lab floor.
+
+    R(n) : n > 0 -> [ /(rand(360)) f(rand(0.8,2.5)) &(rand(78,100)) !(rand(0.5,0.9)) F(rand(2,4)) &(rand(0,15)) +(rand(-25,25)) !(rand(0.3,0.5)) F(rand(1.5,3)) &(rand(0,15)) !(0.2) F(rand(1,2)) ] R(n-1)
+
+    R(n) : n <= 0 -> $
+
+    
+
+    // A(n): one limb per step, from a spot in the mound, launched near vertical.
+
+    // The last two are the top-plate limbs, from the middle of the column.
+
+    A(n) : n > 2 -> [ /(rand(360)) &(90) f(rand(0,3)) ^(90) /(rand(360)) &(rand(5,25)) !(rand(0.5,0.8)) L(rand(3,7), 2.6, 0.65, rand(2,5), 0) ] A(n-1)
+
+    A(n) : n > 0 && n <= 2 -> [ /(rand(360)) &(90) f(rand(0,1.2)) ^(90) /(rand(360)) &(rand(3,12)) !(rand(0.7,0.9)) M(rand(7,9), 2.6, 0.8, 0) ] A(n-1)
+
+    A(n) : n <= 0 -> $
+
+    
+
+    // L(k,l,w,u,i): a column limb: twisting, straightening; at its top it turns
+
+    // out to a side plate.
+
+    L(k,l,w,u,i) : k > 0 -> !(w*rand(0.9,1.1)) F(l*rand(0.8,1.2)) &(rand(-9,9)) +(rand(-9,9)) /(rand(-40,40)) $ ^(u*rand(0.5,1.5)) L(k-1, l, w*0.97, u, i+1)
+
+    L(k,l,w,u,i) : k <= 0 -> $ /(rand(360)) &(rand(45,80)) S(rand(2,4), l*1.1, w*0.9)
+
+    
+
+    // M(k,l,w,i): a top-plate limb: straight up the middle, the biggest plate.
+
+    M(k,l,w,i) : k > 0 -> !(w*rand(0.9,1.1)) F(l*rand(0.8,1.2)) &(rand(-6,6)) +(rand(-6,6)) /(rand(-40,40)) $ ^(3) M(k-1, l, w*0.97, i+1)
+
+    M(k,l,w,i) : k <= 0 -> !(w) F(l*0.3) N(16) C(rand(13,16))
+
+    
+
+    S(k,l,w) : k > 0 : 0.8 -> !(w*rand(0.9,1.1)) F(l*rand(0.8,1.2)) &(rand(-8,8)) +(rand(-8,8)) /(rand(-30,30)) $ ^(rand(8,14)) S(k-1, l, w*0.95)
+
+    S(k,l,w) : k > 0 : 0.2 -> !(w) F(l) $ ^(10) !(w*0.8) [ +(rand(25,45)) S(k-1, l*0.9, w*0.8) ] [ -(rand(25,45)) S(k-1, l*0.9, w*0.8) ]
+
+    S(k,l,w) : k <= 0 -> !(w) F(l*0.3) N(16) C(rand(5,9))
+
+    
+
+    // N(n): level the heading in 5-degree steps (see the note above).
+
+    N(n) : n > 0 -> $ ^(5) N(n-1)
+
+    N(n) : n <= 0 -> $
+
+    
+
+    // C(s): a plate: underside, top, rounded rim. (Striations are texture in
+
+    // the reference; as geometry they pierced the plates stacked above.)
+
+    C(s) -> U(s) f(s*0.05) D(s) B(16, s)
+
+    B(n,s) : n > 0 -> [ /(22.5*n + rand(-4,4)) &(90) f(s*0.94) H(s*0.13) ] B(n-1, s)
+
+    B(n,s) : n <= 0 -> $'
+  iterations: 77

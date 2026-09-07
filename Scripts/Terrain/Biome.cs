@@ -50,7 +50,15 @@ public class Biome : ScriptableObject
     public Texture2D albedo;
     public Texture2D normalMap;
 
-    void OnValidate() => TerrainTuning.NotifyChanged();
+    [Header("Flora")]
+    [Tooltip("Species that grow in this biome. Each candidate plant is accepted with probability equal to this biome's weight at its spot, so stands thin out over the few metres where two biomes cross-fade. Species for every biome go on PlantWorld.species instead. Edits rebuild the forest.")]
+    public PlantSpecies[] flora = new PlantSpecies[0];
+
+    void OnValidate()
+    {
+        PlantSpecies.ValidateAll(flora);
+        TerrainTuning.NotifyChanged();
+    }
 }
 
 // Central "terrain settings changed" signal so inspector tweaks to any biome

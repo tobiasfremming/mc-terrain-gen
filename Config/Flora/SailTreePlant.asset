@@ -10,46 +10,46 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 01db12252b7120b4281a3eaa4b96f2d2, type: 3}
-  m_Name: StarSpirePlant
+  m_Name: SailTreePlant
   m_EditorClassIdentifier: Assembly-CSharp::PlantProfile
-  grammar: {fileID: 11400000, guid: e5607182939ab5c6d7e8f9a0b1c23456, type: 2}
+  grammar: {fileID: 11400000, guid: e4f20314253b64a5b6c7d8e9a0b1c2d3, type: 2}
   iterations: -1
-  seed: 12
+  seed: 271
   maxModules: 250000
   turtle:
     stepLength: 1
     angleDegrees: 25
-    initialWidth: 1.7
+    initialWidth: 0.12
     widthFactor: 0.7
     lengthFactor: 0.9
     origin: {x: 0, y: 0, z: 0}
     heading: {x: 0, y: 1, z: 0}
     up: {x: 0, y: 0, z: -1}
   stemShape: 4
-  stemColor: {r: 0.62, g: 0.63, b: 0.66, a: 1}
+  stemColor: {r: 0.35, g: 0.3, b: 0.28, a: 1}
   stemRadiusScale: 1.0
-  minStemRadius: 0.008
+  minStemRadius: 0.004
   taperStems: 1
   hideStemsBelowRadius: 0
   parts:
-  - symbol: K
-    shape: 8
-    prefab: {fileID: 0}
-    color: {r: 0.3, g: 0.28, b: 0.3, a: 1}
-    scale: {x: 1, y: 0.5, z: 1}
-    sizeFrom: 1
-    paramIndex: 0
-    sizeMultiplier: 1
-    emission: 0
-    alignToHeading: 1
-    eulerOffset: {x: -90, y: 0, z: 0}
-    localOffset: {x: 0, y: 0, z: 0}
-    enabled: 1
   - symbol: O
     shape: 9
     prefab: {fileID: 0}
-    color: {r: 0.55, g: 0.52, b: 0.5, a: 1}
-    scale: {x: 1, y: 1.2, z: 1}
+    color: {r: 0.4, g: 0.34, b: 0.3, a: 1}
+    scale: {x: 1, y: 1, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 0, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: Q
+    shape: 5
+    prefab: {fileID: 0}
+    color: {r: 0.88, g: 0.55, b: 0.22, a: 1}
+    scale: {x: 2, y: 1, z: 1}
     sizeFrom: 1
     paramIndex: 0
     sizeMultiplier: 1
@@ -58,29 +58,16 @@ MonoBehaviour:
     eulerOffset: {x: 90, y: 0, z: 0}
     localOffset: {x: 0, y: 0, z: 0}
     enabled: 1
-  - symbol: B
-    shape: 7
+  - symbol: E
+    shape: 2
     prefab: {fileID: 0}
-    color: {r: 0.88, g: 0.25, b: 0.12, a: 1}
-    scale: {x: 0.3, y: 0.5, z: 0.05}
+    color: {r: 1, g: 0.8, b: 0.4, a: 1}
+    scale: {x: 1, y: 1, z: 1}
     sizeFrom: 1
     paramIndex: 0
     sizeMultiplier: 1
-    emission: 0
+    emission: 0.6
     alignToHeading: 1
-    eulerOffset: {x: 90, y: 0, z: 0}
-    localOffset: {x: 0, y: 0, z: 0}
-    enabled: 1
-  - symbol: Y
-    shape: 7
-    prefab: {fileID: 0}
-    color: {r: 0.96, g: 0.48, b: 0.15, a: 1}
-    scale: {x: 0.3, y: 0.5, z: 0.05}
-    sizeFrom: 1
-    paramIndex: 0
-    sizeMultiplier: 1
-    emission: 0
-    alignToHeading: 1
-    eulerOffset: {x: 90, y: 0, z: 0}
+    eulerOffset: {x: 0, y: 0, z: 0}
     localOffset: {x: 0, y: 0, z: 0}
     enabled: 1
