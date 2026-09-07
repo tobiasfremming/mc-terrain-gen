@@ -44,7 +44,7 @@ MonoBehaviour:
 
     
 
-    X -> Q(rand(3,6))
+    X -> /(rand(360)) Q(rand(3,6))
 
     
 

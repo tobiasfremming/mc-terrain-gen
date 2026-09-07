@@ -1,0 +1,138 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: BanyanGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Banyan colossus. A junction four metres up sheds twenty to thirty crooked
+
+    // prop roots that fork on their way to the ground; above it a short lumpy
+
+    // trunk throws three to five crooked limbs out near horizontal, and from
+
+    // those limbs thin aerial roots drop straight down (kinked, pulled toward
+
+    // the ground, overshooting it). Foliage is a small tuft at each limb end
+
+    // only.
+
+    //
+
+    // Per-seed variation: facing, junction height, root count and every root,
+
+    // limb count, launch and every kink, which segments drop aerial roots.
+
+    
+
+    // X 1, J 4, T 7, Q 5, L 14, then D 20 from the last limb segment = 51.
+
+    #iterations: 54
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) f(rand(3,4.5)) !(rand(0.5,0.7)) J(4, 0.6)
+
+    
+
+    // J(m,w): the junction, four short kinked segments each shedding roots.
+
+    J(m,w) : m > 0 -> !(w*rand(0.9,1.15)) F(rand(0.35,0.5)) &(rand(-8,8)) /(rand(360)) [ E(rand(5,8), w*0.55) ] J(m-1, w*0.98)
+
+    J(m,w) : m <= 0 -> T(rand(4,7), 0.6, 0.55)
+
+    
+
+    E(n,w) : n > 0 -> [ /(rand(360)) &(rand(110,150)) R(rand(9,13), 0.6, w, rand(5,10)) ] E(n-1, w)
+
+    E(n,w) : n <= 0 -> $
+
+    
+
+    // R(k,l,w,u): prop root: crooked, pulled toward the ground, forks at k = 5.
+
+    R(k,l,w,u) : k > 5.5 : 0.75 -> !(w*rand(0.8,1.2)) F(l*rand(0.6,1.4)) &(rand(-18,18)) +(rand(-18,18)) /(rand(-40,40)) $ &(u*rand(0.3,1.9)) R(k-1, l*0.97, w*0.94, u)
+
+    R(k,l,w,u) : k > 5.5 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(15,35)) $ &(u*rand(0.5,1.5)) R(k-1, l*0.97, w*0.94, u)
+
+    R(k,l,w,u) : k > 4.5 && k <= 5.5 -> !(w) F(l*rand(0.7,1.1)) $ &(u) !(w*0.75) [ +(rand(20,40)) /(rand(-30,30)) R(k-1, l*0.95, w*0.75, u) ] [ -(rand(20,40)) /(rand(-30,30)) R(k-1, l*0.95, w*0.75, u) ]
+
+    R(k,l,w,u) : k > 0 && k <= 4.5 : 0.75 -> !(w*rand(0.8,1.2)) F(l*rand(0.6,1.4)) &(rand(-18,18)) +(rand(-18,18)) /(rand(-40,40)) $ &(u*rand(0.3,1.9)) R(k-1, l*0.97, w*0.94, u)
+
+    R(k,l,w,u) : k > 0 && k <= 4.5 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(15,35)) $ &(u*rand(0.5,1.5)) R(k-1, l*0.97, w*0.94, u)
+
+    R(k,l,w,u) : k <= 0 -> !(w) F(l*0.8)
+
+    
+
+    // T(k,l,w): the trunk above the junction: lumpy, kinked.
+
+    T(k,l,w) : k > 0 : 0.7 -> !(w*rand(0.85,1.15)) F(l*rand(0.7,1.3)) &(rand(-12,12)) +(rand(-12,12)) /(rand(-40,40)) $ ^(rand(2,6)) T(k-1, l, w*0.96)
+
+    T(k,l,w) : k > 0 : 0.3 -> !(w*rand(0.9,1.2)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(10,25)) $ ^(rand(3,8)) T(k-1, l, w*0.96)
+
+    T(k,l,w) : k <= 0 -> Q(rand(3,5), w)
+
+    
+
+    // Q(n,w): limbs, launched near horizontal.
+
+    Q(n,w) : n > 0 -> [ /(rand(360)) &(rand(70,100)) L(rand(10,14), 0.7, w*0.7, rand(2,5), 0) ] /(90) Q(n-1, w)
+
+    Q(n,w) : n <= 0 -> $
+
+    
+
+    // L(k,l,w,u,i): the crooked limb; the hook A may drop an aerial root.
+
+    L(k,l,w,u,i) : k > 6.5 : 0.75 -> !(w*rand(0.85,1.2)) F(l*rand(0.6,1.4)) &(rand(-20,20)) +(rand(-20,20)) /(rand(-40,40)) $ ^(u*rand(0.3,1.9)) A(i, w) L(k-1, l*0.97, w*0.95, u, i+1)
+
+    L(k,l,w,u,i) : k > 6.5 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(20,40)) $ ^(u*rand(0.5,1.5)) A(i, w) L(k-1, l*0.97, w*0.95, u, i+1)
+
+    L(k,l,w,u,i) : k > 5.5 && k <= 6.5 -> !(w*rand(0.9,1.2)) F(l*rand(0.7,1.2)) $ ^(u) !(w*0.8) [ +(rand(20,45)) /(rand(-40,40)) &(rand(-15,15)) L(k-1, l*0.95, w*0.75, u, i+1) ] [ -(rand(20,45)) /(rand(-40,40)) &(rand(-15,15)) L(k-1, l*0.95, w*0.75, u, i+1) ]
+
+    L(k,l,w,u,i) : k > 0 && k <= 5.5 : 0.75 -> !(w*rand(0.85,1.2)) F(l*rand(0.6,1.4)) &(rand(-20,20)) +(rand(-20,20)) /(rand(-40,40)) $ ^(u*rand(0.3,1.9)) A(i, w) L(k-1, l*0.97, w*0.93, u, i+1)
+
+    L(k,l,w,u,i) : k > 0 && k <= 5.5 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(20,40)) $ ^(u*rand(0.5,1.5)) A(i, w) L(k-1, l*0.97, w*0.93, u, i+1)
+
+    L(k,l,w,u,i) : k <= 0 -> !(w) F(l*0.5) V(6)
+
+    
+
+    // A(i,w): aerial root hook: from the third segment on, three in ten segments
+
+    // drop a root.
+
+    A(i,w) : i >= 2 : 0.3 -> [ $ &(90) /(rand(360)) D(rand(14,20), 0.55, w*0.3, rand(3,6)) ]
+
+    A(i,w) : i >= 2 : 0.7 -> $
+
+    A(i,w) : i < 2 -> $
+
+    
+
+    // D(k,l,w,u): aerial root: nearly straight down, small kinks, pulled down.
+
+    D(k,l,w,u) : k > 0 -> !(w*rand(0.85,1.15)) F(l*rand(0.7,1.3)) &(rand(-9,9)) +(rand(-9,9)) /(rand(-40,40)) $ &(u) D(k-1, l, w*0.98, u)
+
+    D(k,l,w,u) : k <= 0 -> !(w) F(l)
+
+    
+
+    // V(n): a small leaf tuft at a limb end.
+
+    V(n) : n > 0 -> [ /(rand(360)) ^(rand(20,70)) !(0.02) F(rand(0.2,0.4)) f(0.15) L(0.3) ] V(n-1)
+
+    V(n) : n <= 0 -> $'
+  iterations: 54

@@ -1,0 +1,82 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: SandCandleGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Sand candle (the desert broomrape, flora board, at three times life size).
+
+    // Two or three fleshy spikes from one root, each a tapering column clad in
+
+    // overlapping bracts and wrapped in a phyllotactic spiral of flowers: a pale
+
+    // tube and a fan of five yellow petals; a bud crown of spheres and bracts
+
+    // tapers off the top.
+
+    //
+
+    // Per-seed variation: facing, spike count, per spike the flower count
+
+    // (30..45), base width and lean.
+
+    
+
+    #define PHI 137.5
+
+    
+
+    // X 1, Q 3, B 45 + 1, U 10 + 1. 61.
+
+    #iterations: 63
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) Q(rand(2,3))
+
+    
+
+    Q(n) : n > 0 -> [ &(rand(0,12)) /(rand(360)) f(rand(0,0.4)) !(0.26) F(0.15) B(rand(30,45), rand(0.2,0.28)) ] Q(n-1)
+
+    Q(n) : n <= 0 -> $
+
+    
+
+    // B(k,w): one flower and one bract per step, opposite each other on the
+
+    // golden-angle spiral; the column thins as it climbs.
+
+    B(k,w) : k > 0 -> !(w) F(0.06) [ /(PHI*k) ^(rand(75,95)) f(w*0.8) T(0.28) f(0.25) P(0.15) ] [ /(PHI*k + 180) &(rand(12,32)) f(w*0.9) S(w*1.6) ] B(k-1, w*0.982)
+
+    B(k,w) : k <= 0 -> !(w) F(0.1) U(10, w)
+
+    
+
+    // P(s): five petals around the tube''s mouth, flaring out.
+
+    P(s) -> [ ^(40) f(s*0.5) V(s) ] /(72) [ ^(40) f(s*0.5) V(s) ] /(72) [ ^(40) f(s*0.5) V(s) ] /(72) [ ^(40) f(s*0.5) V(s) ] /(72) [ ^(40) f(s*0.5) V(s) ]
+
+    
+
+    // U(n,w): the bud crown: a short climbing tip with a bud and a bract per
+
+    // step, narrowing to a point.
+
+    U(n,w) : n > 0 -> !(w) F(0.05) [ /(PHI*n) &(rand(15,50)) f(w*0.8) N(w*1.4) ] [ /(PHI*n + 180) &(rand(10,30)) f(w*0.8) S(w*1.5) ] U(n-1, w*0.93)
+
+    U(n,w) : n <= 0 -> f(w*0.5) N(w*1.5)
+
+'
+  iterations: 63

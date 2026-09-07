@@ -1,0 +1,60 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: CorkscrewGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Corkscrew spire. One bone-white stalk that climbs as a helix: after every
+
+    // segment the turtle rolls upright ($), then yaws about the WORLD vertical
+
+    // by conjugating the yaw with a pitch of the elevation e (&(e) +(a) &(-e)),
+
+    // so the heading circles the axis at constant elevation. A fin on
+
+    // the outer side of every segment, a glowing bead on the crest, and a
+
+    // tapering tip ending in one last bead.
+
+    //
+
+    // Per-seed variation: facing, width, elevation (18..35 degrees), segment
+
+    // count (45..70, so 2.5 to 4 turns) and yaw per segment (15..24, radius).
+
+    
+
+    // X 1, Y 1, H 70 + 1. 73.
+
+    #iterations: 75
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) Y(rand(0.25,0.4), rand(18,35), rand(16,26), rand(45,70))
+
+    
+
+    // Y(w,e,a,k): tilt the heading to elevation e, then climb.
+
+    Y(w,e,a,k) -> !(w) &(90 - e) H(k, w, a, e)
+
+    
+
+    H(k,w,a,e) : k > 0 -> !(w) F(0.35) $ &(e) +(a) &(-e) [ -(90) f(w*0.9) N(w*5.5) ] [ ^(90) f(w*0.9) E(w*0.7) ] H(k-1, w*0.985, a, e)
+
+    H(k,w,a,e) : k <= 0 -> !(w*0.6) F(0.3) !(w*0.25) F(0.35) f(0.1) E(w*1.5)
+
+'
+  iterations: 75

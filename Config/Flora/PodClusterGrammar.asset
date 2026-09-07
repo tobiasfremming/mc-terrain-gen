@@ -1,0 +1,76 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: PodClusterGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Pod cluster (Population Zero, red moss zone): the low form of the pod
+
+    // tree. Five to nine short red runners lean out from one root, each forks
+
+    // once or twice and rises into a small cream pod with a red eye and a red
+
+    // tuft, so a knee-high crowd of pods stands over a red tangle.
+
+    //
+
+    // Per-seed variation: facing, runner count, per runner the lean, length
+
+    // and fork count, pod sizes.
+
+    
+
+    #define TP 0.75
+
+    #define MIN 0.45
+
+    
+
+    // X 1, C 9, A 2, P 1, T 3 + 1. 17.
+
+    #iterations: 19
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) !(0.12) C(rand(5,9))
+
+    
+
+    // C(n): one runner per step.
+
+    C(n) : n > 0 -> [ /(rand(360)) &(rand(50,80)) !(0.1) F(rand(0.3,0.8)) $ ^(rand(30,60)) A(rand(0.5,0.8), 0.08, 0.72) ] C(n-1)
+
+    C(n) : n <= 0 -> $
+
+    
+
+    A(l,w,s) : l >= MIN : 0.6 -> !(w) F(l) $ ^(rand(4,10)) !(w*TP) [ +(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ] [ -(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ]
+
+    A(l,w,s) : l >= MIN : 0.4 -> !(w) F(l) $ ^(rand(4,10)) !(w*TP) [ +(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ] [ -(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ] [ ^(rand(20,40)) /(rand(360)) A(l*s*0.9, w*TP*0.9, s) ]
+
+    A(l,w,s) : l < MIN -> P(w, rand(0.5,0.75))
+
+    
+
+    P(w,z) -> !(w) F(0.15) $ ^(rand(15,30)) F(0.15) $ ^(rand(15,30)) !(w*0.8) F(0.05) f(z*0.35) Q(z*0.7) f(z*0.25) O(z) f(z*0.55) D(z*0.12) $ T(3, z*0.3, 0.012)
+
+    
+
+    T(n,l,w) : n > 0 -> !(w) F(l) [ ^(rand(35,55)) T(n-1, l*0.7, w*0.6) ] [ /(120 + rand(-20,20)) ^(rand(35,55)) T(n-1, l*0.7, w*0.6) ] [ /(240 + rand(-20,20)) ^(rand(35,55)) T(n-1, l*0.7, w*0.6) ]
+
+    T(n,l,w) : n <= 0 -> f(l*0.4) N(l*0.9)
+
+'
+  iterations: 19

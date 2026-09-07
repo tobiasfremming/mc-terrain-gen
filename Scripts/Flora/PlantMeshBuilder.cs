@@ -362,7 +362,8 @@ public static class PlantMeshBuilder
         if (scale.x <= 1e-6f || scale.y <= 1e-6f || scale.z <= 1e-6f) return;
         switch (part.shape)
         {
-            case PlantPartShape.Sphere:   AppendSphere(c, rot, scale, col, stiff); break;
+            case PlantPartShape.Sphere:   AppendSphere(c, rot, scale, col, stiff, kRingSegs, kSphereRows); break;
+            case PlantPartShape.Dome:     AppendSphere(c, rot, scale, col, stiff, kRingSegs * 2, kSphereRows * 2); break;
             case PlantPartShape.Capsule:  AppendCapsule(c, rot, scale, col, stiff); break;
             case PlantPartShape.Cylinder: AppendCylinder(c, rot, scale, col, stiff, 0.5f, 0.5f, kRingSegs, true); break;
             case PlantPartShape.Cone:     AppendCylinder(c, rot, scale, col, stiff, 0.5f, 0f, kRingSegs, true); break;
@@ -387,9 +388,8 @@ public static class PlantMeshBuilder
 
     static void Tri(int a, int b, int d) { _leafTris.Add(a); _leafTris.Add(b); _leafTris.Add(d); }
 
-    static void AppendSphere(Vector3 c, Quaternion rot, Vector3 scale, Color32 col, float stiff)
+    static void AppendSphere(Vector3 c, Quaternion rot, Vector3 scale, Color32 col, float stiff, int segs, int rows)
     {
-        int rows = kSphereRows, segs = kRingSegs;
         int start = _verts.Count;
         for (int r = 0; r <= rows; r++)
         {

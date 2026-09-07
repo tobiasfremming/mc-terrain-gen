@@ -1,0 +1,66 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: KrakenVineGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Kraken vine (the tentacle plants in the marsh painting, flora board). A
+
+    // central bulb throws six to nine thick arms up and over; each arm curls
+
+    // tighter and tighter toward its tip like a tentacle, carries a spine on
+
+    // either side of every segment, and a row of sucker discs underneath.
+
+    //
+
+    // The curl is the pitch per segment growing with the segment index i:
+
+    // &(c + i*0.85). Over 24 segments that is an arc over and a coil at the tip.
+
+    //
+
+    // Per-seed variation: trunk height, arm count, per arm the segment count
+
+    // (16..24), base curl c (3..6) and the launch angle.
+
+    
+
+    // X 1, Q 9, A 24 + 1. 35.
+
+    #iterations: 37
+
+    
+
+    #axiom: !(0.5) X
+
+    
+
+    X -> /(rand(360)) F(rand(0.8,1.6)) &(rand(-6,6)) O(1.2) Q(rand(6,9))
+
+    
+
+    // Q(n): one arm per step, spaced around the bulb.
+
+    Q(n) : n > 0 -> [ /(40*n + rand(-15,15)) &(rand(5,30)) A(rand(16,24), 0.32, rand(3,6), 0) ] Q(n-1)
+
+    Q(n) : n <= 0 -> $
+
+    
+
+    // A(k,w,c,i): the arm. Spines P both sides, sucker disc D underneath.
+
+    A(k,w,c,i) : k > 0 -> !(w) F(0.34) &(c + i*0.85) /(rand(-8,8)) [ +(95) f(w*0.9) P(w*2.2) ] [ -(95) f(w*0.9) P(w*2.2) ] [ &(90) f(w*0.75) D(w*0.9) ] A(k-1, w*0.95, c, i+1)
+
+    A(k,w,c,i) : k <= 0 -> !(w) F(0.3) f(w*1.4) P(w*3.5)
+
+'
+  iterations: 37

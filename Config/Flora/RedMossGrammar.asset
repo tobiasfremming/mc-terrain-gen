@@ -1,0 +1,72 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: RedMossGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Red moss tuft (Population Zero, red moss zone). A dome of dense red
+
+    // needles: fifty to eighty radial stems from a core, each splitting into
+
+    // four needle clusters of three cards; and three to seven pink pins, thin
+
+    // stalks with a pink bulb, standing up out of the tuft.
+
+    //
+
+    // Per-seed variation: facing, tuft radius, stem count, pin count, every
+
+    // stem''s direction.
+
+    
+
+    #define PHI 137.5
+
+    
+
+    // X 1, M 80, C 4, N 7. 85.
+
+    #iterations: 87
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) O(rand(0.3,0.45)) M(rand(50,80), rand(0.35,0.6)) N(rand(3,7))
+
+    
+
+    // M(n,r): one radial stem per step, then its clusters.
+
+    M(n,r) : n > 0 -> [ /(PHI*n) &(rand(0,80)) !(0.01) F(r*0.45) C(4, r*0.45) ] M(n-1, r)
+
+    M(n,r) : n <= 0 -> $
+
+    
+
+    // C(k,l): a cluster: a twig and three needle cards.
+
+    C(k,l) : k > 0 -> [ /(rand(360)) ^(rand(15,40)) !(0.006) F(l) [ +(30) f(l*0.35) Q(l*0.7) ] [ -(30) f(l*0.35) Q(l*0.7) ] [ f(l*0.4) Q(l*0.8) ] ] C(k-1, l)
+
+    C(k,l) : k <= 0 -> $
+
+    
+
+    // N(n): pink pins.
+
+    N(n) : n > 0 -> [ /(rand(360)) &(rand(0,30)) !(0.008) F(rand(0.5,0.9)) f(0.05) B(0.09) ] N(n-1)
+
+    N(n) : n <= 0 -> $
+
+'
+  iterations: 87

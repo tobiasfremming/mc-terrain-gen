@@ -1,0 +1,88 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: FrondTowerGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Frond tower (an alien tree fern). A scaly trunk, a bulb, and a crown of
+
+    // eight to fourteen bipinnate fronds: rachis -> pinnae -> pinnule cards,
+
+    // three levels of the same idea, each level drawing its own lengths and
+
+    // angles. Every frond ends in a glowing bead. Old leaf-base scales point
+
+    // down the trunk at every node.
+
+    //
+
+    // Per-seed variation: facing, trunk height (6..12 segments), width, frond
+
+    // count, per frond the segment count, per pinna the pinnule count.
+
+    
+
+    #define PHI 137.5
+
+    
+
+    // X 1, T 12 + 1, C 14, R 14 + 1, P 8 + 1. 52.
+
+    #iterations: 54
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) !(rand(0.3,0.45)) T(rand(6,12), 0.4, rand(8,14))
+
+    
+
+    T(k,w,n) : k > 0 -> !(w) F(0.5) &(rand(-2,2)) /(rand(-15,15)) $ ^(rand(0,1.5)) W(4, w) T(k-1, w*0.985, n)
+
+    T(k,w,n) : k <= 0 -> !(w*1.2) F(0.3) O(w*2.4) C(n)
+
+    
+
+    // W(m,w): four leaf-base scales per node, pointing down and out.
+
+    W(m,w) : m > 0 -> [ /(90*m + rand(-15,15)) &(rand(100,130)) f(w*0.9) S(w*2.2) ] W(m-1, w)
+
+    W(m,w) : m <= 0 -> $
+
+    
+
+    // C(n): the crown, one frond per step; later fronds stand steeper.
+
+    C(n) : n > 0 -> [ /(PHI*n) &(25 + n*4 + rand(-5,5)) !(0.05) R(rand(10,14), 0.3, 1) ] C(n-1)
+
+    C(n) : n <= 0 -> $
+
+    
+
+    // R(k,l,j): rachis, drooping a little each step, a pinna pair per step.
+
+    R(k,l,j) : k > 0 -> F(l) &(rand(3,7)) [ +(rand(60,80)) P(rand(4,6), 0.14) ] [ -(rand(60,80)) P(rand(4,6), 0.14) ] R(k-1, l*0.97, j+1)
+
+    R(k,l,j) : k <= 0 -> F(l*0.5) [ +(45) P(3, 0.12) ] [ -(45) P(3, 0.12) ] f(0.05) E(0.08)
+
+    
+
+    // P(m,l): pinna: a pinnule card pair per step, then a terminal card.
+
+    P(m,l) : m > 0 -> !(0.012) F(l) &(rand(1,4)) [ +(70) f(0.07) L(0.16) ] [ -(70) f(0.07) L(0.16) ] P(m-1, l*0.94)
+
+    P(m,l) : m <= 0 -> f(0.05) L(0.14)
+
+'
+  iterations: 54

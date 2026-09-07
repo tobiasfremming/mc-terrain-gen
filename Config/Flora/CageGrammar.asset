@@ -1,0 +1,68 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: CageGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Cage plant. Eight to fourteen dark root-stalks rise from a ring on the
+
+    // ground, arch up, over and back in (a rise that keeps going past vertical)
+
+    // to close a cage around a glowing bulb floating at its centre; every stalk
+
+    // ends in a glowing bead.
+
+    //
+
+    // Per-seed variation: facing, stalk count and width, bulb height and size,
+
+    // per stalk the launch, rise (12..17 a segment: 170..240 degrees in all)
+
+    // and every kink.
+
+    
+
+    // X 1, C 14, A 16 + 1. 32.
+
+    #iterations: 34
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) [ f(rand(1.1,1.7)) B(rand(0.6,0.9)) ] C(rand(8,14), rand(0.06,0.1))
+
+    
+
+    // C(n,w): one stalk per step around the ring, launched out and a little down.
+
+    C(n,w) : n > 0 -> [ /(rand(360)) &(rand(100,120)) A(rand(12,16), 0.3, w, rand(13,17)) ] C(n-1, w)
+
+    C(n,w) : n <= 0 -> $
+
+    
+
+    // A(k,l,w,u): the arch. A pitch about the stalk''s OWN left axis every
+
+    // segment, with no roll and no $, keeps the curve in the launch plane and
+
+    // lets it pass over the top ($ ^ would stop at vertical); a small yaw
+
+    // jitter and lumpy width keep it crooked.
+
+    A(k,l,w,u) : k > 0 : 0.75 -> !(w*rand(0.85,1.2)) F(l*rand(0.7,1.3)) ^(u*rand(0.7,1.3)) +(rand(-7,7)) A(k-1, l*0.98, w*0.96, u)
+
+    A(k,l,w,u) : k > 0 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) ^(u*rand(1.2,1.8)) +(rand(-12,12)) A(k-1, l*0.98, w*0.96, u)
+
+    A(k,l,w,u) : k <= 0 -> !(w) F(l*0.6) f(0.06) E(0.12)'
+  iterations: 34

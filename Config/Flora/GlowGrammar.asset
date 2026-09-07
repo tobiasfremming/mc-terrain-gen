@@ -48,7 +48,7 @@ MonoBehaviour:
 
     
 
-    X -> F(rand(0.2,0.7)) &(rand(-15,15)) /(rand(360)) A(rand(0.9,1.2), 0.11, rand(26,42), rand(0.78,0.81))
+    X -> /(rand(360)) F(rand(0.2,0.7)) &(rand(-15,15)) A(rand(0.9,1.2), 0.11, rand(26,42), rand(0.78,0.81))
 
     
 

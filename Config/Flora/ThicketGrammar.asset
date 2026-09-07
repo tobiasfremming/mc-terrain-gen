@@ -1,0 +1,84 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: ThicketGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Root thicket. Two crooked runners set off a metre above the ground in
+
+    // opposite directions and wander for ten to sixteen segments; every segment
+
+    // either drops a crooked prop root to the ground or raises a short shoot
+
+    // with a tuft of teal leaf cards, so the whole thing is a low tangle of red
+
+    // roots with foliage on top.
+
+    //
+
+    // Per-seed variation: facing, runner heights, lengths and every kink, the
+
+    // root/shoot choice on every segment.
+
+    
+
+    // X 1, H 16, D 7 or S 5 + 1. 23.
+
+    #iterations: 26
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) f(rand(0.8,1.4)) !(0.14) [ &(rand(80,100)) H(rand(10,16), 0.5, 0.14, 0) ] /(rand(120,240)) [ &(rand(80,100)) H(rand(8,14), 0.5, 0.13, 0) ]
+
+    
+
+    // H(k,l,w,i): a runner: crooked, roughly level, forks once at k = 6.
+
+    H(k,l,w,i) : k > 6.5 : 0.75 -> !(w*rand(0.85,1.2)) F(l*rand(0.6,1.4)) &(rand(-5,5)) +(rand(-25,25)) /(rand(-40,40)) $ &(2) Z(i, w) H(k-1, l, w*0.97, i+1)
+
+    H(k,l,w,i) : k > 6.5 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) +(rand(-40,40)) $ &(2) Z(i, w) H(k-1, l, w*0.97, i+1)
+
+    H(k,l,w,i) : k > 5.5 && k <= 6.5 -> !(w) F(l) $ !(w*0.8) [ +(rand(25,50)) H(k-1, l, w*0.8, i+1) ] [ -(rand(25,50)) H(k-1, l, w*0.8, i+1) ]
+
+    H(k,l,w,i) : k > 0 && k <= 5.5 : 0.75 -> !(w*rand(0.85,1.2)) F(l*rand(0.6,1.4)) &(rand(-5,5)) +(rand(-25,25)) /(rand(-40,40)) $ &(2) Z(i, w) H(k-1, l, w*0.96, i+1)
+
+    H(k,l,w,i) : k > 0 && k <= 5.5 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) +(rand(-40,40)) $ &(2) Z(i, w) H(k-1, l, w*0.96, i+1)
+
+    H(k,l,w,i) : k <= 0 -> !(w) F(l*0.5) [ $ ^(rand(60,90)) S(rand(3,5), 0.3, w*0.5) ]
+
+    
+
+    // Z(i,w): every segment: a prop root down (6 in 10) or a shoot up (4 in 10).
+
+    Z(i,w) : 0.6 -> [ $ &(90) /(rand(360)) D(rand(3,5), 0.35, w*0.6, rand(4,8)) ]
+
+    Z(i,w) : 0.4 -> [ $ ^(rand(60,90)) /(rand(360)) S(rand(3,5), 0.3, w*0.5) ]
+
+    
+
+    // D(k,l,w,u): prop root, kinked, pulled down.
+
+    D(k,l,w,u) : k > 0 -> !(w*rand(0.85,1.2)) F(l*rand(0.7,1.3)) &(rand(-14,14)) +(rand(-14,14)) /(rand(-40,40)) $ &(u) D(k-1, l, w*0.95, u)
+
+    D(k,l,w,u) : k <= 0 -> !(w) F(l)
+
+    
+
+    // S(k,l,w): a shoot: kinked, rising, a leaf tuft at the top.
+
+    S(k,l,w) : k > 0 -> !(w) F(l*rand(0.7,1.3)) &(rand(-12,12)) +(rand(-12,12)) /(rand(-40,40)) $ ^(rand(4,10)) S(k-1, l, w*0.9)
+
+    S(k,l,w) : k <= 0 -> !(w) F(l*0.5) [ ^(45) f(0.2) L(0.45) ] [ /(120) ^(45) f(0.2) L(0.45) ] [ /(240) ^(45) f(0.2) L(0.45) ] f(0.16) L(0.4)'
+  iterations: 26

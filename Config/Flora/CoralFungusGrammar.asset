@@ -1,0 +1,58 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: CoralFungusGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Coral fungus. Three to six fleshy stems from one base, each forking two
+
+    // or three ways five generations deep: crooked, lumpy fingers that lift
+
+    // toward the sky and thin to glowing tips. Lilac flesh.
+
+    //
+
+    // Per-seed variation: facing, stem count and lean, first length, shrink s
+
+    // (0.66..0.72), fork half-angle a (20..40), every kink and roll.
+
+    
+
+    #define MIN 0.1
+
+    
+
+    // X 1, B 6, A: 0.6 * 0.72^n < 0.1 -> 6, tip 1. 14.
+
+    #iterations: 16
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) !(0.2) B(rand(3,6))
+
+    
+
+    B(n) : n > 0 -> [ /(rand(360)) &(rand(10,35)) A(rand(0.5,0.65), 0.13, rand(0.68,0.74), rand(20,40)) ] B(n-1)
+
+    B(n) : n <= 0 -> $
+
+    
+
+    A(l,w,s,a) : l >= MIN : 0.55 -> !(w*rand(0.85,1.2)) F(l*rand(0.7,1.3)) &(rand(-12,12)) +(rand(-12,12)) /(rand(-40,40)) $ ^(rand(2,8)) !(w*0.72) [ +(a) /(rand(360)) A(l*s, w*0.72, s, a) ] [ -(a) /(rand(360)) A(l*s, w*0.72, s, a) ]
+
+    A(l,w,s,a) : l >= MIN : 0.45 -> !(w*rand(0.85,1.2)) F(l*rand(0.7,1.3)) &(rand(-12,12)) +(rand(-12,12)) /(rand(-40,40)) $ ^(rand(2,8)) !(w*0.72) [ +(a) /(rand(360)) A(l*s, w*0.72, s, a) ] [ -(a) /(rand(360)) A(l*s, w*0.72, s, a) ] [ ^(a) /(rand(360)) A(l*s*0.9, w*0.68, s, a) ]
+
+    A(l,w,s,a) : l < MIN -> !(w) F(l) f(0.02) E(0.02 + w*0.8)'
+  iterations: 16

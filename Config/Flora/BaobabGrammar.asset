@@ -1,0 +1,102 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: BaobabGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Baobab colossus. Buttress roots crawl out from the base; a huge lumpy
+
+    // trunk, five kinked segments wide as a house, carries a crown of five to
+
+    // eight bare root-like limbs that fork twice and thin to nothing, with only
+
+    // a few tiny leaf cards near the tips.
+
+    //
+
+    // Per-seed variation: facing, buttress count, trunk kink, limb count,
+
+    // launch angles, every kink and fork angle.
+
+    
+
+    // X 1, B 8 + G 4; X 1, T 7, Q 8, L 12, tip 1 = 29.
+
+    #iterations: 32
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) B(rand(6,10)) !(rand(1.2,1.6)) T(7, 0.7, 1.45)
+
+    
+
+    // B(n): one buttress root per step, out along the ground.
+
+    B(n) : n > 0 -> [ /(rand(360)) &(rand(92,108)) !(rand(0.45,0.7)) G(4, 1.0) ] B(n-1)
+
+    B(n) : n <= 0 -> $
+
+    G(k,l) : k > 0 -> F(l*rand(0.6,1.3)) &(rand(-10,10)) +(rand(-25,25)) /(rand(-30,30)) $ &(rand(2,8)) !(0.45*rand(0.6,0.9)) G(k-1, l*0.9)
+
+    G(k,l) : k <= 0 -> F(l*0.5)
+
+    
+
+    // T(k,l,w): the trunk: enormous, lumpy, kinked, tapering.
+
+    T(k,l,w) : k > 4.5 -> !(w*rand(0.8,1.25)) F(l*rand(0.8,1.2)) &(rand(-8,8)) +(rand(-8,8)) /(rand(360)) $ ^(rand(1,4)) T(k-1, l, w*0.96)
+
+    T(k,l,w) : k > 0 && k <= 4.5 -> !(w*rand(0.8,1.25)) F(l*rand(0.8,1.2)) &(rand(-8,8)) +(rand(-8,8)) /(rand(360)) $ ^(rand(1,4)) T(k-1, l, w*0.78)
+
+    T(k,l,w) : k <= 0 -> !(w) F(0.4) Q(rand(5,8), w)
+
+    
+
+    // Q(n,w): the crown limbs, launched 30..70 from vertical.
+
+    Q(n,w) : n > 0 -> [ /(rand(360)) &(rand(30,70)) L(rand(9,12), 0.9, w*0.45, rand(1,4), 0) ] /(60) Q(n-1, w)
+
+    Q(n,w) : n <= 0 -> $
+
+    
+
+    // L(k,l,w,u,i): root-like limb: very crooked, forks at k = 6 and k = 3,
+
+    // leaf cards only when thin.
+
+    L(k,l,w,u,i) : k > 6.5 : 0.7 -> !(w*rand(0.8,1.25)) F(l*rand(0.6,1.4)) &(rand(-25,25)) +(rand(-25,25)) /(rand(-40,40)) $ ^(u*rand(0.3,1.9)) L(k-1, l*0.95, w*0.9, u, i+1)
+
+    L(k,l,w,u,i) : k > 6.5 : 0.3 -> !(w*rand(0.9,1.3)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(25,45)) $ ^(u*rand(0.5,1.5)) L(k-1, l*0.95, w*0.9, u, i+1)
+
+    L(k,l,w,u,i) : k > 5.5 && k <= 6.5 -> !(w) F(l*rand(0.7,1.1)) $ ^(u) !(w*0.75) [ +(rand(25,50)) /(rand(-40,40)) &(rand(-20,20)) L(k-1, l*0.9, w*0.7, u, i+1) ] [ -(rand(25,50)) /(rand(-40,40)) &(rand(-20,20)) L(k-1, l*0.9, w*0.7, u, i+1) ]
+
+    L(k,l,w,u,i) : k > 3.5 && k <= 5.5 : 0.7 -> !(w*rand(0.8,1.25)) F(l*rand(0.6,1.4)) &(rand(-25,25)) +(rand(-25,25)) /(rand(-40,40)) $ ^(u*rand(0.3,1.9)) L(k-1, l*0.95, w*0.88, u, i+1)
+
+    L(k,l,w,u,i) : k > 3.5 && k <= 5.5 : 0.3 -> !(w*rand(0.9,1.3)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(25,45)) $ ^(u*rand(0.5,1.5)) L(k-1, l*0.95, w*0.88, u, i+1)
+
+    L(k,l,w,u,i) : k > 2.5 && k <= 3.5 -> !(w) F(l*rand(0.7,1.1)) $ ^(u) !(w*0.7) [ +(rand(25,50)) /(rand(-40,40)) &(rand(-20,20)) L(k-1, l*0.85, w*0.65, u, i+1) ] [ -(rand(25,50)) /(rand(-40,40)) &(rand(-20,20)) L(k-1, l*0.85, w*0.65, u, i+1) ]
+
+    L(k,l,w,u,i) : k > 0 && k <= 2.5 -> !(w*rand(0.8,1.2)) F(l*rand(0.6,1.4)) &(rand(-25,25)) +(rand(-25,25)) /(rand(-40,40)) $ ^(u) W(w) L(k-1, l*0.95, w*0.85, u, i+1)
+
+    L(k,l,w,u,i) : k <= 0 -> !(w) F(l*0.5) [ ^(40) f(0.1) L(0.22) ] [ &(40) /(180) f(0.1) L(0.22) ]
+
+    
+
+    // W(w): a leaf card on thin wood, sometimes.
+
+    W(w) : 0.4 -> [ /(rand(360)) ^(rand(30,80)) f(0.12) L(0.22) ]
+
+    W(w) : 0.6 -> $'
+  iterations: 32

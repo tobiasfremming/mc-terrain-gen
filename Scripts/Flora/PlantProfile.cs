@@ -28,6 +28,7 @@ public enum PlantPartShape
     Prefab,
     Cone,     // base radius 0.5 at the bottom, apex at the top, height 2
     Funnel,   // the same cone with no base disc and a finer ring: open, hollow; eulerOffset x=-90 puts the apex on the stem
+    Dome,     // a sphere at four times the tessellation, for anything big enough to show facets (caps, orbs, bulbs)
 }
 
 // How a marker's own parameter feeds the part's size. A grammar that writes

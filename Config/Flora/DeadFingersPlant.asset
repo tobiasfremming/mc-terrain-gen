@@ -1,0 +1,60 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 01db12252b7120b4281a3eaa4b96f2d2, type: 3}
+  m_Name: DeadFingersPlant
+  m_EditorClassIdentifier: Assembly-CSharp::PlantProfile
+  grammar: {fileID: 11400000, guid: 8e6adbecfd0e1f20314253b64a5b6c7d, type: 2}
+  iterations: -1
+  seed: 251
+  maxModules: 250000
+  turtle:
+    stepLength: 1
+    angleDegrees: 25
+    initialWidth: 0.2
+    widthFactor: 0.7
+    lengthFactor: 0.9
+    origin: {x: 0, y: 0, z: 0}
+    heading: {x: 0, y: 1, z: 0}
+    up: {x: 0, y: 0, z: -1}
+  stemShape: 4
+  stemColor: {r: 0.15, g: 0.14, b: 0.16, a: 1}
+  stemRadiusScale: 1.0
+  minStemRadius: 0.01
+  taperStems: 1
+  hideStemsBelowRadius: 0
+  parts:
+  - symbol: D
+    shape: 9
+    prefab: {fileID: 0}
+    color: {r: 0.9, g: 0.9, b: 0.85, a: 1}
+    scale: {x: 1, y: 1.2, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 90, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: M
+    shape: 2
+    prefab: {fileID: 0}
+    color: {r: 0.95, g: 0.5, b: 0.2, a: 1}
+    scale: {x: 1, y: 1, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0.8
+    alignToHeading: 1
+    eulerOffset: {x: 0, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1

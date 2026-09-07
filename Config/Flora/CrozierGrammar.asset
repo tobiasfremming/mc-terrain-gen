@@ -1,0 +1,76 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: CrozierGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Crozier grove. Four to eight teal stems rise from one root, run straight
+
+    // for a while, then coil into a tightening spiral like an unfurling fern
+
+    // head, with a pair of leaflets on every coil segment (teal below, violet
+
+    // near the tip) and a glowing bead at the very end.
+
+    //
+
+    // The spiral: pitch a grows by 6% per segment while length shrinks by 7%,
+
+    // so the curve tightens toward the centre.
+
+    //
+
+    // Per-seed variation: stem count, per stem the straight length (4..9),
+
+    // width and lean, coil length (22..30).
+
+    
+
+    // X 1, Q 8, S 9 + 1, C 30 + 1. 50.
+
+    #iterations: 52
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) Q(rand(4,8))
+
+    
+
+    Q(n) : n > 0 -> [ &(rand(5,30)) /(rand(360)) S(rand(4,9), rand(0.06,0.1)) ] Q(n-1)
+
+    Q(n) : n <= 0 -> $
+
+    
+
+    // S(k,w): the straight run, righting itself a little.
+
+    S(k,w) : k > 0 -> !(w) F(0.35) &(rand(-2,2)) /(rand(-10,10)) $ ^(rand(0,1)) S(k-1, w*0.98)
+
+    S(k,w) : k <= 0 -> $ /(rand(360)) C(rand(22,30), 0.3, 12, w)
+
+    
+
+    // C(k,l,a,w): the coil. Leaflets L (teal) while the coil is loose, M
+
+    // (violet) once it is tight.
+
+    C(k,l,a,w) : k > 0 && a < 30 -> !(w) F(l) &(a) [ +(80) f(l*0.4) L(l*0.9) ] [ -(80) f(l*0.4) L(l*0.9) ] C(k-1, l*0.93, a*1.06, w*0.95)
+
+    C(k,l,a,w) : k > 0 && a >= 30 -> !(w) F(l) &(a) [ +(80) f(l*0.4) M(l*0.9) ] [ -(80) f(l*0.4) M(l*0.9) ] C(k-1, l*0.93, a*1.06, w*0.95)
+
+    C(k,l,a,w) : k <= 0 -> !(w) F(l) f(0.05) E(0.1)
+
+'
+  iterations: 52

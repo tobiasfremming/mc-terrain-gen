@@ -10,76 +10,50 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 01db12252b7120b4281a3eaa4b96f2d2, type: 3}
-  m_Name: ShelfTowerPlant
+  m_Name: CagePlant
   m_EditorClassIdentifier: Assembly-CSharp::PlantProfile
-  grammar: {fileID: 11400000, guid: c34e5f60718293a4b5c6d7e8f9a01234, type: 2}
+  grammar: {fileID: 11400000, guid: 258091a2b3c4d5e6adbecfd0e1f20314, type: 2}
   iterations: -1
-  seed: 5
+  seed: 229
   maxModules: 250000
   turtle:
     stepLength: 1
     angleDegrees: 25
-    initialWidth: 0.7
+    initialWidth: 0.08
     widthFactor: 0.7
     lengthFactor: 0.9
     origin: {x: 0, y: 0, z: 0}
     heading: {x: 0, y: 1, z: 0}
     up: {x: 0, y: 0, z: -1}
   stemShape: 4
-  stemColor: {r: 0.8, g: 0.66, b: 0.56, a: 1}
+  stemColor: {r: 0.2, g: 0.16, b: 0.14, a: 1}
   stemRadiusScale: 1.0
-  minStemRadius: 0.02
+  minStemRadius: 0.006
   taperStems: 1
   hideStemsBelowRadius: 0
   parts:
-  - symbol: D
-    shape: 4
+  - symbol: B
+    shape: 9
     prefab: {fileID: 0}
-    color: {r: 0.88, g: 0.58, b: 0.42, a: 1}
-    scale: {x: 1.0, y: 0.05, z: 1.0}
+    color: {r: 0.6, g: 1, b: 0.85, a: 1}
+    scale: {x: 1, y: 1.3, z: 1}
     sizeFrom: 1
     paramIndex: 0
     sizeMultiplier: 1
-    emission: 0
-    alignToHeading: 1
-    eulerOffset: {x: 0, y: 0, z: 0}
-    localOffset: {x: 0, y: 0, z: 0}
-    enabled: 1
-  - symbol: H
-    shape: 7
-    prefab: {fileID: 0}
-    color: {r: 0.9, g: 0.55, b: 0.38, a: 1}
-    scale: {x: 2.4, y: 0.22, z: 2.4}
-    sizeFrom: 1
-    paramIndex: 0
-    sizeMultiplier: 1
-    emission: 0
-    alignToHeading: 1
-    eulerOffset: {x: -90, y: 0, z: 0}
-    localOffset: {x: 0, y: 0, z: 0}
-    enabled: 1
-  - symbol: P
-    shape: 4
-    prefab: {fileID: 0}
-    color: {r: 0.93, g: 0.62, b: 0.44, a: 1}
-    scale: {x: 2.0, y: 0.1, z: 2.0}
-    sizeFrom: 1
-    paramIndex: 0
-    sizeMultiplier: 1
-    emission: 0
+    emission: 0.9
     alignToHeading: 1
     eulerOffset: {x: 90, y: 0, z: 0}
     localOffset: {x: 0, y: 0, z: 0}
     enabled: 1
-  - symbol: B
+  - symbol: E
     shape: 2
     prefab: {fileID: 0}
-    color: {r: 0.93, g: 0.62, b: 0.44, a: 1}
+    color: {r: 0.7, g: 1, b: 0.9, a: 1}
     scale: {x: 1, y: 1, z: 1}
     sizeFrom: 1
     paramIndex: 0
     sizeMultiplier: 1
-    emission: 0
+    emission: 1.0
     alignToHeading: 1
     eulerOffset: {x: 0, y: 0, z: 0}
     localOffset: {x: 0, y: 0, z: 0}

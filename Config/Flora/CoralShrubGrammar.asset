@@ -1,0 +1,88 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: CoralShrubGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Coral shrub (Population Zero, red moss zone). Two to four stems from a
+
+    // short base, each a dichotomous bush: four generations of forks drawn as
+
+    // stem segments (the profile''s stem colour), then one generation drawn as
+
+    // Z cylinders and two as Y cylinders (the profile''s mid and tip colours),
+
+    // so the colour shifts from base to tip; a knob K on every tip.
+
+    //
+
+    // The same grammar makes the red-to-yellow shrub and the white-to-lilac
+
+    // one: only the profile differs.
+
+    //
+
+    // Per-seed variation: facing, stem count and lean, first length, shrink s
+
+    // (0.7..0.76), fork angle a (22..38), every roll.
+
+    
+
+    #define TP 0.72
+
+    #define M1 0.22
+
+    #define M2 0.15
+
+    #define M3 0.11
+
+    
+
+    // X 1, B 4, A 7, tip 1. 13.
+
+    #iterations: 15
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) !(0.045) F(rand(0.15,0.35)) B(rand(2,4))
+
+    
+
+    B(n) : n > 0 -> [ /(rand(360)) &(rand(15,40)) A(rand(0.5,0.62), 0.04, rand(0.7,0.76), rand(22,38)) ] B(n-1)
+
+    B(n) : n <= 0 -> $
+
+    
+
+    // Base wood: forks two or three ways.
+
+    A(l,w,s,a) : l >= M1 : 0.6 -> !(w) F(l) &(rand(-8,8)) !(w*TP) [ +(a) /(rand(360)) A(l*s, w*TP, s, a) ] [ -(a) /(rand(360)) A(l*s, w*TP, s, a) ]
+
+    A(l,w,s,a) : l >= M1 : 0.4 -> !(w) F(l) &(rand(-8,8)) !(w*TP) [ +(a) /(rand(360)) A(l*s, w*TP, s, a) ] [ -(a) /(rand(360)) A(l*s, w*TP, s, a) ] [ ^(a) /(rand(360)) A(l*s*0.9, w*TP, s, a) ]
+
+    // Mid colour: a Z cylinder instead of a stem segment, still forking.
+
+    A(l,w,s,a) : l < M1 && l >= M2 -> f(l*0.5) Z(l) f(l*0.5) &(rand(-8,8)) [ +(a) /(rand(360)) A(l*s, w*TP, s, a) ] [ -(a) /(rand(360)) A(l*s, w*TP, s, a) ]
+
+    // Tip colour: Y cylinders, forking.
+
+    A(l,w,s,a) : l < M2 && l >= M3 -> f(l*0.5) Y(l) f(l*0.5) &(rand(-8,8)) [ +(a) /(rand(360)) A(l*s, w*TP, s, a) ] [ -(a) /(rand(360)) A(l*s, w*TP, s, a) ]
+
+    // Tip: a last Y and a knob.
+
+    A(l,w,s,a) : l < M3 -> f(l*0.4) Y(l*0.8) f(l*0.4) K(0.025)
+
+'
+  iterations: 15

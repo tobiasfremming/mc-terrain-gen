@@ -1,0 +1,66 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: CordycepsGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Cordyceps spikes. Four to eight thin crooked stalks lean up out of one
+
+    // patch, each swelling at the top into an orange club head studded with
+
+    // six to twelve glowing knobs.
+
+    //
+
+    // Per-seed variation: facing, stalk count, per stalk the offset, lean,
+
+    // height (6..10 segments), width, every kink, knob count.
+
+    
+
+    #define PHI 137.5
+
+    
+
+    // X 1, S 8, K 10 + 1, N 12. 32.
+
+    #iterations: 34
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) S(rand(4,8))
+
+    
+
+    S(n) : n > 0 -> [ /(rand(360)) &(90) f(rand(0,0.4)) ^(90) /(rand(360)) &(rand(5,30)) K(rand(6,10), 0.3, rand(0.03,0.05)) ] S(n-1)
+
+    S(n) : n <= 0 -> $
+
+    
+
+    // K(k,l,w): the stalk: kinked, lifting; then the swollen head and knobs.
+
+    K(k,l,w) : k > 0 -> !(w*rand(0.9,1.15)) F(l*rand(0.7,1.3)) &(rand(-12,12)) +(rand(-12,12)) /(rand(-40,40)) $ ^(rand(4,9)) K(k-1, l, w*0.99)
+
+    K(k,l,w) : k <= 0 -> !(w*1.5) F(l*0.6) !(w*2.2) F(l*0.6) f(0.08) H(0.2) N(rand(6,12), 0.2)
+
+    
+
+    // N(n,r): knobs around the head.
+
+    N(n,r) : n > 0 -> [ /(PHI*n) &(rand(20,140)) f(r*0.55) M(rand(0.05,0.09)) ] N(n-1, r)
+
+    N(n,r) : n <= 0 -> $'
+  iterations: 34

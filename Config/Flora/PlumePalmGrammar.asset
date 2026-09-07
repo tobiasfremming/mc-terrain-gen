@@ -44,7 +44,7 @@ MonoBehaviour:
 
     
 
-    X -> B(rand(6,11)) T(rand(7,16), rand(0.2,0.28), rand(5,7), rand(11,16))
+    X -> /(rand(360)) B(rand(6,11)) T(rand(7,16), rand(0.2,0.28), rand(5,7), rand(11,16))
 
     
 

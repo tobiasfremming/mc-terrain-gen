@@ -1,0 +1,78 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: PuffballGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Puffball colony. Three to six pale violet puffballs of different sizes
+
+    // sit on the ground within a couple of metres of each other, each with a
+
+    // glowing vent on top and three to six thin crooked mycelium runners
+
+    // crawling out along the ground, forking, with tiny glowing knobs.
+
+    //
+
+    // Per-seed variation: facing, ball count, positions and sizes, runner
+
+    // count, lengths, every kink and fork.
+
+    
+
+    // X 1, C 6, B 1, M 6, R 10 + 1. 25.
+
+    #iterations: 27
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) C(rand(3,6))
+
+    
+
+    // C(n): one ball per step, placed along the ground.
+
+    C(n) : n > 0 -> [ /(rand(360)) &(90) f(rand(0.3,2.2)) ^(90) /(rand(360)) B(rand(0.35,1.0)) ] C(n-1)
+
+    C(n) : n <= 0 -> $
+
+    
+
+    // B(r): mycelium from the base, then the ball (dome, centred 0.42 r up so
+
+    // it sits on the ground) and its vent.
+
+    B(r) -> M(rand(3,6), r) f(r*0.42) D(r) f(r*0.45) V(r*0.25)
+
+    
+
+    M(n,r) : n > 0 -> [ /(rand(360)) &(90) f(r*0.5) !(0.015) R(rand(6,10), 0.25, 0.015) ] M(n-1, r)
+
+    M(n,r) : n <= 0 -> $
+
+    
+
+    // R(k,l,w): a runner along the ground: kinked in yaw, a knob now and then,
+
+    // one in four segments forks.
+
+    R(k,l,w) : k > 0 : 0.5 -> !(w*rand(0.8,1.2)) F(l*rand(0.6,1.4)) +(rand(-30,30)) &(rand(-3,3)) $ R(k-1, l, w*0.97)
+
+    R(k,l,w) : k > 0 : 0.25 -> !(w*rand(0.8,1.2)) F(l*rand(0.6,1.4)) +(rand(-30,30)) &(rand(-3,3)) $ [ ^(90) f(0.015) E(0.03) ] R(k-1, l, w*0.97)
+
+    R(k,l,w) : k > 0 : 0.25 -> !(w) F(l) $ [ +(rand(30,50)) R(k-1, l, w*0.8) ] [ -(rand(30,50)) R(k-1, l, w*0.8) ]
+
+    R(k,l,w) : k <= 0 -> f(0.02) E(0.035)'
+  iterations: 27

@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: DeadFingersGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Dead man''s fingers. Five to nine fat charcoal clubs rise from one patch,
+
+    // each a crooked, lumpy column that may fork once or twice, rounded off
+
+    // with a pale tip; glowing orange pores dot the sides.
+
+    //
+
+    // Per-seed variation: facing, club count, per club the offset, lean,
+
+    // height (5..9 segments), width, every kink, fork and pore.
+
+    
+
+    // X 1, C 9, K 9 + 1, P 1. 21.
+
+    #iterations: 23
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) C(rand(5,9))
+
+    
+
+    C(n) : n > 0 -> [ /(rand(360)) &(90) f(rand(0,0.5)) ^(90) /(rand(360)) &(rand(0,25)) K(rand(5,9), 0.35, rand(0.12,0.2), 0) ] C(n-1)
+
+    C(n) : n <= 0 -> $
+
+    
+
+    // K(k,l,w,i): a club: kinked, lumpy, lifting; one in five segments forks.
+
+    K(k,l,w,i) : k > 0 : 0.8 -> !(w*rand(0.85,1.25)) F(l*rand(0.7,1.3)) &(rand(-14,14)) +(rand(-14,14)) /(rand(-40,40)) $ ^(rand(3,9)) P(i, w) K(k-1, l, w*0.97, i+1)
+
+    K(k,l,w,i) : k > 0 : 0.2 -> !(w) F(l) $ ^(5) !(w*0.8) [ +(rand(20,40)) /(rand(360)) K(k-1, l, w*0.8, i+1) ] [ -(rand(20,40)) /(rand(360)) K(k-1, l, w*0.8, i+1) ]
+
+    K(k,l,w,i) : k <= 0 -> !(w*0.9) F(l*0.5) f(w*0.5) D(w*2.2)
+
+    
+
+    // P(i,w): a glowing pore on the side, one in three segments.
+
+    P(i,w) : 0.35 -> [ /(rand(360)) &(90) f(w*0.95) M(0.03) ]
+
+    P(i,w) : 0.65 -> $'
+  iterations: 23

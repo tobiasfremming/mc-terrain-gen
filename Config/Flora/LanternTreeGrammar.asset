@@ -1,0 +1,90 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: LanternTreeGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Lantern tree. A dark weeping tree: a short trunk, three or four limbs,
+
+    // forks that bend gently skyward while thick and droop once thin, and
+
+    // every twig ending in a long stalk that hangs to vertical, dressed with
+
+    // small leaves and tipped with a glowing orange lantern pod.
+
+    //
+
+    // Per-seed variation: facing, trunk segment count (2..4), shrink s, limb
+
+    // angles, hanging stalk length (4..8 segments of 0.35).
+
+    
+
+    #define TP  0.72
+
+    #define MIN 0.62
+
+    
+
+    // Y 1, T 4 + 1, X 1, A: 2.4 * 0.78^n < 0.62 -> 6, tip 1, H 8 + 1. 23.
+
+    #iterations: 25
+
+    
+
+    #axiom: Y
+
+    
+
+    Y -> /(rand(360)) !(0.7) T(rand(2,4), 0.7, rand(0.72,0.78))
+
+    
+
+    T(k,w,s) : k > 0 -> !(w) F(rand(0.7,1.1)) &(rand(-4,4)) /(rand(-30,30)) T(k-1, w*0.92, s)
+
+    T(k,w,s) : k <= 0 -> X(s)
+
+    
+
+    X(s) -> [ &(rand(30,50)) /(rand(360)) A(rand(1.8,2.4), 0.5, s) ] /(rand(100,140)) [ &(rand(30,50)) A(rand(1.8,2.4), 0.48, s) ] /(rand(100,140)) [ &(rand(25,45)) A(rand(1.8,2.4), 0.5, s) ] ^(rand(0,12)) A(rand(1.6,2.2), 0.45, s)
+
+    
+
+    // A(l,w,s): fork, or fork-and-continue. Thick wood lifts (^), thin wood
+
+    // droops (&) so the outer crown weeps.
+
+    A(l,w,s) : l >= MIN && w >= 0.15 : 0.6 -> !(w) F(l) $ ^(4) !(w*TP) [ +(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ] [ -(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ]
+
+    A(l,w,s) : l >= MIN && w >= 0.15 : 0.4 -> !(w) F(l) $ ^(4) !(w*TP) [ +(rand(30,55)) /(rand(360)) A(l*s*0.9, w*TP*0.9, s) ] /(rand(-30,30)) A(l*s, w*TP, s)
+
+    A(l,w,s) : l >= MIN && w < 0.15 : 0.6 -> !(w) F(l) $ &(14) !(w*TP) [ +(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ] [ -(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ]
+
+    A(l,w,s) : l >= MIN && w < 0.15 : 0.4 -> !(w) F(l) $ &(14) !(w*TP) [ +(rand(30,55)) /(rand(360)) A(l*s*0.9, w*TP*0.9, s) ] /(rand(-30,30)) A(l*s, w*TP, s)
+
+    
+
+    // Tip: the hanging stalk H.
+
+    A(l,w,s) : l < MIN -> !(w) F(l) $ &(rand(40,70)) H(rand(4,8), 0.02)
+
+    
+
+    // H(k,w): the stalk droops a little more each step until it hangs straight;
+
+    // a small leaf on alternating sides.
+
+    H(k,w) : k > 0 -> !(w) F(0.35) $ &(rand(10,18)) [ +(rand(60,110)) /(rand(0,1)*180) f(0.08) L(0.16) ] H(k-1, w)
+
+    H(k,w) : k <= 0 -> !(w) F(0.15) f(0.18) B(0.36) f(0.2) G(0.09)
+
+'
+  iterations: 25

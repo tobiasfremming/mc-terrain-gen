@@ -42,7 +42,7 @@ MonoBehaviour:
 
     
 
-    X -> !(0.07) M(rand(10,20), rand(0.055,0.085), rand(6,9), rand(0.8,1.2))
+    X -> /(rand(360)) !(0.07) M(rand(10,20), rand(0.055,0.085), rand(6,9), rand(0.8,1.2))
 
     
 

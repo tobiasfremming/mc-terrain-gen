@@ -424,6 +424,7 @@ public class PlantBuilder : MonoBehaviour
         {
             case PlantPartShape.Capsule:  type = PrimitiveType.Capsule; break;
             case PlantPartShape.Sphere:   type = PrimitiveType.Sphere; break;
+            case PlantPartShape.Dome:     type = PrimitiveType.Sphere; break;
             case PlantPartShape.Cube:     type = PrimitiveType.Cube; break;
             case PlantPartShape.Cylinder: type = PrimitiveType.Cylinder; break;
             case PlantPartShape.Cone:     type = PrimitiveType.Cylinder; break; // no cone primitive; the baked mesh tapers it

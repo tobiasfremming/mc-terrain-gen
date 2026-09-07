@@ -1,0 +1,86 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 01db12252b7120b4281a3eaa4b96f2d2, type: 3}
+  m_Name: StiltTreePlant
+  m_EditorClassIdentifier: Assembly-CSharp::PlantProfile
+  grammar: {fileID: 11400000, guid: ad0e1f2a3b4c5d6e7f8091a2b3c4d5e6, type: 2}
+  iterations: -1
+  seed: 203
+  maxModules: 250000
+  turtle:
+    stepLength: 1
+    angleDegrees: 25
+    initialWidth: 0.18
+    widthFactor: 0.7
+    lengthFactor: 0.9
+    origin: {x: 0, y: 0, z: 0}
+    heading: {x: 0, y: 1, z: 0}
+    up: {x: 0, y: 0, z: -1}
+  stemShape: 4
+  stemColor: {r: 0.3, g: 0.25, b: 0.21, a: 1}
+  stemRadiusScale: 1.0
+  minStemRadius: 0.008
+  taperStems: 1
+  hideStemsBelowRadius: 0
+  parts:
+  - symbol: Q
+    shape: 5
+    prefab: {fileID: 0}
+    color: {r: 0.9, g: 0.36, b: 0.1, a: 1}
+    scale: {x: 0.6, y: 1, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 90, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: P
+    shape: 5
+    prefab: {fileID: 0}
+    color: {r: 0.96, g: 0.55, b: 0.12, a: 1}
+    scale: {x: 0.6, y: 1, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 90, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: Y
+    shape: 5
+    prefab: {fileID: 0}
+    color: {r: 0.99, g: 0.76, b: 0.2, a: 1}
+    scale: {x: 0.6, y: 1, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0
+    alignToHeading: 1
+    eulerOffset: {x: 90, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1
+  - symbol: M
+    shape: 2
+    prefab: {fileID: 0}
+    color: {r: 0.92, g: 0.1, b: 0.45, a: 1}
+    scale: {x: 1, y: 1, z: 1}
+    sizeFrom: 1
+    paramIndex: 0
+    sizeMultiplier: 1
+    emission: 0.25
+    alignToHeading: 1
+    eulerOffset: {x: 0, y: 0, z: 0}
+    localOffset: {x: 0, y: 0, z: 0}
+    enabled: 1

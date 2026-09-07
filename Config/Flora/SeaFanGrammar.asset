@@ -1,0 +1,68 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: SeaFanGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Sea fan (a gorgonian grown to tree size). A single holdfast, then three
+
+    // to five fan blades at different facings and tilts; each blade is a
+
+    // dichotomous fan that splits left and right, seven generations deep, the
+
+    // branches thinning to threads, with a roll and a wobble on every segment
+
+    // so the blades twist out of plane.
+
+    //
+
+    // Per-seed variation: blade count and facings, first length, split
+
+    // half-angle a (22..34) and shrink s (0.68..0.74).
+
+    
+
+    #define MIN 0.2
+
+    
+
+    // Y 1, Q 5, A: 1.6 * 0.74^n < 0.2 -> 7, tip 1. 14.
+
+    #iterations: 16
+
+    
+
+    #axiom: Y
+
+    
+
+    Y -> !(0.2) /(rand(360)) F(rand(0.3,0.6)) Q(rand(3,5), rand(22,34), rand(0.68,0.74))
+
+    
+
+    // Q(n,a,s): one blade per step, turned 50..110 degrees from the last.
+
+    Q(n,a,s) : n > 0 -> /(rand(50,110)) [ &(rand(5,25)) !(0.16) A(rand(1.2,1.6), 0.16, a, s) ] Q(n-1, a, s)
+
+    Q(n,a,s) : n <= 0 -> $
+
+    
+
+    // A(l,w,a,s): a clean split, or a split with the parent carrying on.
+
+    A(l,w,a,s) : l >= MIN : 0.7 -> !(w) F(l) &(rand(-4,4)) /(rand(-14,14)) [ +(a+rand(-6,6)) A(l*s, w*0.8, a, s) ] [ -(a+rand(-6,6)) A(l*s, w*0.8, a, s) ]
+
+    A(l,w,a,s) : l >= MIN : 0.3 -> !(w) F(l*0.5) &(rand(-4,4)) /(rand(-14,14)) [ +(a+rand(-6,6)) A(l*s, w*0.8, a, s) ] F(l*0.5) [ -(a+rand(-6,6)) A(l*s*0.9, w*0.8, a, s) ] A(l*s*0.85, w*0.72, a, s)
+
+    A(l,w,a,s) : l < MIN -> !(w) F(l) f(0.03) E(0.06)
+
+'
+  iterations: 16

@@ -1,0 +1,142 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e27993a11194c29b3db0e6c5a2c76a0, type: 3}
+  m_Name: StiltTreeGrammar
+  m_EditorClassIdentifier: TerrainGen.LSystem::LSystems.LSystemGrammarAsset
+  source: '// Stilt tree (orange-leaf mangrove concept). Ten to sixteen crooked prop
+
+    // roots fan down and out from a junction two metres up, pulled toward the
+
+    // ground and forking once; above it a slender twisted trunk climbs to a
+
+    // crown of six to nine huge orange leaves that arch out and over, each a
+
+    // midrib of seven segments carrying overlapping blade halves that widen
+
+    // then taper (yellow toward the tip); a cluster of magenta berries sits at
+
+    // the crown''s base.
+
+    //
+
+    // Roots are drawn downward from the junction and deliberately overshoot the
+
+    // ground: a root that stops short floats, one that goes on is buried.
+
+    //
+
+    // Per-seed variation: facing, junction height, root count, per root the
+
+    // launch angle, segment count and pull, trunk length and every kink, leaf
+
+    // count, per leaf the petiole, arch and width, berry count.
+
+    
+
+    #define PHI 137.5
+
+    
+
+    // X 1, J 3, E 5, R 9; X 1, T 9 + 1, C 9, B 12 + 1 = 33. K 22 in parallel.
+
+    #iterations: 36
+
+    
+
+    #axiom: X
+
+    
+
+    X -> /(rand(360)) f(rand(1.5,2.0)) !(rand(0.15,0.2)) J(3, 0.18)
+
+    
+
+    // J(m,w): the lower trunk, three short kinked segments, each shedding three
+
+    // to five roots downward.
+
+    J(m,w) : m > 0 -> !(w*rand(0.9,1.15)) F(rand(0.25,0.4)) &(rand(-10,10)) /(rand(360)) [ E(rand(3,5), w*0.7) ] J(m-1, w*0.97)
+
+    J(m,w) : m <= 0 -> T(rand(6,9), 0.42, 0.15)
+
+    
+
+    // E(n,w): roots from one node, launched 115..150 from vertical (down and out).
+
+    E(n,w) : n > 0 -> [ /(rand(360)) &(rand(115,150)) R(rand(6,9), 0.5, w, rand(6,12)) ] E(n-1, w)
+
+    E(n,w) : n <= 0 -> $
+
+    
+
+    // R(k,l,w,u): a prop root: the crooked-limb rule with the rise replaced by a
+
+    // pull toward the ground ($ then & instead of ^); forks once when k passes 3.
+
+    R(k,l,w,u) : k > 3.5 : 0.75 -> !(w*rand(0.8,1.2)) F(l*rand(0.6,1.4)) &(rand(-18,18)) +(rand(-18,18)) /(rand(-40,40)) $ &(u*rand(0.3,1.9)) R(k-1, l*0.97, w*0.93, u)
+
+    R(k,l,w,u) : k > 3.5 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(15,35)) $ &(u*rand(0.5,1.5)) R(k-1, l*0.97, w*0.93, u)
+
+    R(k,l,w,u) : k > 2.5 && k <= 3.5 -> !(w) F(l*rand(0.7,1.1)) $ &(u) !(w*0.75) [ +(rand(20,40)) /(rand(-30,30)) R(k-1, l*0.95, w*0.75, u) ] [ -(rand(20,40)) /(rand(-30,30)) R(k-1, l*0.95, w*0.75, u) ]
+
+    R(k,l,w,u) : k > 0 && k <= 2.5 : 0.75 -> !(w*rand(0.8,1.2)) F(l*rand(0.6,1.4)) &(rand(-18,18)) +(rand(-18,18)) /(rand(-40,40)) $ &(u*rand(0.3,1.9)) R(k-1, l*0.97, w*0.93, u)
+
+    R(k,l,w,u) : k > 0 && k <= 2.5 : 0.25 -> !(w*rand(0.9,1.25)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(15,35)) $ &(u*rand(0.5,1.5)) R(k-1, l*0.97, w*0.93, u)
+
+    R(k,l,w,u) : k <= 0 -> !(w) F(l*0.8)
+
+    
+
+    // T(k,l,w): the upper trunk: slender, kinked, twisting, lifting toward the sky.
+
+    T(k,l,w) : k > 0 : 0.7 -> !(w*rand(0.85,1.15)) F(l*rand(0.7,1.3)) &(rand(-15,15)) +(rand(-15,15)) /(rand(-40,40)) $ ^(rand(2,7)) T(k-1, l, w*0.97)
+
+    T(k,l,w) : k > 0 : 0.3 -> !(w*rand(0.9,1.2)) F(l*rand(0.5,0.9)) /(rand(360)) &(rand(12,28)) $ ^(rand(3,8)) T(k-1, l, w*0.97)
+
+    T(k,l,w) : k <= 0 -> !(w) K(rand(6,10)) F(0.15) K(rand(6,10)) F(0.15) K(rand(4,8)) C(rand(6,9))
+
+    
+
+    // K(n): berries on short stubs, three whorls up the last of the trunk.
+
+    K(n) : n > 0 -> [ /(PHI*n + rand(-20,20)) &(rand(50,110)) !(0.014) F(rand(0.06,0.18)) f(0.06) M(rand(0.1,0.16)) ] K(n-1)
+
+    K(n) : n <= 0 -> $
+
+    
+
+    // C(n): leaves in a spiral; the first shed lean out furthest.
+
+    C(n) : n > 0 -> [ /(PHI*n + rand(-15,15)) &(20 + n*7 + rand(-6,6)) !(0.03) F(rand(0.5,0.9)) &(rand(5,15)) $ B(12, 0.22, rand(0.28,0.36), 0.06, rand(5,9)) ] C(n-1)
+
+    C(n) : n <= 0 -> $
+
+    
+
+    // B(k,l,w,d,a): the blade. Each segment arches down by a (after $, so the
+
+    // blade stays flat) and carries two strip-shaped blade halves of half-width
+
+    // w (0.6*w along the midrib, so strips overlap), which grows by d for five
+
+    // segments, holds, then tapers to a point; orange-red at the base, orange,
+
+    // then yellow toward the tip.
+
+    B(k,l,w,d,a) : k > 7.5 -> F(l) $ &(a) [ +(90) f(w*0.5) Q(w) ] [ -(90) f(w*0.5) Q(w) ] B(k-1, l, w+d, d, a)
+
+    B(k,l,w,d,a) : k > 4.5 && k <= 7.5 -> F(l) $ &(a) [ +(90) f(w*0.5) P(w) ] [ -(90) f(w*0.5) P(w) ] B(k-1, l, w-d*0.4, d, a)
+
+    B(k,l,w,d,a) : k > 0 && k <= 4.5 -> F(l) $ &(a) [ +(90) f(w*0.5) Y(w) ] [ -(90) f(w*0.5) Y(w) ] B(k-1, l, w*0.72, d, a)
+
+    B(k,l,w,d,a) : k <= 0 -> F(l*0.4) f(0.1) Y(0.14)'
+  iterations: 36

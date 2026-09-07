@@ -19,7 +19,7 @@ MonoBehaviour:
   turtle:
     stepLength: 1
     angleDegrees: 25
-    initialWidth: 0.6
+    initialWidth: 0.7
     widthFactor: 0.7
     lengthFactor: 0.9
     origin: {x: 0, y: 0, z: 0}
