@@ -68,9 +68,9 @@ MonoBehaviour:
 
     // Base wood: forks two or three ways.
 
-    A(l,w,s,a) : l >= M1 : 0.6 -> !(w) F(l) &(rand(-8,8)) !(w*TP) [ +(a) /(rand(360)) A(l*s, w*TP, s, a) ] [ -(a) /(rand(360)) A(l*s, w*TP, s, a) ]
+    A(l,w,s,a) : l >= M1 : 0.6 -> !(w*rand(0.85,1.2)) F(l*rand(0.7,1.3)) &(rand(-14,14)) +(rand(-14,14)) /(rand(-40,40)) !(w*TP) [ +(a) /(rand(360)) A(l*s, w*TP, s, a) ] [ -(a) /(rand(360)) A(l*s, w*TP, s, a) ]
 
-    A(l,w,s,a) : l >= M1 : 0.4 -> !(w) F(l) &(rand(-8,8)) !(w*TP) [ +(a) /(rand(360)) A(l*s, w*TP, s, a) ] [ -(a) /(rand(360)) A(l*s, w*TP, s, a) ] [ ^(a) /(rand(360)) A(l*s*0.9, w*TP, s, a) ]
+    A(l,w,s,a) : l >= M1 : 0.4 -> !(w*rand(0.85,1.2)) F(l*rand(0.7,1.3)) &(rand(-14,14)) +(rand(-14,14)) /(rand(-40,40)) !(w*TP) [ +(a) /(rand(360)) A(l*s, w*TP, s, a) ] [ -(a) /(rand(360)) A(l*s, w*TP, s, a) ] [ ^(a) /(rand(360)) A(l*s*0.9, w*TP, s, a) ]
 
     // Mid colour: a Z cylinder instead of a stem segment, still forking.
 
@@ -82,7 +82,5 @@ MonoBehaviour:
 
     // Tip: a last Y and a knob.
 
-    A(l,w,s,a) : l < M3 -> f(l*0.4) Y(l*0.8) f(l*0.4) K(0.025)
-
-'
+    A(l,w,s,a) : l < M3 -> f(l*0.4) Y(l*0.8) f(l*0.4) K(0.025)'
   iterations: 15

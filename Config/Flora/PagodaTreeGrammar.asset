@@ -48,7 +48,7 @@ MonoBehaviour:
 
     // M(k,w): the leader. k counts down, so the first whorls (k large) are lowest and longest.
 
-    M(k,w) : k > 0 -> !(w) F(rand(0.9,1.3)) &(rand(-2,2)) /(rand(-10,10)) $ ^(rand(0,1)) [ Y(3, 3, k) ] /(PHI) M(k-1, w*0.9)
+    M(k,w) : k > 0 -> !(w*rand(0.88,1.12)) F(rand(0.9,1.3)) &(rand(-8,8)) +(rand(-8,8)) /(rand(-40,40)) $ ^(rand(0,3)) [ Y(3, 3, k) ] /(PHI) M(k-1, w*0.9)
 
     M(k,w) : k <= 0 -> !(w) F(0.5) f(0.2) E(0.25)
 
@@ -64,7 +64,7 @@ MonoBehaviour:
 
     // B(m,l): tier branch, sagging a little, a branchlet pair per step.
 
-    B(m,l) : m > 0 -> F(l) &(rand(2,5)) [ +(rand(50,70)) H(2, 0.24) ] [ -(rand(50,70)) H(2, 0.24) ] B(m-1, l*0.96)
+    B(m,l) : m > 0 -> F(l*rand(0.75,1.25)) &(rand(2,5)) +(rand(-10,10)) /(rand(-20,20)) $ [ +(rand(50,70)) H(2, 0.24) ] [ -(rand(50,70)) H(2, 0.24) ] B(m-1, l*0.96)
 
     B(m,l) : m <= 0 -> F(l*0.5) H(2, 0.22)
 
@@ -74,7 +74,5 @@ MonoBehaviour:
 
     H(q,l) : q > 0 -> !(0.02) F(l) [ +(65) f(0.06) L(0.14) ] [ -(65) f(0.06) L(0.14) ] H(q-1, l*0.95)
 
-    H(q,l) : q <= 0 -> $ &(90) f(0.12) P(0.16)
-
-'
+    H(q,l) : q <= 0 -> $ &(90) f(0.12) P(0.16)'
   iterations: 35

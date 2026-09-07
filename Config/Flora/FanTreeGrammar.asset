@@ -52,7 +52,7 @@ MonoBehaviour:
 
     // T(k,w): the bottle trunk, tapering fast.
 
-    T(k,w) : k > 0 -> !(w) F(rand(0.5,0.85)) &(rand(-3,3)) /(rand(-20,20)) T(k-1, w*0.82)
+    T(k,w) : k > 0 -> !(w*rand(0.88,1.15)) F(rand(0.5,0.85)) &(rand(-10,10)) +(rand(-10,10)) /(rand(-40,40)) $ T(k-1, w*0.82)
 
     T(k,w) : k <= 0 -> !(w) X(rand(0,1))
 
@@ -68,7 +68,9 @@ MonoBehaviour:
 
     // A(k,w): a limb, k segments, bending up as it goes.
 
-    A(k,w) : k > 0 -> !(w) F(rand(0.7,1.0)) ^(rand(3,9)) /(rand(-15,15)) A(k-1, w*0.9)
+    A(k,w) : k > 0 : 0.75 -> !(w*rand(0.85,1.2)) F(rand(0.6,1.2)) &(rand(-16,16)) +(rand(-16,16)) /(rand(-40,40)) $ ^(rand(3,9)) A(k-1, w*0.9)
+
+    A(k,w) : k > 0 : 0.25 -> !(w*rand(0.9,1.25)) F(rand(0.5,0.8)) /(rand(360)) &(rand(20,35)) $ ^(rand(3,9)) A(k-1, w*0.9)
 
     A(k,w) : k <= 0 -> !(w*1.4) F(0.4) O(w*3.2) $ N(rand(6,9))
 
@@ -92,7 +94,5 @@ MonoBehaviour:
 
     B(k,l,j) : k > 0 && j > 4 -> F(l*0.5) M(1) [ +(80) f(0.16) Q(0.36) ] [ -(80) f(0.16) Q(0.36) ] [ +(58) f(0.22) Q(0.42) ] [ -(58) f(0.22) Q(0.42) ] F(l*0.5) ^(rand(1,3)) B(k-1, l*0.97, j+1)
 
-    B(k,l,j) : k <= 0 -> f(0.1) P(0.5)
-
-'
+    B(k,l,j) : k <= 0 -> f(0.1) P(0.5)'
   iterations: 35

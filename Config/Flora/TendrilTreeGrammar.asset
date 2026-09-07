@@ -48,13 +48,13 @@ MonoBehaviour:
 
     // A(l,w,s): fork or fork-and-continue; thin nodes (w < 0.2) grow a tendril.
 
-    A(l,w,s) : l >= MIN && w >= 0.2 : 0.6 -> !(w) F(l) $ ^(3) !(w*TP) [ +(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ] [ -(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ]
+    A(l,w,s) : l >= MIN && w >= 0.2 : 0.6 -> !(w*rand(0.85,1.2)) F(l*0.5*rand(0.7,1.3)) &(rand(-16,16)) +(rand(-16,16)) /(rand(-40,40)) F(l*0.5*rand(0.7,1.3)) $ ^(3) !(w*TP) [ +(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ] [ -(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ]
 
-    A(l,w,s) : l >= MIN && w >= 0.2 : 0.4 -> !(w) F(l) $ ^(3) !(w*TP) [ +(rand(30,55)) /(rand(360)) A(l*s*0.9, w*TP*0.9, s) ] /(rand(-30,30)) A(l*s, w*TP, s)
+    A(l,w,s) : l >= MIN && w >= 0.2 : 0.4 -> !(w*rand(0.85,1.2)) F(l*0.5*rand(0.7,1.3)) &(rand(-16,16)) +(rand(-16,16)) /(rand(-40,40)) F(l*0.5*rand(0.7,1.3)) $ ^(3) !(w*TP) [ +(rand(30,55)) /(rand(360)) A(l*s*0.9, w*TP*0.9, s) ] /(rand(-30,30)) A(l*s, w*TP, s)
 
-    A(l,w,s) : l >= MIN && w < 0.2 : 0.6 -> !(w) F(l) $ ^(3) [ ^(rand(40,70)) /(rand(360)) V(rand(7,9), 0.22, rand(8,12), w*0.4) ] !(w*TP) [ +(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ] [ -(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ]
+    A(l,w,s) : l >= MIN && w < 0.2 : 0.6 -> !(w*rand(0.85,1.2)) F(l*0.5*rand(0.7,1.3)) &(rand(-16,16)) +(rand(-16,16)) /(rand(-40,40)) F(l*0.5*rand(0.7,1.3)) $ ^(3) [ ^(rand(40,70)) /(rand(360)) V(rand(7,9), 0.22, rand(8,12), w*0.4) ] !(w*TP) [ +(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ] [ -(rand(25,45)) /(rand(360)) A(l*s, w*TP, s) ]
 
-    A(l,w,s) : l >= MIN && w < 0.2 : 0.4 -> !(w) F(l) $ ^(3) [ &(rand(40,70)) /(rand(360)) V(rand(7,9), 0.22, rand(8,12), w*0.4) ] !(w*TP) [ +(rand(30,55)) /(rand(360)) A(l*s*0.9, w*TP*0.9, s) ] /(rand(-30,30)) A(l*s, w*TP, s)
+    A(l,w,s) : l >= MIN && w < 0.2 : 0.4 -> !(w*rand(0.85,1.2)) F(l*0.5*rand(0.7,1.3)) &(rand(-16,16)) +(rand(-16,16)) /(rand(-40,40)) F(l*0.5*rand(0.7,1.3)) $ ^(3) [ &(rand(40,70)) /(rand(360)) V(rand(7,9), 0.22, rand(8,12), w*0.4) ] !(w*TP) [ +(rand(30,55)) /(rand(360)) A(l*s*0.9, w*TP*0.9, s) ] /(rand(-30,30)) A(l*s, w*TP, s)
 
     A(l,w,s) : l < MIN -> !(w) F(l) [ +(30) V(rand(8,10), 0.26, rand(8,12), w*0.8) ] [ -(30) /(rand(360)) V(rand(8,10), 0.26, rand(8,12), w*0.8) ]
 
@@ -64,7 +64,5 @@ MonoBehaviour:
 
     V(k,l,a,w) : k > 0 -> !(w) F(l) &(a) /(rand(-8,8)) [ +(75) f(l*0.4) L(l*0.9) ] [ -(75) f(l*0.4) M(l*0.9) ] V(k-1, l*0.94, a*1.08, w*0.95)
 
-    V(k,l,a,w) : k <= 0 -> !(w) F(l) f(0.04) E(0.1)
-
-'
+    V(k,l,a,w) : k <= 0 -> !(w) F(l) f(0.04) E(0.1)'
   iterations: 20
