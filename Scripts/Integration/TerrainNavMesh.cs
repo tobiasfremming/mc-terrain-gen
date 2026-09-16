@@ -11,7 +11,7 @@ using UnityEngine.AI;
 // anchors, or quantised tangent patches on a planet); this component keeps
 // one NavMeshData per (patch, agent type) in step with that plan and rebuilds
 // a patch whenever terrain collision inside it changes. Agents (Task 11)
-// watch PatchVersion to know when the ground under them may have moved.
+// watch PatchVersion to know when NavMesh under them may have been removed.
 public class TerrainNavMesh : MonoBehaviour
 {
     public static TerrainNavMesh Instance { get; private set; }
@@ -20,8 +20,12 @@ public class TerrainNavMesh : MonoBehaviour
     // game code and flora append obstacles/buildings for that region.
     public static event Action<List<NavMeshBuildSource>, Bounds> CollectExtraSources;
 
-    // Bumped whenever a patch is added, removed or replaced (its bounds or its
-    // agent-type set changed and the rebuild finished).
+    // Bumped when NavMesh instances are removed (a patch retired, a patch's
+    // data dropped for an agent-type change, or this component disabled);
+    // agents should re-validate (isOnNavMesh). NavMesh appearing needs no
+    // bump because unplaced agents poll. Deliberately NOT bumped on patch
+    // add, first build or flat-bounds growth: Task 11's guard re-plans every
+    // agent on a bump, and the flat patch moves every ~32 m of travel.
     public int PatchVersion { get; private set; }
     public bool IsBuilding => _ops.Count > 0;
 
@@ -37,7 +41,6 @@ public class TerrainNavMesh : MonoBehaviour
         public readonly List<AsyncOperation> ops = new();
         public bool dirty = true;
         public bool built;       // at least one build finished -- replacements must be built before what they replace is retired
-        public bool bumpOnBuild; // bounds or agent set changed: bump PatchVersion when the rebuild lands
     }
 
     readonly NavPatchPlanner _planner = new();
@@ -109,11 +112,15 @@ public class TerrainNavMesh : MonoBehaviour
 
         _ops.RemoveAll(o => o.isDone);
         foreach (var l in _live.Values)
-            if (l.ops.Count > 0 && l.ops.TrueForAll(o => o.isDone)) { l.ops.Clear(); FinishBuild(l); }
+            if (l.ops.Count > 0 && l.ops.TrueForAll(o => o.isDone)) { l.ops.Clear(); l.built = true; }
 
         // 1. anchors -> patches
         _anchors.Clear();
-        if (_m.target) _anchors.Add(new NavAnchor { position = _m.target.position, radius = 40f, primary = true });
+        if (_m.target)
+        {
+            float radius = _m.target.TryGetComponent<TerrainAnchor>(out var ta) ? ta.navRadius : 40f;
+            _anchors.Add(new NavAnchor { position = _m.target.position, radius = radius, primary = true });
+        }
         foreach (var a in TerrainAnchor.All)
             if (a.navRadius > 0f && (!_m.target || a.transform != _m.target))
                 _anchors.Add(new NavAnchor { position = a.Position, radius = a.navRadius });
@@ -124,7 +131,7 @@ public class TerrainNavMesh : MonoBehaviour
 
         // 2. reconcile: ids that disappeared are removed AFTER their replacements exist
         _keep.Clear();
-        bool changed = false;
+        bool removed = false;
         foreach (var p in patches)
         {
             _keep.Add(p.id);
@@ -132,16 +139,17 @@ public class TerrainNavMesh : MonoBehaviour
             {
                 // Only the flat patch changes bounds under a fixed id (origin is
                 // always zero there); radial patches get a new id instead.
-                if (l.patch.localBounds != p.localBounds) { l.patch = p; l.dirty = true; l.bumpOnBuild = true; _anyDirty = true; }
+                if (l.patch.localBounds != p.localBounds) { l.patch = p; l.dirty = true; _anyDirty = true; }
             }
-            else { _live[p.id] = new Live { patch = p }; _anyDirty = true; changed = true; }
+            else { _live[p.id] = new Live { patch = p }; _anyDirty = true; }
         }
 
         // 3. build/update dirty patches, throttled, one async batch at a time.
         //    `_ops.Count == 0` also guarantees no patch ever has two builds running.
-        if (_anyDirty && _ops.Count == 0 && Time.time - _lastUpdate >= cfg.navUpdateInterval)
+        if (_anyDirty && _ops.Count == 0 && Time.unscaledTime - _lastUpdate >= cfg.navUpdateInterval)
         {
-            _lastUpdate = Time.time;
+            // unscaled: edits made while the game is paused still re-bake
+            _lastUpdate = Time.unscaledTime;
             _anyDirty = false;
             foreach (var l in _live.Values)
             {
@@ -164,16 +172,9 @@ public class TerrainNavMesh : MonoBehaviour
                 if (_keep.Contains(other.patch.id) && !other.built && WorldBounds(other.patch).Intersects(wb)) { covered = false; break; }
             if (covered) _dead.Add(kv.Key);
         }
-        foreach (var id in _dead) { RemoveLive(_live[id]); _live.Remove(id); changed = true; }
+        foreach (var id in _dead) { removed |= RemoveLive(_live[id]); _live.Remove(id); }
 
-        if (changed) PatchVersion++;
-    }
-
-    void FinishBuild(Live l)
-    {
-        if (!l.built || l.bumpOnBuild) PatchVersion++;
-        l.built = true;
-        l.bumpOnBuild = false;
+        if (removed) PatchVersion++;
     }
 
     void Build(Live l, WorldConfig cfg)
@@ -183,8 +184,7 @@ public class TerrainNavMesh : MonoBehaviour
         // index-aligned with the new id array.
         if (l.agentIds == null || !SameIds(l.agentIds, _cfgAgentIds))
         {
-            if (l.agentIds != null) l.bumpOnBuild = true;
-            RemoveLive(l);
+            if (RemoveLive(l)) PatchVersion++;
             l.agentIds = (int[])_cfgAgentIds.Clone();
             for (int i = 0; i < l.agentIds.Length; i++) { l.data.Add(null); l.instances.Add(default); }
         }
@@ -226,7 +226,7 @@ public class TerrainNavMesh : MonoBehaviour
 
         // Nothing to build (no valid agent types): count it as landed, or the
         // patches it replaces could never retire.
-        if (l.ops.Count == 0) FinishBuild(l);
+        if (l.ops.Count == 0) l.built = true;
     }
 
     void CollectSources(Bounds world, WorldConfig cfg)
@@ -251,7 +251,7 @@ public class TerrainNavMesh : MonoBehaviour
             // if the game layers include the terrain layer (e.g. both left on
             // Default) they would be baked twice, so drop them here.
             foreach (var s in _gameSources)
-                if (!IsTerrainCollider(s.component)) _sources.Add(s);
+                if (!IsTerrainCollider(s.component) && !IsAgentCollider(s.component)) _sources.Add(s);
         }
         CollectExtraSources?.Invoke(_sources, world);
     }
@@ -262,6 +262,14 @@ public class TerrainNavMesh : MonoBehaviour
         if (c.TryGetComponent<MarchingChunk>(out _)) return true;
         var parent = c.transform.parent;
         return parent != null && parent.TryGetComponent<TerrainCollisionStreamer>(out _);
+    }
+
+    // Agents and the player move; baking their capsules would punch holes in
+    // the NavMesh under themselves whenever their layer is in navGameLayers.
+    static bool IsAgentCollider(Component c)
+    {
+        if (c == null) return false;
+        return c.TryGetComponent<NavMeshAgent>(out _) || c.TryGetComponent<CharacterController>(out _);
     }
 
     static bool SameIds(int[] a, int[] b)
@@ -284,12 +292,15 @@ public class TerrainNavMesh : MonoBehaviour
         return new Bounds(c, we * 2f);
     }
 
-    static void RemoveLive(Live l)
+    // Returns true if any NavMesh instance was actually removed.
+    static bool RemoveLive(Live l)
     {
-        foreach (var inst in l.instances) if (inst.valid) inst.Remove();
+        bool any = false;
+        foreach (var inst in l.instances) if (inst.valid) { inst.Remove(); any = true; }
         l.instances.Clear();
         l.data.Clear();
         l.ops.Clear();
         l.agentIds = null;
+        return any;
     }
 }
