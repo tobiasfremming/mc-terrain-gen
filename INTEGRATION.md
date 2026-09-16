@@ -40,7 +40,7 @@ Add `FloraObstacles` there too (or anywhere in the scene — it only needs to fi
 | `demoBootstrap` | `false` — the game brings its own player, camera and lighting. `true` (the default) makes `PlayerBootstrap` spawn the demo capsule and `DesertAtmosphere` set fog/far-plane, which a real game does not want. |
 | `terrainLayer` | the index of a `Terrain` layer the game creates in its TagManager. The package cannot add layers for you. Every chunk, collision tile and flora-obstacle collider is put on this layer (`ApplyLevelSettings`, `TerrainCollisionStreamer.StartBuild`, `FloraObstacles.RefreshColliders`). NavMesh, ground probes and the Rigidbody/agent guards all read it indirectly through colliders on this layer. |
 | `navAgentTypeIds` | the game's NavMesh agent type ids (Navigation window > Agents). `{ 0 }` (Humanoid) is the default; one NavMesh instance per patch is built per id. |
-| `navGameLayers` | building/prop layers whose physics colliders should be baked into the terrain NavMesh alongside terrain geometry. Leave `0` if the game has no static buildings yet. Colliders belonging to a `NavMeshAgent` or `CharacterController`, and the terrain's own colliders (even if this mask includes `terrainLayer`), are automatically skipped so nothing gets double-baked or self-obstructed. |
+| `navGameLayers` | building/prop layers whose physics colliders should be baked into the terrain NavMesh alongside terrain geometry. Leave `0` if the game has no static buildings yet. Automatically skipped: colliders attached to a `Rigidbody` (kinematic or not — players, crates, moving platforms), colliders with a `NavMeshAgent` or `CharacterController` on their own GameObject or any parent, and the terrain's own colliders (even if this mask includes `terrainLayer`), so nothing moving is baked and nothing is double-baked. `NavMeshModifier` markups are **not** honoured — every remaining collider bakes as walkable area 0; put anything that must not bake on a layer outside this mask. |
 | `maxTileBuildsPerFrame` | collision-tile builds started per frame (default `2`, range 1–16). |
 | `maxCollisionTiles` | hard cap on live collision tiles (default `512`); nearest-to-an-anchor tiles win over the cap. |
 | `navUpdateInterval` | minimum seconds between NavMesh rebuild batches while terrain keeps changing (default `0.5`). |
@@ -205,6 +205,6 @@ Defaults as shipped (`WorldConfig`, `TerrainAnchor`, `NavPatchPlanner`, `FloraOb
   state** (`TerrainCollisionStreamer.s_tiles` is a static dictionary; `TerrainNavMesh.Instance` is a
   single static reference) — one of each per running scene, not per split-screen player or per
   sub-scene.
-- **`IsAgentCollider` only checks a collider's own GameObject**, not its parents — a child-collider
-  rig under a `NavMeshAgent`/`CharacterController` whose collider sits on a different GameObject is
-  not filtered out of `navGameLayers` baking.
+- **`NavMeshModifier` markups are not honoured** by `navGameLayers` baking (`TerrainNavMesh` collects
+  physics colliders with an empty markup list). Per-object exclusion is only the automatic
+  Rigidbody/agent/controller filter; override areas and "ignore from build" need a separate layer.

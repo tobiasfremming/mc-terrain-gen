@@ -251,7 +251,7 @@ public class TerrainNavMesh : MonoBehaviour
             // if the game layers include the terrain layer (e.g. both left on
             // Default) they would be baked twice, so drop them here.
             foreach (var s in _gameSources)
-                if (!IsTerrainCollider(s.component) && !IsAgentCollider(s.component)) _sources.Add(s);
+                if (!IsTerrainCollider(s.component) && !IsMovingCollider(s.component)) _sources.Add(s);
         }
         CollectExtraSources?.Invoke(_sources, world);
     }
@@ -268,12 +268,19 @@ public class TerrainNavMesh : MonoBehaviour
         return parent != null && (parent.TryGetComponent<TerrainCollisionStreamer>(out _) || parent.TryGetComponent<FloraObstacles>(out _));
     }
 
-    // Agents and the player move; baking their capsules would punch holes in
-    // the NavMesh under themselves whenever their layer is in navGameLayers.
-    static bool IsAgentCollider(Component c)
+    // Agents, the player and physics props move; baking them would punch
+    // holes in the NavMesh under themselves (or leave a crate-shaped hole
+    // where a crate used to be) whenever their layer is in navGameLayers.
+    // Anything attached to a Rigidbody -- kinematic or not -- counts as
+    // moving, and the agent/controller check looks up the parents too, so a
+    // collider on a child of the rig is caught as well as one on the root.
+    // (_noMarkups is empty on purpose: NavMeshModifier markups are not
+    // honoured here, so this filter is the only per-object exclusion.)
+    static bool IsMovingCollider(Component c)
     {
         if (c == null) return false;
-        return c.TryGetComponent<NavMeshAgent>(out _) || c.TryGetComponent<CharacterController>(out _);
+        if (c is Collider col && col.attachedRigidbody != null) return true;
+        return c.GetComponentInParent<NavMeshAgent>() != null || c.GetComponentInParent<CharacterController>() != null;
     }
 
     static bool SameIds(int[] a, int[] b)

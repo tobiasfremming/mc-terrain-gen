@@ -71,7 +71,7 @@ public float lodUpdateInterval = 0.5f; // How often to recalculate LOD
     public float navUpdateInterval = 0.5f;
     [Tooltip("Bake a height mesh so agents' feet follow bumpy marching-cubes ground instead of the simplified nav polygons.")]
     public bool navBuildHeightMesh = true;
-    [Tooltip("Game layers whose physics colliders (buildings, props) are included in the terrain NavMesh. Colliders on objects with a NavMeshAgent or CharacterController are skipped, as are the terrain's own colliders.")]
+    [Tooltip("Game layers whose physics colliders (buildings, props) are included in the terrain NavMesh. Skipped: colliders attached to a Rigidbody (players, crates, anything that moves), colliders with a NavMeshAgent or CharacterController on themselves or a parent, and the terrain's own colliders. NavMeshModifier components are NOT honoured -- every remaining collider bakes as walkable area 0.")]
     public LayerMask navGameLayers = 0;
 
     [Header("Planet Mode")]
