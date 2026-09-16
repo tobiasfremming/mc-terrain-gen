@@ -79,13 +79,22 @@ public class TerrainCollisionStreamer : MonoBehaviour
     // component may be enabled before the manager is -- so the subscription
     // is re-checked every Update, the same way TerrainPhysicsWaker does it.
     TerrainModificationSystem _boundMods;
+    // Worker tasks (mesh or bake) allowed to run at once. maxTileBuildsPerFrame
+    // only limits starts per frame: a burst of new anchors would otherwise
+    // keep starting builds every frame and flood the thread pool, starving
+    // the clipmap's own jobs -- the player's ground -- for seconds.
+    int _maxInFlight = 1;
 
     // Cached so planning does not allocate a delegate per frame.
-    // A coord counts as covered only if it AND its six face neighbours are
-    // inside the LOD0 box. An anchor near the box face therefore keeps tiles
-    // pre-built just outside it, so when the player walks away and the box
-    // slides off a coord, the tile under a resting NPC already exists instead
-    // of taking 2-3 frames to mesh and bake (the reverse hand-off).
+    // A coord counts as covered only if it is at least 2 chunks inside the
+    // LOD0 box on every axis: the coord itself and coord +-1, +-2 along x, y
+    // and z must all be in the box. The box snaps to 2-chunk alignment
+    // (MCChunkManager.ComputeBoxes), so when the player walks away it slides
+    // off TWO chunk layers in a single step; a 1-chunk margin would leave the
+    // second layer uncovered with no tile under it. With 2 chunks, an anchor
+    // near the box face keeps tiles pre-built for everything one box step can
+    // uncover, so the tile under a resting NPC already exists instead of
+    // taking 2-3 frames to mesh and bake (the reverse hand-off).
     Func<Vector3Int, bool> _coveredByClipmap;
     static readonly Func<Vector3Int, bool> s_neverCovered = _ => false;
 
@@ -93,6 +102,13 @@ public class TerrainCollisionStreamer : MonoBehaviour
     const MeshUpdateFlags kUploadFlags = MeshUpdateFlags.DontValidateIndices |
                                          MeshUpdateFlags.DontRecalculateBounds |
                                          MeshUpdateFlags.DontResetBoneBounds;
+
+    void OnEnable()
+    {
+        // Two cores left for the main and render threads; never more than 6,
+        // so the clipmap's own workers always get a share of the pool.
+        _maxInFlight = Mathf.Clamp(SystemInfo.processorCount - 2, 1, 6);
+    }
 
     void OnDisable()
     {
@@ -179,10 +195,16 @@ public class TerrainCollisionStreamer : MonoBehaviour
         }
 
         // 4. start new builds and dirty rebuilds, nearest to any anchor first,
-        //    within the per-frame budget and the tile cap. A tile only
-        //    (re)starts when it has no task at all, so its pooled job is never
-        //    handed to a second worker while the first still owns it.
+        //    within the per-frame budget, the in-flight cap and the tile cap.
+        //    A tile only (re)starts when it has no task at all, so its pooled
+        //    job is never handed to a second worker while the first still owns
+        //    it. After step 3 every completed task has been advanced or
+        //    dropped, so a non-null task here is one still running (including
+        //    phase-2 bakes step 3 just started). New tiles and dirty rebuilds
+        //    share the in-flight cap; nearest-first order decides who waits.
         _scratch.Clear();
+        int inFlight = 0;
+        foreach (var t in s_tiles.Values) if (t.task != null) inFlight++;
         foreach (var c in _wanted)
             if (!s_tiles.TryGetValue(c, out var t) || (t.dirty && t.task == null)) _scratch.Add(c);
         if (_scratch.Count == 0) return;
@@ -190,12 +212,13 @@ public class TerrainCollisionStreamer : MonoBehaviour
         int started = 0;
         foreach (var c in _scratch)
         {
-            if (started >= cfg.maxTileBuildsPerFrame) break;
+            if (started >= cfg.maxTileBuildsPerFrame || inFlight >= _maxInFlight) break;
             // At the cap only NEW tiles are refused; a dirty rebuild of an
             // existing tile further down the list must still get through.
             if (!s_tiles.ContainsKey(c) && s_tiles.Count >= cfg.maxCollisionTiles) continue;
             StartBuild(c, cfg);
             started++;
+            inFlight++;
         }
     }
 
@@ -210,11 +233,17 @@ public class TerrainCollisionStreamer : MonoBehaviour
 
     bool CoveredWithNeighbours(Vector3Int c)
     {
-        if (_m == null) return false;
-        return _m.IsInLevel0Box(c) &&
-               _m.IsInLevel0Box(c + Vector3Int.right) && _m.IsInLevel0Box(c + Vector3Int.left) &&
-               _m.IsInLevel0Box(c + Vector3Int.up) && _m.IsInLevel0Box(c + Vector3Int.down) &&
-               _m.IsInLevel0Box(c + new Vector3Int(0, 0, 1)) && _m.IsInLevel0Box(c + new Vector3Int(0, 0, -1));
+        if (_m == null || !_m.IsInLevel0Box(c)) return false;
+        // The box is axis-aligned, so checking the axis-wise extremes is as
+        // strong as checking the whole 5x5x5 neighbourhood; the +-1 samples
+        // are implied by +-2 and the coord but kept for clarity of intent.
+        for (int d = 1; d <= 2; d++)
+        {
+            if (!_m.IsInLevel0Box(c + new Vector3Int(d, 0, 0)) || !_m.IsInLevel0Box(c + new Vector3Int(-d, 0, 0))) return false;
+            if (!_m.IsInLevel0Box(c + new Vector3Int(0, d, 0)) || !_m.IsInLevel0Box(c + new Vector3Int(0, -d, 0))) return false;
+            if (!_m.IsInLevel0Box(c + new Vector3Int(0, 0, d)) || !_m.IsInLevel0Box(c + new Vector3Int(0, 0, -d))) return false;
+        }
+        return true;
     }
 
     float NearestAnchorSq(Vector3Int c)
