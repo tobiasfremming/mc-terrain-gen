@@ -17,7 +17,7 @@ using UnityEngine.AI;
 //     Nothing persists between builds -- the sources describe the plots as
 //     they are at that moment.
 //   * Physics: every refreshInterval (unscaled) the trunks within each
-//     TerrainAnchor's physicsRadius are gathered and a pool of child
+//     TerrainAnchor's max(physicsRadius, navRadius) are gathered and a pool of child
 //     CapsuleColliders, on the terrain layer, is moved onto them. Colliders
 //     only where anchors are, because a static collider per plant across a
 //     900 m plant radius would be tens of thousands of them.
@@ -129,6 +129,12 @@ public class FloraObstacles : MonoBehaviour
 
     // ---- physics ----------------------------------------------------------
 
+    // Trunk colliders reach max(physicsRadius, navRadius) around an anchor:
+    // anything that navigates that far can also walk into a trunk that far
+    // out, and the player's recommended physicsRadius 0 (its ground comes
+    // from the clipmap) must not leave it walking through trees.
+    static float TrunkReach(TerrainAnchor a) => Mathf.Max(a.physicsRadius, a.navRadius);
+
     void RefreshColliders()
     {
         _found.Clear();
@@ -144,9 +150,10 @@ public class FloraObstacles : MonoBehaviour
             for (int a = 0; a < anchors.Count; a++)
             {
                 TerrainAnchor anchor = anchors[a];
-                if (anchor == null || anchor.physicsRadius <= 0f) continue;
+                float reach = anchor != null ? TrunkReach(anchor) : 0f;
+                if (reach <= 0f) continue;
                 _query.Clear();
-                s.GetObstacles(new Bounds(anchor.Position, Vector3.one * (anchor.physicsRadius * 2f)), _query);
+                s.GetObstacles(new Bounds(anchor.Position, Vector3.one * (reach * 2f)), _query);
                 for (int i = 0; i < _query.Count; i++)
                 {
                     var o = _query[i];
@@ -157,7 +164,7 @@ public class FloraObstacles : MonoBehaviour
             _query.Clear();
 
             // The boxes' corners reach past the spheres: keep a trunk only if
-            // its capsule is within some anchor's physicsRadius, ranked by how
+            // its capsule is within some anchor's reach, ranked by how
             // near the nearest anchor is.
             int kept = 0;
             for (int i = 0; i < _found.Count; i++)
@@ -167,9 +174,10 @@ public class FloraObstacles : MonoBehaviour
                 for (int a = 0; a < anchors.Count; a++)
                 {
                     TerrainAnchor anchor = anchors[a];
-                    if (anchor == null || anchor.physicsRadius <= 0f) continue;
+                    float reach = anchor != null ? TrunkReach(anchor) : 0f;
+                    if (reach <= 0f) continue;
                     float d = FloraObstacleMath.CapsuleDistance(anchor.Position, c.basePos, c.up, c.radius, c.height);
-                    if (d <= anchor.physicsRadius && d < best) best = d;
+                    if (d <= reach && d < best) best = d;
                 }
                 if (best == float.MaxValue) continue;
                 c.key = best;

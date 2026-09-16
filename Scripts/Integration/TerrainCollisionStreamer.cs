@@ -144,14 +144,38 @@ public class TerrainCollisionStreamer : MonoBehaviour
         _anchors.Clear();
         // Tiles reach max(physicsRadius, navRadius): NavMesh is baked from
         // colliders, so a NavMesh patch out to navRadius has nothing to bake
-        // beyond the tiles that exist.
+        // beyond the tiles that exist. The clipmap target is the exception:
+        // its NavMesh is baked from the LOD0 chunk colliders around it, so
+        // its anchor contributes physicsRadius only. Planning its navRadius
+        // too would duplicate most of the LOD0 box in tiles (only the box's
+        // inner chunks count as covered -- see _coveredByClipmap).
         foreach (var a in TerrainAnchor.All)
         {
-            float r = Mathf.Max(a.physicsRadius, a.navRadius);
+            bool isTarget = _m.target != null && a.transform == _m.target;
+            float r = isTarget ? a.physicsRadius : Mathf.Max(a.physicsRadius, a.navRadius);
             if (r > 0f) _anchors.Add(new AnchorSphere { position = a.Position, radius = r });
         }
         if (_coveredByClipmap == null) _coveredByClipmap = CoveredWithNeighbours;
         CollisionTilePlanner.Plan(_anchors, s_tileSize, ignoreClipmapCoverage ? s_neverCovered : _coveredByClipmap, _wanted);
+
+        // Drop tiles the physics field proves have no surface (all air above
+        // the terrain's height range, all rock below it). The planner plans a
+        // full 3D sphere; this cuts it down to the surface layers. Done here,
+        // not in the pure planner, because it needs the live field and edit
+        // cache. Same box and the same padded edit test the mesher's own
+        // empty skip uses for a tile (StartBuild's modsOverlapChunk): a carved
+        // cave inside "all rock" must still get a tile. Before the cap below,
+        // so empty coords never take a ranked slot.
+        _scratch.Clear();
+        Vector3 editPad = Vector3.one * (cfg.cellSize + 0.5f * (s_tileSize / cfg.cellsPerChunk.x));
+        foreach (var c in _wanted)
+        {
+            Vector3 min = (Vector3)c * s_tileSize, max = min + Vector3.one * s_tileSize;
+            if (_m.PhysicsField.TryGetEmptySkip(min, max) &&
+                !_m.Modifications.physical.OverlapsBounds(min - editPad, max + editPad))
+                _scratch.Add(c);
+        }
+        foreach (var c in _scratch) _wanted.Remove(c);
 
         _dist.Clear();
         foreach (var c in _wanted) _dist[c] = NearestAnchorSq(c);

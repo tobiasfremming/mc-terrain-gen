@@ -6,16 +6,17 @@ using UnityEngine;
 // player. Collision tiles are built within max(physicsRadius, navRadius) --
 // NavMesh is baked from colliders, so NavMesh out to navRadius needs tiles out
 // to navRadius too -- and navRadius puts the anchor into the NavMesh patch
-// plan. On the clipmap target (the player) set physicsRadius 0: its own ground
-// comes from the LOD0 box; navRadius still drives its NavMesh and the tiles
-// that NavMesh needs past the box face. NPCs without an anchor only have
+// plan. Trunk colliders (FloraObstacles) use the same max. On the clipmap
+// target (the player) physicsRadius 0 is fine: its ground and its NavMesh
+// sources come from the LOD0 box, so its tiles use physicsRadius only, and
+// navRadius just sizes its NavMesh patch. NPCs without an anchor only have
 // ground inside the clipmap's LOD0 box around the player -- pair them with
 // TerrainRigidbodyGuard.
 public class TerrainAnchor : MonoBehaviour
 {
-    [Tooltip("Collision tiles are built out to max(physicsRadius, navRadius) around this anchor, wherever the clipmap's LOD0 box does not already cover. Use 0 on the clipmap target (player): the clipmap grounds it.")]
+    [Tooltip("Collision tiles are built out to max(physicsRadius, navRadius) around this anchor, wherever the clipmap's LOD0 box does not already cover. On the clipmap target (player) tiles use physicsRadius alone, and 0 is fine: the clipmap grounds it.")]
     public float physicsRadius = 20f;
-    [Tooltip("Includes this anchor in the NavMesh patch plan with this radius, and (because NavMesh is baked from colliders) also extends its collision tiles to this radius. On the clipmap target, <= 0 falls back to 40.")]
+    [Tooltip("Includes this anchor in the NavMesh patch plan with this radius, and (because NavMesh is baked from colliders) also extends its collision tiles and trunk colliders to this radius. On the clipmap target it only sizes the NavMesh patch (no tiles); <= 0 falls back to 40.")]
     public float navRadius = 40f;
 
     static readonly List<TerrainAnchor> s_all = new();
