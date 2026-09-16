@@ -35,8 +35,15 @@ public static class TerrainPhysicsWaker
     // OnEdit is currently subscribed to, moves the subscription over. Cheap
     // (a couple of reference compares) once bound, so it is safe to call from
     // every chunk collider change as well as from scene loads.
+    //
+    // Play mode only, here and in the handlers: these static subscriptions
+    // outlive play mode (exiting it does not reload the domain), so edit-mode
+    // chunk rebuilds still reach them. There is nothing to wake outside play,
+    // and binding to an edit-mode manager -- or a FindFirstObjectByType on
+    // every chunk rebuild while none exists -- is pure cost.
     static void EnsureBound()
     {
+        if (!Application.isPlaying) return;
         // Not `MCChunkManager.Instance ?? FindFirstObjectByType<...>()`: `??`
         // uses the plain reference-equality null check, which bypasses
         // Unity's overloaded `== null` (true for a destroyed-but-not-yet-GC'd
@@ -55,16 +62,22 @@ public static class TerrainPhysicsWaker
 
     static void OnChunk(MarchingChunk c)
     {
+        if (!Application.isPlaying) return;
         EnsureBound(); // cheap reference compare; catches a manager swap between scene-load events
         Wake(c.WorldBounds);
     }
 
-    static void OnEdit(Bounds b, bool affectsPhysics) { if (affectsPhysics) Wake(b); }
+    static void OnEdit(Bounds b, bool affectsPhysics) { if (affectsPhysics && Application.isPlaying) Wake(b); }
 
     public static void Wake(Bounds b)
     {
         b.Expand(1f);
-        int n = Physics.OverlapBoxNonAlloc(b.center, b.extents, s_hits, Quaternion.identity, ~0, QueryTriggerInteraction.Ignore);
+        // The terrain layer holds only static colliders (chunks, tiles, trunk
+        // capsules) -- none of them has a body to wake, and a big region's
+        // worth of them would otherwise fill s_hits before any real body.
+        var m = MCChunkManager.Instance;
+        int mask = m != null && m.worldConfig != null ? ~m.worldConfig.TerrainLayerMask : ~0;
+        int n = Physics.OverlapBoxNonAlloc(b.center, b.extents, s_hits, Quaternion.identity, mask, QueryTriggerInteraction.Ignore);
         s_woken.Clear();
         for (int i = 0; i < n; i++)
         {

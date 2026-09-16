@@ -54,6 +54,13 @@ public class TerrainNavMesh : MonoBehaviour
     readonly HashSet<int> _keep = new();
     readonly List<int> _dead = new();
     readonly HashSet<int> _warnedAgentIds = new();
+    // NavMeshData whose instance has been removed, waiting for the builds that
+    // were writing into it to finish. NavMeshData is a UnityEngine.Object:
+    // dropping the reference does not free its native memory, so every
+    // retired patch leaked until the next Resources.UnloadUnusedAssets.
+    // Destroying it under a running UpdateNavMeshDataAsync is not safe, so
+    // those wait here.
+    readonly List<(NavMeshData data, List<AsyncOperation> ops)> _retired = new();
     int[] _cfgAgentIds = Array.Empty<int>();
     bool _cfgHeightMesh;
     float _lastUpdate;
@@ -75,10 +82,23 @@ public class TerrainNavMesh : MonoBehaviour
         foreach (var l in _live.Values) RemoveLive(l);
         _live.Clear();
         // Running builds cannot be cancelled; they finish into NavMeshData
-        // nobody references any more and are collected with it.
+        // no instance uses any more, which sits in _retired until they have
+        // (drained by Update after a re-enable, or by OnDestroy).
         _ops.Clear();
         if (Instance == this) Instance = null;
         PatchVersion++;
+    }
+
+    void OnDestroy() => DrainRetired();
+
+    void DrainRetired()
+    {
+        for (int i = _retired.Count - 1; i >= 0; i--)
+        {
+            if (!_retired[i].ops.TrueForAll(o => o.isDone)) continue;
+            if (_retired[i].data != null) Destroy(_retired[i].data);
+            _retired.RemoveAt(i);
+        }
     }
 
     void OnChunk(MarchingChunk c) => MarkDirty(c.WorldBounds);
@@ -92,6 +112,8 @@ public class TerrainNavMesh : MonoBehaviour
 
     void Update()
     {
+        if (_retired.Count > 0) DrainRetired();
+
         // Resolved lazily: this OnEnable can run before MCChunkManager's, when
         // Instance is still null. Explicit null checks -- `??` bypasses Unity's
         // destroyed-object equality.
@@ -118,7 +140,11 @@ public class TerrainNavMesh : MonoBehaviour
         _anchors.Clear();
         if (_m.target)
         {
-            float radius = _m.target.TryGetComponent<TerrainAnchor>(out var ta) ? ta.navRadius : 40f;
+            // The player always gets NavMesh around it: a missing anchor, or
+            // one with navRadius <= 0 (e.g. set to 0 alongside physicsRadius
+            // on the clipmap target), falls back to 40 m rather than planning
+            // a degenerate zero-size primary patch.
+            float radius = _m.target.TryGetComponent<TerrainAnchor>(out var ta) && ta.navRadius > 0f ? ta.navRadius : 40f;
             _anchors.Add(new NavAnchor { position = _m.target.position, radius = radius, primary = true });
         }
         foreach (var a in TerrainAnchor.All)
@@ -303,11 +329,21 @@ public class TerrainNavMesh : MonoBehaviour
         return new Bounds(c, we * 2f);
     }
 
-    // Returns true if any NavMesh instance was actually removed.
-    static bool RemoveLive(Live l)
+    // Returns true if any NavMesh instance was actually removed. The patch's
+    // NavMeshData is destroyed now if no build of this patch is still running,
+    // otherwise once those builds finish (see _retired).
+    bool RemoveLive(Live l)
     {
         bool any = false;
         foreach (var inst in l.instances) if (inst.valid) { inst.Remove(); any = true; }
+        List<AsyncOperation> running = null;
+        foreach (var op in l.ops)
+            if (!op.isDone) (running ??= new List<AsyncOperation>()).Add(op);
+        foreach (var d in l.data)
+        {
+            if (d == null) continue;
+            if (running == null) Destroy(d); else _retired.Add((d, running));
+        }
         l.instances.Clear();
         l.data.Clear();
         l.ops.Clear();

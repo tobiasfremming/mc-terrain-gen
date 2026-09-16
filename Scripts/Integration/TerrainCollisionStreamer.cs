@@ -142,8 +142,14 @@ public class TerrainCollisionStreamer : MonoBehaviour
 
         // 1. plan
         _anchors.Clear();
+        // Tiles reach max(physicsRadius, navRadius): NavMesh is baked from
+        // colliders, so a NavMesh patch out to navRadius has nothing to bake
+        // beyond the tiles that exist.
         foreach (var a in TerrainAnchor.All)
-            if (a.physicsRadius > 0f) _anchors.Add(new AnchorSphere { position = a.Position, radius = a.physicsRadius });
+        {
+            float r = Mathf.Max(a.physicsRadius, a.navRadius);
+            if (r > 0f) _anchors.Add(new AnchorSphere { position = a.Position, radius = r });
+        }
         if (_coveredByClipmap == null) _coveredByClipmap = CoveredWithNeighbours;
         CollisionTilePlanner.Plan(_anchors, s_tileSize, ignoreClipmapCoverage ? s_neverCovered : _coveredByClipmap, _wanted);
 

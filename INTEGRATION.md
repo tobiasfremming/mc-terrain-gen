@@ -51,10 +51,18 @@ Add `FloraObstacles` there too (or anywhere in the scene — it only needs to fi
 - Add `TerrainTarget` to the player (or camera rig) — it finds the scene's `MCChunkManager` in
   `Awake` and sets `manager.target = transform`. This is the only thing the clipmap reads to decide
   which chunks to stream and at what LOD (`manager.target.position`).
-- Add `TerrainAnchor` too if the player should keep ground under it in the ordinary sense — it
-  already does, being the clipmap target, but `TerrainAnchor.physicsRadius`/`navRadius` also make the
-  player the *primary* anchor for `TerrainNavMesh`'s flat-patch planning (`NavAnchor.primary`), and
-  the primary anchor is never dropped from the flat NavMesh box even under the anchor cap.
+- Add `TerrainAnchor` too, with **`physicsRadius = 0`** and `navRadius` set to how far the player's
+  NavMesh should reach (default `40`). The player's own ground comes from the clipmap's LOD0 box, so
+  it needs no physics radius; `navRadius` drives the player's NavMesh patch and, because NavMesh is
+  baked from colliders, also the collision tiles that patch needs wherever it reaches past the LOD0
+  box face (tiles are built out to `max(physicsRadius, navRadius)`; see §7 — the nearest box face can
+  be only ~16 m from the player). The target is always the *primary* anchor for `TerrainNavMesh`'s
+  flat-patch planning (`NavAnchor.primary`), never dropped from the flat NavMesh box even under the
+  anchor cap; with no `TerrainAnchor` on it, or `navRadius <= 0`, its NavMesh radius falls back to
+  `40`. One catch: `FloraObstacles` places trunk **physics** colliders only within each anchor's
+  `physicsRadius`, so with `0` the player walks through trees. If trees must block the player, give
+  it a `physicsRadius` covering that range instead — any value up to `navRadius` costs no extra tiles,
+  since tiles already reach `max(physicsRadius, navRadius)`.
 - **Flat world:** normal Rigidbody/CharacterController gravity. The demo player
   (`SimplePlayerController` + `GravityAligner` + `CharacterGravity`) is a working reference if the
   game wants its own controller shaped the same way; none of the terrain integration code requires
@@ -71,10 +79,16 @@ Add `FloraObstacles` there too (or anywhere in the scene — it only needs to fi
 Per NPC that should physically simulate and/or navigate:
 
 1. `Rigidbody` — Interpolate, Collision Detection = Continuous Speculative.
-2. `TerrainRigidbodyGuard` — holds the body kinematic while no ground has streamed in under it yet,
-   and rescues it (via `TerrainQuery.TryFindGround`) if an edit or a streaming gap ever leaves it
-   inside solid rock. Its "is there ground below" probe counts **any** non-trigger collider that
-   isn't part of the body itself — not just terrain. A building or platform holds the body exactly
+2. `TerrainRigidbodyGuard` — holds the body kinematic while the density field has ground within
+   `probeDistance` (60 m) below it but no collider has streamed in there yet; with no field ground in
+   range the body is simply falling and is left free (a body dropped from higher than
+   `probeDistance` falls normally). The first check runs on the body's first `FixedUpdate`. It also
+   rescues the body if an edit or a streaming gap leaves its **centre of mass** buried deeper than
+   `insideMargin` (density `0.25`, so ordinary contact with the 0.5 m collider approximation never
+   triggers it): the body is moved to the nearest solid→air exit straight above that point
+   (`TerrainQuery.TryFindExitAbove`, up to 50 m) plus `rescueLift` — out through the rock overhead,
+   never onto the top of an overhang or cave roof. Its "is there a collider below" probe counts
+   **any** non-trigger collider that isn't part of the body itself — not just terrain. A building or platform holds the body exactly
    as well as terrain does; the check is deliberately not filtered to `terrainLayer`, so a body
    resting on a non-terrain support is never frozen waiting for terrain that was never going to be
    under it.
@@ -99,10 +113,14 @@ Per NPC that should physically simulate and/or navigate:
      under the body's current position and warps back onto it on the next `Update`.
    - `Ready` (`bool`) — `true` only when the agent is enabled and on a NavMesh.
 5. `TerrainAnchor` — required for any NPC that must keep simulating physically and/or navigating
-   *away* from the player (outside the clipmap's LOD0 box). `physicsRadius` drives collision-tile
-   building around it; `navRadius` drives NavMesh-patch inclusion. NPCs without an anchor only have
-   ground/NavMesh inside the player's LOD0 box — pair them with `TerrainRigidbodyGuard` regardless
-   (cheap, and it also rescues them if an edit ever drops them into rock inside the box).
+   *away* from the player (outside the clipmap's LOD0 box). Collision tiles are built out to
+   `max(physicsRadius, navRadius)` around it; `navRadius` also includes it in the NavMesh patch plan.
+   An NPC's NavMesh therefore reaches `max(physicsRadius, navRadius)` (rounded out to whole 16 m
+   tiles) — as far as its tiles do, inside the patch box. Remember the LOD0 box is **not** centred on
+   the player (§7): an unanchored NPC 16 m from the player can already be outside it. NPCs without an
+   anchor only have ground/NavMesh inside the player's LOD0 box — pair them with
+   `TerrainRigidbodyGuard` regardless (cheap, and it also rescues them if an edit ever drops them into
+   rock inside the box).
 6. **Globe:** also add `PlanetGravityBody`.
 
 Kinematic ownership between `TerrainRigidbodyGuard` and `TerrainNavAgentGuard` changes hands in a
@@ -146,13 +164,20 @@ by collision, NavMesh and the waker. It never re-cooks a collider.
 
 Defaults as shipped (`WorldConfig`, `TerrainAnchor`, `NavPatchPlanner`, `FloraObstacles`):
 
-- **Collision tiles per anchor** ≈ `(2 · physicsRadius / 16)² × 2` (16 m tile size,
-  `TerrainCollisionStreamer.s_tileSize`). Default `TerrainAnchor.physicsRadius = 20` →
-  `(40/16)² × 2 ≈ 12.5`, i.e. ~12–13 tiles. Keep `Σ(anchored NPCs × tiles per anchor)` under
-  `WorldConfig.maxCollisionTiles` (default `512`, so ~40 anchors at the default radius before the
-  cap starts dropping the farthest tiles). Tiles at the cap are ranked by nearest-anchor distance —
-  the tiles nearest a moving anchor always win, so a body over a dropped tile is caught by
-  `TerrainRigidbodyGuard` instead of falling.
+- **Collision tiles per anchor**: every 16 m tile (`TerrainCollisionStreamer.s_tileSize`) whose box
+  touches a sphere of radius `R = max(physicsRadius, navRadius)` — a full 3D sphere, not a ground
+  layer, so ≈ `1 + 6·(R/16) + 3π·(R/16)² + (4π/3)·(R/16)³` tiles on average. At the defaults
+  (`physicsRadius 20`, `navRadius 40` → `R = 40`) that is **≈ 140 tiles (120–160)** per anchor; with
+  `navRadius` at or below 20, `R = 20` gives ≈ 31 (26–38). Tiles that come out all air or all rock
+  mesh to nothing and never bake, but they still take a slot. Keep `Σ(tiles per anchor)` under
+  `WorldConfig.maxCollisionTiles` (default `512`, so only **~3–4 anchors at default radii** before
+  the cap starts dropping the farthest tiles; ~16 at `R = 20`). Overlapping anchors share tiles. The
+  clipmap target is not exempt: only chunks >= 2 chunks inside the LOD0 box (its central 2x2x2) count
+  as covered, so a player with the default `navRadius 40` still asks for most of its ~140 tiles,
+  duplicating clipmap colliders over much of the box. Budget for it, or lower the player's
+  `navRadius`. Tiles at the
+  cap are ranked by nearest-anchor distance — the tiles nearest a moving anchor always win, so a
+  body over a dropped tile is caught by `TerrainRigidbodyGuard` instead of falling.
 - **NavMesh flat cap**: `NavPatchPlanner.maxFlatExtent` = 1024 m (a code default, **not** currently
   exposed on `WorldConfig` — Task 13, deferred, is what was planned to wire `navPatchSize`/
   `navEdgeMargin` through). One flat NavMesh box covers every anchor within reach of the primary
@@ -163,19 +188,27 @@ Defaults as shipped (`WorldConfig`, `TerrainAnchor`, `NavPatchPlanner`, `FloraOb
 - **NavMesh rebuild throttle**: `WorldConfig.navUpdateInterval` (default `0.5` s) between rebuild
   batches; only one batch runs at a time across all patches (`TerrainNavMesh._ops`).
 - **Collision-tile build throughput**: `WorldConfig.maxTileBuildsPerFrame` (default `2`) new/dirty
-  tile builds started per frame.
+  tile builds started per frame, and at most `clamp(SystemInfo.processorCount − 2, 1, 6)` tile tasks
+  (mesh or bake) running at once, shared by new tiles and dirty rebuilds — a burst of new anchors
+  queues rather than crowding the clipmap's own meshing tasks out of the thread pool.
 - **Flora physics colliders**: `FloraObstacles.maxColliders` (default `512`), refreshed every
   `refreshInterval` (default `0.5` s, unscaled) across all anchors' `physicsRadius`; nearest-to-an-
   anchor trunks win over the cap.
 - **LOD0 box**: `chunksPerLevel (6) × chunkSize (cellsPerChunk.x × cellSize = 32 × 0.5 = 16 m)` =
-  96 m across, centred on `MCChunkManager.target`. Anything outside it has no clipmap ground —
-  that's exactly the gap `TerrainCollisionStreamer`/`TerrainAnchor` exist to fill for anchored NPCs.
+  96 m across, but **not centred** on `MCChunkManager.target`: it snaps to 32 m (2-chunk) steps
+  (`MCChunkManager.ComputeBoxes`), spanning 32 m below to 64 m above the 32 m grid line nearest the
+  player on each axis. The player is 16–48 m from the near face and 48–80 m from the far face, so
+  the **nearest face can be ~16 m away**, and the box jumps 32 m at a time as the player moves.
+  Anything outside it has no clipmap ground — that's exactly the gap
+  `TerrainCollisionStreamer`/`TerrainAnchor` exist to fill for anchored NPCs. Tiles treat a chunk as
+  clipmap-covered only when it is ≥ 2 chunks inside the box on every axis, so one 32 m box step can
+  never uncover a chunk that has no tile ready under a resting NPC.
 
 ## 8. Known limitations
 
 - **Flat NavMesh only within `maxFlatExtent` (1024 m) of the primary anchor.** An anchor further
   than that on either local axis is silently excluded from the flat NavMesh box (still gets
-  collision tiles via `physicsRadius`, just no NavMesh).
+  collision tiles out to `max(physicsRadius, navRadius)`, just no NavMesh).
 - **Trees only obstruct near `PlantScatter`'s eye** (the player, via `MCChunkManager.target`).
   `FloraObstacles.GetObstacles` reads already-built plots and never requests new ones, so a
   `TerrainAnchor` or NavMesh patch far from the player gets no trunk colliders and no carved
@@ -187,9 +220,11 @@ Defaults as shipped (`WorldConfig`, `TerrainAnchor`, `NavPatchPlanner`, `FloraOb
   holes until the patch's next rebuild (physics colliders catch up within `refreshInterval`
   regardless). Trunk colliders sit on `terrainLayer`, so anything masking that layer hits trunks
   too. A capsule stands upright along local up and ignores the plant instance's own lean.
-- **Unanchored NPCs outside the player's 96 m LOD0 box are held, frozen, by
-  `TerrainRigidbodyGuard`** until ground exists under them — they do not fall through, but they also
-  do not move. Give any NPC that must simulate or navigate away from the player a `TerrainAnchor`.
+- **Unanchored NPCs outside the player's LOD0 box are held, frozen, by `TerrainRigidbodyGuard`**
+  while the density field has ground within `probeDistance` below them but no collider exists there —
+  they do not fall through, but they also do not move. The box is offset and steps 32 m at a time
+  (§7), so "outside" can start ~16 m from the player on one side. Give any NPC that must simulate or
+  navigate away from the player a `TerrainAnchor`.
 - **Globe: physics works, globe NavMesh does not yet exist in production.** `PlanetGravityBody` /
   `GravityAligner` + `CharacterGravity` give correct radial gravity and orientation on the globe
   today. `TerrainNavMesh`/`NavPatchPlanner` already have a radial-patch code path
@@ -205,6 +240,18 @@ Defaults as shipped (`WorldConfig`, `TerrainAnchor`, `NavPatchPlanner`, `FloraOb
   state** (`TerrainCollisionStreamer.s_tiles` is a static dictionary; `TerrainNavMesh.Instance` is a
   single static reference) — one of each per running scene, not per split-screen player or per
   sub-scene.
+- **Streamer tiles and NavMesh do not refresh on a `TerrainTuning` hot-reload** (dev only). Editing a
+  biome/density asset in play mode rebuilds the clipmap's chunks, but existing collision tiles keep
+  their old geometry until an `affectsPhysics` edit dirties them or they are released and rebuilt,
+  so NavMesh baked from those tiles keeps the old shape too. Re-enter Play mode after
+  tuning before trusting ground or NavMesh away from the player.
+- **Trunk NavMesh sources cover the whole flat patch.** `FloraObstacles` appends one capsule source
+  per trunk in the patch's world bounds on every rebuild, and the flat patch spans every included
+  anchor (up to `maxFlatExtent`), so a spread-out set of anchors over forest can put thousands of
+  capsules into each rebuild — profile it during the steady-walk check in `VERIFICATION.md`.
+- **Changing `WorldConfig.navAgentTypeIds` at runtime drops every agent off the NavMesh** until the
+  rebuild for the new set finishes: each patch's data is removed before its replacement is built,
+  so `TerrainNavAgentGuard`s re-sample and wait (or park on physics) in the meantime.
 - **`NavMeshModifier` markups are not honoured** by `navGameLayers` baking (`TerrainNavMesh` collects
   physics colliders with an empty markup list). Per-object exclusion is only the automatic
   Rigidbody/agent/controller filter; override areas and "ignore from build" need a separate layer.
