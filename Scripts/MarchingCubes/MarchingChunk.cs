@@ -37,6 +37,22 @@ public class MarchingChunk : MonoBehaviour
     // decoration should go too.
     public static readonly List<MarchingChunk> Active = new();
 
+    // Raised (main thread) when this chunk's collision changes: a new cooked
+    // collider bound, or the collider turned off. Collision tiles, the
+    // NavMesh baker and the Rigidbody waker listen; nothing in the mesher does.
+    public static event System.Action<MarchingChunk> ColliderChanged;
+
+    public Mesh ColliderMesh => _collider != null && _collider.enabled ? _collider.sharedMesh : null;
+
+    public Bounds WorldBounds
+    {
+        get
+        {
+            var size = Vector3.Scale((Vector3)cells, new Vector3(cellSize, cellSize, cellSize));
+            return new Bounds(transform.position + size * 0.5f, size);
+        }
+    }
+
     // Bumped every time ApplyBuild changes what _mesh holds. A consumer that
     // caches derived data per chunk compares this to know it is stale.
     public int MeshVersion { get; private set; }
@@ -46,7 +62,12 @@ public class MarchingChunk : MonoBehaviour
     public Mesh RenderMesh => _mesh;
 
     void OnEnable() { Active.Add(this); }
-    void OnDisable() { Active.Remove(this); }
+
+    void OnDisable()
+    {
+        Active.Remove(this);
+        if (_collider != null && _collider.enabled) ColliderChanged?.Invoke(this); // collision leaves with the chunk
+    }
 
     // Optional separate field for collision. When set, the collider is meshed
     // from THIS field instead of sharing the render mesh — used to keep
@@ -290,6 +311,7 @@ public class MarchingChunk : MonoBehaviour
             _collider.sharedMesh = null;
             _collider.enabled = false;
             _pendingColliderMesh = null;
+            ColliderChanged?.Invoke(this);
             return;
         }
 
@@ -299,6 +321,7 @@ public class MarchingChunk : MonoBehaviour
             _collider.sharedMesh = colliderMesh;
             _collider.enabled = true;
             _pendingColliderMesh = null;
+            ColliderChanged?.Invoke(this);
             return;
         }
 
@@ -344,6 +367,7 @@ public class MarchingChunk : MonoBehaviour
             _collider.sharedMesh = null; // force the lookup; the cook is cached now, so this pair is cheap
             _collider.sharedMesh = _pendingColliderMesh;
             _collider.enabled = true;
+            ColliderChanged?.Invoke(this);
         }
         _pendingColliderMesh = null;
         return true;
@@ -363,6 +387,7 @@ public class MarchingChunk : MonoBehaviour
         {
             _collider.sharedMesh = null;
             _collider.enabled = false;
+            ColliderChanged?.Invoke(this);
         }
     }
 
