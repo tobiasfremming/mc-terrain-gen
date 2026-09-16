@@ -267,6 +267,30 @@ public class MCChunkManager : MonoBehaviour
     // an affectsPhysics flag per edit).
     public TerrainModificationSystem Modifications { get { EnsureField(); return _modSystem; } }
 
+    public static MCChunkManager Instance { get; private set; }
+
+    // The field colliders are meshed from: base terrain + physical edits only.
+    public DensityField PhysicsField { get { EnsureField(); return _physicsField; } }
+
+    public float Level0ChunkSize => LevelChunkSize(0);
+    public Vector3Int Level0Coord(Vector3 worldPos) => FloorCoord(worldPos, LevelChunkSize(0));
+
+    public event Action Level0BoxChanged;
+
+    public bool IsInLevel0Box(Vector3Int coord)
+    {
+        if (!_boxesValid || _boxMin == null || _boxMin.Length == 0) return false;
+        Vector3Int d = coord - _boxMin[0];
+        int E = Extent;
+        return d.x >= 0 && d.y >= 0 && d.z >= 0 && d.x < E && d.y < E && d.z < E;
+    }
+
+    public bool IsLevel0ColliderReady(Vector3Int coord)
+    {
+        var key = new ChunkKey { level = 0, coord = coord };
+        return IsReady(key) && _chunks.TryGetValue(key, out var ch) && ch != null && !ch.ColliderBakePending;
+    }
+
     // Surface hardness at a world position (0 soft .. 1 hard rock); blends
     // across biome transitions. Used by footprints/tools.
     public float HardnessAt(Vector3 worldPos)
@@ -299,6 +323,7 @@ public class MCChunkManager : MonoBehaviour
 
     void OnEnable()
     {
+        Instance = this;
         TerrainTuning.Changed += OnTerrainTuningChanged;
         // An editor domain reload destroys _runtimeMaterial (it is DontSave)
         // while the chunks referencing it survive -- they would render with a
@@ -310,6 +335,7 @@ public class MCChunkManager : MonoBehaviour
     void OnDisable()
     {
         TerrainTuning.Changed -= OnTerrainTuningChanged;
+        if (Instance == this) Instance = null;
     }
 
     // Inspector tweaks to any Biome / density-field asset hot-reload the world.
@@ -696,7 +722,10 @@ public class MCChunkManager : MonoBehaviour
         if (_pendingRefresh) ApplyPendingRefresh();
 
         if (BoxesChanged())
+        {
             RecomputeTargets(); // only when the player crosses a clipmap boundary
+            Level0BoxChanged?.Invoke();
+        }
 
         ApplyCompletedBuilds();
         PumpColliderBakes();
