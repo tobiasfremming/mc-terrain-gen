@@ -65,6 +65,15 @@ public float lodUpdateInterval = 0.5f; // How often to recalculate LOD
     [Tooltip("Hard cap on live collision tiles; the nearest-to-an-anchor win when exceeded.")]
     public int maxCollisionTiles = 512;
 
+    [Tooltip("NavMesh agent type ids (Navigation window > Agents) to bake for. 0 = Humanoid.")]
+    public int[] navAgentTypeIds = { 0 };
+    [Tooltip("Minimum seconds between NavMesh updates while terrain collision keeps changing.")]
+    public float navUpdateInterval = 0.5f;
+    [Tooltip("Bake a height mesh so agents' feet follow bumpy marching-cubes ground instead of the simplified nav polygons.")]
+    public bool navBuildHeightMesh = true;
+    [Tooltip("Game layers whose physics colliders (buildings, props) are included in the terrain NavMesh.")]
+    public LayerMask navGameLayers = 0;
+
     [Header("Planet Mode")]
     [Tooltip("Render the world as a sphere instead of a flat plane.")]
     public bool useGlobe = false;
