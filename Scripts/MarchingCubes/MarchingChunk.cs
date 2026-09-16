@@ -385,9 +385,10 @@ public class MarchingChunk : MonoBehaviour
         if (_collider == null) _collider = GetComponent<MeshCollider>();
         if (_collider != null)
         {
+            bool was = _collider.enabled; // only a real enabled->disabled transition is a change
             _collider.sharedMesh = null;
             _collider.enabled = false;
-            ColliderChanged?.Invoke(this);
+            if (was) ColliderChanged?.Invoke(this);
         }
     }
 
