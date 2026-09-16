@@ -12,6 +12,7 @@ public static class DesertAtmosphere
     {
         var manager = Object.FindFirstObjectByType<MCChunkManager>();
         if (manager == null) return;
+        if (manager.worldConfig != null && !manager.worldConfig.demoBootstrap) return;
 
         if (!RenderSettings.fog)
         {
