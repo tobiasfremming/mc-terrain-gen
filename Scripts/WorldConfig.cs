@@ -52,6 +52,14 @@ public float lodUpdateInterval = 0.5f; // How often to recalculate LOD
     [Header("Defaults")]
     public DensityField defaultDensity;
 
+    [Header("Game Integration")]
+    [Tooltip("On: PlayerBootstrap spawns the demo capsule player and DesertAtmosphere sets fog/far plane at play start. Turn OFF in the game, which brings its own player, camera and lighting.")]
+    public bool demoBootstrap = true;
+    [Tooltip("Layer every terrain chunk and collision tile is put on. The terrain package cannot add layers to the game's TagManager: create a 'Terrain' layer in the game and select its index here. NavMesh, ground probes and Rigidbody guards all use this.")]
+    [Range(0, 31)] public int terrainLayer = 0;
+
+    public int TerrainLayerMask => 1 << terrainLayer;
+
     [Header("Planet Mode")]
     [Tooltip("Render the world as a sphere instead of a flat plane.")]
     public bool useGlobe = false;

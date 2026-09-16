@@ -2047,6 +2047,7 @@ public class MCChunkManager : MonoBehaviour
         // Only full-detail chunks need physics; the player can't reach coarser
         // rings before their region is re-generated at level 0.
         chunk.generateCollider = key.level == 0;
+        chunk.gameObject.layer = worldConfig ? worldConfig.terrainLayer : 0;
     }
 
     MarchingChunk CreateChunk(ChunkKey key)
