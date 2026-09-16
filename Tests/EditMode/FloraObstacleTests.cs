@@ -47,16 +47,34 @@ namespace TerrainGen.Tests
             const float r = 0.6f, h = 4.5f;
 
             Matrix4x4 m = FloraObstacleMath.CapsuleSourceMatrix(basePos, up, r, h);
+            Vector3 size = FloraObstacleMath.CapsuleSourceSize(r, h);
 
-            // A NavMesh capsule source with size one is the unit capsule
-            // (height 1, radius 0.5) scaled by the matrix: local y = -0.5 is
-            // the foot, +0.5 the crown.
-            AssertNear(basePos, m.MultiplyPoint3x4(new Vector3(0f, -0.5f, 0f)));
-            AssertNear(basePos + up * h, m.MultiplyPoint3x4(new Vector3(0f, 0.5f, 0f)));
-            // Unit radius 0.5 maps to the obstacle radius, perpendicular to up.
-            Vector3 side = m.MultiplyVector(new Vector3(0.5f, 0f, 0f));
+            // The dimensions live in `size`, the matrix is rigid: local
+            // y = -h/2 is the foot, +h/2 the crown.
+            AssertNear(basePos, m.MultiplyPoint3x4(new Vector3(0f, -h * 0.5f, 0f)));
+            AssertNear(basePos + up * h, m.MultiplyPoint3x4(new Vector3(0f, h * 0.5f, 0f)));
+            Vector3 side = m.MultiplyVector(new Vector3(r, 0f, 0f));
             Assert.That(side.magnitude, Is.EqualTo(r).Within(Eps));
             Assert.That(Vector3.Dot(side, up), Is.EqualTo(0f).Within(Eps));
+            AssertNear(new Vector3(2f * r, h, 2f * r), size);
+        }
+
+        [Test]
+        public void CapsuleDistanceMeasuresToTheSurface()
+        {
+            var basePos = new Vector3(10f, 0f, 0f);
+            Vector3 up = Vector3.up;
+            const float r = 0.5f, h = 4f;
+
+            // Beside the shaft: 3 m from the axis at mid height, minus radius.
+            Assert.That(FloraObstacleMath.CapsuleDistance(new Vector3(13f, 2f, 0f), basePos, up, r, h), Is.EqualTo(2.5f).Within(Eps));
+            // Above the top: axis clamps to the top end (10,4,0); the point is
+            // (3,4) away in x/y = 5 m, minus radius.
+            Assert.That(FloraObstacleMath.CapsuleDistance(new Vector3(13f, 8f, 0f), basePos, up, r, h), Is.EqualTo(4.5f).Within(Eps));
+            // Below the base: clamps to the base, 2 m straight down, minus radius.
+            Assert.That(FloraObstacleMath.CapsuleDistance(new Vector3(10f, -2f, 0f), basePos, up, r, h), Is.EqualTo(1.5f).Within(Eps));
+            // Inside the trunk: 0, never negative.
+            Assert.That(FloraObstacleMath.CapsuleDistance(new Vector3(10.2f, 1f, 0f), basePos, up, r, h), Is.EqualTo(0f).Within(Eps));
         }
     }
 }
