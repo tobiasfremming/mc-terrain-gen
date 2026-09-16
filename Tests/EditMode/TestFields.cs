@@ -19,4 +19,12 @@ namespace TerrainGen.Tests
         public override float Sample(Vector3 p, float filterWidth) => radius - Vector3.Distance(p, center);
         protected override void OnValidate() { }
     }
+
+    // Ground solid below y = 0, plus a floating rock layer between y = 20 and
+    // y = 30 (a cave roof / overhang); air everywhere else.
+    public class TwoLayerField : DensityField
+    {
+        public override float Sample(Vector3 p, float filterWidth) => Mathf.Max(-p.y, Mathf.Min(p.y - 20f, 30f - p.y));
+        protected override void OnValidate() { }
+    }
 }

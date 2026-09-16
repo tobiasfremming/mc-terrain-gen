@@ -57,5 +57,42 @@ namespace TerrainGen.Tests
             Assert.That(Vector3.Dot(n, dir), Is.GreaterThan(0.999f));
             Object.DestroyImmediate(f);
         }
+
+        [Test]
+        public void ExitAboveFindsSurfaceOverBuriedPoint()
+        {
+            var f = ScriptableObject.CreateInstance<PlaneField>(); f.height = 10f;
+            Assert.That(TerrainQuery.TryFindExitAbove(f, new Vector3(0, 4, 0), Vector3.up, 20, out var p), Is.True);
+            Assert.That(p.y, Is.EqualTo(10f).Within(0.01f));
+            Object.DestroyImmediate(f);
+        }
+
+        [Test]
+        public void ExitAboveLeavesThroughTheNearestRoofNotTheGround()
+        {
+            // Buried inside the floating layer (20..30): the nearest exit
+            // above is its top at 30. The ground surface at 0 is below and
+            // must not be chosen.
+            var f = ScriptableObject.CreateInstance<TwoLayerField>();
+            Assert.That(TerrainQuery.TryFindExitAbove(f, new Vector3(0, 25, 0), Vector3.up, 20, out var p), Is.True);
+            Assert.That(p.y, Is.EqualTo(30f).Within(0.01f));
+            Object.DestroyImmediate(f);
+        }
+
+        [Test]
+        public void ExitAboveIsFalseWhenStartingInAir()
+        {
+            var f = ScriptableObject.CreateInstance<PlaneField>(); f.height = 10f;
+            Assert.That(TerrainQuery.TryFindExitAbove(f, new Vector3(0, 15, 0), Vector3.up, 20, out _), Is.False);
+            Object.DestroyImmediate(f);
+        }
+
+        [Test]
+        public void ExitAboveIsFalseWhenNoExitWithinRange()
+        {
+            var f = ScriptableObject.CreateInstance<PlaneField>(); f.height = 100f;
+            Assert.That(TerrainQuery.TryFindExitAbove(f, new Vector3(0, 4, 0), Vector3.up, 20, out _), Is.False);
+            Object.DestroyImmediate(f);
+        }
     }
 }
