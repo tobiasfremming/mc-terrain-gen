@@ -6,11 +6,20 @@ public enum GuardState { Free, HeldNoGround, Rescued }
 // pulls it out if an edit or a streaming gap ever leaves it inside rock.
 // Checks at a low rate (every `checkInterval` s, staggered per instance): a
 // held body is not moving, and a free body over cooked ground does not need
-// per-step probing.
+// per-step probing. The very first check runs on the first FixedUpdate, so a
+// body spawned over uncooked ground is caught before it has fallen for a
+// quarter second; only the checks after it are staggered.
+//
+// "Held" means: the density field says there is ground within probeDistance
+// below, but no collider has streamed in there yet. A body with nothing below
+// it in the field either is simply falling (dropped from high up, off a
+// cliff, over a canyon deeper than probeDistance) and is left alone --
+// freezing it would hold it in mid-air forever, since no collider is ever
+// going to appear within range.
 [RequireComponent(typeof(Rigidbody))]
 public class TerrainRigidbodyGuard : MonoBehaviour
 {
-    [Tooltip("How far below the body to look for any collider (terrain or otherwise) before deciding the ground has not streamed in yet.")]
+    [Tooltip("How far below the body to look, both for any collider (terrain or otherwise) and for ground in the density field. The body is held only when the field has ground within this distance but no collider does; with no field ground in range it is falling and stays free.")]
     public float probeDistance = 60f;
     public float checkInterval = 0.25f;
     [Tooltip("Height above the found surface a rescued body is placed at (its pivot).")]
@@ -22,25 +31,32 @@ public class TerrainRigidbodyGuard : MonoBehaviour
     bool _heldByUs;
     bool _wasKinematic;
     float _nextCheck;
+    bool _checkedOnce;
 
     public bool IsHeld => _heldByUs;
 
-    public static GuardState Decide(bool colliderBelow, bool insideSolid, bool wasHeld)
+    public static GuardState Decide(bool colliderBelow, bool fieldGroundBelow, bool insideSolid, bool wasHeld)
     {
         if (insideSolid) return GuardState.Rescued;
-        return colliderBelow ? GuardState.Free : GuardState.HeldNoGround;
+        if (colliderBelow) return GuardState.Free;
+        // No collider: hold only if there is ground in the field for one to
+        // stream in on. Otherwise the body is falling, not waiting.
+        return fieldGroundBelow ? GuardState.HeldNoGround : GuardState.Free;
     }
 
     void Awake()
     {
         _rb = GetComponent<Rigidbody>();
-        _nextCheck = Time.time + Random.value * checkInterval;
     }
 
     void FixedUpdate()
     {
-        if (Time.time < _nextCheck) return;
-        _nextCheck = Time.time + checkInterval;
+        if (_checkedOnce && Time.time < _nextCheck) return;
+        // First check now; the second lands a random fraction of an interval
+        // later, which spreads many guards spawned on the same frame across
+        // the interval from then on.
+        _nextCheck = Time.time + (_checkedOnce ? checkInterval : Random.value * checkInterval);
+        _checkedOnce = true;
 
         var m = MCChunkManager.Instance;
         if (m == null) return;
@@ -61,8 +77,12 @@ public class TerrainRigidbodyGuard : MonoBehaviour
             if (s_hits[i].collider != null && s_hits[i].collider.attachedRigidbody != _rb) { below = true; break; }
         }
         bool inside = TerrainQuery.IsInsideSolid(m.PhysicsField, p);
+        // Only sampled when it can change the outcome: a collider below
+        // already frees the body, whatever the field says.
+        bool fieldGround = !below && !inside &&
+                           TerrainQuery.TryFindGround(m.PhysicsField, p, up, 0.5f, probeDistance, out _, out _);
 
-        switch (Decide(below, inside, _heldByUs))
+        switch (Decide(below, fieldGround, inside, _heldByUs))
         {
             case GuardState.Rescued:
                 if (TerrainQuery.TryFindGround(p, 50f, 10f, out Vector3 g, out _))
