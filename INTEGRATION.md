@@ -59,7 +59,10 @@ Add `FloraObstacles` there too (or anywhere in the scene — it only needs to fi
   be only ~16 m from the player). The target is always the *primary* anchor for `TerrainNavMesh`'s
   flat-patch planning (`NavAnchor.primary`), never dropped from the flat NavMesh box even under the
   anchor cap; with no `TerrainAnchor` on it, or `navRadius <= 0`, its NavMesh radius falls back to
-  `40`.
+  `40`. One catch: `FloraObstacles` places trunk **physics** colliders only within each anchor's
+  `physicsRadius`, so with `0` the player walks through trees. If trees must block the player, give
+  it a `physicsRadius` covering that range instead — any value up to `navRadius` costs no extra tiles,
+  since tiles already reach `max(physicsRadius, navRadius)`.
 - **Flat world:** normal Rigidbody/CharacterController gravity. The demo player
   (`SimplePlayerController` + `GravityAligner` + `CharacterGravity`) is a working reference if the
   game wants its own controller shaped the same way; none of the terrain integration code requires
@@ -237,6 +240,18 @@ Defaults as shipped (`WorldConfig`, `TerrainAnchor`, `NavPatchPlanner`, `FloraOb
   state** (`TerrainCollisionStreamer.s_tiles` is a static dictionary; `TerrainNavMesh.Instance` is a
   single static reference) — one of each per running scene, not per split-screen player or per
   sub-scene.
+- **Streamer tiles and NavMesh do not refresh on a `TerrainTuning` hot-reload** (dev only). Editing a
+  biome/density asset in play mode rebuilds the clipmap's chunks, but existing collision tiles keep
+  their old geometry until an `affectsPhysics` edit dirties them or they are released and rebuilt,
+  so NavMesh baked from those tiles keeps the old shape too. Re-enter Play mode after
+  tuning before trusting ground or NavMesh away from the player.
+- **Trunk NavMesh sources cover the whole flat patch.** `FloraObstacles` appends one capsule source
+  per trunk in the patch's world bounds on every rebuild, and the flat patch spans every included
+  anchor (up to `maxFlatExtent`), so a spread-out set of anchors over forest can put thousands of
+  capsules into each rebuild — profile it during the steady-walk check in `VERIFICATION.md`.
+- **Changing `WorldConfig.navAgentTypeIds` at runtime drops every agent off the NavMesh** until the
+  rebuild for the new set finishes: each patch's data is removed before its replacement is built,
+  so `TerrainNavAgentGuard`s re-sample and wait (or park on physics) in the meantime.
 - **`NavMeshModifier` markups are not honoured** by `navGameLayers` baking (`TerrainNavMesh` collects
   physics colliders with an empty markup list). Per-object exclusion is only the automatic
   Rigidbody/agent/controller filter; override areas and "ignore from build" need a separate layer.

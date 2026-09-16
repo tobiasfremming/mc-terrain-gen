@@ -2,7 +2,10 @@
 
 Every check in this file was deferred during the game-integration work (Tasks 1–11, 14; see
 `INTEGRATION.md`) because the Unity Editor / Unity MCP was not available. All code passed the
-offline compile gate (`compile.py`) for its task; none of this has run against the real Editor yet.
+offline compile gate (`compile.py`) for its task, and again after the final-review fix wave
+(F1–F7: guard hold/rescue, NavMesh source filter, streamer in-flight cap, 2-chunk clipmap margin,
+tile radius `max(physicsRadius, navRadius)`, waker/NavMeshData cleanup); none of this has run against
+the real Editor yet.
 Grouped by feature, in build order. Check items off as they're run.
 
 ## How to run
@@ -19,8 +22,8 @@ Grouped by feature, in build order. Check items off as they're run.
    `TerrainGen.Tests` (`Assets/TerrainGen/Tests/EditMode/`):
    - `AssemblySmokeTests` (1)
    - `WorldConfigTests` (1)
-   - `TerrainQueryTests` (5)
-   - `RigidbodyGuardLogicTests` (3)
+   - `TerrainQueryTests` (9)
+   - `RigidbodyGuardLogicTests` (4)
    - `CollisionTilePlannerTests` (4)
    - `NavPatchPlannerTests` (11)
    - `FloraObstacleTests` (4)
@@ -31,7 +34,7 @@ Grouped by feature, in build order. Check items off as they're run.
    - `LSystemRewriterTests` (21)
    - `LSystemTurtleTests` (18)
 
-   Expected: all green, 90 total across both assemblies. Any failure here blocks everything below.
+   Expected: all green, 95 total across both assemblies. Any failure here blocks everything below.
 
 ---
 
@@ -90,7 +93,9 @@ Grouped by feature, in build order. Check items off as they're run.
 
 ## Task 4 — `TerrainQuery`
 
-- [ ] **NUnit.** Action: run `TerrainQueryTests` (5). Expected: all green.
+- [ ] **NUnit.** Action: run `TerrainQueryTests` (9: five `TryFindGround`, four `TryFindExitAbove`
+      incl. `ExitAboveLeavesThroughTheNearestRoofNotTheGround` on `TestFields.TwoLayerField`).
+      Expected: all green.
 - [ ] **Live ground query.** Setup: a running scene (flat and, separately, globe). Action:
       `MCChunkManager.Instance` non-null; call `TerrainQuery.TryFindGround(pos, searchUp, searchDown,
       out p, out n)` via the convenience overload (resolves `PhysicsField`/`PlanetGravity.UpAt`
@@ -99,17 +104,36 @@ Grouped by feature, in build order. Check items off as they're run.
 
 ## Task 5/6 — `TerrainRigidbodyGuard` / `TerrainPhysicsWaker`
 
+- [ ] **NUnit.** Action: run `RigidbodyGuardLogicTests` (4, incl. `NoColliderAndNoFieldGroundFrees`).
+      Expected: all green.
 - [ ] **Held over unstreamed ground.** Setup: SampleScene (flat), get a ground point from
       `TerrainQuery.TryFindGround(playerPos, …)`, spawn a cube with `Rigidbody` +
-      `TerrainRigidbodyGuard` 70 m from the player, 30 m above that point. Action: wait 3 s, read
-      `guard.IsHeld` and the cube's position. Expected: `IsHeld == true`, position unchanged (no
-      terrain has streamed in there yet).
+      `TerrainRigidbodyGuard` (no `TerrainAnchor`) 120 m from the player, 30 m above that point.
+      Action: read `guard.IsHeld` after 0.05 s and the cube's position after 3 s. Expected:
+      `IsHeld == true` already after 0.05 s (first check is immediate, not staggered), position
+      within 0.1 m of spawn (no terrain collider has streamed in there yet, but the field has ground
+      30 m below, inside `probeDistance`).
 - [ ] **Released once ground streams in.** Setup: continue from the above. Action: move the player
       next to the cube's spawn point, wait 5 s, re-read. Expected: `IsHeld == false`, cube resting
       within 1 m of `TerrainQuery.TryFindGround` at that XZ.
+- [ ] **Fall from > 60 m is free.** Setup: same spot as above, but spawn the cube 100 m above the
+      field ground (beyond `probeDistance`). Action: sample `IsHeld` and y every 0.1 s for 2 s.
+      Expected: `IsHeld` never `true`; y decreasing under gravity. Then (anchor the cube or bring the
+      player over) it lands rather than freezing in mid-air forever.
 - [ ] **Rescue from inside rock.** Setup: spawn a second cube 2 m below ground (inside solid rock)
-      near the player. Action: wait 1 s, read position. Expected: cube now sits above ground (the
-      `Rescued` branch fired).
+      near the player. Action: wait 1 s, read position. Expected: cube now sits ~`rescueLift` above
+      the surface directly over it (the `Rescued` branch fired).
+- [ ] **Rescue under an overhang exits upward through the nearest rock, not onto the roof.** Setup:
+      a canyon/overhang biome in `Assets/Scenes/Biomes/`, or `StampSphere(…, affectsPhysics: true)` a
+      floating slab ~10 m thick 8 m above flat ground. Place a cube with its centre of mass 1 m
+      inside the ground under the slab. Action: wait 1 s. Expected: cube ends up just above the
+      ground, in the air gap under the slab — **not** on top of the slab. Then bury one inside the
+      slab itself: it exits at the slab's top surface.
+- [ ] **Resting contact never rescues.** Setup: 10 guarded cubes (1 m) and a guarded capsule with
+      its pivot at the feet, resting on LOD0 ground for 30 s on rough terrain. Action: log every
+      teleport (position jump > 0.3 m between FixedUpdates). Expected: zero — the centre-of-mass
+      sample plus `insideMargin` (0.25) keeps the field's few-cm bulge above the 0.5 m collider from
+      counting as "inside".
 - [ ] **Held on a non-terrain platform (Important-fix regression).** Setup: place a plain
       `BoxCollider` (no `Rigidbody`) platform with no terrain anywhere nearby, drop a guarded cube
       onto it. Expected: `IsHeld` goes `false` — the "any non-trigger collider below" probe, not a
@@ -118,6 +142,11 @@ Grouped by feature, in build order. Check items off as they're run.
 - [ ] **Edit wakes a sleeping crate.** Setup: drop a crate, let it sleep. Action:
       `Modifications.CarveSphere(center, radius, affectsPhysics: true)` under it. Expected: crate
       wakes and falls onto the new surface.
+- [ ] **Waker is inert in edit mode, ignores terrain colliders.** Action: exit Play mode, trigger an
+      edit-mode chunk rebuild (tweak a biome asset), profile. Expected: no
+      `FindFirstObjectByType` from `TerrainPhysicsWaker.EnsureBound` in the profile, no errors. In
+      Play, a large-region `Wake` (e.g. a 60 m `CarveSphere`) still wakes a sleeping crate at the
+      far end of the region (terrain colliders no longer fill the 256-hit buffer first).
 - [ ] **Wake survives a scene reload.** Setup: reload `SampleScene` once in the Editor
       (`EditorSceneManager.LoadScene`, or Play → Stop → Play). Action: repeat the crate-wake check
       above. Expected: it still fires — confirms `TerrainPhysicsWaker`'s post-reload `RegionModified`
@@ -142,7 +171,9 @@ Grouped by feature, in build order. Check items off as they're run.
       100 m at 20 random XZ points inside the tile against each collider. Expected: centres/sizes
       within 0.01 m, hit distances equal within 0.001 m. Untick `ignoreClipmapCoverage` afterward.
 - [ ] **Distant NPC grounds.** Setup: 200 m from the player, spawn a capsule with `Rigidbody`,
-      `TerrainRigidbodyGuard`, `TerrainAnchor(physicsRadius 12)`, 20 m above `TerrainQuery` ground.
+      `TerrainRigidbodyGuard`, `TerrainAnchor(physicsRadius 12, navRadius 0)`, 20 m above
+      `TerrainQuery` ground. (With the default `navRadius 40` tiles reach 40 m instead — see the
+      radius check below.)
       Expected: within 3 s it rests within 1.2 m of ground, not held, no exceptions; Profiler shows
       no frame over 33 ms attributable to `TerrainCollisionStreamer.Update`.
 - [ ] **Forward hand-off (player walks toward NPC).** Action: teleport the player toward the NPC
@@ -152,6 +183,22 @@ Grouped by feature, in build order. Check items off as they're run.
       near its centre. Action: teleport the player away in 8 m steps, 0.5 s apart, until the NPC is
       ~200 m outside the box. Expected: NPC y never drops > 0.1 m between samples;
       `CollisionTile_*` appears under it before its coord leaves the box.
+- [ ] **NPC 16–32 m behind a player crossing a box boundary never drops.** Setup: an anchored NPC
+      (`physicsRadius 12, navRadius 0`) resting 16 m, then separately 24 m and 32 m, behind the player along x.
+      Action: move the player forward along x in 1 m steps, one step per frame, across several
+      32 m box steps (watch `Level0BoxChanged`); sample NPC y every frame. Expected: no drop > 0.1 m
+      at any box step — the 2-chunk coverage margin means a tile already exists under the NPC for
+      both chunk layers a single 32 m step uncovers.
+- [ ] **Tiles reach `max(physicsRadius, navRadius)`.** Setup: one anchor far from the player with
+      `physicsRadius 0, navRadius 40`. Expected: `CollisionTile_*` built out to ~40 m around it
+      (≈ 120–160 tiles incl. empty ones), and `NavMesh.SamplePosition` succeeds 35 m from it on
+      ground. With `physicsRadius 0, navRadius 0` no tiles are built.
+- [ ] **Burst of 40 anchors doesn't delay player ground.** Setup: note how long the clipmap takes to
+      report `IsLevel0ColliderReady` for the player's coord after a 200 m teleport with no other
+      anchors. Action: spawn 40 anchored capsules (defaults) 150–300 m from the player on the same
+      frame as another 200 m player teleport. Expected: player's coord collider ready within ~1.5×
+      the baseline; never more than `clamp(processorCount − 2, 1, 6)` tile tasks running at once
+      (instrument `s_tiles` with a debugger or a temporary counter); frame time stays under 33 ms.
 - [ ] **Edit rebuild without a gap.** Setup: an NPC resting on a tile outside the LOD0 box. Action:
       `Modifications.StampSphere(center, radius, depth, affectsPhysics: true)` beside (not under)
       the NPC. Expected: NPC y never drops > 0.1 m during the rebuild; `TileChanged(added=true)`
@@ -227,10 +274,24 @@ Grouped by feature, in build order. Check items off as they're run.
       flat world. Record frame times / `Time.unscaledDeltaTime` spikes, count `IsBuilding` rising
       edges, log `PatchVersion`. Expected: no hitches from full-patch rebuilds as the flat patch
       bounds move; `PatchVersion` unchanged throughout (no patch is ever removed by this). If
-      rebuilds hitch, fall back to the accumulated dirty region as `localBounds`.
+      rebuilds hitch, fall back to the accumulated dirty region as `localBounds`. Repeat over dense
+      forest with trunk obstacles on and several anchors spread out: profile
+      `FloraObstacles.OnCollectSources` and the capsule source count per rebuild (they cover the
+      whole flat patch).
 - [ ] **Agent capsule doesn't punch a hole.** Setup: a `NavMeshAgent` capsule collider on a layer in
-      `navGameLayers`. Action: force a rebuild. Expected: no hole in the NavMesh under the agent
-      (confirms `IsAgentCollider` filtering).
+      `navGameLayers`, and a second rig whose capsule collider sits on a **child** of the
+      `NavMeshAgent`/`CharacterController` GameObject. Action: force a rebuild. Expected: no hole in
+      the NavMesh under either (confirms `IsMovingCollider`'s parent lookup).
+- [ ] **Rigidbody player and crates not carved.** Setup: a Rigidbody-driven player (no
+      `NavMeshAgent`/`CharacterController`) and a stack of Rigidbody crates on a layer in
+      `navGameLayers`, plus a static `BoxCollider` building on the same layer. Action: force a
+      rebuild. Expected: no NavMesh hole under the player or crates; the building is still carved.
+- [ ] **Retired NavMeshData is destroyed.** Action: toggle `navAgentTypeIds` between `{0}` and `{0, 1}`
+      (a second valid agent type) a few times, and on a globe world walk far enough for radial patches
+      to retire; count `Resources.FindObjectsOfTypeAll<NavMeshData>()`
+      before and after, and disable `TerrainNavMesh` mid-build then re-enable. Expected: the count
+      returns to the number of live (patch × agent type) slots once builds settle; no errors from
+      destroying data under a running build.
 
 ## Task 11 — `TerrainNavAgentGuard`
 
@@ -314,7 +375,7 @@ Grouped by feature, in build order. Check items off as they're run.
 
 - [ ] **All EditMode tests.** Action: MCP `run_tests`, mode `EditMode`, filters
       `TerrainGen.Tests` and `TerrainGen.LSystem.Tests` (see "How to run" for the class list).
-      Expected: all pass, 90 tests total, 0 failures.
+      Expected: all pass, 95 tests total, 0 failures.
 
 ## Task 12 — Globe NavMesh spike (decision gate, from the plan)
 
