@@ -10,6 +10,16 @@ using UnityEngine.AI;
 // under it, re-places it after a patch removal, and hands the NPC between
 // agent control and physics for knockback/ragdoll.
 //
+// Other scripts must go through TrySetDestination / ClearDestination /
+// SuspendForPhysics / ResumeFromPhysics -- never touch the NavMeshAgent
+// directly. The agent can be disabled or off-mesh at any time (before the
+// first placement, mid-suspend, or in the gap between a patch removal and
+// the next re-place), and reading NavMeshAgent.destination/hasPath/
+// SetDestination on it in that state throws the exact
+// "can only be called on an active agent that has been placed on a
+// NavMesh" error this guard exists to prevent. The guard is the only thing
+// allowed to touch the agent's path.
+//
 // Rigidbody + agent contract (carry this into INTEGRATION.md when Task 15
 // writes it): while the agent drives, the Rigidbody is kinematic and the
 // agent moves the transform (NavMeshAgent.updatePosition stays true -- do
@@ -34,10 +44,12 @@ using UnityEngine.AI;
 // warped. Unplaced agents still poll at checkInterval regardless of
 // PatchVersion (e.g. right after spawn, before any patch was ever removed).
 //
-// Recommended prefab setup: the NavMeshAgent component may be left enabled
-// in the prefab -- Awake disables it before Unity's own OnEnable would try
-// to auto-place it on a NavMesh that may not exist yet, so an early failed
-// auto-placement in the same frame is harmless.
+// Recommended prefab setup: the NavMeshAgent component should be DISABLED
+// in the prefab. Awake disables it defensively too, but component Awake
+// order between siblings on the same GameObject is not guaranteed, so
+// Unity's own OnEnable could attempt to place the agent (and warn/fail on
+// an absent NavMesh) before this guard's Awake runs if the component starts
+// enabled.
 [RequireComponent(typeof(NavMeshAgent))]
 public class TerrainNavAgentGuard : MonoBehaviour
 {
@@ -51,7 +63,10 @@ public class TerrainNavAgentGuard : MonoBehaviour
     bool _wasKinematic;
     int _seenVersion = -1;
     float _next;
-    Vector3? _pendingDestination;
+    // The guard owns this, not the agent: on an enabled-but-off-mesh agent,
+    // reading NavMeshAgent.destination/hasPath throws the same error this
+    // guard exists to avoid, so re-placement and suspend never read them.
+    Vector3? _destination;
 
     public bool Ready => _agent.enabled && _agent.isOnNavMesh;
     public event Action BecameReady;
@@ -90,14 +105,12 @@ public class TerrainNavAgentGuard : MonoBehaviour
 
         if (NavMesh.SamplePosition(transform.position, out var hit, sampleRadius, _agent.areaMask))
         {
-            Vector3? dest = _agent.enabled && _agent.hasPath ? _agent.destination : _pendingDestination;
             // Guard first, kinematic second -- see class comment.
             if (_rbGuard != null) _rbGuard.enabled = false;
             if (_rb != null) _rb.isKinematic = true;
             if (!_agent.enabled) _agent.enabled = true;
             _agent.Warp(hit.position);
-            if (dest.HasValue) _agent.SetDestination(dest.Value);
-            _pendingDestination = null;
+            if (_destination.HasValue) _agent.SetDestination(_destination.Value);
             BecameReady?.Invoke();
         }
         else if (_agent.enabled && !_agent.isOnNavMesh)
@@ -110,23 +123,33 @@ public class TerrainNavAgentGuard : MonoBehaviour
         }
     }
 
-    // Applies immediately while Ready; otherwise stores the destination and
-    // applies it once BecameReady fires.
+    // Records the destination regardless of readiness (the guard is the
+    // single source of truth for it -- see class comment) and, while Ready,
+    // also applies it immediately, returning NavMeshAgent.SetDestination's
+    // result. While not Ready it only stores the destination; BecameReady
+    // applies it on the next successful placement. Callers must use this
+    // (and ClearDestination) instead of the NavMeshAgent directly.
     public bool TrySetDestination(Vector3 worldPos)
     {
+        _destination = worldPos;
         if (Ready) return _agent.SetDestination(worldPos);
-        _pendingDestination = worldPos;
         return false;
+    }
+
+    // Drops the stored destination. Call this on arrival or when the goal
+    // is abandoned -- the guard does not detect arrival itself, so a
+    // destination is otherwise kept (and re-applied across a suspend/resume
+    // or re-placement) until a caller clears it.
+    public void ClearDestination()
+    {
+        _destination = null;
+        if (Ready) _agent.ResetPath();
     }
 
     public void SuspendForPhysics()
     {
         _suspended = true;
-        if (_agent.enabled)
-        {
-            _pendingDestination = _agent.hasPath ? _agent.destination : _pendingDestination;
-            _agent.enabled = false;
-        }
+        if (_agent.enabled) _agent.enabled = false;
         // Kinematic first, guard second -- see class comment.
         if (_rb != null) _rb.isKinematic = _wasKinematic;
         if (_rbGuard != null) _rbGuard.enabled = true;

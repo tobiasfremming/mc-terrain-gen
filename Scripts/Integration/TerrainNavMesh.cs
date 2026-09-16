@@ -261,7 +261,11 @@ public class TerrainNavMesh : MonoBehaviour
         if (c == null) return false;
         if (c.TryGetComponent<MarchingChunk>(out _)) return true;
         var parent = c.transform.parent;
-        return parent != null && parent.TryGetComponent<TerrainCollisionStreamer>(out _);
+        // FloraObstacles' trunk colliders sit on the terrain layer too; the
+        // trunks already arrive as Not Walkable capsule sources through
+        // CollectExtraSources, so baking the colliders again would add a
+        // walkable cap on top of every tree.
+        return parent != null && (parent.TryGetComponent<TerrainCollisionStreamer>(out _) || parent.TryGetComponent<FloraObstacles>(out _));
     }
 
     // Agents and the player move; baking their capsules would punch holes in
