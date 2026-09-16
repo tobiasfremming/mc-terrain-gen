@@ -118,7 +118,11 @@ public class TerrainNavMesh : MonoBehaviour
         _anchors.Clear();
         if (_m.target)
         {
-            float radius = _m.target.TryGetComponent<TerrainAnchor>(out var ta) ? ta.navRadius : 40f;
+            // The player always gets NavMesh around it: a missing anchor, or
+            // one with navRadius <= 0 (e.g. set to 0 alongside physicsRadius
+            // on the clipmap target), falls back to 40 m rather than planning
+            // a degenerate zero-size primary patch.
+            float radius = _m.target.TryGetComponent<TerrainAnchor>(out var ta) && ta.navRadius > 0f ? ta.navRadius : 40f;
             _anchors.Add(new NavAnchor { position = _m.target.position, radius = radius, primary = true });
         }
         foreach (var a in TerrainAnchor.All)
