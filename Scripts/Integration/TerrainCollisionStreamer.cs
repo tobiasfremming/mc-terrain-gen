@@ -79,6 +79,11 @@ public class TerrainCollisionStreamer : MonoBehaviour
     // component may be enabled before the manager is -- so the subscription
     // is re-checked every Update, the same way TerrainPhysicsWaker does it.
     TerrainModificationSystem _boundMods;
+    // Worker tasks (mesh or bake) allowed to run at once. maxTileBuildsPerFrame
+    // only limits starts per frame: a burst of new anchors would otherwise
+    // keep starting builds every frame and flood the thread pool, starving
+    // the clipmap's own jobs -- the player's ground -- for seconds.
+    int _maxInFlight = 1;
 
     // Cached so planning does not allocate a delegate per frame.
     // A coord counts as covered only if it AND its six face neighbours are
@@ -93,6 +98,13 @@ public class TerrainCollisionStreamer : MonoBehaviour
     const MeshUpdateFlags kUploadFlags = MeshUpdateFlags.DontValidateIndices |
                                          MeshUpdateFlags.DontRecalculateBounds |
                                          MeshUpdateFlags.DontResetBoneBounds;
+
+    void OnEnable()
+    {
+        // Two cores left for the main and render threads; never more than 6,
+        // so the clipmap's own workers always get a share of the pool.
+        _maxInFlight = Mathf.Clamp(SystemInfo.processorCount - 2, 1, 6);
+    }
 
     void OnDisable()
     {
@@ -179,10 +191,16 @@ public class TerrainCollisionStreamer : MonoBehaviour
         }
 
         // 4. start new builds and dirty rebuilds, nearest to any anchor first,
-        //    within the per-frame budget and the tile cap. A tile only
-        //    (re)starts when it has no task at all, so its pooled job is never
-        //    handed to a second worker while the first still owns it.
+        //    within the per-frame budget, the in-flight cap and the tile cap.
+        //    A tile only (re)starts when it has no task at all, so its pooled
+        //    job is never handed to a second worker while the first still owns
+        //    it. After step 3 every completed task has been advanced or
+        //    dropped, so a non-null task here is one still running (including
+        //    phase-2 bakes step 3 just started). New tiles and dirty rebuilds
+        //    share the in-flight cap; nearest-first order decides who waits.
         _scratch.Clear();
+        int inFlight = 0;
+        foreach (var t in s_tiles.Values) if (t.task != null) inFlight++;
         foreach (var c in _wanted)
             if (!s_tiles.TryGetValue(c, out var t) || (t.dirty && t.task == null)) _scratch.Add(c);
         if (_scratch.Count == 0) return;
@@ -190,12 +208,13 @@ public class TerrainCollisionStreamer : MonoBehaviour
         int started = 0;
         foreach (var c in _scratch)
         {
-            if (started >= cfg.maxTileBuildsPerFrame) break;
+            if (started >= cfg.maxTileBuildsPerFrame || inFlight >= _maxInFlight) break;
             // At the cap only NEW tiles are refused; a dirty rebuild of an
             // existing tile further down the list must still get through.
             if (!s_tiles.ContainsKey(c) && s_tiles.Count >= cfg.maxCollisionTiles) continue;
             StartBuild(c, cfg);
             started++;
+            inFlight++;
         }
     }
 
