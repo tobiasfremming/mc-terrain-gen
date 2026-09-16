@@ -120,7 +120,7 @@ public class FloraObstacles : MonoBehaviour
             {
                 shape = NavMeshBuildSourceShape.Capsule,
                 transform = FloraObstacleMath.CapsuleSourceMatrix(o.basePos, o.up, o.radius, o.height),
-                size = Vector3.one,
+                size = FloraObstacleMath.CapsuleSourceSize(o.radius, o.height),
                 area = 1, // Not Walkable
             });
         }
@@ -245,16 +245,21 @@ public static class FloraObstacleMath
         return true;
     }
 
-    // NavMeshBuildSource transform for a Capsule shape with size one: the unit
-    // capsule (height 1, radius 0.5, along local Y, centred) is stretched to
-    // the obstacle's diameter and height, turned from world Y onto `up`, and
-    // centred halfway up the trunk, so local y = -0.5 is the base and +0.5 the
-    // top.
+    // NavMeshBuildSource transform for a Capsule shape: unscaled, turned from
+    // world Y onto `up`, centred halfway up the trunk. The capsule's
+    // dimensions go in `size` (CapsuleSourceSize), which is the form Unity
+    // itself emits when it collects a CapsuleCollider. Scaling the matrix
+    // instead is ambiguous: if the builder makes the capsule from `size` first
+    // and then applies a non-uniform scale, the caps stretch into a spheroid
+    // that tapers to nothing at the trunk base. With this form local
+    // y = -height/2 is the base and +height/2 the top.
     public static Matrix4x4 CapsuleSourceMatrix(Vector3 basePos, Vector3 up, float radius, float height)
     {
-        return Matrix4x4.TRS(basePos + up * (height * 0.5f), Quaternion.FromToRotation(Vector3.up, up),
-                             new Vector3(radius * 2f, height, radius * 2f));
+        return Matrix4x4.TRS(basePos + up * (height * 0.5f), Quaternion.FromToRotation(Vector3.up, up), Vector3.one);
     }
+
+    // NavMeshBuildSource.size for a Capsule: x = z = diameter, y = height.
+    public static Vector3 CapsuleSourceSize(float radius, float height) => new Vector3(radius * 2f, height, radius * 2f);
 
     // Distance from a point to the capsule's surface (0 inside): the axis runs
     // from basePos to basePos + up * height.
