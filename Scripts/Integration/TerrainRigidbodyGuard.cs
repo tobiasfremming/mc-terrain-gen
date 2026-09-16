@@ -24,6 +24,11 @@ public class TerrainRigidbodyGuard : MonoBehaviour
     public float checkInterval = 0.25f;
     [Tooltip("Height above the found surface a rescued body is placed at (its pivot).")]
     public float rescueLift = 1f;
+    [Tooltip("Density the body's centre of mass must be buried past before it counts as inside rock. The collider is a 0.5 m-cell approximation of the field, so a body resting on it normally sits a few cm inside the field's surface; a margin keeps ordinary contact from triggering a rescue.")]
+    public float insideMargin = 0.25f;
+
+    // How far above the buried point to look for the way out.
+    const float kRescueSearchUp = 50f;
 
     static readonly RaycastHit[] s_hits = new RaycastHit[8];
 
@@ -76,7 +81,11 @@ public class TerrainRigidbodyGuard : MonoBehaviour
         {
             if (s_hits[i].collider != null && s_hits[i].collider.attachedRigidbody != _rb) { below = true; break; }
         }
-        bool inside = TerrainQuery.IsInsideSolid(m.PhysicsField, p);
+        // Sampled at the centre of mass, not the pivot: a pivot at the feet
+        // of a body standing on the collider is routinely just inside the
+        // field's surface (see insideMargin).
+        Vector3 com = _rb.worldCenterOfMass;
+        bool inside = m.PhysicsField.Sample(com) > insideMargin;
         // Only sampled when it can change the outcome: a collider below
         // already frees the body, whatever the field says.
         bool fieldGround = !below && !inside &&
@@ -85,7 +94,10 @@ public class TerrainRigidbodyGuard : MonoBehaviour
         switch (Decide(below, fieldGround, inside, _heldByUs))
         {
             case GuardState.Rescued:
-                if (TerrainQuery.TryFindGround(p, 50f, 10f, out Vector3 g, out _))
+                // Out through the rock directly above the body, not onto the
+                // topmost surface: under an overhang or a cave roof that would
+                // teleport it on top of the roof.
+                if (TerrainQuery.TryFindExitAbove(m.PhysicsField, com, up, kRescueSearchUp, out Vector3 g))
                 {
                     _rb.position = g + up * rescueLift;
                     if (!_rb.isKinematic) _rb.linearVelocity = Vector3.zero;
