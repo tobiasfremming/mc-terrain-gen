@@ -32,7 +32,10 @@ namespace TerrainGen.Tests
         [Test]
         public void NegativeCoordinatesFloorCorrectly()
         {
-            var s = Plan(0.5f, new Vector3(-0.25f, -15.9f, -16.1f));
+            // x = -0.25 must floor to tile -1, not truncate to 0; y and z sit mid-tile
+            // in negative tiles (-8 is mid tile -1, -24 is mid tile -2) so a small radius
+            // stays clear of every tile boundary and only the one tile qualifies.
+            var s = Plan(0.1f, new Vector3(-0.25f, -8f, -24f));
             Assert.That(s, Is.EquivalentTo(new[] { new Vector3Int(-1, -1, -2) }));
         }
 

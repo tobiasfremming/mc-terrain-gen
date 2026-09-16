@@ -60,6 +60,11 @@ public float lodUpdateInterval = 0.5f; // How often to recalculate LOD
 
     public int TerrainLayerMask => 1 << terrainLayer;
 
+    [Tooltip("Collision tiles (collider-only LOD0 meshes around TerrainAnchors outside the player's LOD0 ring) started per frame.")]
+    [Range(1, 16)] public int maxTileBuildsPerFrame = 2;
+    [Tooltip("Hard cap on live collision tiles; the nearest-to-an-anchor win when exceeded.")]
+    public int maxCollisionTiles = 512;
+
     [Header("Planet Mode")]
     [Tooltip("Render the world as a sphere instead of a flat plane.")]
     public bool useGlobe = false;
