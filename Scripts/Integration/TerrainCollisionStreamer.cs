@@ -24,6 +24,12 @@ public class TerrainCollisionStreamer : MonoBehaviour
     // Raised with added=true every time a tile's collider is (re)bound -- a
     // rebuild after an edit raises it again for the same bounds -- and with
     // added=false when a bound collider goes away (released, or rebuilt empty).
+    //
+    // The Mesh is NOT a snapshot. A rebuild rewrites it in place, and a
+    // released tile's GameObject and Mesh are pooled and reused for some other
+    // coord. Read it synchronously, inside the handler or at the latest the
+    // same frame (e.g. NavMeshBuildSource collection), and do not hold on to
+    // it as a record of this tile's geometry.
     public static event Action<Bounds, Mesh, Matrix4x4, bool> TileChanged;
 
     sealed class Tile
@@ -62,6 +68,11 @@ public class TerrainCollisionStreamer : MonoBehaviour
     readonly HashSet<Vector3Int> _wanted = new();
     readonly List<Vector3Int> _scratch = new();
     readonly Stack<Tile> _pool = new();
+    // Nearest-anchor distance per wanted coord, computed once per frame after
+    // planning. Both the tile cap ranking and the build order read it.
+    readonly Dictionary<Vector3Int, float> _dist = new();
+    readonly List<Vector3Int> _ranked = new();
+    Comparison<Vector3Int> _byDistance;
     MCChunkManager _m;
     // Which TerrainModificationSystem OnEdit is subscribed to. The manager
     // (and its Modifications) can be replaced by a scene reload, and this
@@ -70,6 +81,11 @@ public class TerrainCollisionStreamer : MonoBehaviour
     TerrainModificationSystem _boundMods;
 
     // Cached so planning does not allocate a delegate per frame.
+    // A coord counts as covered only if it AND its six face neighbours are
+    // inside the LOD0 box. An anchor near the box face therefore keeps tiles
+    // pre-built just outside it, so when the player walks away and the box
+    // slides off a coord, the tile under a resting NPC already exists instead
+    // of taking 2-3 frames to mesh and bake (the reverse hand-off).
     Func<Vector3Int, bool> _coveredByClipmap;
     static readonly Func<Vector3Int, bool> s_neverCovered = _ => false;
 
@@ -99,7 +115,7 @@ public class TerrainCollisionStreamer : MonoBehaviour
 
         var cfg = _m.worldConfig;
         float size = _m.Level0ChunkSize;
-        if (_m.PhysicsField == null || size <= 0f) return;
+        if (_m.PhysicsField == null || _m.Modifications == null || size <= 0f) return;
         if (size != s_tileSize)
         {
             // Chunk size changed under us (config edit): every tile's coord
@@ -112,8 +128,25 @@ public class TerrainCollisionStreamer : MonoBehaviour
         _anchors.Clear();
         foreach (var a in TerrainAnchor.All)
             if (a.physicsRadius > 0f) _anchors.Add(new AnchorSphere { position = a.Position, radius = a.physicsRadius });
-        if (_coveredByClipmap == null) _coveredByClipmap = c => _m != null && _m.IsInLevel0Box(c);
+        if (_coveredByClipmap == null) _coveredByClipmap = CoveredWithNeighbours;
         CollisionTilePlanner.Plan(_anchors, s_tileSize, ignoreClipmapCoverage ? s_neverCovered : _coveredByClipmap, _wanted);
+
+        _dist.Clear();
+        foreach (var c in _wanted) _dist[c] = NearestAnchorSq(c);
+        if (_byDistance == null) _byDistance = (a, b) => _dist[a].CompareTo(_dist[b]);
+
+        // Cap: the nearest maxCollisionTiles coords win. Dropping the rest
+        // from the wanted set BEFORE release means a far tile gives up its
+        // slot through the normal release path below, so an anchor that
+        // moves never waits behind tiles nobody is standing near.
+        int cap = Mathf.Max(0, cfg.maxCollisionTiles);
+        if (_wanted.Count > cap)
+        {
+            _ranked.Clear();
+            _ranked.AddRange(_wanted);
+            _ranked.Sort(_byDistance);
+            for (int i = cap; i < _ranked.Count; i++) _wanted.Remove(_ranked[i]);
+        }
 
         // 2. release tiles no longer wanted (clipmap-covered ones only once the
         //    clipmap's own collider is ready -- see the hand-off rule above)
@@ -128,8 +161,22 @@ public class TerrainCollisionStreamer : MonoBehaviour
         foreach (var c in _scratch) { Release(s_tiles[c]); s_tiles.Remove(c); }
 
         // 3. advance completed phases (phase 1 -> upload + start bake, phase 2 -> bind)
+        //    -- but only for wanted tiles. A tile still here only because it
+        //    is waiting for the clipmap's collider (hand-off) must not upload,
+        //    bake or raise added=true just to be released a frame later: that
+        //    is a spurious add/remove pair for NavMesh listeners. Its finished
+        //    result is dropped instead, which also makes it releasable; it is
+        //    marked dirty so that, if it becomes wanted again, it rebuilds
+        //    rather than keeping a stale (or never-bound) collider.
         foreach (var t in s_tiles.Values)
-            if (t.task != null && t.task.IsCompleted) Advance(t);
+        {
+            if (t.task == null || !t.task.IsCompleted) continue;
+            if (_wanted.Contains(t.coord)) { Advance(t); continue; }
+            if (t.task.IsFaulted) Debug.LogException(t.task.Exception);
+            t.task = null;
+            t.phase = 0;
+            t.dirty = true;
+        }
 
         // 4. start new builds and dirty rebuilds, nearest to any anchor first,
         //    within the per-frame budget and the tile cap. A tile only
@@ -139,7 +186,7 @@ public class TerrainCollisionStreamer : MonoBehaviour
         foreach (var c in _wanted)
             if (!s_tiles.TryGetValue(c, out var t) || (t.dirty && t.task == null)) _scratch.Add(c);
         if (_scratch.Count == 0) return;
-        _scratch.Sort((a, b) => NearestAnchorSq(a).CompareTo(NearestAnchorSq(b)));
+        _scratch.Sort(_byDistance); // every coord here is in _wanted, so in _dist
         int started = 0;
         foreach (var c in _scratch)
         {
@@ -159,6 +206,15 @@ public class TerrainCollisionStreamer : MonoBehaviour
         if (_boundMods != null) _boundMods.RegionModified -= OnEdit;
         if (mods != null) mods.RegionModified += OnEdit;
         _boundMods = mods;
+    }
+
+    bool CoveredWithNeighbours(Vector3Int c)
+    {
+        if (_m == null) return false;
+        return _m.IsInLevel0Box(c) &&
+               _m.IsInLevel0Box(c + Vector3Int.right) && _m.IsInLevel0Box(c + Vector3Int.left) &&
+               _m.IsInLevel0Box(c + Vector3Int.up) && _m.IsInLevel0Box(c + Vector3Int.down) &&
+               _m.IsInLevel0Box(c + new Vector3Int(0, 0, 1)) && _m.IsInLevel0Box(c + new Vector3Int(0, 0, -1));
     }
 
     float NearestAnchorSq(Vector3Int c)
@@ -225,6 +281,10 @@ public class TerrainCollisionStreamer : MonoBehaviour
         int phase = t.phase;
         t.phase = 0;
 
+        // A faulted phase-2 bake leaves the tile with its mesh already
+        // rewritten but the collider still bound to the OLD cook; it stays that
+        // way (not retried, to avoid per-frame exception spam) until the next
+        // physical edit marks the tile dirty.
         if (finished.IsFaulted) { Debug.LogException(finished.Exception); return; }
 
         if (phase == 1)
