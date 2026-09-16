@@ -6,7 +6,7 @@ using UnityEngine;
 // for anything that must work on the globe too).
 public static class TerrainQuery
 {
-    const float kStep = 0.5f;      // coarse scan step; below the 0.5 m LOD0 cell, so thin ledges are not skipped
+    const float kStep = 0.5f;      // coarse scan step; equals the 0.5 m LOD0 cell, so thin ledges are not skipped
     const int kRefine = 14;        // bisection steps: 0.5 m / 2^14 ≈ 0.04 mm
 
     public static bool TryFindGround(DensityField field, Vector3 from, Vector3 up, float searchUp, float searchDown,
@@ -21,9 +21,15 @@ public static class TerrainQuery
         float prevT = 0f;
         bool prevSolid = field.Sample(top) > 0f;
 
-        for (float t = kStep; t <= total + 1e-4f; t += kStep)
+        // Iterate by integer step count, not accumulated float t: when total isn't
+        // a multiple of kStep, t += kStep would stop short of total (e.g. total
+        // 100.3 -> last t is 100.0), silently dropping the final sliver of the
+        // range from the scan. Clamping i*kStep to total instead guarantees the
+        // last sample is always exactly at total.
+        int stepCount = Mathf.CeilToInt(total / kStep);
+        for (int step = 1; step <= stepCount; step++)
         {
-            float tt = Mathf.Min(t, total);
+            float tt = Mathf.Min(step * kStep, total);
             bool solid = field.Sample(top - up * tt) > 0f;
             if (solid && !prevSolid)
             {

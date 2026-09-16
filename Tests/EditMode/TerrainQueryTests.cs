@@ -34,6 +34,19 @@ namespace TerrainGen.Tests
         }
 
         [Test]
+        public void FindsCrossingInFinalPartialStep()
+        {
+            // total = searchUp + searchDown = 50.3, not a multiple of the 0.5 m
+            // coarse step -- the only crossing (y=0) lies in the last 0.3 m
+            // sliver of the scan. Regression for a loop that stopped short of
+            // `total` when it wasn't an exact multiple of kStep.
+            var f = ScriptableObject.CreateInstance<PlaneField>(); f.height = 0f;
+            Assert.That(TerrainQuery.TryFindGround(f, new Vector3(0, 50, 0), Vector3.up, 0, 50.3f, out var p, out _), Is.True);
+            Assert.That(p.y, Is.EqualTo(0f).Within(0.01f));
+            Object.DestroyImmediate(f);
+        }
+
+        [Test]
         public void FindsSphereSurfaceAlongRadialUp()
         {
             var f = ScriptableObject.CreateInstance<SphereField>(); f.center = new Vector3(0, -1000, 0); f.radius = 1000f;
