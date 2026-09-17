@@ -88,8 +88,12 @@ public class TerrainRigidbodyGuard : MonoBehaviour
         bool inside = m.PhysicsField.Sample(com) > insideMargin;
         // Only sampled when it can change the outcome: a collider below
         // already frees the body, whatever the field says.
+        // The field search must stay strictly inside the ray's reach (the ray
+        // starts 0.5 m up and the collider can sit a few cm under the field
+        // surface): ground the field sees but the ray cannot reach would hold
+        // the body forever, since nothing about it changes on later checks.
         bool fieldGround = !below && !inside &&
-                           TerrainQuery.TryFindGround(m.PhysicsField, p, up, 0.5f, probeDistance, out _, out _);
+                           TerrainQuery.TryFindGround(m.PhysicsField, p, up, 0.5f, probeDistance - 1f, out _, out _);
 
         switch (Decide(below, fieldGround, inside, _heldByUs))
         {

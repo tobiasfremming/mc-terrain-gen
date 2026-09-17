@@ -51,18 +51,19 @@ Add `FloraObstacles` there too (or anywhere in the scene — it only needs to fi
 - Add `TerrainTarget` to the player (or camera rig) — it finds the scene's `MCChunkManager` in
   `Awake` and sets `manager.target = transform`. This is the only thing the clipmap reads to decide
   which chunks to stream and at what LOD (`manager.target.position`).
-- Add `TerrainAnchor` too, with **`physicsRadius = 0`** and `navRadius` set to how far the player's
-  NavMesh should reach (default `40`). The player's own ground comes from the clipmap's LOD0 box, so
-  it needs no physics radius; `navRadius` drives the player's NavMesh patch and, because NavMesh is
-  baked from colliders, also the collision tiles that patch needs wherever it reaches past the LOD0
-  box face (tiles are built out to `max(physicsRadius, navRadius)`; see §7 — the nearest box face can
-  be only ~16 m from the player). The target is always the *primary* anchor for `TerrainNavMesh`'s
-  flat-patch planning (`NavAnchor.primary`), never dropped from the flat NavMesh box even under the
-  anchor cap; with no `TerrainAnchor` on it, or `navRadius <= 0`, its NavMesh radius falls back to
-  `40`. One catch: `FloraObstacles` places trunk **physics** colliders only within each anchor's
-  `physicsRadius`, so with `0` the player walks through trees. If trees must block the player, give
-  it a `physicsRadius` covering that range instead — any value up to `navRadius` costs no extra tiles,
-  since tiles already reach `max(physicsRadius, navRadius)`.
+- Add `TerrainAnchor` too. **`physicsRadius = 0` is fine on the clipmap target**: its ground comes
+  from the clipmap's LOD0 box, and on the target the streamer plans tiles from `physicsRadius`
+  **only** (every other anchor uses `max(physicsRadius, navRadius)`), so `0` builds no tiles around
+  the player at all. `navRadius` (default `40`) only sets the radius the player contributes to the
+  flat NavMesh patch; the NavMesh inside that patch is baked from whatever colliders exist — the
+  LOD0 chunks around the player plus any other anchors' tiles. The LOD0 box is offset (§7), so on
+  its near side the player's NavMesh can end ~16 m away even with `navRadius 40`; give the player a
+  `physicsRadius` if it must reach further there (that builds tiles). The target is always the
+  *primary* anchor for `TerrainNavMesh`'s flat-patch planning (`NavAnchor.primary`), never dropped
+  from the flat NavMesh box even under the anchor cap; with no `TerrainAnchor` on it, or
+  `navRadius <= 0`, its NavMesh radius falls back to `40`. Trunk physics colliders
+  (`FloraObstacles`) are gathered within `max(physicsRadius, navRadius)`, so a player with
+  `physicsRadius 0` still collides with trees.
 - **Flat world:** normal Rigidbody/CharacterController gravity. The demo player
   (`SimplePlayerController` + `GravityAligner` + `CharacterGravity`) is a working reference if the
   game wants its own controller shaped the same way; none of the terrain integration code requires
@@ -114,7 +115,8 @@ Per NPC that should physically simulate and/or navigate:
    - `Ready` (`bool`) — `true` only when the agent is enabled and on a NavMesh.
 5. `TerrainAnchor` — required for any NPC that must keep simulating physically and/or navigating
    *away* from the player (outside the clipmap's LOD0 box). Collision tiles are built out to
-   `max(physicsRadius, navRadius)` around it; `navRadius` also includes it in the NavMesh patch plan.
+   `max(physicsRadius, navRadius)` around it (surface layers only, §7); `navRadius` also includes it
+   in the NavMesh patch plan, and trunk colliders are gathered out to the same max.
    An NPC's NavMesh therefore reaches `max(physicsRadius, navRadius)` (rounded out to whole 16 m
    tiles) — as far as its tiles do, inside the patch box. Remember the LOD0 box is **not** centred on
    the player (§7): an unanchored NPC 16 m from the player can already be outside it. NPCs without an
@@ -164,20 +166,22 @@ by collision, NavMesh and the waker. It never re-cooks a collider.
 
 Defaults as shipped (`WorldConfig`, `TerrainAnchor`, `NavPatchPlanner`, `FloraObstacles`):
 
-- **Collision tiles per anchor**: every 16 m tile (`TerrainCollisionStreamer.s_tileSize`) whose box
-  touches a sphere of radius `R = max(physicsRadius, navRadius)` — a full 3D sphere, not a ground
-  layer, so ≈ `1 + 6·(R/16) + 3π·(R/16)² + (4π/3)·(R/16)³` tiles on average. At the defaults
-  (`physicsRadius 20`, `navRadius 40` → `R = 40`) that is **≈ 140 tiles (120–160)** per anchor; with
-  `navRadius` at or below 20, `R = 20` gives ≈ 31 (26–38). Tiles that come out all air or all rock
-  mesh to nothing and never bake, but they still take a slot. Keep `Σ(tiles per anchor)` under
-  `WorldConfig.maxCollisionTiles` (default `512`, so only **~3–4 anchors at default radii** before
-  the cap starts dropping the farthest tiles; ~16 at `R = 20`). Overlapping anchors share tiles. The
-  clipmap target is not exempt: only chunks >= 2 chunks inside the LOD0 box (its central 2x2x2) count
-  as covered, so a player with the default `navRadius 40` still asks for most of its ~140 tiles,
-  duplicating clipmap colliders over much of the box. Budget for it, or lower the player's
-  `navRadius`. Tiles at the
-  cap are ranked by nearest-anchor distance — the tiles nearest a moving anchor always win, so a
-  body over a dropped tile is caught by `TerrainRigidbodyGuard` instead of falling.
+- **Collision tiles per NPC anchor** ≈ (tiles in a disc of radius `R = max(physicsRadius, navRadius)`)
+  × (surface layers). The planner plans every 16 m tile (`TerrainCollisionStreamer.s_tileSize`)
+  touching a 3D sphere of radius `R`, then the streamer drops every tile the physics field proves
+  has no surface (`DensityField.TryGetEmptySkip`: above the field's max height or below its min,
+  unless a physical edit overlaps it), before the cap. A disc of radius `R` touches
+  ≈ `1 + 4·(R/16) + π·(R/16)²` tiles: **≈ 31 at the default `R = 40`** (`physicsRadius 20`,
+  `navRadius 40`), ≈ 11 at `R = 20`. Surface layers are the 16 m rows the field's *global* height
+  bounds span within the sphere — typically **1–2 on flat dunes**, so **≈ 30–60 tiles per NPC
+  anchor** at defaults; up to the full sphere (≈ 140 at `R = 40`, 5 layers) where the world's height
+  range is tall (mountain biomes in the mix) or the field reports no bounds. The clipmap target adds
+  tiles only for its `physicsRadius` (none at `0`). Keep `Σ(tiles per anchor)` under
+  `WorldConfig.maxCollisionTiles` (default `512`: on flat dunes roughly 8–16 default NPC anchors
+  before the cap starts dropping the farthest tiles, far fewer in tall-relief worlds). Overlapping
+  anchors share tiles. Tiles at the cap are ranked by nearest-anchor distance — the tiles nearest a
+  moving anchor always win, so a body over a dropped tile is caught by `TerrainRigidbodyGuard`
+  instead of falling.
 - **NavMesh flat cap**: `NavPatchPlanner.maxFlatExtent` = 1024 m (a code default, **not** currently
   exposed on `WorldConfig` — Task 13, deferred, is what was planned to wire `navPatchSize`/
   `navEdgeMargin` through). One flat NavMesh box covers every anchor within reach of the primary
@@ -192,7 +196,7 @@ Defaults as shipped (`WorldConfig`, `TerrainAnchor`, `NavPatchPlanner`, `FloraOb
   (mesh or bake) running at once, shared by new tiles and dirty rebuilds — a burst of new anchors
   queues rather than crowding the clipmap's own meshing tasks out of the thread pool.
 - **Flora physics colliders**: `FloraObstacles.maxColliders` (default `512`), refreshed every
-  `refreshInterval` (default `0.5` s, unscaled) across all anchors' `physicsRadius`; nearest-to-an-
+  `refreshInterval` (default `0.5` s, unscaled) within each anchor's `max(physicsRadius, navRadius)`; nearest-to-an-
   anchor trunks win over the cap.
 - **LOD0 box**: `chunksPerLevel (6) × chunkSize (cellsPerChunk.x × cellSize = 32 × 0.5 = 16 m)` =
   96 m across, but **not centred** on `MCChunkManager.target`: it snaps to 32 m (2-chunk) steps

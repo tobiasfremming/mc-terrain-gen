@@ -190,9 +190,21 @@ Grouped by feature, in build order. Check items off as they're run.
       at any box step — the 2-chunk coverage margin means a tile already exists under the NPC for
       both chunk layers a single 32 m step uncovers.
 - [ ] **Tiles reach `max(physicsRadius, navRadius)`.** Setup: one anchor far from the player with
-      `physicsRadius 0, navRadius 40`. Expected: `CollisionTile_*` built out to ~40 m around it
-      (≈ 120–160 tiles incl. empty ones), and `NavMesh.SamplePosition` succeeds 35 m from it on
-      ground. With `physicsRadius 0, navRadius 0` no tiles are built.
+      `physicsRadius 0, navRadius 40`. Expected: `CollisionTile_*` built out to ~40 m around it on
+      the ground surface only (no tiles in the open air above the field's max height or deep below
+      its min), and `NavMesh.SamplePosition` succeeds 35 m from it on ground. With
+      `physicsRadius 0, navRadius 0` no tiles are built.
+- [ ] **Tile budget: 1 player + 5 NPC anchors on flat dunes.** Setup: a flat dunes world
+      (`WorldConfig_Flat`), player `TerrainAnchor(physicsRadius 0, navRadius 40)`, 5 NPC anchors at
+      defaults (`physicsRadius 20, navRadius 40`) spread 100–300 m from the player and from each
+      other. Action: wait until no tile task is running, count `CollisionTile_*` children with an
+      enabled `MeshCollider` and all children in the streamer's `s_tiles` (debugger or temporary
+      counter). Expected: total live tiles well under `maxCollisionTiles` (512) — roughly 30–60 per
+      NPC anchor, ≤ ~300 — and no tile under the player: no live tile coord has
+      `IsInLevel0Box(coord) == true` (the NPCs are all > 100 m away and the target's
+      `physicsRadius 0` plans none). With only the player anchored, zero tiles. Then set a
+      physical `CarveSphere` 5 m below the surface under one NPC: the edited tiles below the
+      surface are still built (the edit bypasses the empty skip).
 - [ ] **Burst of 40 anchors doesn't delay player ground.** Setup: note how long the clipmap takes to
       report `IsLevel0ColliderReady` for the player's coord after a 200 m teleport with no other
       anchors. Action: spawn 40 anchored capsules (defaults) 150–300 m from the player on the same
@@ -343,7 +355,8 @@ Grouped by feature, in build order. Check items off as they're run.
       `NavMeshAgent` sent across the grove gets a path (`agent.path.corners`) that bends around
       trunks.
 - [ ] **Physics.** Setup: same as above. Action: drop/roll a Rigidbody sphere at a trunk within
-      `physicsRadius`. Expected: it bounces off; `FloraObstacles.ActiveColliders > 0`; child
+      the anchor's `max(physicsRadius, navRadius)`; also walk a player whose anchor has
+      `physicsRadius 0` into a trunk (it must be blocked). Expected: it bounces off; `FloraObstacles.ActiveColliders > 0`; child
       `FloraObstacle` objects sit on trunks (Scene-view gizmos) on `terrainLayer`.
 - [ ] **Pool behaviour.** Action: walk 100 m away from the grove. Expected: after 0.5 s colliders
       move to new trunks or deactivate; `ActiveColliders` never exceeds `maxColliders`; standing
@@ -408,3 +421,22 @@ result into a new "Globe NavMesh findings" section of `INTEGRATION.md` when done
       - **Fail on rotated instances entirely:** drop NavMesh for the globe; Task 13 becomes a
         steering layer (NavMesh-free, density-field line-of-sight + local avoidance) — write a
         separate plan for it rather than improvising inside this one.
+
+---
+
+## Results — 2026-09-17 (Unity 6000.2.6f2, `Assets/Scenes/Biomes/Desert.unity`, flat `DesertWorldConfig`, head 55ef9eb)
+
+Components added at runtime in play mode (nothing saved): `TerrainCollisionStreamer` + `TerrainNavMesh` on the manager, `TerrainAnchor` (physicsRadius 0) on the demo player.
+
+- [x] **EditMode tests:** 95/95 passed (all `TerrainGen.Tests` + `TerrainGen.LSystem.Tests`), no compile errors.
+- [x] **Demo unchanged:** player spawned by `PlayerBootstrap`, 1161 chunks streamed, ~81 fps before new components.
+- [x] **NavMesh near player:** `SamplePosition` hit 1.05 m from the player pivot; NavMesh covers the LOD0 box.
+- [x] **Late-spawned NPCs:** 6 NPCs (Rigidbody + both guards + anchor 12/30, agent disabled) spawned 40–150 m out before any NavMesh/tiles existed. After 20 s all `Ready`, walking to the player, feet on ground (capsule centre 1.03–1.28 m above field surface). 69 tiles. 0 errors/exceptions/agent warnings.
+- [x] **Walk away 208 m in 16 m steps** with NPCs stopped: 0 `BecameReady` re-fires (no re-warps), max drop 0.18 m (settling), all still `Ready` on tile ground ~200 m from the player, `PatchVersion` 0, 0 errors, ~65 fps.
+- [x] **Guard, unanchored body 300 m out, 20 m up:** held kinematic, position unchanged.
+- [x] **Guard, dropped from 150 m, 400 m out:** fell freely, then held ~53 m above ground once field ground came within `probeDistance` (no collider exists there; releases when ground cooks).
+- [x] **Guard rescue:** body buried 3 m near the player lifted to rest on the surface.
+- [x] **Waker:** sleeping crate woken the moment `CarveSphere(affectsPhysics: true)` ran; dropped 3.38 m into the hole.
+- [x] **Tile/chunk collider parity** (`ignoreClipmapCoverage`): 8 tiles × 20 rays, identical bounds, worst hit-distance delta 0.00003 m, 0 hit mismatches.
+
+Not yet run: Rigidbody player not carved into NavMesh (F3), `FloraObstacles` (no species has obstacle sizes yet), 40-anchor burst / tile budget count, 60 s walk frame-time profile, async mesh-snapshot stress, agent-type change, reference scene, Task 12 globe spike.

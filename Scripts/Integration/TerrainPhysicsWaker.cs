@@ -75,8 +75,11 @@ public static class TerrainPhysicsWaker
         // The terrain layer holds only static colliders (chunks, tiles, trunk
         // capsules) -- none of them has a body to wake, and a big region's
         // worth of them would otherwise fill s_hits before any real body.
+        // Only when a dedicated terrain layer is configured: terrainLayer 0 is
+        // Default, and masking it out would skip every ordinary body too.
         var m = MCChunkManager.Instance;
-        int mask = m != null && m.worldConfig != null ? ~m.worldConfig.TerrainLayerMask : ~0;
+        int mask = m != null && m.worldConfig != null && m.worldConfig.terrainLayer != 0
+            ? ~m.worldConfig.TerrainLayerMask : ~0;
         int n = Physics.OverlapBoxNonAlloc(b.center, b.extents, s_hits, Quaternion.identity, mask, QueryTriggerInteraction.Ignore);
         s_woken.Clear();
         for (int i = 0; i < n; i++)
