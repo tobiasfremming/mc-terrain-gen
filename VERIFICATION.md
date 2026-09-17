@@ -421,3 +421,22 @@ result into a new "Globe NavMesh findings" section of `INTEGRATION.md` when done
       - **Fail on rotated instances entirely:** drop NavMesh for the globe; Task 13 becomes a
         steering layer (NavMesh-free, density-field line-of-sight + local avoidance) — write a
         separate plan for it rather than improvising inside this one.
+
+---
+
+## Results — 2026-09-17 (Unity 6000.2.6f2, `Assets/Scenes/Biomes/Desert.unity`, flat `DesertWorldConfig`, head 55ef9eb)
+
+Components added at runtime in play mode (nothing saved): `TerrainCollisionStreamer` + `TerrainNavMesh` on the manager, `TerrainAnchor` (physicsRadius 0) on the demo player.
+
+- [x] **EditMode tests:** 95/95 passed (all `TerrainGen.Tests` + `TerrainGen.LSystem.Tests`), no compile errors.
+- [x] **Demo unchanged:** player spawned by `PlayerBootstrap`, 1161 chunks streamed, ~81 fps before new components.
+- [x] **NavMesh near player:** `SamplePosition` hit 1.05 m from the player pivot; NavMesh covers the LOD0 box.
+- [x] **Late-spawned NPCs:** 6 NPCs (Rigidbody + both guards + anchor 12/30, agent disabled) spawned 40–150 m out before any NavMesh/tiles existed. After 20 s all `Ready`, walking to the player, feet on ground (capsule centre 1.03–1.28 m above field surface). 69 tiles. 0 errors/exceptions/agent warnings.
+- [x] **Walk away 208 m in 16 m steps** with NPCs stopped: 0 `BecameReady` re-fires (no re-warps), max drop 0.18 m (settling), all still `Ready` on tile ground ~200 m from the player, `PatchVersion` 0, 0 errors, ~65 fps.
+- [x] **Guard, unanchored body 300 m out, 20 m up:** held kinematic, position unchanged.
+- [x] **Guard, dropped from 150 m, 400 m out:** fell freely, then held ~53 m above ground once field ground came within `probeDistance` (no collider exists there; releases when ground cooks).
+- [x] **Guard rescue:** body buried 3 m near the player lifted to rest on the surface.
+- [x] **Waker:** sleeping crate woken the moment `CarveSphere(affectsPhysics: true)` ran; dropped 3.38 m into the hole.
+- [x] **Tile/chunk collider parity** (`ignoreClipmapCoverage`): 8 tiles × 20 rays, identical bounds, worst hit-distance delta 0.00003 m, 0 hit mismatches.
+
+Not yet run: Rigidbody player not carved into NavMesh (F3), `FloraObstacles` (no species has obstacle sizes yet), 40-anchor burst / tile budget count, 60 s walk frame-time profile, async mesh-snapshot stress, agent-type change, reference scene, Task 12 globe spike.
