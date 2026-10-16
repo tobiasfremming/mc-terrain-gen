@@ -8,6 +8,8 @@ namespace TerrainGen.Tests
         CreatureSpecies sp;
         PlaneField plane;
         TiltedPlaneField tilt;
+        HalfSlopeField half;
+        LedgeField ledge;
 
         [TearDown]
         public void TearDown()
@@ -15,6 +17,8 @@ namespace TerrainGen.Tests
             if (sp != null) Object.DestroyImmediate(sp);
             if (plane != null) Object.DestroyImmediate(plane);
             if (tilt != null) Object.DestroyImmediate(tilt);
+            if (half != null) Object.DestroyImmediate(half);
+            if (ledge != null) Object.DestroyImmediate(ledge);
         }
 
         CreatureSim OnPlane()
@@ -160,6 +164,77 @@ namespace TerrainGen.Tests
                 rest.y = 0f;
                 Assert.Less((sim.Legs[l].foot - rest).magnitude, 0.3f * ls.stepThreshold + 0.01f, "leg " + l);
             }
+        }
+
+        static int[] CountSteps(CreatureSim sim, int ticks)
+        {
+            var counts = new int[sim.Legs.Length];
+            var was = new bool[counts.Length];
+            Walk(sim, ticks, s =>
+            {
+                for (int l = 0; l < counts.Length; l++)
+                {
+                    if (s.Legs[l].stepping && !was[l]) counts[l]++;
+                    was[l] = s.Legs[l].stepping;
+                }
+            });
+            return counts;
+        }
+
+        [Test] public void Legs_HalfSlope_OneSide_FeetGrounded()
+        {
+            int[] flat = CountSteps(OnPlane(), 600);
+            TearDown();
+            sp = CreatureTestSpecies.Lizardish();
+            half = ScriptableObject.CreateInstance<HalfSlopeField>();
+            var sim = new CreatureSim(sp, new FieldGroundProbe(half), _ => Vector3.up, Vector3.zero, Vector3.forward);
+            var counts = new int[sim.Legs.Length];
+            var was = new bool[counts.Length];
+            float worst = 0f, seg = 0f;
+            Walk(sim, 600, s =>
+            {
+                for (int l = 0; l < counts.Length; l++)
+                {
+                    if (s.Legs[l].stepping && !was[l]) counts[l]++;
+                    was[l] = s.Legs[l].stepping;
+                    if (s.Legs[l].stepping) continue;
+                    Vector3 f = s.Legs[l].foot;
+                    worst = Mathf.Max(worst, Mathf.Abs(f.y - half.SurfaceY(f.x)));
+                }
+                for (int i = 1; i < s.Joints.Length; i++)
+                    seg = Mathf.Max(seg, Mathf.Abs((s.Joints[i] - s.Joints[i - 1]).magnitude / (sp.spacing * s.SizeScale) - 1f));
+            });
+            Assert.Less(worst, 0.02f, "worst planted foot height error");
+            Assert.Less(seg, 0.01f, "segment length error");
+            Assert.Greater(sim.Joints[0].z, 0.5f, "head displacement");
+            for (int l = 0; l < counts.Length; l++)
+                Assert.Less(counts[l], 3 * flat[l], "leg " + l + " steps " + counts[l] + " vs flat " + flat[l]);
+        }
+
+        [Test] public void Walk_SpawnOverDrop_StillMoves()
+        {
+            sp = CreatureTestSpecies.Lizardish();
+            ledge = ScriptableObject.CreateInstance<LedgeField>();
+            var sim = new CreatureSim(sp, new FieldGroundProbe(ledge), _ => Vector3.up, Vector3.zero, Vector3.forward);
+            Walk(sim, 600);
+            Assert.Greater(sim.Joints[0].z, 0.5f);
+        }
+
+        [Test] public void Walk_SpeedIsSmooth()
+        {
+            var sim = OnPlane();
+            float accel = sp.accel, dt = 1f / 60f;
+            Walk(sim, 120);
+            float prev = sim.Speed, min = float.MaxValue, sum = 0f, maxJump = 0f;
+            int n = 600;
+            Walk(sim, n, s =>
+            {
+                maxJump = Mathf.Max(maxJump, Mathf.Abs(s.Speed - prev));
+                prev = s.Speed; min = Mathf.Min(min, s.Speed); sum += s.Speed;
+            });
+            float mean = sum / n;
+            Assert.LessOrEqual(maxJump, 3f * accel * dt + 1e-4f, "max speed change per tick");
+            Assert.Greater(min, 0.5f * mean, "min " + min + " mean " + mean);
         }
     }
 }

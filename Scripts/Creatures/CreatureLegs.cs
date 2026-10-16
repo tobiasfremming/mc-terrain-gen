@@ -14,10 +14,12 @@ sealed class CreatureLegs
     const float kProbeWindow = 0.5f;
     const float kIdleSpeed = 0.05f;
     const float kIdleTidyFraction = 0.3f;
-    const float kStrideReach = 0.9f, kStrideUse = 0.8f;
+    const float kStrideReach = 0.9f, kStrideUse = 0.5f;
     const float kLandReach = 0.9f;
-    const float kOverextend = 0.93f;       // planted foot at this fraction of full reach becomes eligible to step
-    const float kSlowAt = 0.95f, kStopAt = 0.985f; // reach fractions where the body starts to slow and stops
+    const float kOverextend = 0.91f;       // planted foot at this fraction of full reach becomes eligible to step
+    const float kSlowAt = 0.92f, kStopAt = 0.985f; // reach fractions where the body starts to slow and stops
+    const float kStepGain = 0.005f;        // a stretch-triggered step must shorten the foot's reach by this much
+    const float kDroopTarget = 0.97f, kDroopSlack = 0.02f, kDroopMaxFrac = 0.18f, kDroopRate = 0.3f;
 
     readonly CreatureSpecies sp;
     readonly IGroundProbe ground;
@@ -32,6 +34,11 @@ sealed class CreatureLegs
     readonly bool[] eligible;
     int lastGroup = -1;
 
+    // Per spine joint: how far the body is lowered toward the ground so the legs on it can reach
+    // (a leg whose rest point lies on much lower ground, e.g. one side of a steep face).
+    public readonly float[] Droop;       // per attach joint, as computed from its legs
+    public readonly float[] DroopSpread; // per spine joint: Droop smoothed over +-3 joints, what the sim applies
+
     // 1 = free to walk, 0 = a planted foot is at full stretch and the body must wait for its step.
     public float MaxSpeed { get; private set; } = float.PositiveInfinity;
     public float Throttle { get; private set; } = 1f;
@@ -43,6 +50,7 @@ sealed class CreatureLegs
         this.joints = joints; this.rotations = rotations; this.scale = scale;
         specs = sp.legs ?? new LegSpec[0];
         int c = specs.Length;
+        Droop = new float[joints.Length]; DroopSpread = new float[joints.Length];
         State = new LegState[c]; target = new Vector3[c]; rest = new Vector3[c]; eligible = new bool[c];
         for (int l = 0; l < c; l++)
         {
@@ -76,15 +84,20 @@ sealed class CreatureLegs
         for (int l = 0; l < c; l++)
         {
             LegSpec s = specs[l];
-            Vector3 f = rotations[s.attachJoint] * Vector3.forward;
-            Vector3 v = rest[l] - State[l].shoulder;
-            float along = Vector3.Dot(v, f);
+            // Flat reference stance in the attach-joint frame: independent of where the creature spawned.
+            Vector3 sh = Mirror(s.shoulderOffset, l) * scale;
+            Vector3 rs = Mirror(s.restOffset, l) * scale;
+            rs.y = -sp.joints[s.attachJoint].clearance * scale;
+            Vector3 v = rs - sh;
+            float along = v.z;
             float perp2 = Mathf.Max(0f, v.sqrMagnitude - along * along);
             float reach = kStrideReach * (s.upperLength + s.lowerLength) * scale;
             float half = Mathf.Sqrt(Mathf.Max(0f, reach * reach - perp2));
             float cycle = Mathf.Max(2, groups) * Mathf.Max(1e-3f, s.stepDuration);
             best = Mathf.Min(best, kStrideUse * 2f * half / cycle);
         }
+        // never a standstill for a stance the reach cannot cover; the throttle handles real ground
+        best = Mathf.Max(best, 0.05f);
         return best;
     }
 
@@ -107,6 +120,8 @@ sealed class CreatureLegs
             if (ground.Probe(near, u, kProbeWindow * scale, out Vector3 p, out _)) rest[l] = p; // else hold the last rest
             State[l].shoulder = joints[s.attachJoint] + rotations[s.attachJoint] * (Mirror(s.shoulderOffset, l) * scale);
         }
+
+        UpdateDroop(dt);
 
         // advance steps in flight
         for (int l = 0; l < c; l++)
@@ -137,7 +152,9 @@ sealed class CreatureLegs
             // Also step when the planted foot nears full extension: with short-limbed rear legs the
             // reach runs out before stepThreshold does, and the IK would drag the foot.
             float reach = (s.upperLength + s.lowerLength) * scale * kOverextend;
-            bool stretched = (target[l] - State[l].shoulder).sqrMagnitude > reach * reach;
+            float now = (target[l] - State[l].shoulder).magnitude;
+            // only if stepping to the rest point would actually shorten the reach (else it is a zero-length step loop)
+            bool stretched = now > reach && (rest[l] - State[l].shoulder).magnitude < now - kStepGain * scale;
             eligible[l] = !State[l].stepping && (dist > thr || stretched || (idle && dist > kIdleTidyFraction * thr));
         }
 
@@ -155,10 +172,13 @@ sealed class CreatureLegs
                 if (eligible[m] && !State[m].stepping) otherEligible = true;
             }
             if (blocked) continue;
-            // Alternate groups. Legs of a group that became eligible together start together; a leg
-            // that becomes eligible later waits its turn (joining a step in flight would let one
-            // group hog the gait and starve the other).
-            if (lastGroup == g && otherEligible && startedGroup != g) continue;
+            // Alternate groups. Legs of a group that became eligible together start together, and a leg
+            // may join its own group's step while that step is less than half done. Otherwise it waits
+            // its turn: joining late would let one group hog the gait and starve the other.
+            bool joinable = false;
+            for (int m = 0; m < c; m++)
+                if (m != l && specs[m].gaitGroup == g && State[m].stepping && State[m].stepT < 0.5f) joinable = true;
+            if (lastGroup == g && otherEligible && startedGroup != g && !joinable) continue;
             StartStep(l, speed);
             lastGroup = g; startedGroup = g;
             started++;
@@ -166,6 +186,48 @@ sealed class CreatureLegs
 
         SolveIK();
         return started;
+    }
+
+    // Lower the body on a joint while one of its legs has to reach too far for its rest point; raise it
+    // again once every leg has slack. Smallest mechanism that keeps feet within reach of lower ground.
+    void UpdateDroop(float dt)
+    {
+        for (int j = 0; j < Droop.Length; j++)
+        {
+            float need = float.NegativeInfinity; bool any = false;
+            for (int l = 0; l < specs.Length; l++)
+            {
+                LegSpec s = specs[l];
+                if (s.attachJoint != j) continue;
+                any = true;
+                Vector3 v = rest[l] - State[l].shoulder;
+                float d = v.magnitude;
+                if (d < 1e-5f) { need = Mathf.Max(need, -1f); continue; }
+                float reach = (s.upperLength + s.lowerLength) * scale;
+                float vert = Mathf.Max(0.3f, Mathf.Abs(Vector3.Dot(v / d, Up(l))));
+                need = Mathf.Max(need, (d - kDroopTarget * reach) / vert);
+            }
+            if (!any) continue;
+            float cap = kDroopMaxFrac * sp.joints[j].clearance * scale;
+            float step = kDroopRate * scale * dt;
+            if (need > 0f) Droop[j] = Mathf.Min(cap, Droop[j] + Mathf.Min(need * 0.5f, step));
+            else if (need < -kDroopSlack * scale && Droop[j] > 0f) Droop[j] = Mathf.Max(0f, Droop[j] - step);
+        }
+
+        // Spread each joint's droop over its neighbours (cosine falloff, 4 joints) so the spine bends
+        // smoothly instead of notching and segment lengths stay put.
+        for (int i = 0; i < DroopSpread.Length; i++)
+        {
+            float best = 0f;
+            for (int k = -3; k <= 3; k++)
+            {
+                int j = i + k;
+                if (j < 0 || j >= Droop.Length || Droop[j] <= 0f) continue;
+                float w = 0.5f * (1f + Mathf.Cos(Mathf.PI * Mathf.Abs(k) / 4f));
+                best = Mathf.Max(best, Droop[j] * w);
+            }
+            DroopSpread[i] = best;
+        }
     }
 
     void StartStep(int l, float speed)
@@ -214,7 +276,10 @@ sealed class CreatureLegs
         {
             if (State[l].stepping) continue;
             float reach = (specs[l].upperLength + specs[l].lowerLength) * scale;
-            worst = Mathf.Max(worst, (target[l] - State[l].shoulder).magnitude / reach);
+            float now = (target[l] - State[l].shoulder).magnitude;
+            // a stretch no step can cure (rest point itself out of reach) must not stop the body for good
+            if ((rest[l] - State[l].shoulder).magnitude >= now - kStepGain * scale) continue;
+            worst = Mathf.Max(worst, now / reach);
         }
         Throttle = Mathf.Clamp01((kStopAt - worst) / (kStopAt - kSlowAt));
     }

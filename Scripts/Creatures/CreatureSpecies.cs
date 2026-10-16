@@ -89,6 +89,7 @@ public class CreatureSpecies : ScriptableObject
             if (l == null) return $"legs[{i}] is null";
             if (l.attachJoint < 0 || l.attachJoint >= n) return $"legs[{i}].attachJoint {l.attachJoint} out of range 0..{n - 1}";
             if (l.side != -1 && l.side != 1) return $"legs[{i}].side must be -1 or +1";
+            if (l.gaitGroup < 0 || l.gaitGroup > 31) return $"legs[{i}].gaitGroup must be in 0..31";
             if (!(l.upperLength > 0f) || !(l.lowerLength > 0f)) return $"legs[{i}] limb lengths must be > 0";
         }
         return null;

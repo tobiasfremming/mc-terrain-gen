@@ -19,9 +19,10 @@ namespace TerrainGen.Tests
 
         static bool Finite(Vector3 v) => !(float.IsNaN(v.x) || float.IsNaN(v.y) || float.IsNaN(v.z) || float.IsInfinity(v.x) || float.IsInfinity(v.y) || float.IsInfinity(v.z));
 
-        CreatureSim OnPlane(float height = 0f, float undDeg = 0f)
+        CreatureSim OnPlane(float height = 0f, float undDeg = 0f, bool noLegs = false)
         {
             sp = CreatureTestSpecies.Lizardish(); sp.undulationDeg = undDeg;
+            if (noLegs) sp.legs = new LegSpec[0]; // spine-only: the leg-limited walk speed is not under test
             plane = ScriptableObject.CreateInstance<PlaneField>(); plane.height = height;
             return new CreatureSim(sp, new FieldGroundProbe(plane), _ => Vector3.up, new Vector3(0, height, 0), Vector3.forward);
         }
@@ -114,9 +115,27 @@ namespace TerrainGen.Tests
 
         [Test] public void Undulation_ProducesLateralSway()
         {
-            Assert.Greater(LateralPeakToPeak(OnPlane(0f, 30f)), 0.05f);
+            Assert.Greater(LateralPeakToPeak(OnPlane(0f, 30f, true)), 0.05f);
             TearDown();
-            Assert.Less(LateralPeakToPeak(OnPlane(0f, 0f)), 0.005f);
+            Assert.Less(LateralPeakToPeak(OnPlane(0f, 0f, true)), 0.005f);
+        }
+
+        [Test] public void Undulation_FadesWhenIdle()
+        {
+            var sim = OnPlane(0f, 30f, true);
+            Vector3 far = new Vector3(0, 0, 60f);
+            for (int t = 0; t < 300; t++) sim.Tick(1f / 60f, far);
+            // fixed target just ahead of the head: the creature settles with a small non-zero distance,
+            // so the steering (and its undulation) keeps running; the body must not keep swinging
+            Vector3 stop = sim.Joints[0] + Vector3.forward * 0.01f;
+            float lo = float.MaxValue, hi = float.MinValue;
+            for (int t = 0; t < 300; t++)
+            {
+                sim.Tick(1f / 60f, stop);
+                if (t < 240) continue;
+                lo = Mathf.Min(lo, sim.Joints[3].x); hi = Mathf.Max(hi, sim.Joints[3].x);
+            }
+            Assert.Less(hi - lo, 0.005f);
         }
 
         [Test] public void Sim_LargeDt_StaysFinite_AndChainIntact()
@@ -132,7 +151,7 @@ namespace TerrainGen.Tests
 
         [Test] public void Bounds_ClampHead()
         {
-            var sim = OnPlane();
+            var sim = OnPlane(0f, 0f, true);
             var area = EnclosureArea.For(Vector3.zero, Vector3.up, 3f, sp, 1f);
             sim.Bounds = area;
             Vector3 target = new Vector3(20f, 0f, 0f);
