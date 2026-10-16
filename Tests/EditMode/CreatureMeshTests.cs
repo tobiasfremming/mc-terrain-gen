@@ -120,6 +120,40 @@ namespace TerrainGen.Tests
             Assert.Greater(checkedCount, sp.JointCount * m);
         }
 
+        // The tail tip must ease out of the body's taper, not start as a cone at the last joint (a silhouette
+        // kink). Measured on the ring half-widths from the last spine segment to the tip: the change of
+        // taper slope between consecutive ring intervals, in units of the closing slope halfWidth/tailTipLength.
+        // A cone puts the whole closing slope (1.0) at one ring; a smooth taper spreads it, about 1/3 per ring.
+        [Test] public void Build_TailTaper_NoKink()
+        {
+            foreach (var sp in new[] { CreatureTestSpecies.Lizardish(), CreatureTestSpecies.Snake() })
+            {
+                Keep(sp);
+                var d = Build(sp);
+                int m = sp.ringSegments, per = m + 1;
+                int body = 0;
+                while (body < d.v.Length && Part(d, body) == CreatureMeshBuilder.PartBody) body++;
+                float lastJoint = sp.headCapLength + sp.spacing * (sp.JointCount - 2); // start of the last segment
+                var u = new List<float>(); var a = new List<float>();
+                for (int r = 0; r + per <= body; r += per)
+                {
+                    Vector3 px = d.v[r + m / 4], nx = d.v[r + 3 * m / 4];   // phi = 0 (+x) and phi = pi (-x)
+                    float half = 0.5f * (px - nx).magnitude;
+                    if (d.uv0[r].x < lastJoint - 1e-5f || half < 1e-6f) continue; // tip pole
+                    u.Add(d.uv0[r].x); a.Add(half);
+                }
+                Assert.Greater(u.Count, 4);
+                float closing = sp.joints[sp.JointCount - 1].halfWidth / sp.tailTipLength, worst = 0f;
+                for (int i = 0; i + 2 < u.Count; i++)
+                {
+                    float s0 = (a[i + 1] - a[i]) / (u[i + 1] - u[i]), s1 = (a[i + 2] - a[i + 1]) / (u[i + 2] - u[i + 1]);
+                    worst = Mathf.Max(worst, Mathf.Abs(s1 - s0) / closing);
+                }
+                TestContext.Out.WriteLine($"{sp.JointCount}-joint species: worst taper-slope change per ring {worst:F2}");
+                Assert.Less(worst, 0.5f, $"{sp.JointCount}-joint species: tail taper kink");
+            }
+        }
+
         [Test] public void Build_TrianglesWindOutward()
         {
             foreach (var sp in AllSpecies())

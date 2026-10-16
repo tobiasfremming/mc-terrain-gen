@@ -15,7 +15,8 @@ public static class CreatureMeshBuilder
 {
     public const int PartBody = 0, PartLeg = 1, PartFoot = 2, PartEye = 3;
 
-    const int kHeadCapRings = 4, kTailRings = 3;
+    const int kHeadCapRings = 4, kTailRings = 8;
+    const float kTailTipSlope = -1.5f; // d(radius / end radius) / d(k) at the tail tip: a fine point
     const float kSnoutNarrow = 0.2f;   // extra width taper toward the snout tip (fraction at the tip)
     const float kSnoutFlat = 0.35f;    // extra height taper: the snout is flatter than it is wide
     const float kSnoutDrop = 0.15f;    // the snout's centre line drops by this fraction of head height
@@ -225,8 +226,26 @@ public static class CreatureMeshBuilder
             Section tl = Spine(n - 1);
             float back = Mathf.Min(s - tailStart, TailLen), k = back / TailLen;
             tl.c -= tl.t * back;
-            tl.a *= 1f - k; tl.b *= 1f - k; // cone to a point
+            // ease out of the body's taper into a fine point: C1 at the last joint (no silhouette kink)
+            tl.a *= TailProfile(k, TaperSlope(HW(n - 2), HW(n - 1)));
+            tl.b *= TailProfile(k, TaperSlope(HH(n - 2), HH(n - 1)));
             return tl;
+        }
+
+        // The body profile's slope at the last joint (Catmull-Rom with clamped ends: half the last
+        // difference per segment), in tail-profile units d(r / r_end) / d(k), k = distance / tailTipLength.
+        float TaperSlope(float prev, float end)
+        {
+            float perMetre = 0.5f * (end - prev) / sp.spacing;
+            return Mathf.Clamp(perMetre * TailLen / Mathf.Max(end, kMinRadius), kTailTipSlope, 0f);
+        }
+
+        // Cubic Hermite from 1 (slope m0, matching the body) to 0 (slope kTailTipSlope); monotone for
+        // m0 in [kTailTipSlope, 0].
+        static float TailProfile(float k, float m0)
+        {
+            float k2 = k * k, k3 = k2 * k;
+            return Mathf.Max(0f, (2f * k3 - 3f * k2 + 1f) + m0 * (k3 - 2f * k2 + k) + kTailTipSlope * (k3 - k2));
         }
 
         int BodyRing(float s, Vector4 skin, int m)
