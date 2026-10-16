@@ -116,6 +116,8 @@ namespace TerrainGen.Tests
                 }
             });
             Assert.Greater(planted, 500);
+            float flatDist = FlatHeadDistance(600);
+            Assert.GreaterOrEqual(sim.Joints[0].magnitude, 0.7f * flatDist, $"cross-slope progress vs flat {flatDist:F2} m");
         }
 
         [Test] public void Body_Uphill_NoSinking()
@@ -183,7 +185,9 @@ namespace TerrainGen.Tests
 
         [Test] public void Legs_HalfSlope_OneSide_FeetGrounded()
         {
-            int[] flat = CountSteps(OnPlane(), 600);
+            var flatSim = OnPlane();
+            int[] flat = CountSteps(flatSim, 600);
+            float flatDist = flatSim.Joints[0].z;
             TearDown();
             sp = CreatureTestSpecies.Lizardish();
             half = ScriptableObject.CreateInstance<HalfSlopeField>();
@@ -207,6 +211,7 @@ namespace TerrainGen.Tests
             Assert.Less(worst, 0.02f, "worst planted foot height error");
             Assert.Less(seg, 0.01f, "segment length error");
             Assert.Greater(sim.Joints[0].z, 0.5f, "head displacement");
+            Assert.GreaterOrEqual(sim.Joints[0].z, 0.7f * flatDist, $"half-slope progress vs flat {flatDist:F2} m");
             for (int l = 0; l < counts.Length; l++)
                 Assert.Less(counts[l], 3 * flat[l], "leg " + l + " steps " + counts[l] + " vs flat " + flat[l]);
         }
@@ -268,7 +273,7 @@ namespace TerrainGen.Tests
                     float swing = Vector3.Angle(dir, restDir[l]), dev = Mathf.Abs(knee - restKnee[l]);
                     swingMax = Mathf.Max(swingMax, swing); kneeDevMax = Mathf.Max(kneeDevMax, dev);
                     kneeMin = Mathf.Min(kneeMin, knee); kneeMax = Mathf.Max(kneeMax, knee);
-                    Assert.LessOrEqual(swing, 70f, $"t={t} leg {l}: upper swing");
+                    Assert.LessOrEqual(swing, 70f, $"t={t} leg {l}: upper swing {swing:F0} stepping={sim.Legs[l].stepping}:{sim.Legs[l].stepT:F2} speed={sim.Speed:F2}");
                     Assert.LessOrEqual(dev, 50f, $"t={t} leg {l}: knee {knee:F0} vs rest {restKnee[l]:F0}, stepping={sim.Legs[l].stepping}");
                 }
             }
@@ -298,6 +303,60 @@ namespace TerrainGen.Tests
                     Assert.Greater(Vector3.Dot(up * Vector3.right, lo * Vector3.right), 0.99f, $"t={t} leg {l}: lower bone roll flipped");
                 }
             }
+        }
+    
+        static float FlatHeadDistance(int ticks)
+        {
+            var s = CreatureTestSpecies.Lizardish();
+            var sim = new CreatureSim(s, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
+            Walk(sim, ticks);
+            float d = sim.Joints[0].magnitude;
+            Object.DestroyImmediate(s);
+            return d;
+        }
+
+        // Swinging feet per tick: displacement and its change (second difference) over a run.
+        static void SwingMotion(CreatureSim sim, int ticks, System.Func<CreatureSim, Vector3> target, ref float maxStep, ref float maxJerk)
+        {
+            int c = sim.Legs.Length;
+            var p0 = new Vector3[c]; var p1 = new Vector3[c]; var n = new int[c];
+            for (int t = 0; t < ticks; t++)
+            {
+                sim.Tick(1f / 60f, target(sim));
+                for (int l = 0; l < c; l++)
+                {
+                    Vector3 f = sim.Legs[l].foot;
+                    if (!sim.Legs[l].stepping) { n[l] = 0; continue; }
+                    if (n[l] >= 1) maxStep = Mathf.Max(maxStep, (f - p1[l]).magnitude);
+                    if (n[l] >= 2) maxJerk = Mathf.Max(maxJerk, (f - 2f * p1[l] + p0[l]).magnitude);
+                    p0[l] = p1[l]; p1[l] = f; n[l]++;
+                }
+            }
+        }
+
+        // A creature braking from cruise to idle mid-step must not pop its swinging feet: the step's
+        // landing point may only move continuously, so the foot's per-tick motion stays within the
+        // range a cruising swing already has.
+        [Test] public void Step_TargetMovesSmoothly_WhileBraking()
+        {
+            float cruiseStep = 0f, cruiseJerk = 0f, brakeStep = 0f, brakeJerk = 0f, spAccel = 0f, spStepDuration = 0f;
+            for (int trial = 0; trial < 12; trial++)
+            {
+                var s = CreatureTestSpecies.Lizardish();
+                spAccel = s.accel; spStepDuration = s.legs[0].stepDuration;
+                var sim = new CreatureSim(s, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
+                Walk(sim, 90);
+                SwingMotion(sim, 30 + 2 * trial, _ => new Vector3(0f, 0f, 1000f), ref cruiseStep, ref cruiseJerk);
+                SwingMotion(sim, 60, x => x.Joints[0], ref brakeStep, ref brakeJerk); // target = head: brake to idle
+                Object.DestroyImmediate(s);
+            }
+            TestContext.Out.WriteLine($"cruise: step {cruiseStep * 100f:F2} cm jerk {cruiseJerk * 100f:F2} cm; braking: step {brakeStep * 100f:F2} cm jerk {brakeJerk * 100f:F2} cm");
+            Assert.Greater(cruiseJerk, 0f);
+            Assert.LessOrEqual(brakeStep, 1.25f * cruiseStep, "per-tick foot displacement while braking");
+            // Braking legitimately re-aims the landing point (travel = speed * stepDuration): its velocity can
+            // switch on within one tick by at most the sim's braking rate (3 * accel) * stepDuration.
+            float aimJerk = 3f * spAccel * spStepDuration * (1f / 60f);
+            Assert.LessOrEqual(brakeJerk, cruiseJerk + aimJerk, $"per-tick foot jerk while braking (bound {(cruiseJerk + aimJerk) * 100f:F2} cm)");
         }
     }
 }
