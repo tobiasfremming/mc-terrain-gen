@@ -9,6 +9,9 @@ public sealed class CreatureSim
     const float kGroundWindow = 0.5f;
     const float kGroundTau = 0.06f;
     const float kMaxSink = 0.005f;
+    const float kSwayFull = 0.75f;  // girdle reach difference (leg lengths) that gives full sway
+    const float kSwayTau = 0.08f;   // smoothing of the sway and roll signals, seconds
+    const int kRollSpread = 3;      // a girdle's roll fades out over this many joints each way
 
     public readonly CreatureSpecies Species;
     public readonly float SizeScale;
@@ -27,6 +30,11 @@ public sealed class CreatureSim
     readonly IGroundProbe ground;
     readonly Func<Vector3, Vector3> upAt;
     readonly Vector3[] groundPoint;
+    // The follow-the-leader body path (chain + ground). Joints is this path with the gait sway applied.
+    internal readonly Vector3[] Path;
+    readonly int[] girdles;          // attach joints with legs on both sides, ascending
+    readonly float[] swaySignal, rollSignal, swayAmp; // per girdle: smoothed -1..1 signals, amplitude (m)
+    readonly float[] swayY, rollDeg; // per joint: lateral offset (m, +right) and roll (deg)
     readonly CreatureLegs legs;
     readonly int n;
     Vector3 heading;
@@ -52,9 +60,39 @@ public sealed class CreatureSim
             groundPoint[i] = g; GroundNormals[i] = Norm(nrm, u);
             Joints[i] = g + u * clear;
         }
+        Path = (Vector3[])Joints.Clone();
+        swayY = new float[n]; rollDeg = new float[n];
+        girdles = FindGirdles(sp);
+        swaySignal = new float[girdles.Length]; rollSignal = new float[girdles.Length]; swayAmp = new float[girdles.Length];
+        float tanSway = Mathf.Tan(Mathf.Clamp(sp.gaitSwayDeg, 0f, 45f) * Mathf.Deg2Rad);
+        for (int g = 0; g < girdles.Length; g++)
+        {
+            // half the trunk to the nearest node: the neighbouring girdle, or the head for a lone girdle
+            int d = girdles[g];
+            if (g > 0) d = Mathf.Min(d, girdles[g] - girdles[g - 1]);
+            if (g + 1 < girdles.Length) d = Mathf.Min(d, girdles[g + 1] - girdles[g]);
+            // smoothstep between nodes peaks at slope 1.5 * 2A / D = tan(gaitSwayDeg)
+            swayAmp[g] = d * step * tanSway / 3f;
+        }
         UpdateFrames();
         legs = new CreatureLegs(sp, ground, upAt, Joints, Rotations, sizeScale);
         Legs = legs.State;
+    }
+
+    static int[] FindGirdles(CreatureSpecies sp)
+    {
+        int c = sp.legs != null ? sp.legs.Length : 0, count = 0;
+        var tmp = new int[c];
+        for (int j = 0; j < sp.JointCount; j++)
+        {
+            bool left = false, right = false;
+            for (int l = 0; l < c; l++)
+                if (sp.legs[l].attachJoint == j) { if (sp.legs[l].side < 0) left = true; else right = true; }
+            if (left && right) tmp[count++] = j;
+        }
+        var r = new int[count];
+        Array.Copy(tmp, r, count);
+        return r;
     }
 
     public void Tick(float dt, Vector3 target)
@@ -74,7 +112,7 @@ public sealed class CreatureSim
         var sp = Species;
 
         // 1. head steering
-        Vector3 head = Joints[0];
+        Vector3 head = Path[0];
         Vector3 up = Norm(upAt(head), Vector3.up);
         heading = Tangent(heading, up);
         Vector3 to = target - head;
@@ -107,18 +145,18 @@ public sealed class CreatureSim
         head += heading * (commanded * dt);
         if (Bounds.HasValue) head = Bounds.Value.ClampToSafe(head);
         Speed = (head - start).magnitude / dt;
-        Joints[0] = head;
+        Path[0] = head;
 
         // 2. chain
         float seg = sp.spacing * SizeScale;
         Vector3 prevBack = -heading;
         for (int i = 1; i < n; i++)
         {
-            Vector3 d = Joints[i] - Joints[i - 1];
+            Vector3 d = Path[i] - Path[i - 1];
             d = d.sqrMagnitude > 1e-12f ? d.normalized : prevBack;
             float lim = sp.joints[i].rigid ? 0f : sp.joints[i].bendLimitDeg * Mathf.Deg2Rad;
             d = Vector3.RotateTowards(prevBack, d, lim, 0f);
-            Joints[i] = Joints[i - 1] + d * seg;
+            Path[i] = Path[i - 1] + d * seg;
             prevBack = d;
         }
 
@@ -126,9 +164,9 @@ public sealed class CreatureSim
         float k = 1f - Mathf.Exp(-dt / kGroundTau);
         for (int i = 0; i < n; i++)
         {
-            Vector3 u = Norm(upAt(Joints[i]), up);
+            Vector3 u = Norm(upAt(Path[i]), up);
             float clear = sp.joints[i].clearance * SizeScale;
-            Vector3 near = Joints[i] - u * clear;
+            Vector3 near = Path[i] - u * clear;
             float hPrev = Vector3.Dot(groundPoint[i] - near, u);
             float hs = hPrev;
             Vector3 nrm = GroundNormals[i];
@@ -142,10 +180,13 @@ public sealed class CreatureSim
             }
             groundPoint[i] = near + u * hs;
             GroundNormals[i] = nrm;
-            Joints[i] = groundPoint[i] + u * (clear - legs.DroopSpread[i]);
+            Path[i] = groundPoint[i] + u * (clear - legs.DroopSpread[i]);
         }
 
-        // 4. legs (use the final joint positions; frames are refreshed first)
+        // 4. gait sway: the displayed body is the path bent toward the reaching legs
+        ApplySway(dt);
+
+        // 5. legs (use the final joint positions; frames are refreshed first)
         UpdateFrames();
         StepsTaken += legs.Update(dt, Speed);
     }
@@ -159,7 +200,94 @@ public sealed class CreatureSim
             Vector3 u = Vector3.ProjectOnPlane(GroundNormals[i], f);
             if (u.sqrMagnitude < 1e-8f) u = Vector3.ProjectOnPlane(Vector3.up, f);
             if (u.sqrMagnitude < 1e-8f) u = Vector3.ProjectOnPlane(Vector3.right, f);
-            Rotations[i] = Quaternion.LookRotation(f, u.normalized);
+            u.Normalize();
+            if (rollDeg != null && rollDeg[i] != 0f) u = Quaternion.AngleAxis(rollDeg[i], f) * u;
+            Rotations[i] = Quaternion.LookRotation(f, u);
+        }
+    }
+
+    // Gait-coupled spine motion (sprawling-lizard pattern), driven by the feet themselves: each girdle
+    // swings toward the leg that reaches furthest forward and rolls over its planted side while the other
+    // side steps. Diagonal gait groups then give a standing S-wave with the head near a node. Fades out
+    // with the walking speed like the head undulation. Joints = the path with each segment turned about
+    // up by the sway's slope, within the bend limits; segment lengths are the path's own, exactly.
+    void ApplySway(float dt)
+    {
+        var sp = Species;
+        int G = girdles.Length;
+        if (G == 0 || (sp.gaitSwayDeg <= 0f && sp.gaitRollDeg <= 0f))
+        {
+            Array.Copy(Path, Joints, n);
+            return;
+        }
+        float fade = sp.speed > 1e-4f ? Mathf.Clamp01(commanded / (0.3f * sp.speed)) : 0f;
+        float k = 1f - Mathf.Exp(-dt / kSwayTau);
+        LegSpec[] specs = sp.legs;
+        for (int g = 0; g < G; g++)
+        {
+            int j = girdles[g];
+            Vector3 fwd = j == 0 ? heading : Path[j - 1] - Path[j];
+            fwd = fwd.sqrMagnitude > 1e-12f ? fwd.normalized : heading;
+            float sumR = 0f, sumL = 0f, roll = 0f; int cR = 0, cL = 0;
+            for (int l = 0; l < specs.Length; l++)
+            {
+                LegSpec s = specs[l];
+                if (s.attachJoint != j) continue;
+                float reach = Vector3.Dot(Legs[l].foot - Path[j], fwd) / ((s.upperLength + s.lowerLength) * SizeScale);
+                if (s.side > 0) { sumR += reach; cR++; } else { sumL += reach; cL++; }
+                if (Legs[l].stepping) roll += s.side * Mathf.Sin(Mathf.PI * Legs[l].stepT);
+            }
+            float sway = Mathf.Clamp((sumR / cR - sumL / cL) / kSwayFull, -1f, 1f) * fade;
+            swaySignal[g] = Mathf.Lerp(swaySignal[g], sway, k);
+            rollSignal[g] = Mathf.Lerp(rollSignal[g], Mathf.Clamp(roll, -1f, 1f) * fade, k);
+        }
+
+        // lateral offset profile: node at the head, the girdles' offsets, a node one trunk behind the last
+        // girdle; smoothstep between control points
+        for (int i = 0; i < n; i++) { swayY[i] = 0f; rollDeg[i] = 0f; }
+        int prevJ = 0; float prevY = 0f;
+        for (int g = 0; g <= G; g++)
+        {
+            int j; float y;
+            if (g < G) { j = girdles[g]; y = swayAmp[g] * swaySignal[g]; }
+            else { j = Mathf.Min(n - 1, girdles[G - 1] + Mathf.Max(1, G > 1 ? girdles[G - 1] - girdles[G - 2] : girdles[G - 1])); y = 0f; }
+            for (int i = prevJ + 1; i <= j; i++)
+            {
+                float t = (i - prevJ) / (float)(j - prevJ);
+                swayY[i] = Mathf.Lerp(prevY, y, t * t * (3f - 2f * t));
+            }
+            prevJ = j; prevY = y;
+            if (j >= n - 1) break;
+        }
+        for (int g = 0; g < G; g++)
+            for (int d = -kRollSpread; d <= kRollSpread; d++)
+            {
+                int i = girdles[g] + d;
+                if (i < 0 || i >= n) continue;
+                float w = 0.5f * (1f + Mathf.Cos(Mathf.PI * d / (kRollSpread + 1f)));
+                rollDeg[i] += sp.gaitRollDeg * rollSignal[g] * w;
+            }
+
+        // Each path segment turns about its ground normal by the sway's slope, so the swayed joints stay on
+        // the ground's tangent plane (no dipping on a cross slope) and keep the path's own segment lengths
+        // and height profile. The bend limit is applied to the turn alone: a segment's turn may differ from
+        // the previous one only by the bend the path leaves free at that joint (none at a rigid joint).
+        float seg = sp.spacing * SizeScale;
+        Joints[0] = Path[0];
+        Vector3 prevPath = -heading;
+        float prevTurn = 0f;
+        for (int i = 1; i < n; i++)
+        {
+            Vector3 v = Path[i] - Path[i - 1];
+            float len = v.magnitude;
+            Vector3 d = len > 1e-9f ? v / len : prevPath;
+            // moving joint i to the right of joint i-1 turns the backward segment toward -right
+            float turn = -Mathf.Rad2Deg * Mathf.Asin(Mathf.Clamp((swayY[i] - swayY[i - 1]) / seg, -0.5f, 0.5f));
+            float slack = sp.joints[i].rigid ? 0f : Mathf.Max(0f, sp.joints[i].bendLimitDeg - Vector3.Angle(prevPath, d));
+            turn = Mathf.Clamp(turn, prevTurn - slack, prevTurn + slack);
+            prevPath = d; prevTurn = turn;
+            if (turn != 0f) d = Quaternion.AngleAxis(turn, GroundNormals[i]) * d;
+            Joints[i] = Joints[i - 1] + d * len;
         }
     }
 

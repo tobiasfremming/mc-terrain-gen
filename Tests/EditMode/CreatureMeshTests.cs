@@ -250,7 +250,17 @@ namespace TerrainGen.Tests
         [Test] public void MeshBuilder_MaxBend_NoInvertedTriangles()
         {
             var sp = Keep(CreatureTestSpecies.Lizardish());
-            var d = Build(sp);
+            MaxBendNoInvertedTriangles(sp);
+        }
+
+        // Skins the species' mesh through a 5 s minimum-radius circle: no triangle may invert. Shared
+        // with the monitor tests.
+        internal static void MaxBendNoInvertedTriangles(CreatureSpecies sp)
+        {
+            Mesh mesh = CreatureMeshBuilder.Build(sp);
+            var d = new Data { v = mesh.vertices, n = mesh.normals, t = mesh.triangles };
+            mesh.GetUVs(0, d.uv0); mesh.GetUVs(1, d.uv1); mesh.GetUVs(2, d.uv2);
+            Object.DestroyImmediate(mesh);
             Matrix4x4[] bind = CreatureRestPose.BindPoses(sp);
             var world = new Matrix4x4[sp.BoneCount];
             var skin = new Matrix4x4[sp.BoneCount];

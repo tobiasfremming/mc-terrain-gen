@@ -255,6 +255,13 @@ namespace TerrainGen.Tests
         [Test] public void Legs_TightTurn_JointRangesStayBounded()
         {
             sp = CreatureTestSpecies.Lizardish();
+            TightTurnJointRanges(sp);
+        }
+
+        // Joint ranges must stay within the species' own limits plus a 15 deg margin (with the 55/35
+        // defaults: swing <= 70, knee deviation <= 50) through the tight circle. Shared with the monitor tests.
+        internal static void TightTurnJointRanges(CreatureSpecies sp)
+        {
             var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
             int c = sim.Legs.Length;
             var restDir = new Vector3[c]; var restKnee = new float[c];
@@ -270,11 +277,18 @@ namespace TerrainGen.Tests
                 for (int l = 0; l < c; l++)
                 {
                     JointRanges(sim, l, out Vector3 dir, out float knee);
-                    float swing = Vector3.Angle(dir, restDir[l]), dev = Mathf.Abs(knee - restKnee[l]);
+                    float swing = Vector3.Angle(dir, restDir[l]), signed = knee - restKnee[l], dev = Mathf.Abs(signed);
+                    // the limits for the direction actually moved in (as CreatureLegs.JointAngles): forward/back
+                    // swing blended by the forward share of the move, knee flexion vs extension
+                    LegSpec ls = sp.legs[l];
+                    Vector3 moved = dir - restDir[l];
+                    float fwd = moved.magnitude > 1e-6f ? Mathf.Clamp(moved.z / moved.magnitude, -1f, 1f) : 0f;
+                    float swingBound = Mathf.Lerp(ls.BackSwingLimit, ls.ForwardSwingLimit, 0.5f + 0.5f * fwd) + 15f;
+                    float kneeBound = (signed > 0f ? ls.KneeFlex : ls.KneeRange) + 15f;
                     swingMax = Mathf.Max(swingMax, swing); kneeDevMax = Mathf.Max(kneeDevMax, dev);
                     kneeMin = Mathf.Min(kneeMin, knee); kneeMax = Mathf.Max(kneeMax, knee);
-                    Assert.LessOrEqual(swing, 70f, $"t={t} leg {l}: upper swing {swing:F0} stepping={sim.Legs[l].stepping}:{sim.Legs[l].stepT:F2} speed={sim.Speed:F2}");
-                    Assert.LessOrEqual(dev, 50f, $"t={t} leg {l}: knee {knee:F0} vs rest {restKnee[l]:F0}, stepping={sim.Legs[l].stepping}");
+                    Assert.LessOrEqual(swing, swingBound, $"t={t} leg {l}: upper swing {swing:F0} stepping={sim.Legs[l].stepping}:{sim.Legs[l].stepT:F2} speed={sim.Speed:F2}");
+                    Assert.LessOrEqual(dev, kneeBound, $"t={t} leg {l}: knee {knee:F0} vs rest {restKnee[l]:F0}, stepping={sim.Legs[l].stepping}");
                 }
             }
             TestContext.Out.WriteLine($"swing max {swingMax:F0} deg, knee {kneeMin:F0}..{kneeMax:F0} deg (deviation max {kneeDevMax:F0}), spine bend max {maxBend:F1}, steps {sim.StepsTaken}");
