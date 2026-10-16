@@ -236,5 +236,68 @@ namespace TerrainGen.Tests
             Assert.LessOrEqual(maxJump, 3f * accel * dt + 1e-4f, "max speed change per tick");
             Assert.Greater(min, 0.5f * mean, "min " + min + " mean " + mean);
         }
+    
+        // Upper-bone swing (vs its rest direction, in the attach-joint frame) and knee bend of leg l.
+        static void JointRanges(CreatureSim s, int l, out Vector3 upperLocal, out float knee)
+        {
+            LegState st = s.Legs[l];
+            upperLocal = Quaternion.Inverse(s.Rotations[s.Species.legs[l].attachJoint]) * (st.elbow - st.shoulder).normalized;
+            knee = Vector3.Angle(st.elbow - st.shoulder, st.foot - st.elbow);
+        }
+
+        // The same 5 s minimum-radius circle as MeshBuilder_MaxBend_NoInvertedTriangles: the joint-range
+        // step triggers keep every leg near its rest pose, so the skinned mesh cannot fold.
+        [Test] public void Legs_TightTurn_JointRangesStayBounded()
+        {
+            sp = CreatureTestSpecies.Lizardish();
+            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
+            int c = sim.Legs.Length;
+            var restDir = new Vector3[c]; var restKnee = new float[c];
+            for (int l = 0; l < c; l++) JointRanges(sim, l, out restDir[l], out restKnee[l]);
+            Vector3 centre = new Vector3(0f, 0f, 0.25f);
+            float swingMax = 0f, kneeDevMax = 0f, maxBend = 0f, kneeMin = 999f, kneeMax = 0f;
+            for (int t = 0; t < 300; t++)
+            {
+                float a = t / 60f * 3f;
+                sim.Tick(1f / 60f, centre + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * 0.12f);
+                for (int i = 1; i < sp.JointCount - 1; i++)
+                    maxBend = Mathf.Max(maxBend, Vector3.Angle(sim.Joints[i - 1] - sim.Joints[i], sim.Joints[i] - sim.Joints[i + 1]));
+                for (int l = 0; l < c; l++)
+                {
+                    JointRanges(sim, l, out Vector3 dir, out float knee);
+                    float swing = Vector3.Angle(dir, restDir[l]), dev = Mathf.Abs(knee - restKnee[l]);
+                    swingMax = Mathf.Max(swingMax, swing); kneeDevMax = Mathf.Max(kneeDevMax, dev);
+                    kneeMin = Mathf.Min(kneeMin, knee); kneeMax = Mathf.Max(kneeMax, knee);
+                    Assert.LessOrEqual(swing, 70f, $"t={t} leg {l}: upper swing");
+                    Assert.LessOrEqual(dev, 50f, $"t={t} leg {l}: knee {knee:F0} vs rest {restKnee[l]:F0}, stepping={sim.Legs[l].stepping}");
+                }
+            }
+            TestContext.Out.WriteLine($"swing max {swingMax:F0} deg, knee {kneeMin:F0}..{kneeMax:F0} deg (deviation max {kneeDevMax:F0}), spine bend max {maxBend:F1}, steps {sim.StepsTaken}");
+            Assert.Greater(maxBend, 0.9f * 20f, "the turn never reached the bend limit");
+        }
+    
+        // The lower bone's roll must follow the upper bone (shared knee hinge): projecting the pole onto
+        // each bone separately flips it by 180 deg when the pole lies between them, collapsing the knee skin.
+        [Test] public void LegBones_LowerRollFollowsUpper()
+        {
+            sp = CreatureTestSpecies.Lizardish();
+            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
+            var w = new Matrix4x4[sp.BoneCount];
+            Vector3 centre = new Vector3(0f, 0f, 0.25f);
+            for (int t = 0; t < 300; t++)
+            {
+                float a = t / 60f * 3f;
+                sim.Tick(1f / 60f, centre + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * 0.12f);
+                sim.WriteBoneWorld(w, 0);
+                for (int l = 0; l < sp.legs.Length; l++)
+                {
+                    Quaternion up = w[sp.LegBone(l, 0)].rotation, lo = w[sp.LegBone(l, 1)].rotation;
+                    LegState st = sim.Legs[l];
+                    Assert.Less((lo * Vector3.forward - (st.foot - st.elbow).normalized).magnitude, 1e-3f, "lower +Z");
+                    // the hinge axis (+X) is shared: the lower frame is the upper turned about it
+                    Assert.Greater(Vector3.Dot(up * Vector3.right, lo * Vector3.right), 0.99f, $"t={t} leg {l}: lower bone roll flipped");
+                }
+            }
+        }
     }
 }
