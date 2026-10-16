@@ -90,7 +90,9 @@ public sealed class CreatureSim
             if (und != 0f) desired = Quaternion.AngleAxis(und, up) * desired;
             float ang = Vector3.SignedAngle(heading, desired, up);
             turnAngle = Mathf.Abs(ang);
-            float maxTurn = sp.turnRateDeg * dt;
+            // Turning in place swings the rigid head and drags the front of the body, so a leg at its
+            // stretch or joint-range limit throttles the turn as well as the speed.
+            float maxTurn = sp.turnRateDeg * dt * legs.Throttle;
             heading = Quaternion.AngleAxis(Mathf.Clamp(ang, -maxTurn, maxTurn), up) * heading;
         }
         float want = Mathf.Min(sp.speed, 2.5f * dist) * (1f - sp.turnSlowdown * turnAngle / 180f);
