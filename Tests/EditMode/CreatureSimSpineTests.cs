@@ -117,20 +117,23 @@ namespace TerrainGen.Tests
         {
             Assert.Greater(LateralPeakToPeak(OnPlane(0f, 30f, true)), 0.05f);
             TearDown();
-            Assert.Less(LateralPeakToPeak(OnPlane(0f, 0f)), 0.005f);
+            Assert.Less(LateralPeakToPeak(OnPlane(0f, 0f, true)), 0.005f);
         }
 
         [Test] public void Undulation_FadesWhenIdle()
         {
-            var sim = OnPlane(0f, 30f);
+            var sim = OnPlane(0f, 30f, true);
             Vector3 far = new Vector3(0, 0, 60f);
             for (int t = 0; t < 300; t++) sim.Tick(1f / 60f, far);
+            // fixed target just ahead of the head: the creature settles with a small non-zero distance,
+            // so the steering (and its undulation) keeps running; the body must not keep swinging
+            Vector3 stop = sim.Joints[0] + Vector3.forward * 0.01f;
             float lo = float.MaxValue, hi = float.MinValue;
-            for (int t = 0; t < 180; t++)
+            for (int t = 0; t < 300; t++)
             {
-                sim.Tick(1f / 60f, sim.Joints[0]);
-                if (t < 120) continue;
-                lo = Mathf.Min(lo, sim.Joints[0].x); hi = Mathf.Max(hi, sim.Joints[0].x);
+                sim.Tick(1f / 60f, stop);
+                if (t < 240) continue;
+                lo = Mathf.Min(lo, sim.Joints[3].x); hi = Mathf.Max(hi, sim.Joints[3].x);
             }
             Assert.Less(hi - lo, 0.005f);
         }

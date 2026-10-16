@@ -140,7 +140,7 @@ public sealed class CreatureSim
             }
             groundPoint[i] = near + u * hs;
             GroundNormals[i] = nrm;
-            Joints[i] = groundPoint[i] + u * (clear - legs.Droop[i]);
+            Joints[i] = groundPoint[i] + u * (clear - legs.DroopSpread[i]);
         }
 
         // 4. legs (use the final joint positions; frames are refreshed first)

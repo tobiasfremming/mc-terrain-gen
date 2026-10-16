@@ -36,7 +36,8 @@ sealed class CreatureLegs
 
     // Per spine joint: how far the body is lowered toward the ground so the legs on it can reach
     // (a leg whose rest point lies on much lower ground, e.g. one side of a steep face).
-    public readonly float[] Droop;
+    public readonly float[] Droop;       // per attach joint, as computed from its legs
+    public readonly float[] DroopSpread; // per spine joint: Droop smoothed over +-3 joints, what the sim applies
 
     // 1 = free to walk, 0 = a planted foot is at full stretch and the body must wait for its step.
     public float MaxSpeed { get; private set; } = float.PositiveInfinity;
@@ -49,7 +50,7 @@ sealed class CreatureLegs
         this.joints = joints; this.rotations = rotations; this.scale = scale;
         specs = sp.legs ?? new LegSpec[0];
         int c = specs.Length;
-        Droop = new float[joints.Length];
+        Droop = new float[joints.Length]; DroopSpread = new float[joints.Length];
         State = new LegState[c]; target = new Vector3[c]; rest = new Vector3[c]; eligible = new bool[c];
         for (int l = 0; l < c; l++)
         {
@@ -171,10 +172,10 @@ sealed class CreatureLegs
                 if (eligible[m] && !State[m].stepping) otherEligible = true;
             }
             if (blocked) continue;
-            // Alternate groups. Legs of a group that became eligible together start together; a leg
-            // that becomes eligible later waits its turn (joining a step in flight would let one
-            // group hog the gait and starve the other).
-            bool joinable = false;   // own group's step just began: join it rather than wait a full turn
+            // Alternate groups. Legs of a group that became eligible together start together, and a leg
+            // may join its own group's step while that step is less than half done. Otherwise it waits
+            // its turn: joining late would let one group hog the gait and starve the other.
+            bool joinable = false;
             for (int m = 0; m < c; m++)
                 if (m != l && specs[m].gaitGroup == g && State[m].stepping && State[m].stepT < 0.5f) joinable = true;
             if (lastGroup == g && otherEligible && startedGroup != g && !joinable) continue;
@@ -211,6 +212,21 @@ sealed class CreatureLegs
             float step = kDroopRate * scale * dt;
             if (need > 0f) Droop[j] = Mathf.Min(cap, Droop[j] + Mathf.Min(need * 0.5f, step));
             else if (need < -kDroopSlack * scale && Droop[j] > 0f) Droop[j] = Mathf.Max(0f, Droop[j] - step);
+        }
+
+        // Spread each joint's droop over its neighbours (cosine falloff, 4 joints) so the spine bends
+        // smoothly instead of notching and segment lengths stay put.
+        for (int i = 0; i < DroopSpread.Length; i++)
+        {
+            float best = 0f;
+            for (int k = -3; k <= 3; k++)
+            {
+                int j = i + k;
+                if (j < 0 || j >= Droop.Length || Droop[j] <= 0f) continue;
+                float w = 0.5f * (1f + Mathf.Cos(Mathf.PI * Mathf.Abs(k) / 4f));
+                best = Mathf.Max(best, Droop[j] * w);
+            }
+            DroopSpread[i] = best;
         }
     }
 

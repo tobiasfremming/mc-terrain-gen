@@ -190,7 +190,7 @@ namespace TerrainGen.Tests
             var sim = new CreatureSim(sp, new FieldGroundProbe(half), _ => Vector3.up, Vector3.zero, Vector3.forward);
             var counts = new int[sim.Legs.Length];
             var was = new bool[counts.Length];
-            float worst = 0f;
+            float worst = 0f, seg = 0f;
             Walk(sim, 600, s =>
             {
                 for (int l = 0; l < counts.Length; l++)
@@ -201,8 +201,11 @@ namespace TerrainGen.Tests
                     Vector3 f = s.Legs[l].foot;
                     worst = Mathf.Max(worst, Mathf.Abs(f.y - half.SurfaceY(f.x)));
                 }
+                for (int i = 1; i < s.Joints.Length; i++)
+                    seg = Mathf.Max(seg, Mathf.Abs((s.Joints[i] - s.Joints[i - 1]).magnitude / (sp.spacing * s.SizeScale) - 1f));
             });
             Assert.Less(worst, 0.02f, "worst planted foot height error");
+            Assert.Less(seg, 0.01f, "segment length error");
             Assert.Greater(sim.Joints[0].z, 0.5f, "head displacement");
             for (int l = 0; l < counts.Length; l++)
                 Assert.Less(counts[l], 3 * flat[l], "leg " + l + " steps " + counts[l] + " vs flat " + flat[l]);
