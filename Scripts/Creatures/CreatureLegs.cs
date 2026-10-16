@@ -14,6 +14,8 @@ sealed class CreatureLegs
     const float kProbeWindow = 0.5f;
     const float kIdleSpeed = 0.05f;
     const float kIdleTidyFraction = 0.3f;
+    const int kRestSlideIters = 2;         // probes for sliding an uphill rest point outward
+    const float kRestSlack = 0.002f;       // a rest point this much nearer than the flat stance is left alone
     const float kStrideReach = 0.9f, kStrideUse = 0.5f;
     const float kLandReach = 0.9f;
     const float kOverextend = 0.91f;       // planted foot at this fraction of full reach becomes eligible to step
@@ -45,6 +47,7 @@ sealed class CreatureLegs
     readonly float[] restKnee;     // rest knee bend, degrees
     readonly float[] fwdLimit, backLimit, kneeRange, kneeFlex; // the species' joint-range limits, degrees
     readonly float[] minReach;     // shoulder-foot distance at the knee's flex limit, unscaled
+    readonly float[] restReach;    // shoulder-foot distance of the flat reference stance, unscaled
     readonly float[] stepOver;     // overshoot of the step in flight, fixed at lift-off
     readonly bool[] jointLimited;  // joint-range state from the last IK solve (UpdateThrottle)
     readonly float[] prevSwing, prevKnee; // last planted joint angles (-1 = none), for the angle rate
@@ -69,7 +72,7 @@ sealed class CreatureLegs
         Droop = new float[joints.Length]; DroopSpread = new float[joints.Length];
         State = new LegState[c]; target = new Vector3[c]; rest = new Vector3[c]; eligible = new bool[c];
         restUpper = new Vector3[c]; restKnee = new float[c]; minReach = new float[c];
-        stepOver = new float[c]; jointLimited = new bool[c];
+        stepOver = new float[c]; jointLimited = new bool[c]; restReach = new float[c];
         prevSwing = new float[c]; prevKnee = new float[c];
         fwdLimit = new float[c]; backLimit = new float[c]; kneeRange = new float[c]; kneeFlex = new float[c];
         for (int l = 0; l < c; l++) { prevSwing[l] = -1f; prevKnee[l] = -1f; }
@@ -83,6 +86,7 @@ sealed class CreatureLegs
             Vector3 el = TwoBoneIK.Solve(sh, rs, s.upperLength, s.lowerLength, Mirror(s.pole, l), out Vector3 ft);
             restUpper[l] = (el - sh).normalized;
             restKnee[l] = Vector3.Angle(el - sh, ft - el);
+            restReach[l] = (ft - sh).magnitude;
             float bend = Mathf.Min(170f, restKnee[l] + kneeFlex[l]) * Mathf.Deg2Rad;
             float a = s.upperLength, b = s.lowerLength;
             minReach[l] = Mathf.Sqrt(Mathf.Max(0f, a * a + b * b + 2f * a * b * Mathf.Cos(bend)));
@@ -151,9 +155,30 @@ sealed class CreatureLegs
         {
             LegSpec s = specs[l];
             Vector3 u = Up(l);
-            Vector3 near = joints[s.attachJoint] + rotations[s.attachJoint] * (Mirror(s.restOffset, l) * scale);
-            if (ground.Probe(near, u, kProbeWindow * scale, out Vector3 p, out _)) rest[l] = p; // else hold the last rest
-            State[l].shoulder = joints[s.attachJoint] + rotations[s.attachJoint] * (Mirror(s.shoulderOffset, l) * scale);
+            Quaternion r = rotations[s.attachJoint];
+            Vector3 near = joints[s.attachJoint] + r * (Mirror(s.restOffset, l) * scale);
+            Vector3 sh = joints[s.attachJoint] + r * (Mirror(s.shoulderOffset, l) * scale);
+            State[l].shoulder = sh;
+            if (!ground.Probe(near, u, kProbeWindow * scale, out Vector3 p, out _)) continue; // hold the last rest
+            // Uphill (one side of a cross slope) the ground rises toward the shoulder and the rest stance
+            // would fold the knee far past its rest bend: slide the rest point outward along the ground
+            // until it is as far from the shoulder as on flat ground.
+            float want = restReach[l] * scale;
+            Vector3 outward = Vector3.ProjectOnPlane(r * Vector3.right * s.side, u);
+            if (outward.sqrMagnitude > 1e-8f)
+            {
+                outward.Normalize();
+                for (int k = 0; k < kRestSlideIters; k++)
+                {
+                    Vector3 v = p - sh;
+                    float d = v.magnitude;
+                    if (d >= want - kRestSlack * scale) break;
+                    float along = Mathf.Max(Vector3.Dot(v, outward), 0.3f * d);
+                    Vector3 q = p + outward * ((want - d) * d / Mathf.Max(1e-5f, along));
+                    if (!ground.Probe(q, u, kProbeWindow * scale, out p, out _)) { p = q; break; }
+                }
+            }
+            rest[l] = p;
         }
 
         UpdateDroop(dt);

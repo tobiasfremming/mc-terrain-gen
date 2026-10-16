@@ -40,7 +40,7 @@ public sealed class CreatureWorld : MonoBehaviour
 
     public void SetGround(IGroundProbe g, Func<Vector3, Vector3> upAt)
     {
-        ground = g; this.upAt = upAt;
+        ground = g; this.upAt = upAt ?? PlanetGravity.UpAt;
     }
 
     void Awake()

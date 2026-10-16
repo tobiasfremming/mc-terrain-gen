@@ -185,8 +185,11 @@ namespace TerrainGen.Tests
                 for (int l = 0; l < c; l++)
                     worst = Mathf.Max(worst, Mathf.Abs(LeftOffset(sim, sp.legs[l].attachJoint) - start[l]));
             }
-            TestContext.Out.WriteLine($"idle girdle lateral motion {worst * 1000f:F2} mm");
+            float offset = 0f;
+            for (int l = 0; l < c; l++) offset = Mathf.Max(offset, Mathf.Abs(LeftOffset(sim, sp.legs[l].attachJoint)));
+            TestContext.Out.WriteLine($"idle girdle lateral motion {worst * 1000f:F2} mm, offset {offset * 1000f:F2} mm");
             Assert.Less(worst, 0.005f);
+            Assert.Less(offset, 0.001f, "girdle still swayed at idle");
         }
 
         // The sway must keep what the gait guarantees: planted feet stay put, segments keep their length,
@@ -251,6 +254,46 @@ namespace TerrainGen.Tests
                 for (int l = 0; l < sim.Legs.Length; l++)
                     Assert.LessOrEqual(area.PlanarDistance(sim.Legs[l].foot), area.radius, "foot " + l + " t=" + sim.Time);
             }
+        }
+
+        // Review Focus 2 with the monitor and its sway on: the 30 deg cross slope of Legs_OnSlope.
+        [Test] public void Monitor_OnSlope_FeetAndBodyWithinTolerance()
+        {
+            var sp = Monitor();
+            var tilt = ScriptableObject.CreateInstance<TiltedPlaneField>();
+            try
+            {
+                tilt.normal = new Vector3(Mathf.Sin(30f * Mathf.Deg2Rad), Mathf.Cos(30f * Mathf.Deg2Rad), 0f);
+                var sim = new CreatureSim(sp, new FieldGroundProbe(tilt), _ => Vector3.up, Vector3.zero, Vector3.forward);
+                int planted = 0; float worstFoot = 0f, worstSink = 0f;
+                for (int t = 0; t < kTicks; t++)
+                {
+                    sim.Tick(kDt, new Vector3(0f, 0f, 1000f));
+                    for (int l = 0; l < sim.Legs.Length; l++)
+                    {
+                        if (sim.Legs[l].stepping) continue;
+                        planted++;
+                        float e = Mathf.Abs(Vector3.Dot(sim.Legs[l].foot, tilt.normal));
+                        worstFoot = Mathf.Max(worstFoot, e);
+                        Assert.Less(e, 0.02f, "leg " + l + " t=" + sim.Time);
+                    }
+                    for (int i = 0; i < sim.Joints.Length; i++)
+                    {
+                        Vector3 j = sim.Joints[i];
+                        float surfaceY = -tilt.normal.x * j.x / tilt.normal.y;
+                        float sink = sp.joints[i].clearance * sim.SizeScale - (j.y - surfaceY);
+                        worstSink = Mathf.Max(worstSink, sink);
+                        Assert.Less(sink, 0.02f, "joint " + i + " t=" + sim.Time);
+                    }
+                }
+                var flat = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
+                for (int t = 0; t < kTicks; t++) flat.Tick(kDt, new Vector3(0f, 0f, 1000f));
+                float flatDist = flat.Joints[0].magnitude, dist = sim.Joints[0].magnitude;
+                TestContext.Out.WriteLine($"worst planted foot {worstFoot * 1000f:F1} mm, worst joint sink {worstSink * 1000f:F1} mm, progress {dist:F2} m vs flat {flatDist:F2} m");
+                Assert.Greater(planted, 500);
+                Assert.GreaterOrEqual(dist, 0.7f * flatDist, "cross-slope progress");
+            }
+            finally { Object.DestroyImmediate(tilt); }
         }
 
         [Test] public void Monitor_TightTurn_JointRangesStayBounded()

@@ -31,12 +31,16 @@ public class LegSpec
     // a strongly bent rest knee has little flexion left before the skinned knee folds). Past a limit the
     // foot steps; a little further the body slows and stops.
     public float forwardSwingLimitDeg, backSwingLimitDeg, kneeRangeDeg, kneeFlexDeg;
+    // Mesh: fraction of each limb bone blended into the rounded knee (0 = default). A larger blend
+    // spreads a deep knee bend over more of the limb so the skin does not fold.
+    public float kneeBlend;
 
-    public const float DefaultSwingLimitDeg = 55f, DefaultKneeRangeDeg = 35f;
+    public const float DefaultSwingLimitDeg = 55f, DefaultKneeRangeDeg = 35f, DefaultKneeBlend = 0.45f;
     public float ForwardSwingLimit => forwardSwingLimitDeg > 0f ? forwardSwingLimitDeg : DefaultSwingLimitDeg;
     public float BackSwingLimit => backSwingLimitDeg > 0f ? backSwingLimitDeg : DefaultSwingLimitDeg;
     public float KneeRange => kneeRangeDeg > 0f ? kneeRangeDeg : DefaultKneeRangeDeg;
     public float KneeFlex => kneeFlexDeg > 0f ? kneeFlexDeg : KneeRange;
+    public float KneeBlend => kneeBlend > 0f ? Mathf.Min(kneeBlend, 0.49f) : DefaultKneeBlend;
 }
 
 [Serializable]

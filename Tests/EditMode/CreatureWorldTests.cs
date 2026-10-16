@@ -53,7 +53,13 @@ namespace TerrainGen.Tests
                 var area = EnclosureArea.For(c, Vector3.up, 2f, sp, 1f);
                 w.Spawn(sp, c, Vector3.forward, new WanderBrain(area, 11 + i, 0.1f, 0.3f), area, 100 + i);
             }
-            Assert.AreEqual(3, w.Sims.Count);
+            // a DesertMonitor too, so the gait sway and roll (R17) run under the GC check
+            var monitor = AssetDatabase.LoadAssetAtPath<CreatureSpecies>(kMonitorPath);
+            Assert.IsNotNull(monitor, kMonitorPath);
+            Assert.Greater(monitor.gaitSwayDeg, 0f);
+            var marea = EnclosureArea.For(new Vector3(0f, 0f, 8f), Vector3.up, 4f, monitor, 1f);
+            w.Spawn(monitor, marea.center, Vector3.forward, new WanderBrain(marea, 5, 0.1f, 0.3f), marea, 200);
+            Assert.AreEqual(4, w.Sims.Count);
             Vector3 start = w.Sims[0].Joints[0];
             Action update = Call(w, "Update"), late = Call(w, "LateUpdate");
             // Update reads Time.deltaTime, which edit mode may hold at 0: also tick with a real dt.

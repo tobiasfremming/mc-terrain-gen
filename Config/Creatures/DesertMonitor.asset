@@ -149,13 +149,13 @@ MonoBehaviour:
   legs:
   - attachJoint: 7
     side: -1
-    shoulderOffset: {x: 0.05, y: -0.02, z: 0}
+    shoulderOffset: {x: 0.05, y: -0.04, z: 0}
     restOffset: {x: 0.21, y: 0, z: 0.095}
     upperLength: 0.145
     lowerLength: 0.135
     upperRadius: 0.03
     lowerRadius: 0.019
-    pole: {x: 0.7, y: 0.6, z: -0.8}
+    pole: {x: 0.6, y: 0.6, z: -0.9}
     stepThreshold: 0.11
     stepDuration: 0.13
     stepLift: 0.045
@@ -165,17 +165,18 @@ MonoBehaviour:
     toeCount: 5
     forwardSwingLimitDeg: 75
     backSwingLimitDeg: 50
-    kneeRangeDeg: 45
+    kneeRangeDeg: 50
     kneeFlexDeg: 18
+    kneeBlend: 0
   - attachJoint: 7
     side: 1
-    shoulderOffset: {x: 0.05, y: -0.02, z: 0}
+    shoulderOffset: {x: 0.05, y: -0.04, z: 0}
     restOffset: {x: 0.21, y: 0, z: 0.095}
     upperLength: 0.145
     lowerLength: 0.135
     upperRadius: 0.03
     lowerRadius: 0.019
-    pole: {x: 0.7, y: 0.6, z: -0.8}
+    pole: {x: 0.6, y: 0.6, z: -0.9}
     stepThreshold: 0.11
     stepDuration: 0.13
     stepLift: 0.045
@@ -185,8 +186,9 @@ MonoBehaviour:
     toeCount: 5
     forwardSwingLimitDeg: 75
     backSwingLimitDeg: 50
-    kneeRangeDeg: 45
+    kneeRangeDeg: 50
     kneeFlexDeg: 18
+    kneeBlend: 0
   - attachJoint: 13
     side: -1
     shoulderOffset: {x: 0.05, y: -0.02, z: 0}
@@ -195,7 +197,7 @@ MonoBehaviour:
     lowerLength: 0.135
     upperRadius: 0.032
     lowerRadius: 0.02
-    pole: {x: 0.7, y: 0.6, z: 0.8}
+    pole: {x: 0.6, y: 0.6, z: 0.9}
     stepThreshold: 0.11
     stepDuration: 0.13
     stepLift: 0.045
@@ -205,8 +207,9 @@ MonoBehaviour:
     toeCount: 5
     forwardSwingLimitDeg: 75
     backSwingLimitDeg: 50
-    kneeRangeDeg: 45
+    kneeRangeDeg: 50
     kneeFlexDeg: 18
+    kneeBlend: 0
   - attachJoint: 13
     side: 1
     shoulderOffset: {x: 0.05, y: -0.02, z: 0}
@@ -215,7 +218,7 @@ MonoBehaviour:
     lowerLength: 0.135
     upperRadius: 0.032
     lowerRadius: 0.02
-    pole: {x: 0.7, y: 0.6, z: 0.8}
+    pole: {x: 0.6, y: 0.6, z: 0.9}
     stepThreshold: 0.11
     stepDuration: 0.13
     stepLift: 0.045
@@ -225,15 +228,16 @@ MonoBehaviour:
     toeCount: 5
     forwardSwingLimitDeg: 75
     backSwingLimitDeg: 50
-    kneeRangeDeg: 45
+    kneeRangeDeg: 50
     kneeFlexDeg: 18
+    kneeBlend: 0
   speed: 0.9
   turnRateDeg: 160
   accel: 3
   turnSlowdown: 0.5
   undulationDeg: 6
   undulationHz: 1.4
-  gaitSwayDeg: 14
+  gaitSwayDeg: 12
   gaitRollDeg: 3
   subSteps: 2
   eyeJoint: 1

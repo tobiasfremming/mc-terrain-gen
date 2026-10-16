@@ -268,21 +268,26 @@ public sealed class CreatureSim
                 rollDeg[i] += sp.gaitRollDeg * rollSignal[g] * w;
             }
 
+        // Each path segment turns about its ground normal by the sway's slope, so the swayed joints stay on
+        // the ground's tangent plane (no dipping on a cross slope) and keep the path's own segment lengths
+        // and height profile. The bend limit is applied to the turn alone: a segment's turn may differ from
+        // the previous one only by the bend the path leaves free at that joint (none at a rigid joint).
         float seg = sp.spacing * SizeScale;
         Joints[0] = Path[0];
-        Vector3 prevBack = -heading;
+        Vector3 prevPath = -heading;
+        float prevTurn = 0f;
         for (int i = 1; i < n; i++)
         {
             Vector3 v = Path[i] - Path[i - 1];
             float len = v.magnitude;
-            Vector3 d = len > 1e-9f ? v / len : prevBack;
+            Vector3 d = len > 1e-9f ? v / len : prevPath;
             // moving joint i to the right of joint i-1 turns the backward segment toward -right
             float turn = -Mathf.Rad2Deg * Mathf.Asin(Mathf.Clamp((swayY[i] - swayY[i - 1]) / seg, -0.5f, 0.5f));
-            if (turn != 0f) d = Quaternion.AngleAxis(turn, Norm(upAt(Path[i]), Vector3.up)) * d;
-            float lim = sp.joints[i].rigid ? 0f : sp.joints[i].bendLimitDeg * Mathf.Deg2Rad;
-            d = Vector3.RotateTowards(prevBack, d, lim, 0f).normalized;
+            float slack = sp.joints[i].rigid ? 0f : Mathf.Max(0f, sp.joints[i].bendLimitDeg - Vector3.Angle(prevPath, d));
+            turn = Mathf.Clamp(turn, prevTurn - slack, prevTurn + slack);
+            prevPath = d; prevTurn = turn;
+            if (turn != 0f) d = Quaternion.AngleAxis(turn, GroundNormals[i]) * d;
             Joints[i] = Joints[i - 1] + d * len;
-            prevBack = d;
         }
     }
 

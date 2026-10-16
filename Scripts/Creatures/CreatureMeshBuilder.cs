@@ -22,7 +22,6 @@ public static class CreatureMeshBuilder
     const float kSnoutDrop = 0.15f;    // the snout's centre line drops by this fraction of head height
 
     const int kLegSegments = 8;
-    const float kKneeBlend = 0.45f;    // fraction of each limb bone blended at the knee (R12; 0.45 for R16 knee flexion)
     const int kKneeRings = 7;          // rings along the knee curve, ends included
     const float kShoulderBlob = 0.6f;  // the shoulder end extends this * upperRadius into the body
     const float kAnkleCap = 0.6f;      // rounded end past the foot point, * lowerRadius
@@ -322,14 +321,15 @@ public static class CreatureMeshBuilder
             Add(S, du, 0f, shoulderSkin);
             Add(S + du * (0.4f * lu), du, 0.4f * lu, Rigid(bu));
             // knee: the last and first 35% of the bones follow a rounded curve and blend to 50/50 at the elbow
-            Vector3 k0 = S + du * ((1f - kKneeBlend) * lu), k2 = E + dl * (kKneeBlend * ll);
+            float kb = s.KneeBlend; // fraction of each limb bone blended at the knee (LegSpec.kneeBlend)
+            Vector3 k0 = S + du * ((1f - kb) * lu), k2 = E + dl * (kb * ll);
             for (int i = 0; i < kKneeRings; i++)
             {
                 float t = i / (kKneeRings - 1f), w = t * t * (3f - 2f * t);
                 Vector3 c = (1f - t) * (1f - t) * k0 + 2f * (1f - t) * t * E + t * t * k2;
                 Vector3 tan = 2f * (1f - t) * (E - k0) + 2f * t * (k2 - E);
                 tan = tan.sqrMagnitude > 1e-12f ? tan.normalized : du;
-                Add(c, tan, Mathf.Lerp((1f - kKneeBlend) * lu, lu + kKneeBlend * ll, t), Blend(bu, bl, w));
+                Add(c, tan, Mathf.Lerp((1f - kb) * lu, lu + kb * ll, t), Blend(bu, bl, w));
             }
             Add(E + dl * (0.6f * ll), dl, lu + 0.6f * ll, Rigid(bl));
             Add(F, dl, total, Rigid(bl));
