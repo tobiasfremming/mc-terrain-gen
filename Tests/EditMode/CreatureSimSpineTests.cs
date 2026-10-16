@@ -141,6 +141,16 @@ namespace TerrainGen.Tests
             Assert.Greater(area.PlanarDistance(sim.Joints[0]), area.safeRadius - 0.1f);
         }
 
+        [Test] public void Speed_IsZero_WhenPinnedByBounds()
+        {
+            var sim = OnPlane();
+            sim.Bounds = EnclosureArea.For(Vector3.zero, Vector3.up, 3f, sp, 1f);
+            Vector3 target = new Vector3(20f, 0f, 0f);
+            // 1200 ticks: the leg-limited walk (~0.3 m/s for the test species) needs ~10 s to reach the edge
+            for (int t = 0; t < 1200; t++) sim.Tick(1f / 60f, target);
+            Assert.Less(sim.Speed, 0.05f);
+        }
+
         [Test] public void WriteBoneWorld_FillsAllBones_Finite()
         {
             var sim = OnPlane();
