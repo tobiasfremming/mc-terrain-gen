@@ -94,9 +94,13 @@ public sealed class CreatureSim
             heading = Quaternion.AngleAxis(Mathf.Clamp(ang, -maxTurn, maxTurn), up) * heading;
         }
         float want = Mathf.Min(sp.speed, 2.5f * dist) * (1f - sp.turnSlowdown * turnAngle / 180f);
-        commanded = Mathf.MoveTowards(commanded, Mathf.Max(0f, want), sp.accel * dt);
-        // A creature cannot outrun its legs: hold still while a planted foot is at full stretch.
-        commanded = Mathf.Min(commanded, Mathf.Min(sp.speed * legs.Throttle, legs.MaxSpeed));
+        // A creature cannot outrun its legs: the gait caps the speed, and slows it when a planted foot
+        // nears full stretch. The cap is approached with accel-limited easing (braking 3x harder).
+        float cap = Mathf.Min(sp.speed * legs.Throttle, legs.MaxSpeed);
+        float goal = Mathf.Max(0f, want);
+        float rate = sp.accel;
+        if (cap < goal) { goal = cap; if (goal < commanded) rate = 3f * sp.accel; }
+        commanded = Mathf.MoveTowards(commanded, goal, rate * dt);
         Vector3 start = head;
         head += heading * (commanded * dt);
         if (Bounds.HasValue) head = Bounds.Value.ClampToSafe(head);
@@ -136,7 +140,7 @@ public sealed class CreatureSim
             }
             groundPoint[i] = near + u * hs;
             GroundNormals[i] = nrm;
-            Joints[i] = groundPoint[i] + u * clear;
+            Joints[i] = groundPoint[i] + u * (clear - legs.Droop[i]);
         }
 
         // 4. legs (use the final joint positions; frames are refreshed first)

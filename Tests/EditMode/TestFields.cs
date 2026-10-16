@@ -19,6 +19,24 @@ namespace TerrainGen.Tests
         protected override void OnValidate() { }
     }
 
+    // Flat at y = 0 for lateral x < edgeX, then sloping down at slopeDeg for x > edgeX.
+    public class HalfSlopeField : DensityField
+    {
+        public float edgeX = 0.06f, slopeDeg = 30f;
+        public float SurfaceY(float x) => x > edgeX ? -(x - edgeX) * Mathf.Tan(slopeDeg * Mathf.Deg2Rad) : 0f;
+        public override float Sample(Vector3 p, float filterWidth) => SurfaceY(p.x) - p.y;
+        protected override void OnValidate() { }
+    }
+
+    // Flat at y = 0 except a `drop`-deep patch for x < patchX and z in (zMin, zMax).
+    public class LedgeField : DensityField
+    {
+        public float patchX = -0.15f, zMin = -0.5f, zMax = 0.2f, drop = 0.03f;
+        public override float Sample(Vector3 p, float filterWidth)
+            => (p.x < patchX && p.z > zMin && p.z < zMax ? -drop : 0f) - p.y;
+        protected override void OnValidate() { }
+    }
+
     // Solid ball; stands in for a smooth planet.
     public class SphereField : DensityField
     {
