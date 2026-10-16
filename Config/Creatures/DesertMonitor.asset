@@ -1,0 +1,259 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39d3296fcbe55a0429fe582610f52ec3, type: 3}
+  m_Name: DesertMonitor
+  m_EditorClassIdentifier: TerrainGen.Runtime::CreatureSpecies
+  spacing: 0.06
+  joints:
+  - halfWidth: 0.022
+    halfHeight: 0.018
+    clearance: 0.077999994
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.032
+    halfHeight: 0.026
+    clearance: 0.085999995
+    bendLimitDeg: 20
+    rigid: 1
+  - halfWidth: 0.04
+    halfHeight: 0.032
+    clearance: 0.092
+    bendLimitDeg: 20
+    rigid: 1
+  - halfWidth: 0.036
+    halfHeight: 0.03
+    clearance: 0.089999996
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.034
+    halfHeight: 0.03
+    clearance: 0.089999996
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.036
+    halfHeight: 0.032
+    clearance: 0.092
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.05
+    halfHeight: 0.04
+    clearance: 0.099999994
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.062
+    halfHeight: 0.046
+    clearance: 0.106
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.072
+    halfHeight: 0.052
+    clearance: 0.112
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.08
+    halfHeight: 0.056
+    clearance: 0.116
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.085
+    halfHeight: 0.058
+    clearance: 0.118
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.084
+    halfHeight: 0.057
+    clearance: 0.117
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.078
+    halfHeight: 0.054
+    clearance: 0.114
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.066
+    halfHeight: 0.05
+    clearance: 0.11
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.052
+    halfHeight: 0.044
+    clearance: 0.092
+    bendLimitDeg: 25
+    rigid: 0
+  - halfWidth: 0.044
+    halfHeight: 0.038
+    clearance: 0.074
+    bendLimitDeg: 25
+    rigid: 0
+  - halfWidth: 0.038
+    halfHeight: 0.033
+    clearance: 0.057
+    bendLimitDeg: 25
+    rigid: 0
+  - halfWidth: 0.033
+    halfHeight: 0.029
+    clearance: 0.041
+    bendLimitDeg: 25
+    rigid: 0
+  - halfWidth: 0.028
+    halfHeight: 0.025
+    clearance: 0.025
+    bendLimitDeg: 25
+    rigid: 0
+  - halfWidth: 0.024
+    halfHeight: 0.021
+    clearance: 0.021
+    bendLimitDeg: 25
+    rigid: 0
+  - halfWidth: 0.02
+    halfHeight: 0.018
+    clearance: 0.018
+    bendLimitDeg: 25
+    rigid: 0
+  - halfWidth: 0.017
+    halfHeight: 0.015
+    clearance: 0.015
+    bendLimitDeg: 25
+    rigid: 0
+  - halfWidth: 0.014
+    halfHeight: 0.012
+    clearance: 0.012
+    bendLimitDeg: 25
+    rigid: 0
+  - halfWidth: 0.011
+    halfHeight: 0.01
+    clearance: 0.01
+    bendLimitDeg: 25
+    rigid: 0
+  - halfWidth: 0.008
+    halfHeight: 0.007
+    clearance: 0.007
+    bendLimitDeg: 25
+    rigid: 0
+  - halfWidth: 0.005
+    halfHeight: 0.005
+    clearance: 0.005
+    bendLimitDeg: 25
+    rigid: 0
+  headCapLength: 0.05
+  tailTipLength: 0.04
+  legs:
+  - attachJoint: 7
+    side: -1
+    shoulderOffset: {x: 0.05, y: -0.02, z: 0}
+    restOffset: {x: 0.21, y: 0, z: 0.095}
+    upperLength: 0.145
+    lowerLength: 0.135
+    upperRadius: 0.03
+    lowerRadius: 0.019
+    pole: {x: 0.7, y: 0.6, z: -0.8}
+    stepThreshold: 0.11
+    stepDuration: 0.13
+    stepLift: 0.045
+    overshoot: 0.08
+    gaitGroup: 0
+    footLength: 0.07
+    toeCount: 5
+    forwardSwingLimitDeg: 75
+    backSwingLimitDeg: 50
+    kneeRangeDeg: 45
+    kneeFlexDeg: 18
+  - attachJoint: 7
+    side: 1
+    shoulderOffset: {x: 0.05, y: -0.02, z: 0}
+    restOffset: {x: 0.21, y: 0, z: 0.095}
+    upperLength: 0.145
+    lowerLength: 0.135
+    upperRadius: 0.03
+    lowerRadius: 0.019
+    pole: {x: 0.7, y: 0.6, z: -0.8}
+    stepThreshold: 0.11
+    stepDuration: 0.13
+    stepLift: 0.045
+    overshoot: 0.08
+    gaitGroup: 1
+    footLength: 0.07
+    toeCount: 5
+    forwardSwingLimitDeg: 75
+    backSwingLimitDeg: 50
+    kneeRangeDeg: 45
+    kneeFlexDeg: 18
+  - attachJoint: 13
+    side: -1
+    shoulderOffset: {x: 0.05, y: -0.02, z: 0}
+    restOffset: {x: 0.22, y: 0, z: -0.02}
+    upperLength: 0.145
+    lowerLength: 0.135
+    upperRadius: 0.032
+    lowerRadius: 0.02
+    pole: {x: 0.7, y: 0.6, z: 0.8}
+    stepThreshold: 0.11
+    stepDuration: 0.13
+    stepLift: 0.045
+    overshoot: 0.08
+    gaitGroup: 1
+    footLength: 0.075
+    toeCount: 5
+    forwardSwingLimitDeg: 75
+    backSwingLimitDeg: 50
+    kneeRangeDeg: 45
+    kneeFlexDeg: 18
+  - attachJoint: 13
+    side: 1
+    shoulderOffset: {x: 0.05, y: -0.02, z: 0}
+    restOffset: {x: 0.22, y: 0, z: -0.02}
+    upperLength: 0.145
+    lowerLength: 0.135
+    upperRadius: 0.032
+    lowerRadius: 0.02
+    pole: {x: 0.7, y: 0.6, z: 0.8}
+    stepThreshold: 0.11
+    stepDuration: 0.13
+    stepLift: 0.045
+    overshoot: 0.08
+    gaitGroup: 0
+    footLength: 0.075
+    toeCount: 5
+    forwardSwingLimitDeg: 75
+    backSwingLimitDeg: 50
+    kneeRangeDeg: 45
+    kneeFlexDeg: 18
+  speed: 0.9
+  turnRateDeg: 160
+  accel: 3
+  turnSlowdown: 0.5
+  undulationDeg: 6
+  undulationHz: 1.4
+  gaitSwayDeg: 14
+  gaitRollDeg: 3
+  subSteps: 2
+  eyeJoint: 1
+  eyeOffset: {x: 0.024, y: 0.014, z: 0.008}
+  eyeRadius: 0.007
+  ringSegments: 16
+  ringsPerSegment: 3
+  look:
+    dorsal: {r: 0.8666667, g: 0.73333335, b: 0.5176471, a: 1}
+    flank: {r: 0.8117647, g: 0.627451, b: 0.40784314, a: 1}
+    belly: {r: 0.9411765, g: 0.89411765, b: 0.7764706, a: 1}
+    pattern: {r: 0.3529412, g: 0.2509804, b: 0.16862746, a: 1}
+    patternType: 4
+    patternScale: 9
+    patternContrast: 0.7
+    patternSoftness: 0.25
+    spotScale: 0.08
+    smoothness: 0.45
+    rimStrength: 0.45
+    subsurface: 0.3
+    sizeJitter: 0.08
+    hueJitter: 0.01
+    valueJitter: 0.06

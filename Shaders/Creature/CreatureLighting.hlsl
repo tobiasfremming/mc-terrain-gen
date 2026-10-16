@@ -53,6 +53,7 @@ half3 CreatureShade(CreatureSurface s, CreatureLightParams p, float3 positionWS,
     float3 V = normalize(GetWorldSpaceViewDir(positionWS));
     float ndl = dot(N, L);
     float nv = saturate(dot(N, V)) + 1e-4;
+    float grazeV = saturate(1.0 - nv);   // 1 - N.V, never negative (pow below)
     half shadow = light.shadowAttenuation * light.distanceAttenuation * ao.directAmbientOcclusion;
 
     // --- diffuse: wrapped Lambert, the wrap's extra light tinted warm (subsurface)
@@ -81,13 +82,13 @@ half3 CreatureShade(CreatureSurface s, CreatureLightParams p, float3 positionWS,
     half3 ambient = SampleSH(N) * skyOcc + p.groundBounce * light.color * (below * ao.indirectAmbientOcclusion);
 
     // --- environment reflection (URP's environment BRDF terms)
-    half fres = (half)pow(1.0 - nv, 4.0);
+    half fres = (half)pow(grazeV, 4.0);
     half grazing = saturate(s.smoothness + 0.04h);
     half3 env = GlossyEnvironmentReflection((half3)reflect(-V, N), (half)perceptualRough, skyOcc);
     half3 envSpec = env * (half)(1.0 / (rough2 + 1.0)) * lerp(0.04h, grazing, fres);
 
     // --- rim: sky-coloured, a little sun on the lit side, none under the belly
-    half rimMask = (half)pow(1.0 - nv, p.rimPower) * s.rim * up01;
+    half rimMask = (half)pow(grazeV, max(p.rimPower, 1.0h)) * s.rim * up01;
     half3 rimLight = rimMask * (SampleSH(V) * 0.6h + light.color * (0.4h * saturate((half)ndl + 0.5h) * shadow));
 
     half3 color = s.albedo * (diffuse + ambient) + specular + envSpec + rimLight * lerp(s.albedo, half3(1.0h, 1.0h, 1.0h), 0.5h);

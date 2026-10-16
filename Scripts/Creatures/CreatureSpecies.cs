@@ -25,6 +25,18 @@ public class LegSpec
     public int gaitGroup;
     public float footLength;
     public int toeCount;
+    // Joint-range limits, degrees (0 = default): how far the upper bone may swing from its rest direction
+    // toward the head (forward) and toward the tail (back), and how far the knee bend may deviate from its
+    // rest bend (kneeRangeDeg; kneeFlexDeg, if set, replaces it for bending further than rest: a limb with
+    // a strongly bent rest knee has little flexion left before the skinned knee folds). Past a limit the
+    // foot steps; a little further the body slows and stops.
+    public float forwardSwingLimitDeg, backSwingLimitDeg, kneeRangeDeg, kneeFlexDeg;
+
+    public const float DefaultSwingLimitDeg = 55f, DefaultKneeRangeDeg = 35f;
+    public float ForwardSwingLimit => forwardSwingLimitDeg > 0f ? forwardSwingLimitDeg : DefaultSwingLimitDeg;
+    public float BackSwingLimit => backSwingLimitDeg > 0f ? backSwingLimitDeg : DefaultSwingLimitDeg;
+    public float KneeRange => kneeRangeDeg > 0f ? kneeRangeDeg : DefaultKneeRangeDeg;
+    public float KneeFlex => kneeFlexDeg > 0f ? kneeFlexDeg : KneeRange;
 }
 
 [Serializable]
@@ -46,6 +58,11 @@ public class CreatureSpecies : ScriptableObject
     public LegSpec[] legs;
     public float speed, turnRateDeg, accel, turnSlowdown;
     public float undulationDeg, undulationHz;
+    // Gait-coupled spine motion (0 = none). Each girdle (a joint with legs on both sides) swings toward
+    // the leg that reaches forward, so diagonal gait groups make a standing S-wave: gaitSwayDeg is the
+    // peak yaw of the trunk between girdles at full sway. gaitRollDeg rolls a girdle over its planted
+    // feet while the other side steps.
+    public float gaitSwayDeg, gaitRollDeg;
     public int subSteps = 2;
     public int eyeJoint = 1;
     public Vector3 eyeOffset;             // x mirrored
@@ -91,6 +108,8 @@ public class CreatureSpecies : ScriptableObject
             if (l.side != -1 && l.side != 1) return $"legs[{i}].side must be -1 or +1";
             if (l.gaitGroup < 0 || l.gaitGroup > 31) return $"legs[{i}].gaitGroup must be in 0..31";
             if (!(l.upperLength > 0f) || !(l.lowerLength > 0f)) return $"legs[{i}] limb lengths must be > 0";
+            if (!(l.ForwardSwingLimit < 180f) || !(l.BackSwingLimit < 180f) || !(l.KneeRange < 180f) || !(l.KneeFlex < 180f))
+                return $"legs[{i}] joint-range limits must be < 180 deg";
         }
         return null;
     }

@@ -151,6 +151,63 @@ namespace TerrainGen.Tests
             Assert.IsEmpty(errors, string.Join("\n", errors));
         }
 
+        // The path the Editor takes when it draws: URP renders a camera, sets its global keywords
+        // (main-light shadows, soft shadows, SSAO, fog) and the Editor compiles the variant on demand
+        // through Library/ShaderCache. ShaderData.CompileVariant above bypasses all of that and
+        // passed while the Editor drew the Forward pass with the error shader (fix round 1).
+        // Material.SetPass or a CommandBuffer draw do not trigger that compile; Camera.Render does.
+        [Test] public void CreatureShader_EditorRuntimeCompile_NoErrors()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+                Assert.Ignore("needs a graphics device (interactive Editor); batch -nographics compiles no variants on demand");
+            Shader sh = Shader.Find(kShader);
+            Assert.IsNotNull(sh, kShader + " not found");
+            AssetDatabase.ImportAsset(AssetDatabase.GetAssetPath(sh), ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
+            sh = Shader.Find(kShader);
+
+            var errors = new List<string>();
+            void OnLog(string msg, string stack, LogType type)
+            {
+                if (msg.Contains("Shader error in '" + kShader + "'")) errors.Add(msg);
+            }
+            bool async = ShaderUtil.allowAsyncCompilation;
+            var root = Keep(new GameObject("CreatureShaderProbe") { hideFlags = HideFlags.HideAndDontSave });
+            var rt = new RenderTexture(64, 64, 24);
+            Application.logMessageReceived += OnLog;
+            try
+            {
+                ShaderUtil.allowAsyncCompilation = false;
+                var camGo = new GameObject("cam") { hideFlags = HideFlags.HideAndDontSave };
+                camGo.transform.SetParent(root.transform);
+                camGo.transform.position = new Vector3(0f, 1f, -3f);
+                camGo.transform.LookAt(Vector3.zero);
+                var cam = camGo.AddComponent<Camera>();
+                cam.enabled = false;
+                cam.targetTexture = rt;
+                var lightGo = new GameObject("sun") { hideFlags = HideFlags.HideAndDontSave };
+                lightGo.transform.SetParent(root.transform);
+                lightGo.transform.rotation = Quaternion.Euler(50f, 30f, 0f);
+                var sun = lightGo.AddComponent<Light>();
+                sun.type = LightType.Directional;
+                sun.shadows = LightShadows.Soft;
+                var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                cube.hideFlags = HideFlags.HideAndDontSave;
+                cube.transform.SetParent(root.transform);
+                cube.GetComponent<MeshRenderer>().sharedMaterial = Keep(new Material(sh));
+                cam.Render();
+                cam.targetTexture = null;
+            }
+            finally
+            {
+                Application.logMessageReceived -= OnLog;
+                ShaderUtil.allowAsyncCompilation = async;
+                rt.Release();
+                Object.DestroyImmediate(rt);
+            }
+            Assert.IsEmpty(errors, string.Join("\n", errors));
+            Assert.IsFalse(ShaderUtil.ShaderHasError(sh), "ShaderHasError after the on-demand compile");
+        }
+
         [Test] public void CreatureMaterial_UsesCreatureShader()
         {
             var mat = AssetDatabase.LoadAssetAtPath<Material>(kMaterialPath);

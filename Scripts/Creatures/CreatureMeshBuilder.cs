@@ -22,7 +22,7 @@ public static class CreatureMeshBuilder
     const float kSnoutDrop = 0.15f;    // the snout's centre line drops by this fraction of head height
 
     const int kLegSegments = 8;
-    const float kKneeBlend = 0.35f;    // fraction of each limb bone blended at the knee (R12)
+    const float kKneeBlend = 0.45f;    // fraction of each limb bone blended at the knee (R12; 0.45 for R16 knee flexion)
     const int kKneeRings = 7;          // rings along the knee curve, ends included
     const float kShoulderBlob = 0.6f;  // the shoulder end extends this * upperRadius into the body
     const float kAnkleCap = 0.6f;      // rounded end past the foot point, * lowerRadius
