@@ -24,14 +24,12 @@ public sealed class CreatureSim
     readonly Vector3[] groundPoint;
     readonly int n;
     Vector3 heading;
-    uint rng;
 
     public CreatureSim(CreatureSpecies sp, IGroundProbe ground, Func<Vector3, Vector3> upAt,
                        Vector3 position, Vector3 forward, float sizeScale = 1f, int seed = 0)
     {
         Species = sp; this.ground = ground; this.upAt = upAt; SizeScale = sizeScale;
         n = sp.JointCount;
-        rng = (uint)seed * 2654435761u + 0x9E3779B9u;
         Joints = new Vector3[n]; Rotations = new Quaternion[n];
         GroundNormals = new Vector3[n]; groundPoint = new Vector3[n];
 

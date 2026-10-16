@@ -80,10 +80,13 @@ namespace TerrainGen.Tests
         [Test] public void Frames_Orthonormal_AndUpAlignedToGround()
         {
             sp = CreatureTestSpecies.Lizardish();
-            sphere = ScriptableObject.CreateInstance<SphereField>(); sphere.center = new Vector3(0, -100, 0); sphere.radius = 100f;
+            sphere = ScriptableObject.CreateInstance<SphereField>(); sphere.center = new Vector3(0, -3, 0); sphere.radius = 3f;
             Vector3 c = sphere.center;
             var sim = new CreatureSim(sp, new FieldGroundProbe(sphere), p => (p - c).normalized, Vector3.zero, Vector3.forward);
-            Circle(sim, 240);
+            // target on the surface ~69 degrees round the ball, so the body ends up well away from the pole
+            Vector3 target = c + new Vector3(0f, Mathf.Cos(1.2f), Mathf.Sin(1.2f)) * 3f;
+            for (int t = 0; t < 600; t++) sim.Tick(1f / 60f, target);
+            Assert.Greater(Vector3.Angle(Vector3.up, (sim.Joints[0] - c).normalized), 15f, "head must leave the pole");
             for (int i = 0; i < sim.Joints.Length; i++)
             {
                 Quaternion r = sim.Rotations[i];
