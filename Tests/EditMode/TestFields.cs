@@ -11,6 +11,14 @@ namespace TerrainGen.Tests
         protected override void OnValidate() { } // don't ping TerrainTuning from tests
     }
 
+    // Plane through the origin with outward unit normal `normal`. Positive (solid) below it.
+    public class TiltedPlaneField : DensityField
+    {
+        public Vector3 normal = Vector3.up;
+        public override float Sample(Vector3 p, float filterWidth) => -Vector3.Dot(p, normal);
+        protected override void OnValidate() { }
+    }
+
     // Solid ball; stands in for a smooth planet.
     public class SphereField : DensityField
     {

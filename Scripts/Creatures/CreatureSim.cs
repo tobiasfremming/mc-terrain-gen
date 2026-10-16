@@ -2,12 +2,13 @@ using System;
 using UnityEngine;
 
 // Procedural creature spine: a steered head drags a bend-limited chain that rides the ground.
-// Port of the 2D LizardSim. Leg state is added separately.
+// Port of the 2D LizardSim; legs live in CreatureLegs.
 public sealed class CreatureSim
 {
     const float kMaxDt = 0.1f;
     const float kGroundWindow = 0.5f;
     const float kGroundTau = 0.06f;
+    const float kMaxSink = 0.005f;
 
     public readonly CreatureSpecies Species;
     public readonly float SizeScale;
@@ -16,14 +17,20 @@ public sealed class CreatureSim
     public readonly Vector3[] GroundNormals;
     public EnclosureArea? Bounds;
 
+    public readonly LegState[] Legs;
+    public int StepsTaken;     // cumulative, for tests/stats
+
+    // Actual head speed (after the Bounds clamp), not the commanded one.
     public float Speed { get; private set; }
     public float Time { get; private set; }
 
     readonly IGroundProbe ground;
     readonly Func<Vector3, Vector3> upAt;
     readonly Vector3[] groundPoint;
+    readonly CreatureLegs legs;
     readonly int n;
     Vector3 heading;
+    float commanded;
 
     public CreatureSim(CreatureSpecies sp, IGroundProbe ground, Func<Vector3, Vector3> upAt,
                        Vector3 position, Vector3 forward, float sizeScale = 1f, int seed = 0)
@@ -46,10 +53,13 @@ public sealed class CreatureSim
             Joints[i] = g + u * clear;
         }
         UpdateFrames();
+        legs = new CreatureLegs(sp, ground, upAt, Joints, Rotations, sizeScale);
+        Legs = legs.State;
     }
 
     public void Tick(float dt, Vector3 target)
     {
+        if (!(dt > 0f)) dt = 0f;
         dt = Mathf.Clamp(dt, 0f, kMaxDt);
         int sub = Mathf.Max(1, Species.subSteps);
         float h = dt / sub;
@@ -59,6 +69,7 @@ public sealed class CreatureSim
 
     void SubStep(float dt, Vector3 target)
     {
+        if (!(dt > 0f)) return;
         Time += dt;
         var sp = Species;
 
@@ -73,7 +84,9 @@ public sealed class CreatureSim
         if (desired.sqrMagnitude > 1e-10f)
         {
             desired.Normalize();
-            float und = sp.undulationDeg * Mathf.Sin(2f * Mathf.PI * sp.undulationHz * Time);
+            // a standing creature does not wiggle: fade the sway in with travel speed
+            float sway = sp.speed > 1e-4f ? Mathf.Clamp01(commanded / (0.3f * sp.speed)) : 1f;
+            float und = sway * sp.undulationDeg * Mathf.Sin(2f * Mathf.PI * sp.undulationHz * Time);
             if (und != 0f) desired = Quaternion.AngleAxis(und, up) * desired;
             float ang = Vector3.SignedAngle(heading, desired, up);
             turnAngle = Mathf.Abs(ang);
@@ -81,9 +94,13 @@ public sealed class CreatureSim
             heading = Quaternion.AngleAxis(Mathf.Clamp(ang, -maxTurn, maxTurn), up) * heading;
         }
         float want = Mathf.Min(sp.speed, 2.5f * dist) * (1f - sp.turnSlowdown * turnAngle / 180f);
-        Speed = Mathf.MoveTowards(Speed, Mathf.Max(0f, want), sp.accel * dt);
-        head += heading * (Speed * dt);
+        commanded = Mathf.MoveTowards(commanded, Mathf.Max(0f, want), sp.accel * dt);
+        // A creature cannot outrun its legs: hold still while a planted foot is at full stretch.
+        commanded = Mathf.Min(commanded, Mathf.Min(sp.speed * legs.Throttle, legs.MaxSpeed));
+        Vector3 start = head;
+        head += heading * (commanded * dt);
         if (Bounds.HasValue) head = Bounds.Value.ClampToSafe(head);
+        Speed = (head - start).magnitude / dt;
         Joints[0] = head;
 
         // 2. chain
@@ -111,13 +128,20 @@ public sealed class CreatureSim
             Vector3 nrm = GroundNormals[i];
             if (ground.Probe(near, u, kGroundWindow * SizeScale, out Vector3 gp, out Vector3 gn))
             {
-                hs = Mathf.Lerp(hPrev, Vector3.Dot(gp - near, u), k);
+                float hProbe = Vector3.Dot(gp - near, u);
+                hs = Mathf.Lerp(hPrev, hProbe, k);
+                // smoothing may lag a rising slope, but never let the body sink more than 5 mm into it
+                if (hs < hProbe - kMaxSink) hs = hProbe - kMaxSink;
                 nrm = Norm(Vector3.Lerp(nrm, gn, k), u);
             }
             groundPoint[i] = near + u * hs;
             GroundNormals[i] = nrm;
             Joints[i] = groundPoint[i] + u * clear;
         }
+
+        // 4. legs (use the final joint positions; frames are refreshed first)
+        UpdateFrames();
+        StepsTaken += legs.Update(dt, Speed);
     }
 
     void UpdateFrames()
@@ -133,22 +157,13 @@ public sealed class CreatureSim
         }
     }
 
-    // Spine bones exact; leg bones are placeholders at the shoulder and eyes at the mirrored eye offset until legs exist.
+    // Spine, leg and eye bones in world space, in the species bone order.
     public void WriteBoneWorld(Matrix4x4[] dst, int offset)
     {
         var sp = Species;
         Vector3 s = Vector3.one * SizeScale;
         for (int i = 0; i < n; i++) dst[offset + i] = Matrix4x4.TRS(Joints[i], Rotations[i], s);
-
-        int legCount = sp.legs != null ? sp.legs.Length : 0;
-        for (int l = 0; l < legCount; l++)
-        {
-            LegSpec leg = sp.legs[l];
-            Vector3 so = leg.shoulderOffset; so.x *= leg.side;
-            Quaternion r = Rotations[leg.attachJoint];
-            Matrix4x4 m = Matrix4x4.TRS(Joints[leg.attachJoint] + r * so * SizeScale, r, s);
-            for (int part = 0; part < 3; part++) dst[offset + sp.LegBone(l, part)] = m;
-        }
+        legs.WriteBones(dst, offset);
 
         Quaternion hr = Rotations[Mathf.Min(1, n - 1)];
         Quaternion er = Rotations[sp.eyeJoint];
