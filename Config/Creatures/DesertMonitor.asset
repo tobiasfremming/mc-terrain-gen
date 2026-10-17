@@ -262,3 +262,17 @@ MonoBehaviour:
     sizeJitter: 0.08
     hueJitter: 0.01
     valueJitter: 0.06
+  climb:
+    canClimb: 1
+    maxSurfaceAngleDeg: 0
+    maxHeightBodyLengths: 0
+    speedFactor: 0
+    descentSpeedFactor: 0
+    clearanceFactor: 0
+    strideFactor: 0
+    stepTimeFactor: 0
+    liftFactor: 0
+    upRateDeg: 0
+    upSmoothJoints: 0
+    pitchLimitDeg: 0
+    minWidthFactor: 0

@@ -671,6 +671,74 @@ public class PlantScatter : MonoBehaviour
         }
     }
 
+    // ---- climbable plants (creature climbing) ----------------------------------
+
+    // One placed plant creatures may climb: its transform and its variant's LOD0 render mesh.
+    public struct Climbable
+    {
+        public Matrix4x4 trs;
+        public Vector3 pos;
+        public Mesh lod0;
+        public int species, variant;
+    }
+
+    // A species is climbable when it has a trunk (obstacleRadius > 0) and baked meshes.
+    static bool IsClimbable(PlantSpecies sp)
+        => sp != null && sp.obstacleRadius > 0f && sp.prototypes != null && sp.prototypes.variants != null && sp.prototypes.variants.Length > 0;
+
+    // Instances of climbable species in ALREADY-BUILT plots whose plant may reach into `world`, appended to
+    // `result` (ClimbableFlora gives each a MeshCollider of its own bark). The same rules as GetObstacles: main
+    // thread only, never requests a build (plots exist only around the eye), allocates nothing beyond growing
+    // `result`. A plant reaches as far as its prototype set's tallest variant at the species' largest scale.
+    public void GetClimbables(Bounds world, List<Climbable> result)
+    {
+        if (result == null) return;
+        int speciesCount = _table.Length;
+        if (speciesCount == 0 || _plots.Count == 0) return;
+        float pad = 0f;
+        for (int si = 0; si < speciesCount; si++)
+        {
+            PlantSpecies sp = _table[si].sp;
+            if (!IsClimbable(sp)) continue;
+            pad = Mathf.Max(pad, Mathf.Max(sp.prototypes.maxHeight, sp.obstacleRadius) * Mathf.Max(sp.scaleRange.x, sp.scaleRange.y));
+        }
+        if (pad <= 0f) return;
+
+        Vector3 lo = world.min, hi = world.max;
+        foreach (var kv in _plots)
+        {
+            Plot plot = kv.Value;
+            if (plot.items.Length == 0) continue;
+            int[] runs = plot.runStart;
+            if (runs.Length != speciesCount + 1) continue;
+            float pr = plot.reach + pad;
+            Vector3 c = plot.centre;
+            if (c.x + pr < lo.x || c.x - pr > hi.x || c.y + pr < lo.y || c.y - pr > hi.y || c.z + pr < lo.z || c.z - pr > hi.z) continue;
+
+            Instance[] items = plot.items;
+            for (int si = 0; si < speciesCount; si++)
+            {
+                int start = runs[si], end = runs[si + 1];
+                if (start == end) continue;
+                PlantSpecies sp = _table[si].sp;
+                if (!IsClimbable(sp)) continue;
+                float spPad = Mathf.Max(sp.prototypes.maxHeight, sp.obstacleRadius) * Mathf.Max(sp.scaleRange.x, sp.scaleRange.y);
+                for (int i = start; i < end; i++)
+                {
+                    Vector3 p = items[i].pos;
+                    float dx = p.x < lo.x ? lo.x - p.x : p.x > hi.x ? p.x - hi.x : 0f;
+                    float dy = p.y < lo.y ? lo.y - p.y : p.y > hi.y ? p.y - hi.y : 0f;
+                    float dz = p.z < lo.z ? lo.z - p.z : p.z > hi.z ? p.z - hi.z : 0f;
+                    if (dx * dx + dy * dy + dz * dz > spPad * spPad) continue;
+                    PlantVariant pv = sp.prototypes.Variant(items[i].variant);
+                    Mesh m = pv != null ? pv.Lod(0) : null;
+                    if (m == null) continue;
+                    result.Add(new Climbable { trs = items[i].trs, pos = p, lod0 = m, species = si, variant = items[i].variant });
+                }
+            }
+        }
+    }
+
     // ---- background building ------------------------------------------------
 
     void EnsureWorkers()

@@ -255,7 +255,9 @@ namespace TerrainGen.Tests
         // (e) the body does not cut into the ground by more than its half height (+ maxSink x scale);
         // (f) it gets across; (g) the spine's worst vertical bend between segments stays at most maxBendDeg -
         //     a guard at the measured value: the fold at a rim is deferred to the climbing design (ruling R28).
-        static void WalkAcrossHole(float centreY, string tag, float maxDangling, float maxSink, float maxBendDeg)
+        // climbingGround: the ground CreatureWorld gives a climbing species (the cache inside a CompositeSurfaceProbe
+        // that reads the same field) - every dug hole in the game goes through it (R30); same bounds.
+        static void WalkAcrossHole(float centreY, string tag, float maxDangling, float maxSink, float maxBendDeg, bool climbingGround = false)
         {
             var sp = UnityEditor.AssetDatabase.LoadAssetAtPath<CreatureSpecies>(CreatureWorldTests.kMonitorPath);
             var f = ScriptableObject.CreateInstance<PlaneWithSphereHoleField>();
@@ -263,8 +265,11 @@ namespace TerrainGen.Tests
             f.center = new Vector3(0.4f, centreY * f.radius, 0f);
             try
             {
-                var ground = CachedGroundProbe.ForCreature(new FieldGroundProbe(f), sp, sp.scale);
-                var sim = new CreatureSim(sp, ground, _ => Vector3.up, new Vector3(0f, 0f, -12f), Vector3.forward, sp.scale);
+                var fieldProbe = new FieldGroundProbe(f);
+                var ground = CachedGroundProbe.ForCreature(fieldProbe, sp, sp.scale);
+                IGroundProbe simGround = climbingGround ? new CompositeSurfaceProbe(ground, null, fieldProbe) : (IGroundProbe)ground;
+                var sim = new CreatureSim(sp, simGround, _ => Vector3.up, new Vector3(0f, 0f, -12f), Vector3.forward, sp.scale);
+                if (climbingGround) Assert.IsTrue(sim.CanClimb, "the climbing path is under test");
                 int n = sim.Joints.Length;
                 var prevY = new float[n]; var prevDy = new float[n];
                 var stepped = new bool[sim.Legs.Length]; // a leg's landing point exists from its first step on
@@ -329,6 +334,10 @@ namespace TerrainGen.Tests
         // (final fix round): overhang 61 deg, bowl 54 deg; bounds +2 deg.
         [Test] public void Hole_Overhanging_NoJitter_NoStretch() => WalkAcrossHole(-0.3f, "overhanging hole", 0.05f, 0.05f, 63f);
         [Test] public void Hole_Bowl_NoJitter_NoStretch() => WalkAcrossHole(0.3f, "bowl", 0.002f, 0.02f, 56f);
+        // R30: the same walks on the climbing ground. A hole shallower than half the monitor's body is walked
+        // (draped over) exactly as above, not climbed (offline harness: identical numbers to the plain walks).
+        [Test] public void Hole_Overhanging_ClimbingGround_NoJitter_NoStretch() => WalkAcrossHole(-0.3f, "overhanging hole, climbing ground", 0.05f, 0.05f, 63f, true);
+        [Test] public void Hole_Bowl_ClimbingGround_NoJitter_NoStretch() => WalkAcrossHole(0.3f, "bowl, climbing ground", 0.002f, 0.02f, 56f, true);
 
         // Final review Important 2: the spine's smooth read of a step cell (a dug rim) is a Hermite S between
         // its nodes; with the nodes' own slopes (steep at the brink) it overshot the rim by up to ~25 cm. With

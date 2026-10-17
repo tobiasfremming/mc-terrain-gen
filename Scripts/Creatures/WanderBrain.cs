@@ -18,6 +18,11 @@ public sealed class WanderBrain : ICreatureBrain
     bool looks;
     float lookSign;
 
+    // Pauses begun so far (a ClimbingBrain decides at a pause whether to climb).
+    public int PausesStarted { get; private set; }
+    // An obstacle the head may walk up to instead of around (the one being climbed); -1 = none.
+    public int IgnoreObstacle = -1;
+
     public WanderBrain(EnclosureArea area, int seed, float pauseMin = 0.5f, float pauseMax = 3f, float arriveRadius = 0.4f)
     {
         this.area = area; this.pauseMin = pauseMin; this.pauseMax = pauseMax; this.arriveRadius = arriveRadius;
@@ -49,6 +54,7 @@ public sealed class WanderBrain : ICreatureBrain
         float look = 2f * sim.SizeScale; // look-ahead of a steering target
         for (int i = 0; i < n; i++)
         {
+            if (i == IgnoreObstacle) continue;
             Vector3 c = area.obstacleCenters[i] - head; c -= up * Vector3.Dot(c, up);
             float R = (area.obstacleRadii[i] + area.keepOut) * kSkirt;
             float D = c.magnitude;
@@ -86,6 +92,7 @@ public sealed class WanderBrain : ICreatureBrain
             if (d.magnitude <= arriveRadius * sim.SizeScale)
             {
                 walking = false;
+                PausesStarted++;
                 pauseLen = pauseLeft = Mathf.Lerp(pauseMin, pauseMax, Rand());
                 looks = Rand() < kLookChance;
                 lookSign = Rand() < 0.5f ? -1f : 1f;

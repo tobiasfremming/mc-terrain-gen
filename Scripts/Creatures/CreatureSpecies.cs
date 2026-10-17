@@ -43,6 +43,46 @@ public class LegSpec
     public float KneeBlend => kneeBlend > 0f ? Mathf.Min(kneeBlend, 0.49f) : DefaultKneeBlend;
 }
 
+// Climbing (0 = default for every number). A climbing species follows the surface it stands on - steep
+// terrain (dug-hole walls, cliffs) and real collider geometry such as plant bark - with a per-joint up field
+// instead of gravity's up; see CreatureClimb. Without canClimb the creature walks as before.
+[Serializable]
+public struct ClimbSpec
+{
+    public bool canClimb;
+    [Tooltip("Steepest surface the creature walks on, degrees from gravity's up (90 = vertical, more = overhang). Past it the creature stops (Blocked).")]
+    public float maxSurfaceAngleDeg;
+    [Tooltip("Highest climb above the enclosure ground, in body lengths (the lab caps it further by the plant's height).")]
+    public float maxHeightBodyLengths;
+    [Tooltip("Speed factor on a vertical surface, going up / going down head-first.")]
+    public float speedFactor, descentSpeedFactor;
+    [Tooltip("Gait on a vertical surface, relative to walking: body clearance, stride (step threshold and overshoot), step time, foot lift.")]
+    public float clearanceFactor, strideFactor, stepTimeFactor, liftFactor;
+    [Tooltip("Fastest turn of a joint's up, degrees per second at scale 1 (Froude-scaled like the turn rate).")]
+    public float upRateDeg;
+    [Tooltip("Joints each side over which the surface normals are smoothed into the body's up field.")]
+    public int upSmoothJoints;
+    [Tooltip("Largest pitch bend between two body segments, degrees: a sharper fold is lifted away from the surface.")]
+    public float pitchLimitDeg;
+    [Tooltip("A climb goal needs a surface at least this many body widths across.")]
+    public float minWidthFactor;
+
+    // 140: a bulbous trunk's base (the lab Baobab's bark faces 103-137 deg near the ground) is climbed; a
+    // branch's or a slab's underside (150-180) is not
+    public float MaxSurfaceAngle => maxSurfaceAngleDeg > 0f ? maxSurfaceAngleDeg : 140f;
+    public float MaxHeightBodyLengths => maxHeightBodyLengths > 0f ? maxHeightBodyLengths : 1.5f;
+    public float SpeedFactor => speedFactor > 0f ? speedFactor : 0.5f;
+    public float DescentSpeedFactor => descentSpeedFactor > 0f ? descentSpeedFactor : 0.4f;
+    public float ClearanceFactor => clearanceFactor > 0f ? clearanceFactor : 0.65f;
+    public float StrideFactor => strideFactor > 0f ? strideFactor : 0.6f;
+    public float StepTimeFactor => stepTimeFactor > 0f ? stepTimeFactor : 1.2f;
+    public float LiftFactor => liftFactor > 0f ? liftFactor : 0.6f;
+    public float UpRateDeg => upRateDeg > 0f ? upRateDeg : 270f;
+    public int UpSmoothJoints => upSmoothJoints > 0 ? upSmoothJoints : 3;
+    public float PitchLimitDeg => pitchLimitDeg > 0f ? pitchLimitDeg : 25f;
+    public float MinWidthFactor => minWidthFactor > 0f ? minWidthFactor : 1.5f;
+}
+
 [Serializable]
 public struct CreatureLook
 {
@@ -77,6 +117,7 @@ public class CreatureSpecies : ScriptableObject
     public float eyeRadius;
     public int ringSegments = 16, ringsPerSegment = 3;
     public CreatureLook look;
+    public ClimbSpec climb;
 
     // Raised when the asset is edited (Inspector, play mode included): the creature lab respawns the
     // species at its new scale.

@@ -365,4 +365,21 @@ public sealed class CachedGroundProbe : IGroundProbe
     }
 
     public void Clear() { for (int s = 0; s < valid.Length; s++) valid[s] = false; version++; }
+
+    // The smooth patch's height under (x, z) from the nodes already known, without probing anything and
+    // without touching the cache's state (a read-only look for gating decisions: the creature's own queries
+    // stay exactly what they would have been). False when a node of the cell is not cached.
+    public bool Peek(float x, float z, out float y)
+    {
+        float gx = x * invCell, gz = z * invCell;
+        int ix = Mathf.FloorToInt(gx), iz = Mathf.FloorToInt(gz);
+        y = 0f;
+        int s00 = (ix & mask) + (iz & mask) * size, s10 = ((ix + 1) & mask) + (iz & mask) * size;
+        int s01 = (ix & mask) + ((iz + 1) & mask) * size, s11 = ((ix + 1) & mask) + ((iz + 1) & mask) * size;
+        if (!Known(s00, ix, iz) || !Known(s10, ix + 1, iz) || !Known(s01, ix, iz + 1) || !Known(s11, ix + 1, iz + 1)) return false;
+        y = Patch(gx - ix, gz - iz, s00, s10, s01, s11);
+        return true;
+    }
+
+    bool Known(int slot, int ix, int iz) => valid[slot] && keyX[slot] == ix && keyZ[slot] == iz;
 }

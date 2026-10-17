@@ -1,4 +1,4 @@
-// Plant vertex colour -> linear albedo. The ONE place this conversion lives.
+// Plant vertex colour -> linear albedo. The ONE place plants convert it.
 //
 // PlantMeshBuilder writes the profile's Inspector colours (authored in sRGB,
 // like every Color field) to the mesh as raw Color32 bytes. Unity converts
@@ -15,20 +15,16 @@
 // the sampler already decodes.
 //
 // Plain HLSL with no pipeline includes, so both the URP and the classic CG
-// shader can include it. Exact sRGB curve, the same one Color.linear uses.
+// shader can include it. The curve itself is MC_SrgbToLinear (SrgbColor.hlsl),
+// shared with the grass blade colours.
 #ifndef MC_PLANT_COLOR_INCLUDED
 #define MC_PLANT_COLOR_INCLUDED
 
+#include "SrgbColor.hlsl"
+
 float3 PlantVertexAlbedo(float3 srgb)
 {
-#if defined(UNITY_COLORSPACE_GAMMA)
-    return srgb;    // gamma project: shading happens in sRGB, nothing to decode
-#else
-    float3 c = saturate(srgb);
-    float3 lo = c / 12.92;
-    float3 hi = pow((c + 0.055) / 1.055, 2.4);
-    return lerp(hi, lo, step(c, 0.04045));
-#endif
+    return MC_SrgbToLinear(srgb);
 }
 
 #endif

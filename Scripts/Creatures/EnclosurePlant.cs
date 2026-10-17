@@ -13,6 +13,11 @@ public sealed class EnclosurePlant : MonoBehaviour
 
     readonly Matrix4x4[] matrix = new Matrix4x4[1];
     Bounds worldBounds;
+    // Climbing: the bark of the drawn LOD0 mesh as a collider in the creatures' surface registry (its own
+    // render triangles and normals, at this transform; see SurfaceMeshCache.BarkOnly).
+    CreatureSurfaces registry;
+    MeshCollider bark;
+    internal MeshCollider BarkCollider => bark;
 
     // The trunk's planar radius as an obstacle (world units): the widest bark vertex between 10% and 28% of
     // the plant's height (above the root flare, below the branches), from the plant's axis, times 1.5.
@@ -37,7 +42,27 @@ public sealed class EnclosurePlant : MonoBehaviour
         Height = b.max.y * scale;
         worldBounds = new Bounds(transform.position + transform.rotation * (b.center * scale), Vector3.one * (b.size.magnitude * scale));
         TrunkRadius = MeasureTrunk(mesh, b) * scale;
+        RegisterBark(mesh);
     }
+
+    void RegisterBark(Mesh mesh)
+    {
+        CreatureSurfaces r = CreatureSurfaces.Current;
+        if (r != registry) { ReleaseBark(); registry = r; }
+        if (registry == null || mesh == null) return;
+        SurfaceMeshCache.Entry e = SurfaceMeshCache.BarkOnly(mesh);
+        Vector3 s = Vector3.one * scale;
+        if (bark == null) bark = registry.CreateProxy(name + " (bark)", e, transform.position, transform.rotation, s);
+        else registry.MoveProxy(bark, e, transform.position, transform.rotation, s);
+    }
+
+    void ReleaseBark()
+    {
+        if (registry != null && bark != null) registry.DestroyProxy(bark);
+        bark = null; registry = null;
+    }
+
+    void OnDisable() => ReleaseBark();
 
     static float MeasureTrunk(Mesh mesh, Bounds b)
     {
@@ -62,6 +87,7 @@ public sealed class EnclosurePlant : MonoBehaviour
         Mesh mesh = pv != null ? pv.Lod(0) : null;
         if (mesh == null) return;
         if (transform.hasChanged) { Refresh(); transform.hasChanged = false; }
+        else if (CreatureSurfaces.Current != registry || (bark == null && registry == null && CreatureSurfaces.Current != null)) RegisterBark(mesh);
         Draw(mesh, 0, set.barkMaterial);
         if (mesh.subMeshCount > 1) Draw(mesh, 1, set.leafMaterial);
     }

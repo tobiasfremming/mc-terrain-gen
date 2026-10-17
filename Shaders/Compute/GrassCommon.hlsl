@@ -10,7 +10,7 @@ struct Blade
     float3 pos;      // world-space root
     uint normalOct;  // oct-encoded blade up (2 x 16 bit)
     uint seed;       // low 24 bits random, high 8 bits baked AO
-    uint colors;     // RGB565 base colour (low 16) | RGB565 tip colour (high 16), biome-blended at scatter time
+    uint colors;     // RGB565 base colour (low 16) | RGB565 tip colour (high 16), biome-blended at scatter time; sRGB, decoded in Grass.shader
 };
 
 // ------------------------------------------------------------------ hashing
