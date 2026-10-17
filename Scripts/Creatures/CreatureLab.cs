@@ -29,7 +29,7 @@ public sealed class CreatureLab : MonoBehaviour
     const float kProbeWindow = 6f;
     const float kGoldenAngle = 2.39996323f;
     const float kViewGap = 4f;          // the player starts this far outside the nearest curb, facing it
-    const float kEnclosureGap = 4f;     // free ground between neighbouring curbs
+    internal const float kEnclosureGap = 4f; // free ground between neighbouring curbs
     const float kSunSide = 35f;         // the player stands this far round from the sun's side (modelling light)
 
     // The enclosure for a species whose largest individual has size scale maxScale: 2 body lengths of
@@ -149,6 +149,7 @@ public sealed class CreatureLab : MonoBehaviour
         float slotSpacing = Mathf.Max(spacing, 2f * maxR + kEnclosureGap);
         float slotRadius = Mathf.Max(arcRadius, maxR + kViewGap + searchRadius);
         var sb = new System.Text.StringBuilder("[CreatureLab] placed:");
+        var placed = new List<Vector4>(n); // centre, radius of every enclosure placed so far
         Vector3 nearestCentre = default; float nearestRadius = 0f, nearestDist = float.MaxValue;
         for (int k = 0; k < n; k++)
         {
@@ -161,7 +162,8 @@ public sealed class CreatureLab : MonoBehaviour
             float radius = EnclosureRadius(sp, maxScale);
 
             Vector3 slot = ArcSlot(origin, fwd, up, k, n, slotSpacing, slotRadius);
-            Vector3 center = FlattestSpot(ground, slot, up, radius, out float flatness);
+            Vector3 center = FlattestSpot(ground, slot, up, radius, searchRadius, placed, out float flatness);
+            placed.Add(new Vector4(center.x, center.y, center.z, radius));
             Vector3 cUp = PlanetGravity.UpAt(center);
 
             var go = new GameObject("Enclosure " + sp.name);
@@ -255,17 +257,23 @@ public sealed class CreatureLab : MonoBehaviour
     }
 
     // The flattest of kCandidates spots (sunflower pattern) within searchRadius of slot: flatness is the
-    // lowest dot(normal, up) over kRimProbes probes on the enclosure rim. Returns the spot's ground point.
-    Vector3 FlattestSpot(IGroundProbe ground, Vector3 slot, Vector3 up, float radius, out float best)
+    // lowest dot(normal, up) over kRimProbes probes on the enclosure rim. Candidates that would bring the curb
+    // within kEnclosureGap of an enclosure already placed (xyz centre, w radius) are skipped: neighbouring
+    // slots are closer than two search radii, so two enclosures drawn to the same flat patch overlapped. If
+    // every candidate is too close, the slot is pushed out of its neighbours. Returns the spot's ground point.
+    internal static Vector3 FlattestSpot(IGroundProbe ground, Vector3 slot, Vector3 up, float radius, float searchRadius,
+                                         List<Vector4> placed, out float best)
     {
         Vector3 t0 = Vector3.Cross(up, Mathf.Abs(up.y) < 0.99f ? Vector3.up : Vector3.right).normalized;
         Vector3 t1 = Vector3.Cross(up, t0);
         best = -2f;
         Vector3 bestP = slot;
+        bool found = false;
         for (int i = 0; i < kCandidates; i++)
         {
             float r = searchRadius * Mathf.Sqrt(i / (float)kCandidates), a = i * kGoldenAngle;
             Vector3 c = slot + t0 * (r * Mathf.Cos(a)) + t1 * (r * Mathf.Sin(a));
+            if (Crowds(c, up, radius, placed) >= 0) continue;
             if (!ground.Probe(c, up, kProbeWindow, out Vector3 cg, out _)) continue;
             float flat = 2f;
             for (int j = 0; j < kRimProbes; j++)
@@ -275,8 +283,35 @@ public sealed class CreatureLab : MonoBehaviour
                 flat = ground.Probe(q, up, kProbeWindow, out _, out Vector3 nrm) ? Mathf.Min(flat, Vector3.Dot(nrm, up)) : -1f;
                 if (flat < best) break;
             }
-            if (flat > best) { best = flat; bestP = cg; }
+            if (flat > best) { best = flat; bestP = cg; found = true; }
         }
-        return bestP;
+        if (found) return bestP;
+        // no free candidate answered: push the slot clear of every enclosure it crowds, then ground it
+        Vector3 p = slot;
+        for (int pass = 0; pass < 4; pass++)
+        {
+            int k = Crowds(p, up, radius, placed);
+            if (k < 0) break;
+            Vector3 c = placed[k], d = Vector3.ProjectOnPlane(p - c, up);
+            if (d.sqrMagnitude < 1e-6f) d = t0;
+            p = c + Vector3.Project(p - c, up) + d.normalized * (placed[k].w + radius + kEnclosureGap + 0.01f);
+        }
+        if (ground.Probe(p, up, kProbeWindow, out Vector3 pg, out Vector3 pn)) { p = pg; best = Vector3.Dot(pn, up); }
+        return p;
+    }
+
+    // Index of the first placed enclosure a curb of the given radius centred at c would come within
+    // kEnclosureGap of (planar), or -1.
+    static int Crowds(Vector3 c, Vector3 up, float radius, List<Vector4> placed)
+    {
+        if (placed == null) return -1;
+        for (int k = 0; k < placed.Count; k++)
+        {
+            Vector4 e = placed[k];
+            Vector3 d = Vector3.ProjectOnPlane(c - (Vector3)e, up);
+            float need = e.w + radius + kEnclosureGap;
+            if (d.sqrMagnitude < need * need) return k;
+        }
+        return -1;
     }
 }

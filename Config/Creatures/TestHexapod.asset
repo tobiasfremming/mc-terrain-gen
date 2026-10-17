@@ -1,0 +1,216 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39d3296fcbe55a0429fe582610f52ec3, type: 3}
+  m_Name: TestHexapod
+  m_EditorClassIdentifier: TerrainGen.Runtime::CreatureSpecies
+  scale: 1
+  spacing: 0.05
+  joints:
+  - halfWidth: 0.03
+    halfHeight: 0.0225
+    clearance: 0.11
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.04
+    halfHeight: 0.03
+    clearance: 0.11
+    bendLimitDeg: 20
+    rigid: 1
+  - halfWidth: 0.048
+    halfHeight: 0.036
+    clearance: 0.11
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.05
+    halfHeight: 0.0375
+    clearance: 0.11
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.058
+    halfHeight: 0.0435
+    clearance: 0.11
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.066
+    halfHeight: 0.0495
+    clearance: 0.11
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.062
+    halfHeight: 0.0465
+    clearance: 0.11
+    bendLimitDeg: 20
+    rigid: 0
+  - halfWidth: 0.04
+    halfHeight: 0.03
+    clearance: 0.11
+    bendLimitDeg: 20
+    rigid: 0
+  headCapLength: 0.035
+  tailTipLength: 0.035
+  legs:
+  - attachJoint: 2
+    side: -1
+    shoulderOffset: {x: 0.0384, y: -0.01, z: 0}
+    restOffset: {x: 0.21, y: 0, z: 0.07}
+    upperLength: 0.12
+    lowerLength: 0.14
+    upperRadius: 0.016
+    lowerRadius: 0.011
+    pole: {x: 0, y: 1, z: 0}
+    stepThreshold: 0.08
+    stepDuration: 0.12
+    stepLift: 0.04
+    overshoot: 0.05
+    gaitGroup: 0
+    footLength: 0.03
+    toeCount: 2
+    forwardSwingLimitDeg: 0
+    backSwingLimitDeg: 0
+    kneeRangeDeg: 0
+    kneeFlexDeg: 0
+    kneeBlend: 0
+  - attachJoint: 2
+    side: 1
+    shoulderOffset: {x: 0.0384, y: -0.01, z: 0}
+    restOffset: {x: 0.21, y: 0, z: 0.07}
+    upperLength: 0.12
+    lowerLength: 0.14
+    upperRadius: 0.016
+    lowerRadius: 0.011
+    pole: {x: 0, y: 1, z: 0}
+    stepThreshold: 0.08
+    stepDuration: 0.12
+    stepLift: 0.04
+    overshoot: 0.05
+    gaitGroup: 1
+    footLength: 0.03
+    toeCount: 2
+    forwardSwingLimitDeg: 0
+    backSwingLimitDeg: 0
+    kneeRangeDeg: 0
+    kneeFlexDeg: 0
+    kneeBlend: 0
+  - attachJoint: 4
+    side: -1
+    shoulderOffset: {x: 0.0464, y: -0.01, z: 0}
+    restOffset: {x: 0.21, y: 0, z: 0}
+    upperLength: 0.12
+    lowerLength: 0.14
+    upperRadius: 0.016
+    lowerRadius: 0.011
+    pole: {x: 0, y: 1, z: 0}
+    stepThreshold: 0.08
+    stepDuration: 0.12
+    stepLift: 0.04
+    overshoot: 0.05
+    gaitGroup: 1
+    footLength: 0.03
+    toeCount: 2
+    forwardSwingLimitDeg: 0
+    backSwingLimitDeg: 0
+    kneeRangeDeg: 0
+    kneeFlexDeg: 0
+    kneeBlend: 0
+  - attachJoint: 4
+    side: 1
+    shoulderOffset: {x: 0.0464, y: -0.01, z: 0}
+    restOffset: {x: 0.21, y: 0, z: 0}
+    upperLength: 0.12
+    lowerLength: 0.14
+    upperRadius: 0.016
+    lowerRadius: 0.011
+    pole: {x: 0, y: 1, z: 0}
+    stepThreshold: 0.08
+    stepDuration: 0.12
+    stepLift: 0.04
+    overshoot: 0.05
+    gaitGroup: 0
+    footLength: 0.03
+    toeCount: 2
+    forwardSwingLimitDeg: 0
+    backSwingLimitDeg: 0
+    kneeRangeDeg: 0
+    kneeFlexDeg: 0
+    kneeBlend: 0
+  - attachJoint: 6
+    side: -1
+    shoulderOffset: {x: 0.0496, y: -0.01, z: 0}
+    restOffset: {x: 0.21, y: 0, z: -0.08}
+    upperLength: 0.12
+    lowerLength: 0.14
+    upperRadius: 0.016
+    lowerRadius: 0.011
+    pole: {x: 0, y: 1, z: 0}
+    stepThreshold: 0.08
+    stepDuration: 0.12
+    stepLift: 0.04
+    overshoot: 0.05
+    gaitGroup: 0
+    footLength: 0.03
+    toeCount: 2
+    forwardSwingLimitDeg: 0
+    backSwingLimitDeg: 0
+    kneeRangeDeg: 0
+    kneeFlexDeg: 0
+    kneeBlend: 0
+  - attachJoint: 6
+    side: 1
+    shoulderOffset: {x: 0.0496, y: -0.01, z: 0}
+    restOffset: {x: 0.21, y: 0, z: -0.08}
+    upperLength: 0.12
+    lowerLength: 0.14
+    upperRadius: 0.016
+    lowerRadius: 0.011
+    pole: {x: 0, y: 1, z: 0}
+    stepThreshold: 0.08
+    stepDuration: 0.12
+    stepLift: 0.04
+    overshoot: 0.05
+    gaitGroup: 1
+    footLength: 0.03
+    toeCount: 2
+    forwardSwingLimitDeg: 0
+    backSwingLimitDeg: 0
+    kneeRangeDeg: 0
+    kneeFlexDeg: 0
+    kneeBlend: 0
+  speed: 0.6
+  turnRateDeg: 160
+  accel: 3
+  turnSlowdown: 0.5
+  undulationDeg: 0
+  undulationHz: 1
+  gaitSwayDeg: 0
+  gaitRollDeg: 0
+  subSteps: 2
+  eyeJoint: 1
+  eyeOffset: {x: 0.028, y: 0.014, z: 0.01}
+  eyeRadius: 0.009
+  ringSegments: 16
+  ringsPerSegment: 3
+  look:
+    dorsal: {r: 0.22, g: 0.17, b: 0.13, a: 1}
+    flank: {r: 0.27, g: 0.2, b: 0.15, a: 1}
+    belly: {r: 0.42, g: 0.34, b: 0.26, a: 1}
+    pattern: {r: 0.78, g: 0.56, b: 0.26, a: 1}
+    patternType: 3
+    patternScale: 18
+    patternContrast: 0.55
+    patternSoftness: 0.3
+    spotScale: 0.1
+    smoothness: 0.75
+    rimStrength: 0.5
+    subsurface: 0.1
+    sizeJitter: 0.08
+    hueJitter: 0.01
+    valueJitter: 0.06
