@@ -79,6 +79,7 @@ public sealed class OctopusBody
                 backWm[a] += backW[a * nw + j] * backW[a * nw + j] * im;
             }
             Arms[a] = new TentacleChain(spec.arm, position + rotation * r, rotation * armRestRot[a], SizeScale);
+            Arms[a].TwistFreeFrom = spec.WebDepth * spec.arm.Length / spec.arm.Spacing;
         }
 
         eyeRest = new Vector3[2]; eyeRot = new Quaternion[2];
@@ -178,24 +179,124 @@ public sealed class OctopusBody
     {
         if (!(dt > 0f)) return;
         dt = Mathf.Min(dt, kMaxDt);
+        if (Asleep)
+        {
+            if (!SleepStillValid()) Wake();
+            else
+            {
+                // asleep: nothing moves, the soft bones still breathe (5 cluster fits, a few microseconds)
+                Time += dt;
+                Lattice.AdvanceBreath(dt);
+                Lattice.FitAll();
+                return;
+            }
+        }
         float h = dt / subSteps;
         for (int s = 0; s < subSteps; s++) SubStep(h);
         Lattice.FitAll();
         for (int a = 0; a < ArmCount; a++) Arms[a].UpdateFrames(dt);
+        UpdateSleep();
     }
+
+    // ------------------------------------------------------------------ sleep
+    // A whole-body sleep, not per arm: an anchored arm's constraint impulses are what hold the body up, so a
+    // load-bearing arm cannot sleep on its own. The body falls asleep when every particle has moved less than
+    // SleepSpeed x sizeScale (m/s) for SleepFrames frames with no travelling sinus running, and wakes on any
+    // change that could move it: a particle moved from outside, a pin added, removed or moved, a muscle,
+    // tone, sinus or shape target changed, gravity changed. The next tick after waking simulates as usual.
+    public bool AllowSleep = true;
+    public const float SleepSpeed = 0.002f;
+    public const int SleepFrames = 30;
+    public bool Asleep { get; private set; }
+    int calmFrames;
+    Vector3[] sleepX;            // lattice then arm particles at sleep (allocated on the first sleep only)
+    float[] sleepSig;            // per arm control signature at sleep
+    Vector3 sleepGravity;
+
+    public void Wake() { Asleep = false; calmFrames = 0; }
+
+    void UpdateSleep()
+    {
+        if (!AllowSleep) { calmFrames = 0; return; }
+        float lim = SleepSpeed * SizeScale;
+        // the last sub-step's displacement (X - Prev), as a speed
+        float maxD2 = 0f;
+        Vector3[] lx = Lattice.X, lp = Lattice.Prev;
+        for (int i = 0; i < SoftLattice.Count; i++) maxD2 = Mathf.Max(maxD2, (lx[i].x - lp[i].x) * (lx[i].x - lp[i].x) + (lx[i].y - lp[i].y) * (lx[i].y - lp[i].y) + (lx[i].z - lp[i].z) * (lx[i].z - lp[i].z));
+        bool sinus = false;
+        for (int a = 0; a < ArmCount; a++)
+        {
+            TentacleChain ch = Arms[a];
+            if (ch.SinusAmount != 0f) sinus = true;
+            Vector3[] x = ch.X, p = ch.Prev;
+            for (int k = 1; k < ch.N; k++) maxD2 = Mathf.Max(maxD2, (x[k].x - p[k].x) * (x[k].x - p[k].x) + (x[k].y - p[k].y) * (x[k].y - p[k].y) + (x[k].z - p[k].z) * (x[k].z - p[k].z));
+        }
+        float h = lastSubStep;
+        if (sinus || h <= 0f || maxD2 > lim * lim * h * h) { calmFrames = 0; return; }
+        if (++calmFrames < SleepFrames) return;
+        FallAsleep();
+    }
+
+    void FallAsleep()
+    {
+        int n = SoftLattice.Count;
+        for (int a = 0; a < ArmCount; a++) n += Arms[a].N;
+        if (sleepX == null) { sleepX = new Vector3[n]; sleepSig = new float[ArmCount]; }
+        int o = 0;
+        for (int i = 0; i < SoftLattice.Count; i++) { sleepX[o++] = Lattice.X[i]; Lattice.Prev[i] = Lattice.X[i]; }
+        for (int a = 0; a < ArmCount; a++)
+        {
+            TentacleChain ch = Arms[a];
+            for (int k = 0; k < ch.N; k++) { sleepX[o++] = ch.X[k]; ch.Prev[k] = ch.X[k]; }
+            sleepSig[a] = Signature(ch);
+        }
+        sleepGravity = gravity;
+        Asleep = true;
+    }
+
+    bool SleepStillValid()
+    {
+        if (!AllowSleep || !Same(gravity, sleepGravity)) return false;
+        int o = 0;
+        for (int i = 0; i < SoftLattice.Count; i++) if (!Same(Lattice.X[i], sleepX[o++])) return false;
+        for (int a = 0; a < ArmCount; a++)
+        {
+            TentacleChain ch = Arms[a];
+            for (int k = 0; k < ch.N; k++) if (!Same(ch.X[k], sleepX[o++])) return false;
+            if (Signature(ch) != sleepSig[a] || ch.SinusAmount != 0f) return false;
+        }
+        return true;
+    }
+
+    // exact (Vector3 == is approximate, ~1e-5 m)
+    static bool Same(Vector3 a, Vector3 b) => a.x == b.x && a.y == b.y && a.z == b.z;
+
+    // Everything an arm is told to do, folded into one number (exact comparison: any change wakes).
+    static float Signature(TentacleChain ch)
+    {
+        float s = ch.Tone * 1.618f + ch.SinusAmount * 2.718f + ch.ExtraDamping * 0.577f;
+        for (int k = 0; k < ch.N - 1; k++)
+        {
+            Vector3 b = ch.BendTarget[k];
+            s += (ch.LengthTarget[k] + b.x * 0.31f + b.y * 0.47f + b.z * 0.73f) * (k + 1);
+        }
+        for (int k = 1; k < ch.N; k++)
+            if (ch.Pinned[k]) { Vector3 p = ch.PinPoint[k], nn = ch.PinNormal[k]; s += (k + 0.5f) * (p.x + 3.1f * p.y + 7.3f * p.z + nn.x + 1.7f * nn.y + 2.9f * nn.z + 11f); }
+        return s;
+    }
+
+    float lastSubStep;
 
     void SubStep(float h)
     {
         Time += h;
+        lastSubStep = h;
         Vector3 refVel = Velocity(h);
         Lattice.Integrate(h, refVel);
-        Vector3 axisOrigin = HeadCentre, axisDir = OctoMath.Rotate(Orientation, 0f, 1f, 0f);
-        for (int a = 0; a < ArmCount; a++)
-        {
-            TentacleChain ch = Arms[a];
-            ch.AxisOrigin = axisOrigin; ch.AxisDir = axisDir;
-            ch.Integrate(h, refVel);
-        }
+        // Free arm segments relax their twist to the transported frame (the oral side stays oral, so an arm
+        // curls toward its suckers); only pins turn the suckers. A twist target that follows the body axis fed
+        // back into the curl direction and kept toned arms oscillating forever (0.2 m/s at the tips).
+        for (int a = 0; a < ArmCount; a++) Arms[a].Integrate(h, refVel);
         for (int it = 0; it < iterations; it++)
         {
             for (int a = 0; a < ArmCount; a++)

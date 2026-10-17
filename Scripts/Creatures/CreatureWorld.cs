@@ -8,6 +8,8 @@ using UnityEngine;
 public sealed class CreatureWorld : MonoBehaviour
 {
     public Material creatureMaterial;
+    [Tooltip("Material for cephalopod species (CreatureOctopus.shader); creatureMaterial when empty.")]
+    public Material octopusMaterial;
 
     // Where climbing creatures find surfaces other than the terrain. Auto: this project - the terrain is the
     // density field, plants and CreatureSurfaceMesh objects get colliders of their own render meshes in a
@@ -27,6 +29,7 @@ public sealed class CreatureWorld : MonoBehaviour
     readonly List<CreatureRenderer> renderers = new List<CreatureRenderer>();
     readonly List<CachedGroundProbe> caches = new List<CachedGroundProbe>();
     readonly List<IGroundProbe> simGrounds = new List<IGroundProbe>(); // per sim, parallel to sims
+    readonly List<ICreatureBody> bodies = new List<ICreatureBody>();   // self-ticking bodies (octopus)
     readonly Stopwatch watch = new Stopwatch();
     CreatureSurfaces surfaces;
     bool ownsSurfaces;
@@ -40,6 +43,8 @@ public sealed class CreatureWorld : MonoBehaviour
     DensityField boundField;       // the physics field terrainProbe was last pointed at
 
     public IReadOnlyList<CreatureSim> Sims => sims;
+    // Bodies that tick themselves (non-spine plans: OctopusCreature).
+    public IReadOnlyList<ICreatureBody> Bodies => bodies;
     internal ICreatureBrain BrainOf(int i) => brains[i];
     internal CreatureSurfaces SurfacesIfAny => surfaces;
     public double LastSimMs { get; private set; }
@@ -183,17 +188,38 @@ public sealed class CreatureWorld : MonoBehaviour
         simGrounds.Add(simGround);
         var sim = new CreatureSim(sp, simGround, upAt, position, forward, inst.sizeScale, seed) { Bounds = bounds };
 
-        int r = species.IndexOf(sp);
-        if (r < 0)
-        {
-            species.Add(sp);
-            renderers.Add(new CreatureRenderer(sp, creatureMaterial));
-            r = renderers.Count - 1;
-        }
-        renderers[r].Add(sim, inst);
+        RendererFor(sp).Add(sim, inst);
         sims.Add(sim);
         brains.Add(brain);
         return sim;
+    }
+
+    // A self-ticking body (any plan): ticked in TickAll, drawn by its species' renderer.
+    public void AddBody(ICreatureBody body, CreatureInstance inst)
+    {
+        if (body == null) throw new ArgumentNullException(nameof(body));
+        RendererFor(body.Species).Add(body, inst);
+        bodies.Add(body);
+    }
+
+    public bool RemoveBody(ICreatureBody body)
+    {
+        int i = bodies.IndexOf(body);
+        if (i < 0) return false;
+        int r = species.IndexOf(body.Species);
+        if (r >= 0) renderers[r].Remove(body);
+        bodies.RemoveAt(i);
+        return true;
+    }
+
+    CreatureRenderer RendererFor(CreatureSpecies sp)
+    {
+        int r = species.IndexOf(sp);
+        if (r >= 0) return renderers[r];
+        species.Add(sp);
+        Material m = sp.bodyPlan == CreatureBodyPlan.Cephalopod && octopusMaterial != null ? octopusMaterial : creatureMaterial;
+        renderers.Add(new CreatureRenderer(sp, m));
+        return renderers[renderers.Count - 1];
     }
 
     // Removes a creature: no longer ticked or drawn. False if it is not in this world.
@@ -255,6 +281,7 @@ public sealed class CreatureWorld : MonoBehaviour
                 Vector3 target = brain != null ? brain.Target(sim, dt) : sim.Joints[0];
                 sim.Tick(dt, target);
             }
+            for (int i = 0; i < bodies.Count; i++) bodies[i].Tick(dt);
         }
         finally { backfaces.Dispose(); }
         watch.Stop();
@@ -269,7 +296,7 @@ public sealed class CreatureWorld : MonoBehaviour
     void OnDestroy()
     {
         for (int i = 0; i < renderers.Count; i++) renderers[i].Dispose();
-        renderers.Clear(); species.Clear(); sims.Clear(); brains.Clear(); caches.Clear(); simGrounds.Clear();
+        renderers.Clear(); species.Clear(); sims.Clear(); brains.Clear(); caches.Clear(); simGrounds.Clear(); bodies.Clear();
         if (edits != null) { edits.RegionModified -= OnTerrainEdited; edits = null; }
         if (ownsSurfaces && surfaces != null) surfaces.Dispose();
         surfaces = null;

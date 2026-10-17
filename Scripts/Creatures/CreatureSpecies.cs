@@ -3,6 +3,10 @@ using UnityEngine;
 
 public enum CreaturePattern { None = 0, Bands = 1, Spots = 2, Stripes = 3, BandedSpots = 4 }
 
+// Spine: a CreatureSim (spine, legs). Cephalopod: an OctopusCreature built from `cephalopod`; the spine
+// fields are then unused.
+public enum CreatureBodyPlan { Spine = 0, Cephalopod = 1 }
+
 [Serializable]
 public struct SpineJoint
 {
@@ -117,6 +121,8 @@ public class CreatureSpecies : ScriptableObject
     public float eyeRadius;
     public int ringSegments = 16, ringsPerSegment = 3;
     public CreatureLook look;
+    public CreatureBodyPlan bodyPlan = CreatureBodyPlan.Spine;
+    public CephalopodSpec cephalopod;
     public ClimbSpec climb;
 
     // Raised when the asset is edited (Inspector, play mode included): the creature lab respawns the
@@ -150,6 +156,7 @@ public class CreatureSpecies : ScriptableObject
     // null when valid, else the first problem found.
     public string Validate()
     {
+        if (bodyPlan == CreatureBodyPlan.Cephalopod) return cephalopod.Validate();
         int n = JointCount;
         if (n < 2) return "joints: need at least 2 spine joints";
         if (!(spacing > 0f)) return "spacing must be > 0";

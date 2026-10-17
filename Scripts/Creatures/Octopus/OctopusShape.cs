@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 // Rest geometry of a cephalopod, in body space at scale 1, shared by the soft lattice (OctopusBody) and
@@ -32,7 +33,9 @@ internal static class OctopusShape
         new[] { 4, 5, 6, 7, 8, 9, 10, 11, 13 },
         new[] { 8, 9, 10, 11, 13 },
     };
-    public static readonly float[] ClusterStiffnessPos = { 0.15f, 0f, 0.45f, 0.7f, 1f };
+    public static readonly float[] ClusterStiffnessPos = { 0f, 0f, 0.7f, 0.9f, 1f }; // crown and head firm (they carry the arms), mantle soft
+    // relative lattice masses: ring 0 (crown), ring 1 (neck), ring 2 (mantle), head front, apex
+    internal static readonly float[] MassWeights = { 1.0f, 0.9f, 1.3f, 1.6f, 1.0f }; // heavy mantle: it lags, stretches, overshoots
     public static readonly bool[] ClusterBreathes = { false, false, true, true, true };
 
     // ------------------------------------------------------------------ axis
@@ -103,10 +106,11 @@ internal static class OctopusShape
     }
 
     // Shell radius with the eye bulges and a slightly flattened oral/ventral side.
-    public static float Radius(in CephalopodSpec sp, float t, float phi)
+    public static float Radius(in CephalopodSpec sp, float t, float phi) => Radius(t, phi, Profile(sp, t));
+
+    // Same, with the axial profile r = Profile(sp, t) already evaluated (mesh building caches it per row).
+    public static float Radius(float t, float phi, float r)
     {
-        float r = Profile(sp, t);
-        float ep = EyePhiDeg * Mathf.Deg2Rad;
         float dt = (t - EyeT) / 0.07f;
         float bulge = 0f;
         for (int s = -1; s <= 1; s += 2)
@@ -125,6 +129,13 @@ internal static class OctopusShape
         Vector3 c = Axis(sp, t), n = AxisFront(sp, t);
         float r = Radius(sp, t, phi) * radiusScale;
         return c + (n * Mathf.Cos(phi) + Vector3.right * Mathf.Sin(phi)) * r;
+    }
+
+    // The same point from a cached row (axis point c, front n, profile radius) at t.
+    public static Vector3 ShellPoint(Vector3 c, Vector3 n, float profile, float t, float phi)
+    {
+        float r = Radius(t, phi, profile), cp = MathF.Cos(phi), sp = MathF.Sin(phi);
+        return new Vector3(c.x + (n.x * cp + sp) * r, c.y + n.y * cp * r, c.z + n.z * cp * r);
     }
 
     // ------------------------------------------------------------------ lattice, arms, eyes, siphon
@@ -154,8 +165,9 @@ internal static class OctopusShape
     public static float[] LatticeMassWeights()
     {
         var m = new float[LatticeCount];
-        for (int k = 0; k < 4; k++) { m[k] = 1.0f; m[4 + k] = 0.9f; m[8 + k] = 0.8f; }
-        m[HeadFront] = 1.6f; m[Apex] = 0.5f;
+        float[] w = MassWeights;
+        for (int k = 0; k < 4; k++) { m[k] = w[0]; m[4 + k] = w[1]; m[8 + k] = w[2]; }
+        m[HeadFront] = w[3]; m[Apex] = w[4];
         return m;
     }
 

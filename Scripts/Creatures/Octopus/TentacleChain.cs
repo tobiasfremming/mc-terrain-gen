@@ -61,8 +61,14 @@ public sealed class TentacleChain
     public Vector3 Gravity = new Vector3(0f, -9.81f, 0f);
     public float Tone = 1f;                  // muscle tone multiplier on Spec.Muscle (0 = limp)
     public float SinusAmount;                // 0..1 travelling sinus (reaching)
-    public Vector3 AxisOrigin, AxisDir;      // body axis for the free twist target (AxisDir zero = no twist target)
+    // Optional free twist target: dorsal away from this axis (AxisDir zero = free particles relax to the
+    // transported frame, the default and what OctopusBody uses: an axis target feeds back into the muscle
+    // curl, which is defined in the twisted frame, and can keep a toned arm oscillating).
+    public Vector3 AxisOrigin, AxisDir;
     public float ExtraDamping;               // absolute velocity damping, 1/s (settling, tests)
+    // Particles closer to the root than this (in particles) cannot twist: the web holds the arm base.
+    // The cap then grows by MaxTwistDeg per particle. 0 = no cap (a free-standing arm).
+    public float TwistFreeFrom;
     public float Time => time;
     // Overload of the most loaded pin: root distance / the arc at maximum stretch (> 1 = the pins cannot all
     // hold: an infeasible pull). OverloadedPin is that pin, or -1. The maximum over the current sub-step's iterations.
@@ -566,6 +572,13 @@ public sealed class TentacleChain
         for (int k = 0; k < N; k++)
         {
             float lo = prevTwist - maxTwist, hi = prevTwist + maxTwist, tw = Twist[k];
+            if (TwistFreeFrom > 0f)
+            {
+                float cap = maxTwist * Mathf.Max(0f, k - TwistFreeFrom);
+                if (lo < -cap) lo = -cap;
+                if (hi > cap) hi = cap;
+                if (lo > hi) lo = hi = 0f;
+            }
             tw = tw < lo ? lo : tw > hi ? hi : tw;
             Twist[k] = tw; prevTwist = tw;
 
