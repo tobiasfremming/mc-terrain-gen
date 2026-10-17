@@ -29,10 +29,14 @@ public sealed class FieldGroundProbe : IGroundProbe
     const float kStep = 0.5f;          // fallback scan step: TerrainQuery's, the 0.5 m LOD0 cell
     const float kFineStep = 0.125f;    // scan step within the window: a dug hole's lip can be thinner than a cell
 
-    readonly DensityField field;
+    DensityField field;
     public int SampleCount; // cumulative field samples, for perf stats
 
     public FieldGroundProbe(DensityField field) { this.field = field; }
+
+    // The field probed. CreatureWorld re-points it when the terrain rebuilds its physics field (a new object),
+    // so the caches layered over this probe keep working on the live field.
+    public DensityField Field { get => field; set => field = value; }
 
     // The up-facing surface (air above, solid below) NEAREST to `near` along up: the first one below it
     // when near is in air, the first one above it when near is inside solid. A body that probes from its

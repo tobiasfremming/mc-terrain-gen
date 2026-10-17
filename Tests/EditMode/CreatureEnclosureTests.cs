@@ -35,6 +35,27 @@ namespace TerrainGen.Tests
             }
         }
 
+        // A rebuilt curb (every lab rescale, R22) must free the mesh of the curb it replaces, and so must the
+        // enclosure when it goes away.
+        [Test] public void Curb_Rebuild_DestroysTheOldMesh()
+        {
+            var go = new GameObject("EnclosureLeakTest");
+            trash.Add(go);
+            var e = go.AddComponent<CreatureEnclosure>();
+            e.segments = 16;
+            e.Build(new FlatGroundProbe());
+            Mesh first = go.GetComponentInChildren<MeshFilter>().sharedMesh;
+            Assert.IsNotNull(first);
+            e.Build(new FlatGroundProbe());
+            Mesh second = go.GetComponentInChildren<MeshFilter>().sharedMesh;
+            Assert.IsTrue(first == null, "the replaced curb's mesh leaked");
+            Assert.IsTrue(second != null);
+            // edit mode sends no OnDestroy to a plain MonoBehaviour: call it as the engine would
+            typeof(CreatureEnclosure).GetMethod("OnDestroy", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                ?.Invoke(e, null);
+            Assert.IsTrue(second == null, "the curb's mesh outlived its enclosure");
+        }
+
         [Test] public void Curb_IsClosedRing()
         {
             const int segs = 48;

@@ -64,12 +64,50 @@ namespace TerrainGen.Tests
             Action update = Call(w, "Update"), late = Call(w, "LateUpdate");
             // Update reads Time.deltaTime, which edit mode may hold at 0: also tick with a real dt.
             for (int f = 0; f < 10; f++) { update(); w.TickAll(1f / 60f); late(); }
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int f = 0; f < 60; f++) { update(); w.TickAll(1f / 60f); late(); }
-            long delta = GC.GetAllocatedBytesForCurrentThread() - before;
-            Assert.AreEqual(0L, delta, "bytes allocated over 60 frames");
+            GcAllocs.AssertCounterWorks();
+            int allocs = GcAllocs.Count(() => { for (int f = 0; f < 60; f++) { update(); w.TickAll(1f / 60f); late(); } });
+            Assert.AreEqual(0, allocs, "managed allocations over 60 frames");
             Assert.Greater((w.Sims[0].Joints[0] - start).magnitude, 0.1f, "the sims never moved: test does not bite");
             Assert.GreaterOrEqual(w.LastSimMs, 0.0);
+        }
+
+        // The chunk manager's EnsureField replaces the physics field (and a scene reload the edit system) with
+        // new objects: the world must probe the new field, drop the creatures' cached ground from the old one,
+        // and listen to the new edit system only.
+        [Test] public void World_PhysicsFieldRebuilt_RebindsProbeCachesAndEdits()
+        {
+            go = new GameObject("CreatureWorldRebindTest");
+            world = go.AddComponent<CreatureWorld>();
+            world.creatureMaterial = AssetDatabase.LoadAssetAtPath<Material>(kMaterialPath);
+            var a = ScriptableObject.CreateInstance<PlaneField>(); trash.Add(a);
+            var b = ScriptableObject.CreateInstance<PlaneField>(); trash.Add(b);
+            b.height = 0.3f;
+            var modsA = new TerrainModificationSystem(0.5f, 10f);
+            var modsB = new TerrainModificationSystem(0.5f, 10f);
+            world.BindTerrain(a, modsA);
+
+            var sp = CreatureTestSpecies.Lizardish(); trash.Add(sp);
+            var sim = world.Spawn(sp, Vector3.zero, Vector3.forward, null, null, 1);
+            for (int f = 0; f < 30; f++) world.TickAll(1f / 60f);
+            float clear = sp.joints[2].clearance * sim.SizeScale;
+            Assert.AreEqual(clear, sim.Joints[2].y, 0.01f, "on the first field");
+            Assert.AreEqual(1, Subscribers(modsA));
+
+            world.BindTerrain(b, modsB);
+            Assert.IsTrue(world.Ground.Probe(new Vector3(0f, 1f, 0f), Vector3.up, 2f, out Vector3 g, out _));
+            Assert.AreEqual(0.3f, g.y, 1e-3f, "the shared probe still reads the old field");
+            for (int f = 0; f < 120; f++) world.TickAll(1f / 60f);
+            Assert.AreEqual(0.3f + clear, sim.Joints[2].y, 0.01f, "the creature still stands on its cached ground from the old field");
+            Assert.AreEqual(0, Subscribers(modsA), "still subscribed to the old edit system");
+            Assert.AreEqual(1, Subscribers(modsB), "not subscribed to the new edit system");
+        }
+
+        static int Subscribers(TerrainModificationSystem mods)
+        {
+            FieldInfo f = typeof(TerrainModificationSystem).GetField("RegionModified", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(f, "RegionModified backing field");
+            var d = (Delegate)f.GetValue(mods);
+            return d == null ? 0 : d.GetInvocationList().Length;
         }
 
         [Test] public void World_Spawn_InstanceFromSeed_WithinJitter()
@@ -112,9 +150,9 @@ namespace TerrainGen.Tests
             Assert.AreEqual(2 * (joints - 1) + 2 * 12 * joints + 8 * legs + 2 * 64, n, "chain + ellipses + legs/rest crosses + safe disc");
             Assert.AreEqual(0, n % 2, "lines are vertex pairs");
             for (int f = 0; f < 5; f++) { w.TickAll(1f / 60f); view.BuildLines(); }
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int f = 0; f < 60; f++) { w.TickAll(1f / 60f); view.BuildLines(); }
-            Assert.AreEqual(0L, GC.GetAllocatedBytesForCurrentThread() - before, "bytes allocated building the debug lines");
+            GcAllocs.AssertCounterWorks();
+            int allocs = GcAllocs.Count(() => { for (int f = 0; f < 60; f++) { w.TickAll(1f / 60f); view.BuildLines(); } });
+            Assert.AreEqual(0, allocs, "managed allocations building the debug lines");
         }
     }
 }

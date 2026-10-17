@@ -24,6 +24,8 @@ public sealed class CreatureWorld : MonoBehaviour
     IGroundProbe ground;
     Func<Vector3, Vector3> upAt;
     TerrainModificationSystem edits;
+    FieldGroundProbe terrainProbe; // the probe on the terrain's physics field (null with a SetGround ground)
+    DensityField boundField;       // the physics field terrainProbe was last pointed at
 
     public IReadOnlyList<CreatureSim> Sims => sims;
     public double LastSimMs { get; private set; }
@@ -40,10 +42,8 @@ public sealed class CreatureWorld : MonoBehaviour
                 var m = MCChunkManager.Instance;
                 if (m != null)
                 {
-                    ground = new FieldGroundProbe(m.PhysicsField);
                     upAt = PlanetGravity.TryGetCenter(out _, out _) ? (Func<Vector3, Vector3>)PlanetGravity.UpAt : FlatUp;
-                    edits = m.Modifications;
-                    if (edits != null) edits.RegionModified += OnTerrainEdited;
+                    BindTerrain(m.PhysicsField, m.Modifications);
                 }
             }
             return ground;
@@ -66,6 +66,44 @@ public sealed class CreatureWorld : MonoBehaviour
     public void SetGround(IGroundProbe g, Func<Vector3, Vector3> upAt)
     {
         ground = g; this.upAt = upAt ?? PlanetGravity.UpAt;
+        terrainProbe = null; boundField = null;
+    }
+
+    // Points the terrain-backed ground at the terrain's current physics field and edit system. The chunk
+    // manager rebuilds both as new objects (EnsureField after a domain reload or a world change; a scene
+    // reload replaces the manager): the shared probe is re-pointed, every creature's cached ground is
+    // dropped (it was read from the old field), and the RegionModified subscription moves over.
+    internal void BindTerrain(DensityField physics, TerrainModificationSystem mods)
+    {
+        if (upAt == null) upAt = FlatUp;
+        if (terrainProbe == null)
+        {
+            terrainProbe = new FieldGroundProbe(physics);
+            ground = terrainProbe;
+        }
+        else if (!ReferenceEquals(physics, boundField))
+        {
+            terrainProbe.Field = physics;
+            for (int i = 0; i < caches.Count; i++) caches[i].Clear();
+        }
+        boundField = physics;
+        if (!ReferenceEquals(mods, edits))
+        {
+            if (edits != null) edits.RegionModified -= OnTerrainEdited;
+            if (mods != null) mods.RegionModified += OnTerrainEdited;
+            edits = mods;
+        }
+    }
+
+    // Per frame: two reference compares once bound (PhysicsField runs the manager's own staleness check).
+    void RebindIfStale()
+    {
+        if (terrainProbe == null) return;
+        var m = MCChunkManager.Instance;
+        if (m == null) return;
+        DensityField f = m.PhysicsField;
+        TerrainModificationSystem mods = m.Modifications;
+        if (!ReferenceEquals(f, boundField) || !ReferenceEquals(mods, edits)) BindTerrain(f, mods);
     }
 
     void Awake()
@@ -137,7 +175,11 @@ public sealed class CreatureWorld : MonoBehaviour
         return (s & 0xFFFFFFu) / 16777216f;
     }
 
-    void Update() => TickAll(Time.deltaTime);
+    void Update()
+    {
+        RebindIfStale();
+        TickAll(Time.deltaTime);
+    }
 
     internal void TickAll(float dt)
     {
