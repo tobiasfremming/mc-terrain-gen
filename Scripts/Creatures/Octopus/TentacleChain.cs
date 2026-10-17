@@ -38,6 +38,8 @@ public sealed class TentacleChain
     const float kMaxSpeed = 30f;             // m/s per unit size: a hitch cannot explode the chain
     const float kSqueezeRate = 12f;          // 1/s, squeeze low-pass
     const float kConeSlack = 1e-4f;          // rad: the strict pass leaves joints at limit - slack
+    const float kTaut = 0.96f;               // tethers hold a loaded run to this fraction of its arc: muscle keeps a curve
+    const float kMinThin = 0.93f;            // stretched cross-sections thin to no less than this
 
     public readonly TentacleSpec Spec;
     public readonly int N;
@@ -401,7 +403,7 @@ public sealed class TentacleChain
             {
                 if (Pinned[k]) break;
                 if (W[k] <= 0f) continue;
-                float lim = arc[p] - arc[k];
+                float lim = (arc[p] - arc[k]) * kTaut;
                 Vector3 x = X[k];
                 float dx = x.x - q.x, dy = x.y - q.y, dz = x.z - q.z;
                 float d2 = dx * dx + dy * dy + dz * dz;
@@ -418,7 +420,7 @@ public sealed class TentacleChain
             }
             if (k < 0 && BackInvMass > 0f)
             {
-                float lim = arc[p] + Spacing;
+                float lim = (arc[p] + Spacing) * kTaut;
                 float dx = Back.x - q.x, dy = Back.y - q.y, dz = Back.z - q.z;
                 float d2 = dx * dx + dy * dy + dz * dz;
                 if (d2 > lim * lim)
@@ -601,7 +603,9 @@ public sealed class TentacleChain
         for (int k = 0; k < N; k++)
         {
             float s = Stretch[k] > 1e-3f ? Stretch[k] : 1e-3f;
-            float sigma = Squeeze[k] / MathF.Sqrt(s);
+            // volume-preserving thinning, capped: a muscular arm under load does not neck down to a spike
+            float inv = 1f / MathF.Sqrt(s);
+            float sigma = Squeeze[k] * (inv < kMinThin ? kMinThin : inv);
             dst[offset + k] = OctoMath.TRS(X[k], Frames[k], sigma * SizeScale, sigma * SizeScale, s * SizeScale);
         }
     }

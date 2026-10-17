@@ -210,7 +210,8 @@ namespace TerrainGen.Tests
             Assert.Less(miss, 0.15f * spec.Length);
         }
 
-        // Bone k: +Z along segment k, scale (sigma, sigma, s) with sigma^2 s = squeeze^2 (volume-preserving stretch).
+        // Bone k: +Z along segment k, scale (sigma, sigma, s) with sigma = squeeze x max(0.93, 1/sqrt(s)): a
+        // volume-preserving stretch, except that a muscular arm under load never thins below 0.93.
         [Test] public void Tentacle_BonesFollowSegments_VolumePreservingScale()
         {
             var c = NewChain(out _);
@@ -225,7 +226,9 @@ namespace TerrainGen.Tests
                 Assert.AreEqual(seg.magnitude / c.Spacing, z.magnitude, 1e-3f, "bone z scale = stretch, bone " + k);
                 Vector3 x = new Vector3(m[k].m00, m[k].m10, m[k].m20), y = new Vector3(m[k].m01, m[k].m11, m[k].m21);
                 float det = Vector3.Dot(Vector3.Cross(x, y), z);
-                Assert.AreEqual(c.Squeeze[k] * c.Squeeze[k], det, 2e-3f, "det = squeeze^2, bone " + k);
+                float st = seg.magnitude / c.Spacing, sigma = c.Squeeze[k] * Mathf.Max(0.93f, 1f / Mathf.Sqrt(st));
+                Assert.AreEqual(sigma * sigma * st, det, 2e-3f, "det = sigma^2 s, bone " + k);
+                Assert.GreaterOrEqual(x.magnitude, 0.93f * c.Squeeze[k] - 1e-4f, "thinner than the cap, bone " + k);
             }
         }
 

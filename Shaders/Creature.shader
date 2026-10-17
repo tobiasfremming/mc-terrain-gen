@@ -88,6 +88,7 @@ Shader "MarchingCubes/Creature"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Creature/CreaturePattern.hlsl"
             #include "Creature/CreatureLighting.hlsl"
+            #include "Creature/CreatureCloak.hlsl"
 
             struct Varyings
             {
@@ -95,7 +96,7 @@ Shader "MarchingCubes/Creature"
                 float4 positionWS : TEXCOORD0;               // w = rest radius (pattern space)
                 float4 normalWS : TEXCOORD1;                 // w = fog factor
                 float4 uv : TEXCOORD2;                       // uv0.xy, uv1.xy
-                nointerpolation float3 inst : TEXCOORD3;     // seed, hueShift, valueShift
+                nointerpolation float4 inst : TEXCOORD3;     // seed, hueShift, valueShift, cloak
             };
 
             Varyings Vert(CreatureVertexIn v, uint iid : SV_InstanceID)
@@ -106,7 +107,7 @@ Shader "MarchingCubes/Creature"
                 o.positionWS = float4(s.posWS, s.radius);
                 o.normalWS = float4(s.normalWS, ComputeFogFactor(o.positionCS.z));
                 o.uv = float4(v.uv0, v.uv1);
-                o.inst = float3(s.inst.seed, s.inst.hueShift, s.inst.valueShift);
+                o.inst = float4(s.inst.seed, s.inst.hueShift, s.inst.valueShift, s.inst.cloak);
                 return o;
             }
 
@@ -134,6 +135,9 @@ Shader "MarchingCubes/Creature"
 
                 // --- base colour: belly -> flank -> back, the boundaries wobbling a little
                 float3 P = CreatureSurfacePoint(uv0, uv1, i.positionWS.w, seed);
+                // cloak: Forward only (the shadow and depth passes keep the body); a no-op at 0
+                float glint = 0.0;
+                if (i.inst.w > 0.0) glint = CreatureCloak(i.inst.w, i.positionCS.xy, CreatureValueNoise(P * 6.0, 0x2545F491u));
                 float dorsal = uv1.y + _GradientWarp * (CreatureValueNoise(P * 9.0, 0x7FEB352Du) - 0.5) * 2.0;
                 float3 base = lerp(_Belly.rgb, _Flank.rgb, smoothstep(-0.75, -0.15, dorsal));
                 base = lerp(base, _Dorsal.rgb, smoothstep(0.05, 0.7, dorsal));
@@ -183,6 +187,7 @@ Shader "MarchingCubes/Creature"
 
                 float2 screenUV = GetNormalizedScreenSpaceUV(i.positionCS);
                 half3 rgb = CreatureShade(s, lp, posWS, screenUV);
+                if (glint > 0.0) rgb += (half3)(glint * 0.6 * (SampleSH(n) + 0.3));
                 rgb = MixFog(rgb, (half)i.normalWS.w);
                 return half4(rgb, 1.0h);
             }

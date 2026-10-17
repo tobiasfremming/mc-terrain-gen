@@ -31,8 +31,8 @@ public struct TentacleSpec
     public int Segments => segments >= 4 ? segments : 24;
     public float Length => length > 0f ? length : 1.6f;
     public float RootRadius => rootRadius > 0f ? rootRadius : 0.05f;
-    public float TipRadius => tipRadius > 0f ? tipRadius : 0.0035f;
-    public float Taper => taper > 0f ? taper : 1.15f;
+    public float TipRadius => tipRadius > 0f ? tipRadius : 0.006f;
+    public float Taper => taper > 0f ? taper : 0.9f;
     public float Flatten => flatten > 0f ? flatten : 0.85f;
     public float BendLimitDeg => bendLimitDeg > 0f ? bendLimitDeg : 28f;
     public float TipCurlDeg => tipCurlDeg > 0f ? tipCurlDeg : 24f;

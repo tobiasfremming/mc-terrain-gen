@@ -22,6 +22,7 @@ public sealed class CreatureWorld : MonoBehaviour
     public int proxyLayer = 0;
 
     public static CreatureWorld Instance { get; private set; }
+    public const string OctopusShaderName = "MarchingCubes/CreatureOctopus";
 
     readonly List<CreatureSim> sims = new List<CreatureSim>();
     readonly List<ICreatureBrain> brains = new List<ICreatureBrain>();
@@ -217,7 +218,16 @@ public sealed class CreatureWorld : MonoBehaviour
         int r = species.IndexOf(sp);
         if (r >= 0) return renderers[r];
         species.Add(sp);
-        Material m = sp.bodyPlan == CreatureBodyPlan.Cephalopod && octopusMaterial != null ? octopusMaterial : creatureMaterial;
+        Material m = creatureMaterial;
+        if (sp.bodyPlan == CreatureBodyPlan.Cephalopod)
+        {
+            if (octopusMaterial == null)
+            {
+                Shader sh = Shader.Find(OctopusShaderName);
+                if (sh != null) octopusMaterial = new Material(sh) { name = "Octopus (runtime)" };
+            }
+            if (octopusMaterial != null) m = octopusMaterial;
+        }
         renderers.Add(new CreatureRenderer(sp, m));
         return renderers[renderers.Count - 1];
     }
