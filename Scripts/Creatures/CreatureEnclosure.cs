@@ -8,6 +8,8 @@ public sealed class CreatureEnclosure : MonoBehaviour
     public float radius = 8f, curbHeight = 0.12f, curbWidth = 0.3f;
     public int segments = 128;
     public Material borderMaterial;
+    // Circular obstacles inside the enclosure (a tree): world-space centre on the ground, radius.
+    public System.Collections.Generic.List<Vector4> obstacles = new System.Collections.Generic.List<Vector4>();
 
     const float kSink = 0.03f;          // the curb base sits this far below the probed sand
     const float kCentreWindow = 4f;     // probe window for the centreline, walking from the previous section
@@ -24,7 +26,17 @@ public sealed class CreatureEnclosure : MonoBehaviour
     GameObject curb;
 
     public EnclosureArea AreaFor(CreatureSpecies sp, float sizeScale)
-        => EnclosureArea.For(transform.position, transform.up, radius, sp, sizeScale);
+    {
+        EnclosureArea a = EnclosureArea.For(transform.position, transform.up, radius, sp, sizeScale);
+        int n = obstacles != null ? obstacles.Count : 0;
+        if (n > 0)
+        {
+            a.obstacleCenters = new Vector3[n]; a.obstacleRadii = new float[n];
+            for (int i = 0; i < n; i++) { a.obstacleCenters[i] = obstacles[i]; a.obstacleRadii[i] = obstacles[i].w; }
+            a.keepOut = EnclosureArea.KeepOutFor(sp, sizeScale);
+        }
+        return a;
+    }
 
     // Builds (or rebuilds) the curb on a child object. The mesh is in world space, so the child sits at the
     // world origin with no rotation.

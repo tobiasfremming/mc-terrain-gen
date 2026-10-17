@@ -56,6 +56,7 @@ public static class CreatureLabScene
         lab.species = species;
         lab.borderMaterial = borderMat;
         root.AddComponent<CreatureDebugView>();
+        lab.enclosurePlant = AssetDatabase.LoadAssetAtPath<PlantPrototypeSet>("Assets/TerrainGen/Config/Flora/Prototypes/BaobabPlant_Prototypes.asset"); // R24 shade tree
         copies.Add(root);
 
         render.ApplyTo(scene, copies);

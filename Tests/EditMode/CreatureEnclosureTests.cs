@@ -93,6 +93,60 @@ namespace TerrainGen.Tests
             Assert.AreEqual(desertGuid, m.Groups[1].Value, "defaultDensity is not DesertWorld");
         }
 
+        // Flat ground (y = 0) whose normal leans away from one sweet spot: the farther a point lies from it,
+        // the steeper the lab's flatness search thinks it is, so every enclosure is drawn toward the spot.
+        sealed class SweetSpotProbe : IGroundProbe
+        {
+            readonly Vector3 spot;
+            public SweetSpotProbe(Vector3 spot) { this.spot = spot; }
+            public bool Probe(Vector3 near, Vector3 up, float window, out Vector3 point, out Vector3 normal)
+            {
+                point = new Vector3(near.x, 0f, near.z);
+                Vector3 d = point - spot; d.y = 0f;
+                normal = (Vector3.up + 0.03f * d).normalized;
+                return true;
+            }
+        }
+
+        // Task 8 minor: each enclosure searches searchRadius (15 m) around its arc slot for the flattest spot,
+        // while neighbouring slots are only ~25 m apart, so two neighbours drawn toward the same flat patch
+        // overlapped. Placed centres must stay at least r_a + r_b + the enclosure gap apart.
+        [Test] public void Lab_Placement_NeighboursNeverOverlap()
+        {
+            var go = new GameObject("LabTest"); trash.Add(go);
+            var world = go.AddComponent<CreatureWorld>();
+            world.creatureMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/TerrainGen/Config/Creatures/Creature.mat");
+            var lab = go.AddComponent<CreatureLab>();
+            const int n = 3;
+            lab.species = new CreatureSpecies[n];
+            for (int k = 0; k < n; k++) { lab.species[k] = CreatureTestSpecies.Lizardish(); trash.Add(lab.species[k]); }
+            var player = new GameObject("Player"); trash.Add(player);
+            // the middle slot (straight ahead of the player) is the flattest place around
+            float slotRadius = Mathf.Max(lab.arcRadius, CreatureLab.EnclosureRadius(lab.species[0], 1f) + 4f + lab.searchRadius);
+            Vector3 spot = new Vector3(0f, 0f, slotRadius);
+            world.SetGround(new SweetSpotProbe(spot), _ => Vector3.up);
+            try
+            {
+                lab.Place(world, player.transform, Vector3.zero);
+                var c = new Vector3[n]; var r = new float[n];
+                for (int k = 0; k < n; k++) { c[k] = lab.EnclosureFor(k).transform.position; r[k] = lab.EnclosureFor(k).radius; }
+                // the search is live: the outer enclosures were drawn toward the spot, off their slots
+                Vector3 slot0 = CreatureLab.ArcSlot(Vector3.zero, Vector3.forward, Vector3.up, 0, n, Mathf.Max(lab.spacing, 2f * r[0] + CreatureLab.kEnclosureGap), slotRadius);
+                Assert.Less((c[0] - spot).magnitude, (slot0 - spot).magnitude - 1f, "the flatness search did not move the enclosure: the test does not bite");
+                for (int a = 0; a < n; a++)
+                    for (int b = a + 1; b < n; b++)
+                    {
+                        Vector3 d = c[a] - c[b]; d.y = 0f;
+                        TestContext.Out.WriteLine($"enclosures {a}/{b}: centres {d.magnitude:F2} m apart, need {r[a] + r[b] + CreatureLab.kEnclosureGap:F2} m");
+                        Assert.GreaterOrEqual(d.magnitude, r[a] + r[b] + CreatureLab.kEnclosureGap - 1e-3f, $"enclosures {a} and {b} overlap");
+                    }
+            }
+            finally
+            {
+                typeof(CreatureWorld).GetMethod("OnDestroy", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(world, null);
+            }
+        }
+
         // R22: changing a species' scale (or the lab's override) respawns its creature at the new size, rebuilds
         // the enclosure for it, and drops the old creature from the world and its renderer.
         [Test] public void Lab_ScaleChange_RespawnsAtNewSize()

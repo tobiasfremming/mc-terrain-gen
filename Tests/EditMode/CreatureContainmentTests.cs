@@ -137,5 +137,61 @@ namespace TerrainGen.Tests
                 Assert.Greater(far, 0.5f * area.safeRadius, "the wander never went far: test does not bite");
             }
         }
+
+        // R24: a tree trunk inside the enclosure. The wander never picks a goal in its keep-out disc and the head
+        // steers around it, so over 10 minutes no joint or foot of the 4x monitor enters the trunk.
+        [Test] public void Wander_AvoidsObstacle_NoJointOrFootInside()
+        {
+            var monitor = UnityEditor.AssetDatabase.LoadAssetAtPath<CreatureSpecies>(CreatureWorldTests.kMonitorPath);
+            Assert.IsNotNull(monitor);
+            float maxScale = CreatureLab.MaxScale(monitor);
+            float radius = CreatureLab.EnclosureRadius(monitor, maxScale);
+            var trunk = new Vector3(0.45f * radius, 0f, 0f);
+            const float trunkR = 1.2f;
+            int passes = 0;
+            for (int seed = 1; seed <= 3; seed++)
+            {
+                var area = EnclosureArea.For(Vector3.zero, Vector3.up, radius, monitor, maxScale);
+                area.obstacleCenters = new[] { trunk }; area.obstacleRadii = new[] { trunkR };
+                area.keepOut = EnclosureArea.KeepOutFor(monitor, maxScale);
+                var sim = new CreatureSim(monitor, new FlatGroundProbe(), _ => Vector3.up, new Vector3(-0.3f * radius, 0f, 0f), Vector3.right, maxScale, seed) { Bounds = area };
+                var brain = new WanderBrain(area, seed);
+                float closest = float.MaxValue;
+                for (int t = 0; t < (int)(10 * 60 / Dt); t++)
+                {
+                    sim.Tick(Dt, brain.Target(sim, Dt));
+                    AssertInside(sim, area, "obstacle seed " + seed);
+                    for (int i = 0; i < sim.Joints.Length; i++)
+                    {
+                        float d = Planar(sim.Joints[i] - trunk);
+                        closest = Mathf.Min(closest, d);
+                        Assert.Greater(d, trunkR, $"seed {seed} joint {i} inside the trunk t={sim.Time}");
+                    }
+                    for (int l = 0; l < sim.Legs.Length; l++)
+                        Assert.Greater(Planar(sim.Legs[l].foot - trunk), trunkR, $"seed {seed} foot {l} inside the trunk t={sim.Time}");
+                    if (Planar(sim.Joints[0] - trunk) > 0f && sim.Joints[0].x > trunk.x + trunkR) passes |= 1 << seed; // went past it
+                }
+                TestContext.Out.WriteLine($"seed {seed}: closest joint to trunk axis {closest:F2} m (trunk {trunkR} m, keep-out {area.keepOut:F2} m)");
+            }
+            Assert.AreNotEqual(0, passes, "the monitor never got past the tree: test does not bite");
+        }
+
+        [Test] public void RandomSafePoint_NeverInsideObstacle()
+        {
+            var monitor = UnityEditor.AssetDatabase.LoadAssetAtPath<CreatureSpecies>(CreatureWorldTests.kMonitorPath);
+            float maxScale = CreatureLab.MaxScale(monitor);
+            var area = EnclosureArea.For(Vector3.zero, Vector3.up, CreatureLab.EnclosureRadius(monitor, maxScale), monitor, maxScale);
+            area.obstacleCenters = new[] { new Vector3(4f, 0f, 1f) }; area.obstacleRadii = new[] { 1.2f };
+            area.keepOut = EnclosureArea.KeepOutFor(monitor, maxScale);
+            uint rng = 12345u;
+            for (int i = 0; i < 10000; i++)
+            {
+                Vector3 p = area.RandomSafePoint(ref rng);
+                Assert.Less(area.ObstacleAt(p), 0, "point " + p + " inside the keep-out disc");
+                Assert.LessOrEqual(area.PlanarDistance(p), area.safeRadius + 1e-4f);
+            }
+        }
+
+        static float Planar(Vector3 v) => new Vector2(v.x, v.z).magnitude;
     }
 }

@@ -204,5 +204,150 @@ namespace TerrainGen.Tests
             }
             finally { Object.DestroyImmediate(f); Object.DestroyImmediate(sp); }
         }
+
+        // ---- R25: a dug hole (user report: jitter and body deformation walking into a hole) ----
+
+        // A column through an overhanging lip: solid lip 0 .. -0.25, the hole's air, its floor near -1.75
+        // (sphere centre (0, -1, 0), radius 1.5; columns at x = 1.24 .. 1.35). A probe answers the surface
+        // nearest to its near point - the lip from just above the lip, the floor from inside the hole - never
+        // the other one, in any order (H1: the old window probe and the old cache answered either).
+        static PlaneWithSphereHoleField OverhangColumn()
+        {
+            var f = ScriptableObject.CreateInstance<PlaneWithSphereHoleField>();
+            f.center = new Vector3(0f, -1f, 0f); f.radius = 1.5f;
+            return f;
+        }
+
+        static void AssertColumnSurfaces(IGroundProbe probe, string what)
+        {
+            for (int k = 0; k < 12; k++)
+            {
+                float x = 1.24f + 0.01f * k;
+                float floor = -1f - Mathf.Sqrt(1.5f * 1.5f - x * x);
+                Assert.IsTrue(probe.Probe(new Vector3(x, 0.1f, 0.05f), Vector3.up, 2f, out var p, out _), what);
+                Assert.AreEqual(0f, p.y, 0.01f, $"{what}: from the lip (query {k})");
+                Assert.IsTrue(probe.Probe(new Vector3(x, floor + 0.15f, 0.05f), Vector3.up, 2f, out p, out _), what);
+                Assert.AreEqual(floor, p.y, 0.01f, $"{what}: from inside the hole (query {k})");
+            }
+        }
+
+        [Test] public void FieldProbe_OverhangColumn_NearestSurface()
+        {
+            var f = OverhangColumn();
+            try { AssertColumnSurfaces(new FieldGroundProbe(f), "field probe"); }
+            finally { Object.DestroyImmediate(f); }
+        }
+
+        [Test] public void Cached_OverhangColumn_AnswersTheQueriedSurface()
+        {
+            var f = OverhangColumn();
+            try { AssertColumnSurfaces(new CachedGroundProbe(new FieldGroundProbe(f), 6f), "cache"); }
+            finally { Object.DestroyImmediate(f); }
+        }
+
+        // The 4x monitor walks straight across a dug hole through the ground cache, as in the lab.
+        // (a) no vertical jitter: no joint reverses its vertical motion by more than 1 mm x scale per tick
+        //     twice in a row (a joint snapping between the rim and the floor, H1);
+        // (b) segments keep their 3D length within 5 % (the skinned body does not stretch, H2);
+        // (c) finite; (d) every planted foot's landing point is on the surface within 2 cm, and so is a
+        //     planted foot that reaches it; a foot whose landing point went out of reach (the body moved on
+        //     over a pit deeper than the legs) counts as dangling, at most maxDangling of the planted ticks;
+        // (e) the body does not cut into the ground by more than its half height (+ maxSink x scale);
+        // (f) it gets across.
+        static void WalkAcrossHole(float centreY, string tag, float maxDangling, float maxSink)
+        {
+            var sp = UnityEditor.AssetDatabase.LoadAssetAtPath<CreatureSpecies>(CreatureWorldTests.kMonitorPath);
+            var f = ScriptableObject.CreateInstance<PlaneWithSphereHoleField>();
+            f.radius = 1.6f; // a few overlapping scoops of the digger (1.1 m each): a hole ~3 m wide
+            f.center = new Vector3(0.4f, centreY * f.radius, 0f);
+            try
+            {
+                var ground = CachedGroundProbe.ForCreature(new FieldGroundProbe(f), sp, sp.scale);
+                var sim = new CreatureSim(sp, ground, _ => Vector3.up, new Vector3(0f, 0f, -12f), Vector3.forward, sp.scale);
+                int n = sim.Joints.Length;
+                var prevY = new float[n]; var prevDy = new float[n];
+                var stepped = new bool[sim.Legs.Length]; // a leg's landing point exists from its first step on
+                for (int i = 0; i < n; i++) prevY[i] = sim.Joints[i].y;
+                float seg = sp.spacing * sim.SizeScale, worstSeg = 0f, worstFoot = 0f, worstTarget = 0f, worstFlip = 0f, worstBend = 0f;
+                int flips = 0, planted = 0, dangling = 0;
+                string sinkAt = "-";
+                float worstSink = 0f, flipAt = 0.001f * sim.SizeScale;
+                for (int t = 0; t < 2400; t++)
+                {
+                    sim.Tick(1f / 60f, new Vector3(0f, 0f, 1000f));
+                    for (int i = 0; i < n; i++)
+                    {
+                        Vector3 j = sim.Joints[i];
+                        Assert.IsTrue(Finite(j), $"{tag}: joint {i} not finite t={t}");
+                        float dy = j.y - prevY[i];
+                        if (t > 0 && dy * prevDy[i] < 0f && Mathf.Abs(dy) > flipAt && Mathf.Abs(prevDy[i]) > flipAt)
+                        { flips++; worstFlip = Mathf.Max(worstFlip, Mathf.Min(Mathf.Abs(dy), Mathf.Abs(prevDy[i]))); }
+                        prevDy[i] = dy; prevY[i] = j.y;
+                        if (i > 0) worstSeg = Mathf.Max(worstSeg, Mathf.Abs((j - sim.Joints[i - 1]).magnitude - seg) / seg);
+                        if (i > 0 && i < n - 1)
+                            worstBend = Mathf.Max(worstBend, Mathf.Abs(Pitch(sim.Joints[i - 1] - j) - Pitch(j - sim.Joints[i + 1])));
+                        float sink = f.Sample(j) - sp.joints[i].halfHeight * sim.SizeScale;
+                        if (sink > worstSink) { worstSink = sink; sinkAt = $"joint {i} at {j.x:F2},{j.y:F2},{j.z:F2} t={t}"; }
+                    }
+                    for (int l = 0; l < sim.Legs.Length; l++)
+                    {
+                        LegState st = sim.Legs[l];
+                        if (st.stepping) { stepped[l] = true; continue; }
+                        if (!stepped[l]) continue;
+                        planted++;
+                        worstTarget = Mathf.Max(worstTarget, Mathf.Abs(f.Sample(st.stepTo)));
+                        if ((st.foot - st.stepTo).magnitude > 1e-3f) { dangling++; continue; }
+                        worstFoot = Mathf.Max(worstFoot, Mathf.Abs(f.Sample(st.foot)));
+                    }
+                }
+                string sum = $"{tag}: vertical flips {flips} (worst {worstFlip * 100f:F1} cm), worst segment stretch {worstSeg * 100f:F1} %, " +
+                             $"worst landing point off surface {worstTarget * 100f:F1} cm, worst reached foot {worstFoot * 100f:F1} cm, dangling {dangling}/{planted}, " +
+                             $"body into ground {worstSink * 100f:F1} cm ({sinkAt}), worst vertical bend {worstBend:F0} deg, head z {sim.Joints[0].z:F1}, tail z {sim.Joints[n - 1].z:F1}, " +
+                             $"cache node probes {ground.NodeProbes}, exact {ground.ExactQueries}/{ground.Queries}";
+                TestContext.Out.WriteLine(sum);
+                Assert.Greater(sim.Joints[n - 1].z, f.center.z + f.radius + 1f, $"the monitor never crossed the hole | {sum}");
+                Assert.AreEqual(0, flips, $"joints jitter | {sum}");
+                Assert.LessOrEqual(worstSeg, 0.05f, $"body segments stretch | {sum}");
+                Assert.Greater(planted, 500, sum);
+                Assert.LessOrEqual(worstTarget, 0.02f, $"a landing point is off the surface | {sum}");
+                Assert.LessOrEqual(worstFoot, 0.02f, $"a planted foot is off the surface | {sum}");
+                Assert.LessOrEqual(dangling, maxDangling * planted, $"feet dangle | {sum}");
+                Assert.LessOrEqual(worstSink, maxSink * sim.SizeScale, $"the body cuts into the ground | {sum}");
+            }
+            finally { Object.DestroyImmediate(f); }
+        }
+
+        static float Pitch(Vector3 v) => Mathf.Atan2(v.y, new Vector2(v.x, v.z).magnitude) * Mathf.Rad2Deg;
+
+        // The bowl (centre above the ground, 1.1 m deep) is within the legs' reach: feet dangle on 0.03 % of
+        // the planted ticks (measured), the body stays out of the ground. The overhanging pit (2.1 m deep under
+        // a lip) is deeper than the 4x monitor's legs (1.1 m): it still gets across without jitter or stretch,
+        // but feet hang in the air on ~2-3 % of the planted ticks, and climbing out under the far lip the
+        // tail tip cuts the lip's edge (~20 cm measured; a creature cannot get out from under an overhang
+        // without climbing, which is a queued feature).
+        [Test] public void Hole_Overhanging_NoJitter_NoStretch() => WalkAcrossHole(-0.3f, "overhanging hole", 0.05f, 0.08f);
+        [Test] public void Hole_Bowl_NoJitter_NoStretch() => WalkAcrossHole(0.3f, "bowl", 0.002f, 0.02f);
+
+        // A dig (CreatureWorld forwards RegionModified with the carve's bounds) must replace the cached ground.
+        [Test] public void Cached_DigInvalidation_ReturnsNewSurface()
+        {
+            var f = ScriptableObject.CreateInstance<PlaneWithSphereHoleField>();
+            f.dug = false; f.radius = 1.1f; f.center = new Vector3(0.3f, -0.385f, 0.2f);
+            try
+            {
+                var cache = new CachedGroundProbe(new FieldGroundProbe(f), 6f);
+                for (int i = 0; i < 25; i++)
+                    Assert.IsTrue(cache.Probe(new Vector3(-1f + 0.1f * i, 0.1f, 0.2f), Vector3.up, 2f, out _, out _));
+                f.dug = true;
+                // TerrainModificationSystem.Notify for CarveSphere: centre, expanded by 2 x (radius + 2 voxels)
+                var b = new Bounds(f.center, Vector3.zero); b.Expand(2f * (f.radius + 2f * 0.5f));
+                cache.Invalidate(b);
+                Assert.IsTrue(cache.Probe(new Vector3(0.3f, 0.1f, 0.2f), Vector3.up, 2f, out var p, out _));
+                float floor = f.center.y - f.radius;
+                TestContext.Out.WriteLine($"after the dig: ground {p.y:F3} at the hole centre, floor {floor:F3}");
+                Assert.Less(p.y, -0.5f, "the cache still returns the ground from before the dig");
+            }
+            finally { Object.DestroyImmediate(f); }
+        }
     }
 }

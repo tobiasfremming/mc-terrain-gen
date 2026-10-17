@@ -33,8 +33,10 @@ public sealed class CreatureSim
     public float Time { get; private set; }
 
     readonly IGroundProbe ground;
+    readonly IGroundProbe spineGround; // the ground the spine rests on: smooth over edges (see CachedGroundProbe.Smooth)
     readonly Func<Vector3, Vector3> upAt;
     readonly Vector3[] groundPoint;
+    readonly Vector3[] pathUp;       // up at each path joint, from the grounding pass (the next chain step reads it)
     // The follow-the-leader body path (chain + ground). Joints is this path with the gait sway applied.
     internal readonly Vector3[] Path;
     readonly int[] girdles;          // attach joints with legs on both sides, ascending
@@ -49,10 +51,11 @@ public sealed class CreatureSim
                        Vector3 position, Vector3 forward, float sizeScale = 1f, int seed = 0)
     {
         Species = sp; this.ground = ground; this.upAt = upAt; SizeScale = sizeScale;
+        spineGround = ground is CachedGroundProbe cache ? cache.Smooth : ground;
         TimeScale = Mathf.Sqrt(Mathf.Max(1e-4f, sizeScale));
         n = sp.JointCount;
         Joints = new Vector3[n]; Rotations = new Quaternion[n];
-        GroundNormals = new Vector3[n]; groundPoint = new Vector3[n];
+        GroundNormals = new Vector3[n]; groundPoint = new Vector3[n]; pathUp = new Vector3[n];
 
         Vector3 up = Norm(upAt(position), Vector3.up);
         heading = Tangent(forward, up);
@@ -63,7 +66,7 @@ public sealed class CreatureSim
             Vector3 u = Norm(upAt(p), up);
             float clear = sp.joints[i].clearance * sizeScale;
             if (!ground.Probe(p, u, kGroundWindow * sizeScale, out Vector3 g, out Vector3 nrm)) { g = p - u * clear; nrm = u; }
-            groundPoint[i] = g; GroundNormals[i] = Norm(nrm, u);
+            groundPoint[i] = g; GroundNormals[i] = Norm(nrm, u); pathUp[i] = u;
             Joints[i] = g + u * clear;
         }
         Path = (Vector3[])Joints.Clone();
@@ -155,24 +158,36 @@ public sealed class CreatureSim
         Speed = (head - start).magnitude / dt;
         Path[0] = head;
 
-        // 2. chain
+        // 2. chain. The bend cone and the rigid joints act on the segments' directions along the ground
+        // (the lizard's lateral bending); each segment keeps its own pitch from the last sub-step, so the
+        // chain never flattens what the ground set (R25: a rigid neck copied the level heading, and the
+        // grounding then stretched it over any drop). Lengths are exact.
         float seg = sp.spacing * SizeScale;
         Vector3 prevBack = -heading;
         SpineJoint[] js = sp.joints;
         for (int i = 1; i < n; i++)
         {
-            Vector3 a = Path[i - 1], b = Path[i];
+            Vector3 a = Path[i - 1], u = pathUp[i];
+            Vector3 v = Path[i] - a;
+            float rise = u.x * v.x + u.y * v.y + u.z * v.z;
+            var hv = new Vector3(v.x - u.x * rise, v.y - u.y * rise, v.z - u.z * rise);
+            float run = Mathf.Sqrt(hv.x * hv.x + hv.y * hv.y + hv.z * hv.z);
+            // the previous segment's ground direction, in this joint's tangent plane (it already is on a flat world)
+            float pu = prevBack.x * u.x + prevBack.y * u.y + prevBack.z * u.z;
+            Vector3 pb = pu * pu < 1e-10f ? prevBack : Norm(new Vector3(prevBack.x - u.x * pu, prevBack.y - u.y * pu, prevBack.z - u.z * pu), prevBack);
             Vector3 d;
-            if (js[i].rigid) d = prevBack;
+            if (js[i].rigid || run < 1e-6f) d = pb;
             else
             {
-                d = Norm(new Vector3(b.x - a.x, b.y - a.y, b.z - a.z), prevBack);
+                d = hv / run;
                 // the bend cone: only a direction past the limit is turned back onto it
                 float lim = js[i].bendLimitDeg * Mathf.Deg2Rad;
-                if (prevBack.x * d.x + prevBack.y * d.y + prevBack.z * d.z < Mathf.Cos(lim))
-                    d = Vector3.RotateTowards(prevBack, d, lim, 0f);
+                if (pb.x * d.x + pb.y * d.y + pb.z * d.z < Mathf.Cos(lim))
+                    d = Vector3.RotateTowards(pb, d, lim, 0f);
             }
-            Path[i] = new Vector3(a.x + d.x * seg, a.y + d.y * seg, a.z + d.z * seg);
+            float len = Mathf.Sqrt(run * run + rise * rise);
+            float sp1 = len > 1e-6f ? rise / len : 0f, cp = len > 1e-6f ? run / len : 1f;
+            Path[i] = new Vector3(a.x + (d.x * cp + u.x * sp1) * seg, a.y + (d.y * cp + u.y * sp1) * seg, a.z + (d.z * cp + u.z * sp1) * seg);
             prevBack = d;
         }
 
@@ -184,13 +199,14 @@ public sealed class CreatureSim
         {
             Vector3 p = Path[i];
             Vector3 u = Norm(upAt(p), up);
+            pathUp[i] = u;
             float clear = js[i].clearance * SizeScale;
             var near = new Vector3(p.x - u.x * clear, p.y - u.y * clear, p.z - u.z * clear);
             Vector3 g0 = groundPoint[i];
             float hPrev = (g0.x - near.x) * u.x + (g0.y - near.y) * u.y + (g0.z - near.z) * u.z;
             float hs = hPrev;
             Vector3 nrm = GroundNormals[i];
-            if (ground.Probe(near, u, window, out Vector3 gp, out Vector3 gn))
+            if (spineGround.Probe(near, u, window, out Vector3 gp, out Vector3 gn))
             {
                 float hProbe = (gp.x - near.x) * u.x + (gp.y - near.y) * u.y + (gp.z - near.z) * u.z;
                 hs = hPrev + (hProbe - hPrev) * k;
@@ -204,6 +220,7 @@ public sealed class CreatureSim
             float lift = clear - droop[i];
             Path[i] = new Vector3(g.x + u.x * lift, g.y + u.y * lift, g.z + u.z * lift);
         }
+        RestoreLengths(seg);
 
         // 4. gait sway: the displayed body is the path bent toward the reaching legs
         ApplySway(dt);
@@ -331,6 +348,38 @@ public sealed class CreatureSim
             if (turn != 0f) d = Rotate(d, GroundNormals[i], turn * Mathf.Deg2Rad);
             Vector3 jp = Joints[i - 1];
             Joints[i] = new Vector3(jp.x + d.x * len, jp.y + d.y * len, jp.z + d.z * len);
+        }
+    }
+
+    // Grounding sets each joint's height on its own, along up, so wherever the ground's height changes
+    // along the body faster than it did a sub-step ago (a dug hole's rim, a slip-face brink) a segment
+    // comes out longer or shorter than the spacing (R25: up to twice its length at a hole's wall, and the
+    // skinned body with it). Each segment is put back to its length along its new direction, from the head
+    // back. The chain step of the next sub-step keeps these pitches, so in steady motion this moves
+    // nothing; only the change of one sub-step is redistributed. A stretched segment is pulled in along
+    // itself (follow the leader once more: a joint the ground dropped away from stays nearer its
+    // predecessor, the body drapes); a shortened one is let out along the ground, keeping the joint's
+    // grounded height (along itself it would push a down-sloping tail into the sand).
+    void RestoreLengths(float seg)
+    {
+        for (int i = 1; i < n; i++)
+        {
+            Vector3 a = Path[i - 1], v = Path[i] - a;
+            float m2 = v.x * v.x + v.y * v.y + v.z * v.z;
+            if (!(m2 > 1e-18f)) continue;
+            if (m2 >= seg * seg)
+            {
+                float f = seg / Mathf.Sqrt(m2);
+                Path[i] = new Vector3(a.x + v.x * f, a.y + v.y * f, a.z + v.z * f);
+                continue;
+            }
+            Vector3 u = pathUp[i];
+            float rise = v.x * u.x + v.y * u.y + v.z * u.z;
+            var hv = new Vector3(v.x - u.x * rise, v.y - u.y * rise, v.z - u.z * rise);
+            float run2 = hv.x * hv.x + hv.y * hv.y + hv.z * hv.z;
+            if (!(run2 > 1e-18f)) continue;
+            float g = Mathf.Sqrt(Mathf.Max(0f, seg * seg - rise * rise) / run2);
+            Path[i] = new Vector3(a.x + hv.x * g + u.x * rise, a.y + hv.y * g + u.y * rise, a.z + hv.z * g + u.z * rise);
         }
     }
 
