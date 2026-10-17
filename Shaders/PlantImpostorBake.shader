@@ -30,6 +30,7 @@ Shader "Hidden/MarchingCubes/Plant Impostor Bake"
             #pragma vertex vert
             #pragma fragment frag
             #include "UnityCG.cginc"
+            #include "PlantColor.hlsl"
 
             fixed4 _Color;
             float4 _LightDir;
@@ -65,7 +66,9 @@ Shader "Hidden/MarchingCubes/Plant Impostor Bake"
                 // vertex alpha is the non-emission mask (see MarchingCubes/Plant):
                 // emissive parts bake at full brightness instead of being shaded.
                 float lit = lerp(1.0, s, i.col.a);
-                return fixed4(_Color.rgb * i.col.rgb * lit, 1.0);
+                // vertex rgb is sRGB as authored: decode once, exactly as the mesh
+                // shader does, so the card matches the mesh it replaces
+                return fixed4(_Color.rgb * PlantVertexAlbedo(i.col.rgb) * lit, 1.0);
             }
             ENDCG
         }

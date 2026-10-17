@@ -302,6 +302,11 @@ namespace TerrainGen.Tests
             CreatureLegTests.TightTurnJointRanges(Monitor());
         }
 
+        [Test] public void Monitor_TightTurn_LegsClearTheTrunk()
+        {
+            CreatureLegTests.TightTurnLegClearance(Monitor(), 0.01f);
+        }
+
         [Test] public void Monitor_MaxBend_NoInvertedTriangles()
         {
             CreatureMeshTests.MaxBendNoInvertedTriangles(Monitor());

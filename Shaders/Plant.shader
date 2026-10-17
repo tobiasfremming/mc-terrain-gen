@@ -1,7 +1,8 @@
 // Plant mesh shader (URP, instanced): colour from the vertices, so one mesh
 // carries bark, leaves, flowers and glowing parts in any mix.
 //
-//   vertex.rgb  albedo of the part this vertex belongs to (PlantMeshBuilder)
+//   vertex.rgb  albedo of the part this vertex belongs to (PlantMeshBuilder),
+//               in sRGB as authored; decoded by PlantVertexAlbedo (PlantColor.hlsl)
 //   vertex.a    NON-emission mask: 1 = ordinary lit surface, 0 = fully
 //               self-lit. Alpha rather than a separate stream because a mesh
 //               with no colour stream reads as (1,1,1,1) -- white and unlit,
@@ -52,6 +53,7 @@ Shader "MarchingCubes/Plant"
             #pragma fragment Frag
             #pragma multi_compile_instancing
             #pragma multi_compile_fog
+            #include "PlantColor.hlsl"
 
             struct Attributes
             {
@@ -89,7 +91,7 @@ Shader "MarchingCubes/Plant"
                 half3 n = normalize(i.normalWS);
                 if (!isFront) n = -n;
 
-                half3 albedo = i.color.rgb * _BaseColor.rgb;
+                half3 albedo = (half3)PlantVertexAlbedo(i.color.rgb) * _BaseColor.rgb;
                 half3 sunDir = (half3)_MainLightPosition.xyz;
                 // wrap lighting: thin leaves let light through, so the shadow
                 // side is not black

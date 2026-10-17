@@ -215,6 +215,11 @@ namespace TerrainGen.Tests
             CreatureLegTests.TightTurnJointRanges(Load(kHexapodPath));
         }
 
+        [Test] public void Hexapod_TightTurn_LegsClearTheTrunk()
+        {
+            CreatureLegTests.TightTurnLegClearance(Load(kHexapodPath), 0.01f);
+        }
+
         [Test] public void Hexapod_MaxBend_NoInvertedTriangles()
         {
             CreatureMeshTests.MaxBendNoInvertedTriangles(Load(kHexapodPath));

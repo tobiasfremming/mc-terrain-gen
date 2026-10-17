@@ -253,8 +253,9 @@ namespace TerrainGen.Tests
         //     planted foot that reaches it; a foot whose landing point went out of reach (the body moved on
         //     over a pit deeper than the legs) counts as dangling, at most maxDangling of the planted ticks;
         // (e) the body does not cut into the ground by more than its half height (+ maxSink x scale);
-        // (f) it gets across.
-        static void WalkAcrossHole(float centreY, string tag, float maxDangling, float maxSink)
+        // (f) it gets across; (g) the spine's worst vertical bend between segments stays at most maxBendDeg -
+        //     a guard at the measured value: the fold at a rim is deferred to the climbing design (ruling R28).
+        static void WalkAcrossHole(float centreY, string tag, float maxDangling, float maxSink, float maxBendDeg)
         {
             var sp = UnityEditor.AssetDatabase.LoadAssetAtPath<CreatureSpecies>(CreatureWorldTests.kMonitorPath);
             var f = ScriptableObject.CreateInstance<PlaneWithSphereHoleField>();
@@ -304,8 +305,7 @@ namespace TerrainGen.Tests
                              $"worst landing point off surface {worstTarget * 100f:F1} cm, worst reached foot {worstFoot * 100f:F1} cm, dangling {dangling}/{planted}, " +
                              $"body into ground {worstSink * 100f:F1} cm ({sinkAt}), worst vertical bend {worstBend:F0} deg, head z {sim.Joints[0].z:F1}, tail z {sim.Joints[n - 1].z:F1}, " +
                              $"cache node probes {ground.NodeProbes}, exact {ground.ExactQueries}/{ground.Queries}";
-                TestContext.Out.WriteLine(sum);
-                Assert.Greater(sim.Joints[n - 1].z, f.center.z + f.radius + 1f, $"the monitor never crossed the hole | {sum}");
+                TestContext.Out.WriteLine(sum);                Assert.Greater(sim.Joints[n - 1].z, f.center.z + f.radius + 1f, $"the monitor never crossed the hole | {sum}");
                 Assert.AreEqual(0, flips, $"joints jitter | {sum}");
                 Assert.LessOrEqual(worstSeg, 0.05f, $"body segments stretch | {sum}");
                 Assert.Greater(planted, 500, sum);
@@ -313,6 +313,7 @@ namespace TerrainGen.Tests
                 Assert.LessOrEqual(worstFoot, 0.02f, $"a planted foot is off the surface | {sum}");
                 Assert.LessOrEqual(dangling, maxDangling * planted, $"feet dangle | {sum}");
                 Assert.LessOrEqual(worstSink, maxSink * sim.SizeScale, $"the body cuts into the ground | {sum}");
+                Assert.LessOrEqual(worstBend, maxBendDeg, $"the spine folds at the rim more than before | {sum}");
             }
             finally { Object.DestroyImmediate(f); }
         }
@@ -323,10 +324,45 @@ namespace TerrainGen.Tests
         // the planted ticks (measured), the body stays out of the ground. The overhanging pit (2.1 m deep under
         // a lip) is deeper than the 4x monitor's legs (1.1 m): it still gets across without jitter or stretch,
         // but feet hang in the air on ~2-3 % of the planted ticks, and climbing out under the far lip the
-        // tail tip cuts the lip's edge (~20 cm measured; a creature cannot get out from under an overhang
-        // without climbing, which is a queued feature).
-        [Test] public void Hole_Overhanging_NoJitter_NoStretch() => WalkAcrossHole(-0.3f, "overhanging hole", 0.05f, 0.08f);
-        [Test] public void Hole_Bowl_NoJitter_NoStretch() => WalkAcrossHole(0.3f, "bowl", 0.002f, 0.02f);
+        // tail tip cuts the lip's edge (19.6 cm measured, bound 20 cm = 0.05 x scale; a creature cannot get out
+        // from under an overhang without climbing, which is a queued feature). Worst vertical bend measured
+        // (final fix round): overhang 61 deg, bowl 54 deg; bounds +2 deg.
+        [Test] public void Hole_Overhanging_NoJitter_NoStretch() => WalkAcrossHole(-0.3f, "overhanging hole", 0.05f, 0.05f, 63f);
+        [Test] public void Hole_Bowl_NoJitter_NoStretch() => WalkAcrossHole(0.3f, "bowl", 0.002f, 0.02f, 56f);
+
+        // Final review Important 2: the spine's smooth read of a step cell (a dug rim) is a Hermite S between
+        // its nodes; with the nodes' own slopes (steep at the brink) it overshot the rim by up to ~25 cm. With
+        // the step edges' tangents limited to the secant it stays within the cell's node heights.
+        [Test] public void Cached_Smooth_StepCells_StayWithinNodeHeights()
+        {
+            foreach (float centreY in new[] { -0.3f, 0.3f })
+            {
+                var f = ScriptableObject.CreateInstance<PlaneWithSphereHoleField>();
+                f.radius = 1.6f; f.center = new Vector3(0.4f, centreY * f.radius, 0f);
+                try
+                {
+                    var exact = new FieldGroundProbe(f);
+                    var cache = new CachedGroundProbe(new FieldGroundProbe(f), 6f);
+                    float worst = 0f; int stepReads = 0; string at = "-";
+                    for (int iz = -60; iz <= 60; iz++)
+                        for (int ix = -70; ix <= 80; ix++)
+                        {
+                            float x = 0.031f * ix, z = 0.029f * iz;
+                            // a body point 10 cm over whichever surface the exact probe finds from above
+                            Assert.IsTrue(exact.Probe(new Vector3(x, 0.1f, z), Vector3.up, 0.5f, out Vector3 g, out _));
+                            Assert.IsTrue(cache.Smooth.Probe(new Vector3(x, g.y + 0.1f, z), Vector3.up, 0.5f, out Vector3 p, out _));
+                            if (!cache.LastCell(out float lo, out float hi)) continue;
+                            stepReads++;
+                            float over = Mathf.Max(p.y - hi, lo - p.y);
+                            if (over > worst) { worst = over; at = $"({x:F2}, {z:F2}) y {p.y:F3} nodes {lo:F3}..{hi:F3}"; }
+                        }
+                    TestContext.Out.WriteLine($"centre y {f.center.y:F2}: {stepReads} smooth reads on step cells, worst overshoot {worst * 100f:F1} cm at {at}");
+                    Assert.Greater(stepReads, 100, "no step cells: the test does not bite");
+                    Assert.LessOrEqual(worst, 1e-4f, $"smooth patch leaves its node range at {at}");
+                }
+                finally { Object.DestroyImmediate(f); }
+            }
+        }
 
         // A dig (CreatureWorld forwards RegionModified with the carve's bounds) must replace the cached ground.
         [Test] public void Cached_DigInvalidation_ReturnsNewSurface()

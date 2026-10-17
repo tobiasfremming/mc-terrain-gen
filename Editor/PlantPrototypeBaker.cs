@@ -142,7 +142,12 @@ public static class PlantPrototypeBaker
     // work than drawing two meshes by hand. The atlas is written as a PNG next
     // to the set rather than as a sub-asset, because this project serializes
     // assets as text and a 2048x1024 texture as YAML hex is 16 MB.
-    static void BakeImpostors(PlantPrototypeSet set, PlantProfile profile, string assetPath)
+    //
+    // atlasOnly re-renders the PNG in place and leaves the set alone: the
+    // cards and the material depend only on the meshes' bounds, which a
+    // shader change does not move, so there is no reason to rewrite a
+    // multi-megabyte text asset (see RebakeImpostorAtlas).
+    static void BakeImpostors(PlantPrototypeSet set, PlantProfile profile, string assetPath, bool atlasOnly = false)
     {
         Shader bakeShader = Shader.Find("Hidden/MarchingCubes/Plant Impostor Bake");
         Shader cardShader = Shader.Find("MarchingCubes/Plant Impostor");
@@ -177,6 +182,11 @@ public static class PlantPrototypeBaker
         Color bg = Color.white;
         foreach (var part in profile.parts)
             if (part != null && part.enabled && part.shape != PlantPartShape.None) { bg = part.color; break; }
+        // The clear colour is written as given, not converted like a material
+        // colour, and the target is sRGB in a Linear project: decode it here
+        // the way PlantColor.hlsl decodes the vertex colours, or the halo is
+        // brighter than the leaves it borders.
+        if (QualitySettings.activeColorSpace == ColorSpace.Linear) bg = bg.linear;
         cmd.ClearRenderTarget(true, true, new Color(bg.r, bg.g, bg.b, 0f));
 
         var cards = new Mesh[variants];
@@ -265,6 +275,12 @@ public static class PlantPrototypeBaker
         }
         Texture2D atlas = AssetDatabase.LoadAssetAtPath<Texture2D>(pngPath);
 
+        if (atlasOnly)
+        {
+            foreach (var c in cards) Object.DestroyImmediate(c);
+            return;
+        }
+
         Material card = set.impostorMaterial;
         if (card == null)
         {
@@ -289,6 +305,31 @@ public static class PlantPrototypeBaker
         set.impostorAtlas = atlas;
         set.impostorMaterial = card;
         set.impostorFrames = frames;
+    }
+
+    // Re-renders an existing set's impostor atlas from its baked LOD0 meshes,
+    // without re-deriving the grammar or touching the .asset. For changes to
+    // how the bake SHADES (PlantImpostorBake.shader / PlantColor.hlsl); a
+    // change to the plant's shape needs a full Bake.
+    public static bool RebakeImpostorAtlas(PlantPrototypeSet set)
+    {
+        if (set == null || set.source == null || !set.HasImpostor || set.variants == null || set.variants.Length == 0) return false;
+        foreach (var v in set.variants) if (v == null || v.lods == null || v.lods.Length == 0 || v.lods[0] == null) return false;
+        BakeImpostors(set, set.source, AssetDatabase.GetAssetPath(set), atlasOnly: true);
+        return true;
+    }
+
+    [MenuItem("Marching Cubes/Rebake Plant Impostor Atlases")]
+    static void RebakeAllImpostorAtlases()
+    {
+        int done = 0, skipped = 0;
+        foreach (string guid in AssetDatabase.FindAssets("t:PlantPrototypeSet"))
+        {
+            var set = AssetDatabase.LoadAssetAtPath<PlantPrototypeSet>(AssetDatabase.GUIDToAssetPath(guid));
+            if (RebakeImpostorAtlas(set)) done++; else skipped++;
+            EditorUtility.UnloadUnusedAssetsImmediate();   // a set's meshes run to tens of MB
+        }
+        Debug.Log("[PlantPrototypeBaker] re-rendered " + done + " impostor atlases, skipped " + skipped + " sets without impostors");
     }
 
     // The quad the impostor shader turns toward the camera. x is the card's
