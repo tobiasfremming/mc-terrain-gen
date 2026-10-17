@@ -31,7 +31,49 @@ public sealed class WanderBrain : ICreatureBrain
         return (rng & 0xFFFFFFu) / 16777216f;
     }
 
-    public Vector3 Target(CreatureSim sim, float dt)
+    public Vector3 Target(CreatureSim sim, float dt) => AroundObstacles(sim, Wander(sim, dt));
+
+    // Head steering around the enclosure's obstacles: when the straight line to the target passes through an
+    // obstacle's keep-out disc (grown by kSkirt), aim along the tangent to that disc on the target's side;
+    // a head already inside the disc is sent straight out. The rest of the wander is unchanged.
+    const float kSkirt = 1.15f;
+    Vector3 AroundObstacles(CreatureSim sim, Vector3 target)
+    {
+        int n = area.ObstacleCount;
+        if (n == 0) return target;
+        Vector3 head = sim.Joints[0], up = area.up;
+        Vector3 to = target - head; to -= up * Vector3.Dot(to, up);
+        float dist = to.magnitude;
+        if (dist < 1e-4f) return target;
+        Vector3 dir = to / dist;
+        float look = 2f * sim.SizeScale; // look-ahead of a steering target
+        for (int i = 0; i < n; i++)
+        {
+            Vector3 c = area.obstacleCenters[i] - head; c -= up * Vector3.Dot(c, up);
+            float R = (area.obstacleRadii[i] + area.keepOut) * kSkirt;
+            float D = c.magnitude;
+            if (D < R)
+            {
+                // inside the skirt: out radially, sliding toward the target's side
+                Vector3 outDir = D > 1e-4f ? -c / D : Vector3.Cross(up, dir);
+                Vector3 side = Vector3.Cross(up, outDir) * Mathf.Sign(Vector3.Dot(Vector3.Cross(up, outDir), dir) + 1e-6f);
+                return head + (outDir + 0.5f * side).normalized * look;
+            }
+            float along = Vector3.Dot(c, dir);
+            if (along <= 0f || along > dist + R) continue;               // behind, or beyond the target
+            float miss = (c - dir * along).magnitude;
+            if (miss >= R) continue;                                      // the line clears the disc
+            // tangent from the head to the disc, on the side the target lies
+            float half = Mathf.Asin(Mathf.Clamp01(R / D)) * Mathf.Rad2Deg;
+            Vector3 toC = c / D;
+            Vector3 a = Quaternion.AngleAxis(half, up) * toC, b = Quaternion.AngleAxis(-half, up) * toC;
+            Vector3 t = Vector3.Dot(a, dir) >= Vector3.Dot(b, dir) ? a : b;
+            return head + t * Mathf.Max(look, Mathf.Min(dist, D));
+        }
+        return target;
+    }
+
+    Vector3 Wander(CreatureSim sim, float dt)
     {
         Vector3 head = sim.Joints[0];
         Vector3 heading = sim.Rotations[0] * Vector3.forward;

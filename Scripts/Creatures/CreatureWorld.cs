@@ -16,6 +16,7 @@ public sealed class CreatureWorld : MonoBehaviour
     readonly List<CreatureSpecies> species = new List<CreatureSpecies>();
     readonly List<CreatureRenderer> renderers = new List<CreatureRenderer>();
     readonly List<CachedGroundProbe> caches = new List<CachedGroundProbe>();
+    readonly List<IGroundProbe> simGrounds = new List<IGroundProbe>(); // per sim, parallel to sims
     readonly Stopwatch watch = new Stopwatch();
 
     static readonly Func<Vector3, Vector3> FlatUp = _ => Vector3.up;
@@ -72,7 +73,8 @@ public sealed class CreatureWorld : MonoBehaviour
         if (Instance == null) Instance = this;
     }
 
-    public CreatureSim Spawn(CreatureSpecies sp, Vector3 position, Vector3 forward, ICreatureBrain brain, EnclosureArea? bounds, int seed)
+    // scale > 0 overrides the species' own scale for this individual (the lab's per-enclosure override).
+    public CreatureSim Spawn(CreatureSpecies sp, Vector3 position, Vector3 forward, ICreatureBrain brain, EnclosureArea? bounds, int seed, float scale = 0f)
     {
         if (sp == null) throw new ArgumentNullException(nameof(sp));
         string err = sp.Validate();
@@ -80,9 +82,10 @@ public sealed class CreatureWorld : MonoBehaviour
         IGroundProbe g = Ground;
         if (g == null) throw new InvalidOperationException("CreatureWorld: no ground (no MCChunkManager in the scene and SetGround not called)");
 
-        CreatureInstance inst = Individual(sp, seed);
+        CreatureInstance inst = Individual(sp, seed, scale > 0f ? scale : sp.scale);
         IGroundProbe simGround = SimGround(g, sp, inst.sizeScale);
         if (simGround is CachedGroundProbe cache) caches.Add(cache);
+        simGrounds.Add(simGround);
         var sim = new CreatureSim(sp, simGround, upAt, position, forward, inst.sizeScale, seed) { Bounds = bounds };
 
         int r = species.IndexOf(sp);
@@ -98,9 +101,23 @@ public sealed class CreatureWorld : MonoBehaviour
         return sim;
     }
 
+    // Removes a creature: no longer ticked or drawn. False if it is not in this world.
+    public bool Despawn(CreatureSim sim)
+    {
+        int i = sims.IndexOf(sim);
+        if (i < 0) return false;
+        int r = species.IndexOf(sim.Species);
+        if (r >= 0) renderers[r].Remove(sim);
+        if (simGrounds[i] is CachedGroundProbe cache) caches.Remove(cache);
+        sims.RemoveAt(i); brains.RemoveAt(i); simGrounds.RemoveAt(i);
+        return true;
+    }
+
     // Per-individual look and size from the seed, within the species' jitter ranges. The speed cap needs
     // no extra scaling: the gait's stride limit derives from the size-scaled leg geometry.
-    internal static CreatureInstance Individual(CreatureSpecies sp, int seed)
+    internal static CreatureInstance Individual(CreatureSpecies sp, int seed) => Individual(sp, seed, sp.scale);
+
+    internal static CreatureInstance Individual(CreatureSpecies sp, int seed, float scale)
     {
         CreatureLook look = sp.look;
         uint h = (uint)seed * 2654435761u + 0x7F4A7C15u;
@@ -110,7 +127,7 @@ public sealed class CreatureWorld : MonoBehaviour
             seed = 1024f * a,
             hueShift = look.hueJitter * (2f * b - 1f),
             valueShift = look.valueJitter * (2f * c - 1f),
-            sizeScale = sp.scale * (1f + look.sizeJitter * (2f * d - 1f)),
+            sizeScale = scale * (1f + look.sizeJitter * (2f * d - 1f)),
         };
     }
 
@@ -144,7 +161,7 @@ public sealed class CreatureWorld : MonoBehaviour
     void OnDestroy()
     {
         for (int i = 0; i < renderers.Count; i++) renderers[i].Dispose();
-        renderers.Clear(); species.Clear(); sims.Clear(); brains.Clear(); caches.Clear();
+        renderers.Clear(); species.Clear(); sims.Clear(); brains.Clear(); caches.Clear(); simGrounds.Clear();
         if (edits != null) { edits.RegionModified -= OnTerrainEdited; edits = null; }
         if (Instance == this) Instance = null;
     }

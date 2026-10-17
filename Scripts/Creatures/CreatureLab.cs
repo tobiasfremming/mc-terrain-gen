@@ -1,17 +1,28 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 // The creature lab: one enclosure per species on a gentle arc in front of the player's spawn, each with one
 // wandering individual. Placement runs once the ground answers, so it adapts to wherever the dunes are,
 // preferring the flattest of a few nearby spots.
+// Scaling (R22): each species' own CreatureSpecies.scale, or a per-enclosure override in scaleOverrides
+// (parallel to species; 0 = the species' scale). Changing either in play mode respawns that enclosure's
+// creature at the new size and rebuilds its curb; nothing is checked per frame unless something changed.
 [RequireComponent(typeof(CreatureWorld))]
 public sealed class CreatureLab : MonoBehaviour
 {
     public CreatureSpecies[] species;
+    [Tooltip("Per-species size override, parallel to species (0 = use the species' own scale).")]
+    public float[] scaleOverrides;
     public float spacing = 25f, arcRadius = 30f;
     public int seed = 7;
     public float searchRadius = 15f;   // flat-spot search around each arc slot
     public Material borderMaterial;
+    [Tooltip("Optional shade tree placed in every enclosure (a baked plant prototype set); the creature walks around it.")]
+    public PlantPrototypeSet enclosurePlant;
+    public float plantScale = 1.2f;
+    [Tooltip("Distance of the tree from the enclosure centre, as a fraction of the radius.")]
+    public float plantOffset = 0.45f;
 
     const float kWaitSeconds = 10f;
     const int kCandidates = 16, kRimProbes = 8;
@@ -19,14 +30,75 @@ public sealed class CreatureLab : MonoBehaviour
     const float kGoldenAngle = 2.39996323f;
     const float kViewGap = 4f;          // the player starts this far outside the nearest curb, facing it
     const float kEnclosureGap = 4f;     // free ground between neighbouring curbs
+    const float kSunSide = 35f;         // the player stands this far round from the sun's side (modelling light)
 
-    // The enclosure for a species whose largest individual has size scale maxScale: 2.5 body lengths of
+    // The enclosure for a species whose largest individual has size scale maxScale: 2 body lengths of
     // radius (room to wander and turn, small enough to see the animal from the curb), at least 5 m.
     public static float EnclosureRadius(CreatureSpecies sp, float maxScale)
-        => Mathf.Max(5f, 2.5f * sp.BodyLength * maxScale);
+        => Mathf.Max(5f, 2f * sp.BodyLength * maxScale);
 
     // The size scale of the species' largest possible individual (CreatureWorld draws it from the seed).
-    public static float MaxScale(CreatureSpecies sp) => sp.scale * (1f + Mathf.Abs(sp.look.sizeJitter));
+    public static float MaxScale(CreatureSpecies sp) => MaxScale(sp, sp.scale);
+    public static float MaxScale(CreatureSpecies sp, float scale) => scale * (1f + Mathf.Abs(sp.look.sizeJitter));
+
+    // One placed enclosure and its creature.
+    sealed class Entry
+    {
+        public CreatureSpecies species;
+        public float scale;                // the effective scale it was spawned at
+        public CreatureEnclosure enclosure;
+        public CreatureSim sim;
+        public int seed;
+    }
+
+    readonly List<Entry> entries = new List<Entry>();
+    CreatureWorld placedWorld;
+    bool scalesDirty;
+
+    // The scale enclosure k uses: its override, else the species' own.
+    public float ScaleFor(int k)
+    {
+        float o = scaleOverrides != null && k < scaleOverrides.Length ? scaleOverrides[k] : 0f;
+        return o > 0f ? o : (species[k] != null ? species[k].scale : 1f);
+    }
+
+    internal CreatureSim SimFor(int k) => k < entries.Count && entries[k] != null ? entries[k].sim : null;
+    internal CreatureEnclosure EnclosureFor(int k) => k < entries.Count && entries[k] != null ? entries[k].enclosure : null;
+
+    void OnEnable() => CreatureSpecies.Changed += OnSpeciesChanged;
+    void OnDisable() => CreatureSpecies.Changed -= OnSpeciesChanged;
+    void OnSpeciesChanged(CreatureSpecies sp) => scalesDirty = true;
+    void OnValidate() => scalesDirty = true;
+
+    void Update()
+    {
+        if (!scalesDirty) return;
+        scalesDirty = false;
+        ApplyScales();
+    }
+
+    // Respawns every enclosure whose effective scale changed: the old creature is despawned, the curb and
+    // safe disc rebuilt for the new size around the same centre, and a new individual spawned there.
+    internal void ApplyScales()
+    {
+        if (placedWorld == null) return;
+        IGroundProbe ground = placedWorld.Ground;
+        for (int k = 0; k < entries.Count; k++)
+        {
+            Entry e = entries[k];
+            if (e == null || e.species == null) continue;
+            float scale = ScaleFor(k);
+            if (Mathf.Approximately(scale, e.scale)) continue;
+            Vector3 face = e.sim != null ? e.sim.Rotations[0] * Vector3.forward : e.enclosure.transform.forward;
+            placedWorld.Despawn(e.sim);
+            e.scale = scale;
+            float maxScale = MaxScale(e.species, scale);
+            e.enclosure.radius = EnclosureRadius(e.species, maxScale);
+            e.enclosure.Build(ground);
+            EnclosureArea area = e.enclosure.AreaFor(e.species, maxScale);
+            e.sim = placedWorld.Spawn(e.species, area.center, face, new WanderBrain(area, e.seed), area, e.seed, scale);
+        }
+    }
 
     IEnumerator Start()
     {
@@ -59,9 +131,11 @@ public sealed class CreatureLab : MonoBehaviour
         Place(world, player, groundAtPlayer);
     }
 
-    void Place(CreatureWorld world, Transform player, Vector3 origin)
+    internal void Place(CreatureWorld world, Transform player, Vector3 origin)
     {
         if (species == null) return;
+        placedWorld = world;
+        entries.Clear();
         IGroundProbe ground = world.Ground;
         Vector3 up = PlanetGravity.UpAt(origin);
         Vector3 fwd = Vector3.ProjectOnPlane(player.forward, up);
@@ -71,7 +145,7 @@ public sealed class CreatureLab : MonoBehaviour
         int n = species.Length;
         // big species get big enclosures: keep neighbours apart and the arc outside the player's spot
         float maxR = 0f;
-        for (int k = 0; k < n; k++) if (species[k] != null) maxR = Mathf.Max(maxR, EnclosureRadius(species[k], MaxScale(species[k])));
+        for (int k = 0; k < n; k++) if (species[k] != null) maxR = Mathf.Max(maxR, EnclosureRadius(species[k], MaxScale(species[k], ScaleFor(k))));
         float slotSpacing = Mathf.Max(spacing, 2f * maxR + kEnclosureGap);
         float slotRadius = Mathf.Max(arcRadius, maxR + kViewGap + searchRadius);
         var sb = new System.Text.StringBuilder("[CreatureLab] placed:");
@@ -79,10 +153,11 @@ public sealed class CreatureLab : MonoBehaviour
         for (int k = 0; k < n; k++)
         {
             CreatureSpecies sp = species[k];
-            if (sp == null) continue;
+            if (sp == null) { entries.Add(null); continue; }
             // the individual's size is drawn from its seed inside CreatureWorld: size the enclosure and its
             // safe disc for the largest possible individual
-            float maxScale = MaxScale(sp);
+            float scale = ScaleFor(k);
+            float maxScale = MaxScale(sp, scale);
             float radius = EnclosureRadius(sp, maxScale);
 
             Vector3 slot = ArcSlot(origin, fwd, up, k, n, slotSpacing, slotRadius);
@@ -97,10 +172,12 @@ public sealed class CreatureLab : MonoBehaviour
             enc.borderMaterial = borderMaterial;
             enc.Build(ground);
 
-            EnclosureArea area = enc.AreaFor(sp, maxScale);
             Vector3 face = Vector3.ProjectOnPlane(origin - center, cUp);
             if (face.sqrMagnitude < 1e-6f) face = fwd;
-            world.Spawn(sp, center, face.normalized, new WanderBrain(area, seed + k), area, seed + k);
+            if (enclosurePlant != null) PlacePlant(enc, ground, center, cUp, radius, face.normalized, k);
+            EnclosureArea area = enc.AreaFor(sp, maxScale);
+            CreatureSim sim = world.Spawn(sp, center, face.normalized, new WanderBrain(area, seed + k), area, seed + k, scale);
+            entries.Add(new Entry { species = sp, scale = scale, enclosure = enc, sim = sim, seed = seed + k });
             sb.Append($" {sp.name} at {center} (r {radius:F1} m, flatness {flatness:F3})");
             float dist = Vector3.ProjectOnPlane(center - origin, up).magnitude - radius;
             if (dist < nearestDist) { nearestDist = dist; nearestCentre = center; nearestRadius = radius; }
@@ -109,12 +186,29 @@ public sealed class CreatureLab : MonoBehaviour
         Debug.Log(sb.ToString());
     }
 
-    // Moves the player to kViewGap outside the nearest curb, on the line from the enclosure toward where
-    // the player spawned, facing its centre: the whole enclosure and its animal are in view from the start.
+    // Moves the player to kViewGap outside the nearest curb, facing its centre, on the sun's side (turned
+    // kSunSide round from it, so the light models the animal instead of backlighting it); without a sun, on
+    // the line toward where the player spawned. The whole enclosure and its animal are in view from the start.
     static void FramePlayer(IGroundProbe ground, Transform player, Vector3 origin, Vector3 centre, float radius, System.Text.StringBuilder sb)
     {
         Vector3 up = PlanetGravity.UpAt(centre);
         Vector3 away = Vector3.ProjectOnPlane(origin - centre, up);
+        Light sun = RenderSettings.sun;
+        if (sun == null)
+        {
+            Light[] lights = FindObjectsByType<Light>(FindObjectsSortMode.None);
+            for (int i = 0; i < lights.Length && sun == null; i++) if (lights[i].type == LightType.Directional) sun = lights[i];
+        }
+        if (sun != null)
+        {
+            Vector3 toSun = Vector3.ProjectOnPlane(-sun.transform.forward, up);
+            if (toSun.sqrMagnitude > 1e-4f)
+            {
+                // of the two sides kSunSide off the sun, the one nearer the spawn
+                Vector3 a = Quaternion.AngleAxis(kSunSide, up) * toSun, b = Quaternion.AngleAxis(-kSunSide, up) * toSun;
+                away = Vector3.Dot(a, away) >= Vector3.Dot(b, away) ? a : b;
+            }
+        }
         if (away.sqrMagnitude < 1e-6f) away = -Vector3.ProjectOnPlane(player.forward, up);
         away.Normalize();
         Vector3 spot = centre + away * (radius + kViewGap);
@@ -128,6 +222,23 @@ public sealed class CreatureLab : MonoBehaviour
         if (ccOn) cc.enabled = true;
         player.SendMessage("ResetOrientation", SendMessageOptions.DontRequireReceiver); // GravityAligner
         sb.Append($"; player framed at {player.position} facing the enclosure");
+    }
+
+    // The shade tree: plantOffset x radius from the centre, 70 deg round from the player's side (in view, not
+    // in the way), on the probed ground; its trunk becomes the enclosure's obstacle.
+    void PlacePlant(CreatureEnclosure enc, IGroundProbe ground, Vector3 center, Vector3 up, float radius, Vector3 towardPlayer, int k)
+    {
+        Vector3 dir = Quaternion.AngleAxis(70f, up) * towardPlayer;
+        Vector3 at = center + dir * (plantOffset * radius);
+        if (ground.Probe(at + up * 2f, up, kProbeWindow + 2f, out Vector3 g, out _)) at = g;
+        var go = new GameObject("Plant " + enclosurePlant.name);
+        go.transform.SetParent(enc.transform, true);
+        // sunk a little so the root flare meets sloping sand
+        go.transform.SetPositionAndRotation(at - up * (0.1f * plantScale), Quaternion.AngleAxis(137f * k, up) * Quaternion.FromToRotation(Vector3.up, up));
+        var plant = go.AddComponent<EnclosurePlant>();
+        plant.Init(enclosurePlant, seed + k, plantScale);
+        enc.obstacles.Clear();
+        enc.obstacles.Add(new Vector4(at.x, at.y, at.z, plant.TrunkRadius));
     }
 
     // The k-th of n slots on an arc of radius arcRadius around origin, centred on fwd; adjacent slots are

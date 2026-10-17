@@ -62,4 +62,21 @@ namespace TerrainGen.Tests
         public override float Sample(Vector3 p, float filterWidth) => SurfaceY(p.x, p.z) - p.y;
         protected override void OnValidate() { }
     }
+
+    // Flat ground at y = 0 with a dug spherical hole (TerrainDigger's CarveSphere: true 3D removal). The
+    // density is min(plane, sphere SDF), a distance bound, so |Sample| is at most the distance to the surface.
+    // centre.y < 0 overhangs the rim (columns near it cross ground, air, then the hole's floor); centre.y > 0
+    // is an open bowl. `dug` = false is the untouched plane (for invalidation tests).
+    public class PlaneWithSphereHoleField : DensityField
+    {
+        public Vector3 center = new Vector3(0f, -0.4f, 0f);
+        public float radius = 1.5f;
+        public bool dug = true;
+        public override float Sample(Vector3 p, float filterWidth)
+        {
+            float plane = -p.y;
+            return dug ? Mathf.Min(plane, Vector3.Distance(p, center) - radius) : plane;
+        }
+        protected override void OnValidate() { }
+    }
 }
