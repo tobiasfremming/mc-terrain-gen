@@ -196,7 +196,7 @@ public sealed class OctopusBody
         for (int s = 0; s < subSteps; s++) SubStep(h);
         Lattice.FitAll();
         for (int a = 0; a < ArmCount; a++) Arms[a].UpdateFrames(dt);
-        UpdateSleep();
+        UpdateSleep(dt);
     }
 
     // ------------------------------------------------------------------ sleep
@@ -216,24 +216,42 @@ public sealed class OctopusBody
 
     public void Wake() { Asleep = false; calmFrames = 0; }
 
-    void UpdateSleep()
+    // Calm = every particle moved less than SleepSpeed x sizeScale between the ends of two ticks. Measured tick
+    // end to tick end (before the controller's contact planes), not by the last sub-step's X - Prev: a particle
+    // held between a constraint and a contact plane keeps a constant X - Prev while standing perfectly still.
+    Vector3[] tickX;
+
+    void UpdateSleep(float dt)
     {
         if (!AllowSleep) { calmFrames = 0; return; }
-        float lim = SleepSpeed * SizeScale;
-        // the last sub-step's displacement (X - Prev), as a speed
+        int n = SoftLattice.Count;
+        for (int a = 0; a < ArmCount; a++) n += Arms[a].N;
+        bool first = tickX == null;
+        if (first) tickX = new Vector3[n];
+        float lim = SleepSpeed * SizeScale * dt;
         float maxD2 = 0f;
-        Vector3[] lx = Lattice.X, lp = Lattice.Prev;
-        for (int i = 0; i < SoftLattice.Count; i++) maxD2 = Mathf.Max(maxD2, (lx[i].x - lp[i].x) * (lx[i].x - lp[i].x) + (lx[i].y - lp[i].y) * (lx[i].y - lp[i].y) + (lx[i].z - lp[i].z) * (lx[i].z - lp[i].z));
+        int o = 0;
+        Vector3[] lx = Lattice.X;
+        for (int i = 0; i < SoftLattice.Count; i++, o++)
+        {
+            Vector3 q = tickX[o], x = lx[i];
+            maxD2 = Mathf.Max(maxD2, (x.x - q.x) * (x.x - q.x) + (x.y - q.y) * (x.y - q.y) + (x.z - q.z) * (x.z - q.z));
+            tickX[o] = x;
+        }
         bool sinus = false;
         for (int a = 0; a < ArmCount; a++)
         {
             TentacleChain ch = Arms[a];
             if (ch.SinusAmount != 0f) sinus = true;
-            Vector3[] x = ch.X, p = ch.Prev;
-            for (int k = 1; k < ch.N; k++) maxD2 = Mathf.Max(maxD2, (x[k].x - p[k].x) * (x[k].x - p[k].x) + (x[k].y - p[k].y) * (x[k].y - p[k].y) + (x[k].z - p[k].z) * (x[k].z - p[k].z));
+            Vector3[] x = ch.X;
+            for (int k = 0; k < ch.N; k++, o++)
+            {
+                Vector3 q = tickX[o], xk = x[k];
+                if (k > 0) maxD2 = Mathf.Max(maxD2, (xk.x - q.x) * (xk.x - q.x) + (xk.y - q.y) * (xk.y - q.y) + (xk.z - q.z) * (xk.z - q.z));
+                tickX[o] = xk;
+            }
         }
-        float h = lastSubStep;
-        if (sinus || h <= 0f || maxD2 > lim * lim * h * h) { calmFrames = 0; return; }
+        if (first || sinus || maxD2 > lim * lim) { calmFrames = 0; return; }
         if (++calmFrames < SleepFrames) return;
         FallAsleep();
     }

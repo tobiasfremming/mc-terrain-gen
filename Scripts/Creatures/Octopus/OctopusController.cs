@@ -194,16 +194,18 @@ public sealed class OctopusController
 
     // ------------------------------------------------------------------ contact
 
-    struct Plane { public Vector3 point, normal; public float until, radius; }
+    struct Plane { public Vector3 point, normal; public float until, radius; public int owner; }
     readonly Plane[] planes = new Plane[MaxPlanes];
     int planeCount;
     Vector3 prevHead;
     readonly Vector3[] prevTip = new Vector3[16];
     bool havePrev;
+    readonly Vector3[] frameLattice = new Vector3[SoftLattice.Count];   // the lattice at the end of the last tick
 
     public int ContactPlanes => planeCount;
 
-    void AddPlane(SurfaceHit h, float radius)
+    // owner: the lattice particle whose own probe found the surface (-1: none)
+    void AddPlane(SurfaceHit h, float radius, int owner = -1)
     {
         // refresh a plane at nearly the same place, else take a free or the oldest slot
         float s2 = 0.01f * Body.SizeScale * Body.SizeScale;
@@ -216,7 +218,7 @@ public sealed class OctopusController
             slot = 0;
             for (int i = 1; i < planeCount; i++) if (planes[i].until < planes[slot].until) slot = i;
         }
-        planes[slot] = new Plane { point = h.point, normal = OctoMath.Norm(h.normal, Up), until = Time + PlaneSeconds, radius = radius };
+        planes[slot] = new Plane { point = h.point, normal = OctoMath.Norm(h.normal, Up), until = Time + PlaneSeconds, radius = radius, owner = owner };
         if (OctoMath.Dot(h.normal, Up) > 0.5f) groundedUntil = Time + 0.5f;
     }
 
@@ -295,6 +297,7 @@ public sealed class OctopusController
     void RememberMotion()
     {
         prevHead = Body.HeadCentre;
+        for (int i = 0; i < SoftLattice.Count; i++) frameLattice[i] = Body.Lattice.X[i];
         for (int a = 0; a < Agents.Length && a < prevTip.Length; a++) prevTip[a] = Body.Arms[a].X[Body.Arms[a].N - 1];
         havePrev = true;
     }
@@ -311,7 +314,7 @@ public sealed class OctopusController
             Vector3 up = OctoMath.Norm(x - centre, Up);
             if (!Probe(x + up * skin, up, 2f * skin + 0.2f * Body.SizeScale, SurfaceHit.NoSource, slotBase + Body.ArmCount + p, out SurfaceHit h)) continue;
             // a surface within the skin (above the particle, or the exit of the solid it is in)
-            if (skin - OctoMath.Dot(x - h.point, h.normal) > 0f) AddPlane(h, 0.6f * Body.Arms[0].Length);
+            if (skin - OctoMath.Dot(x - h.point, h.normal) > 0f) AddPlane(h, 0.6f * Body.Arms[0].Length, p);
         }
         Board.Grounded = Time < groundedUntil;
     }
@@ -326,7 +329,7 @@ public sealed class OctopusController
         SoftLattice lat = Body.Lattice;
         float skin = Skin;
         for (int i = 0; i < SoftLattice.Count; i++)
-            if (Project(ref lat.X[i], ref lat.Prev[i], skin)) BodyPushes++;
+            if (Project(ref lat.X[i], ref lat.Prev[i], skin, i)) BodyPushes++;
         for (int a = 0; a < Agents.Length; a++)
         {
             TentacleChain ch = Body.Arms[a];
@@ -339,7 +342,12 @@ public sealed class OctopusController
         }
     }
 
-    bool Project(ref Vector3 x, ref Vector3 prev, float clearance)
+    // lattice: the particle's index; it is pushed out of another particle's plane only if it was in front of
+    // that plane when the frame began (it crossed it this frame). One already behind it at the start is on the
+    // far side of a thin branch - the body hanging beneath the bar whose top the plane is - and pushing it
+    // through would throw the body across the bar. Its own probe's plane (the exit of a solid it is inside)
+    // always applies.
+    bool Project(ref Vector3 x, ref Vector3 prev, float clearance, int lattice = -1)
     {
         bool moved = false;
         for (int p = 0; p < planeCount; p++)
@@ -350,6 +358,7 @@ public sealed class OctopusController
             // well clear, or far behind the plane (the other side of a branch): not this plane's business
             if (h >= clearance || h < -4f * clearance - 0.3f * Body.SizeScale) continue;
             if ((rel - pl.normal * h).sqrMagnitude > pl.radius * pl.radius) continue;   // outside the plane's patch
+            if (lattice >= 0 && pl.owner != lattice && havePrev && OctoMath.Dot(frameLattice[lattice] - pl.point, pl.normal) < -clearance) continue;
             float push = clearance - h;
             Vector3 v = x - prev;
             x += pl.normal * push;

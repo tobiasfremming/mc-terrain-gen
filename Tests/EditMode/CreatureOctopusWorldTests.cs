@@ -206,8 +206,8 @@ namespace TerrainGen.Tests.Perf
                 for (int f = 0; f < 60 * 30 && !oct.Body.Asleep; f++) world.TickAll(Dt);
                 for (int f = 0; f < 300; f++) { world.TickAll(Dt); resting.Add(oct.LastTickMs); }
                 double ma = Median(active), mr = Median(resting);
+                Debug.Log($"[OctopusPerf] active {ma:F3} ms, resting {mr:F3} ms (asleep {oct.Body.Asleep}), peak queries {maxQ}, average {oct.Controller.TotalQueries / (oct.Controller.Time * 60f):F1}");
                 TestContext.Out.WriteLine($"octopus tick median: active {ma:F3} ms, resting {mr:F3} ms (asleep {oct.Body.Asleep}); queries/frame peak {maxQ}, average {oct.Controller.TotalQueries / (oct.Controller.Time * 60f):F1}");
-                Debug.Log($"[OctopusPerf] active {ma:F3} ms, resting {mr:F3} ms, peak queries {maxQ}");
                 Assert.Less(ma, 0.35 * 3, "active cost (design 0.35 ms; 3x headroom for a busy Editor)");
                 Assert.Less(mr, 0.12 * 3, "resting cost (design 0.12 ms)");
             }
