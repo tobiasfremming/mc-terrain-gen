@@ -265,13 +265,15 @@ namespace TerrainGen.Tests
             var world = new Matrix4x4[sp.BoneCount];
             var skin = new Matrix4x4[sp.BoneCount];
             var pos = new Vector3[d.v.Length];
-            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
-            Vector3 centre = new Vector3(0f, 0f, 0.25f);
+            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, sp.scale);
+            // at the species' size (R21): lengths x scale, the circling rate / sqrt(scale) like the gait
+            float sc = sp.scale, ts = Mathf.Sqrt(sc);
+            Vector3 centre = new Vector3(0f, 0f, 0.25f) * sc;
             float maxBend = 0f; int frames = 0;
-            for (int t = 0; t < 300; t++) // 5 s, target circling at minimum radius
+            for (int t = 0; t < (int)(300 * ts); t++) // 5 s, target circling at minimum radius
             {
-                float a = t / 60f * 3f;
-                sim.Tick(1f / 60f, centre + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * 0.12f);
+                float a = t / 60f * 3f / ts;
+                sim.Tick(1f / 60f, centre + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * (0.12f * sc));
                 if (t % 5 != 4) continue;
                 for (int i = 1; i < sp.JointCount - 1; i++)
                     maxBend = Mathf.Max(maxBend, Vector3.Angle(sim.Joints[i - 1] - sim.Joints[i], sim.Joints[i] - sim.Joints[i + 1]));

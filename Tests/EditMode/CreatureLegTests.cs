@@ -262,16 +262,18 @@ namespace TerrainGen.Tests
         // defaults: swing <= 70, knee deviation <= 50) through the tight circle. Shared with the monitor tests.
         internal static void TightTurnJointRanges(CreatureSpecies sp)
         {
-            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
+            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, sp.scale);
             int c = sim.Legs.Length;
             var restDir = new Vector3[c]; var restKnee = new float[c];
             for (int l = 0; l < c; l++) JointRanges(sim, l, out restDir[l], out restKnee[l]);
-            Vector3 centre = new Vector3(0f, 0f, 0.25f);
+            // at the species' size (R21): lengths x scale, the circling rate / sqrt(scale) like the gait
+            float sc = sp.scale, ts = Mathf.Sqrt(sc);
+            Vector3 centre = new Vector3(0f, 0f, 0.25f) * sc;
             float swingMax = 0f, kneeDevMax = 0f, maxBend = 0f, kneeMin = 999f, kneeMax = 0f;
-            for (int t = 0; t < 300; t++)
+            for (int t = 0; t < (int)(300 * ts); t++)
             {
-                float a = t / 60f * 3f;
-                sim.Tick(1f / 60f, centre + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * 0.12f);
+                float a = t / 60f * 3f / ts;
+                sim.Tick(1f / 60f, centre + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * (0.12f * sc));
                 for (int i = 1; i < sp.JointCount - 1; i++)
                     maxBend = Mathf.Max(maxBend, Vector3.Angle(sim.Joints[i - 1] - sim.Joints[i], sim.Joints[i] - sim.Joints[i + 1]));
                 for (int l = 0; l < c; l++)
@@ -371,6 +373,38 @@ namespace TerrainGen.Tests
             // switch on within one tick by at most the sim's braking rate (3 * accel) * stepDuration.
             float aimJerk = 3f * spAccel * spStepDuration * (1f / 60f);
             Assert.LessOrEqual(brakeJerk, cruiseJerk + aimJerk, $"per-tick foot jerk while braking (bound {(cruiseJerk + aimJerk) * 100f:F2} cm)");
+        }
+
+        // Ledger (Task 3 minor): the foot's normal used to jump to the landing ground's normal at lift-off.
+        // It now turns over the swing: on rolling ground the per-tick change stays small although lift-off
+        // and landing normals differ by more.
+        [Test] public void FootNormal_TurnsOverTheStep_NoJump()
+        {
+            sp = CreatureTestSpecies.Lizardish();
+            var roll = ScriptableObject.CreateInstance<RollingField>();
+            try
+            {
+                var sim = new CreatureSim(sp, new FieldGroundProbe(roll), _ => Vector3.up, Vector3.zero, Vector3.forward);
+                int c = sim.Legs.Length;
+                var prev = new Vector3[c];
+                for (int l = 0; l < c; l++) prev[l] = sim.Legs[l].footNormal;
+                float worstTick = 0f, worstStep = 0f;
+                for (int t = 0; t < 600; t++)
+                {
+                    sim.Tick(1f / 60f, new Vector3(300f, 0f, 1000f));
+                    for (int l = 0; l < c; l++)
+                    {
+                        Vector3 nrm = sim.Legs[l].footNormal;
+                        if (sim.Legs[l].stepping) worstStep = Mathf.Max(worstStep, Vector3.Angle(sim.Legs[l].stepFromNormal, sim.Legs[l].stepToNormal));
+                        worstTick = Mathf.Max(worstTick, Vector3.Angle(prev[l], nrm));
+                        prev[l] = nrm;
+                    }
+                }
+                TestContext.Out.WriteLine($"foot normal: worst change per tick {worstTick:F2} deg; worst lift-off vs landing {worstStep:F2} deg");
+                Assert.Greater(worstStep, 6f, "the ground never changed under a step: test does not bite");
+                Assert.Less(worstTick, 0.5f * worstStep, "the foot normal jumps");
+            }
+            finally { Object.DestroyImmediate(roll); }
         }
     }
 }

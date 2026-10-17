@@ -56,6 +56,9 @@ public struct CreatureLook
 [CreateAssetMenu(menuName = "Marching Cubes/Creature Species")]
 public class CreatureSpecies : ScriptableObject
 {
+    // Size of the species relative to the authored dimensions below (lengths in metres at scale 1). Every
+    // individual's sizeScale = scale x (1 +- look.sizeJitter); the gait's timing follows sqrt(sizeScale).
+    public float scale = 1f;
     public float spacing;
     public SpineJoint[] joints;
     public float headCapLength, tailTipLength;
@@ -103,6 +106,7 @@ public class CreatureSpecies : ScriptableObject
         int n = JointCount;
         if (n < 2) return "joints: need at least 2 spine joints";
         if (!(spacing > 0f)) return "spacing must be > 0";
+        if (!(scale > 0f)) return "scale must be > 0";
         if (eyeJoint < 0 || eyeJoint >= n) return "eyeJoint out of range";
         for (int i = 0; i < LegCount; i++)
         {

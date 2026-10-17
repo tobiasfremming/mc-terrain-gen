@@ -17,10 +17,21 @@ public sealed class CreatureLab : MonoBehaviour
     const int kCandidates = 16, kRimProbes = 8;
     const float kProbeWindow = 6f;
     const float kGoldenAngle = 2.39996323f;
+    const float kViewGap = 4f;          // the player starts this far outside the nearest curb, facing it
+    const float kEnclosureGap = 4f;     // free ground between neighbouring curbs
+
+    // The enclosure for a species whose largest individual has size scale maxScale: 2.5 body lengths of
+    // radius (room to wander and turn, small enough to see the animal from the curb), at least 5 m.
+    public static float EnclosureRadius(CreatureSpecies sp, float maxScale)
+        => Mathf.Max(5f, 2.5f * sp.BodyLength * maxScale);
+
+    // The size scale of the species' largest possible individual (CreatureWorld draws it from the seed).
+    public static float MaxScale(CreatureSpecies sp) => sp.scale * (1f + Mathf.Abs(sp.look.sizeJitter));
 
     IEnumerator Start()
     {
         CreatureWorld world = GetComponent<CreatureWorld>();
+        if (GetComponent<CreatureDebugView>() == null) gameObject.AddComponent<CreatureDebugView>(); // F3 overlay
         Transform player = null;
         Vector3 groundAtPlayer = default;
         float waited = 0f;
@@ -58,17 +69,23 @@ public sealed class CreatureLab : MonoBehaviour
         fwd.Normalize();
 
         int n = species.Length;
+        // big species get big enclosures: keep neighbours apart and the arc outside the player's spot
+        float maxR = 0f;
+        for (int k = 0; k < n; k++) if (species[k] != null) maxR = Mathf.Max(maxR, EnclosureRadius(species[k], MaxScale(species[k])));
+        float slotSpacing = Mathf.Max(spacing, 2f * maxR + kEnclosureGap);
+        float slotRadius = Mathf.Max(arcRadius, maxR + kViewGap + searchRadius);
         var sb = new System.Text.StringBuilder("[CreatureLab] placed:");
+        Vector3 nearestCentre = default; float nearestRadius = 0f, nearestDist = float.MaxValue;
         for (int k = 0; k < n; k++)
         {
             CreatureSpecies sp = species[k];
             if (sp == null) continue;
             // the individual's size is drawn from its seed inside CreatureWorld: size the enclosure and its
             // safe disc for the largest possible individual
-            float maxScale = 1f + Mathf.Abs(sp.look.sizeJitter);
-            float radius = Mathf.Max(8f, 5f * sp.BodyLength * maxScale);
+            float maxScale = MaxScale(sp);
+            float radius = EnclosureRadius(sp, maxScale);
 
-            Vector3 slot = ArcSlot(origin, fwd, up, k, n, spacing, arcRadius);
+            Vector3 slot = ArcSlot(origin, fwd, up, k, n, slotSpacing, slotRadius);
             Vector3 center = FlattestSpot(ground, slot, up, radius, out float flatness);
             Vector3 cUp = PlanetGravity.UpAt(center);
 
@@ -85,8 +102,32 @@ public sealed class CreatureLab : MonoBehaviour
             if (face.sqrMagnitude < 1e-6f) face = fwd;
             world.Spawn(sp, center, face.normalized, new WanderBrain(area, seed + k), area, seed + k);
             sb.Append($" {sp.name} at {center} (r {radius:F1} m, flatness {flatness:F3})");
+            float dist = Vector3.ProjectOnPlane(center - origin, up).magnitude - radius;
+            if (dist < nearestDist) { nearestDist = dist; nearestCentre = center; nearestRadius = radius; }
         }
+        if (nearestDist < float.MaxValue) FramePlayer(ground, player, origin, nearestCentre, nearestRadius, sb);
         Debug.Log(sb.ToString());
+    }
+
+    // Moves the player to kViewGap outside the nearest curb, on the line from the enclosure toward where
+    // the player spawned, facing its centre: the whole enclosure and its animal are in view from the start.
+    static void FramePlayer(IGroundProbe ground, Transform player, Vector3 origin, Vector3 centre, float radius, System.Text.StringBuilder sb)
+    {
+        Vector3 up = PlanetGravity.UpAt(centre);
+        Vector3 away = Vector3.ProjectOnPlane(origin - centre, up);
+        if (away.sqrMagnitude < 1e-6f) away = -Vector3.ProjectOnPlane(player.forward, up);
+        away.Normalize();
+        Vector3 spot = centre + away * (radius + kViewGap);
+        if (!ground.Probe(spot + up * 2f, up, kProbeWindow + 2f, out Vector3 g, out _)) return;
+        // the player's pivot height above the ground it stood on
+        float lift = Mathf.Max(0f, Vector3.Dot(player.position - origin, PlanetGravity.UpAt(origin)));
+        var cc = player.GetComponent<CharacterController>();
+        bool ccOn = cc != null && cc.enabled;
+        if (ccOn) cc.enabled = false;
+        player.SetPositionAndRotation(g + up * (lift + 0.05f), Quaternion.LookRotation(-away, up));
+        if (ccOn) cc.enabled = true;
+        player.SendMessage("ResetOrientation", SendMessageOptions.DontRequireReceiver); // GravityAligner
+        sb.Append($"; player framed at {player.position} facing the enclosure");
     }
 
     // The k-th of n slots on an arc of radius arcRadius around origin, centred on fwd; adjacent slots are

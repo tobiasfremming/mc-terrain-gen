@@ -99,5 +99,22 @@ namespace TerrainGen.Tests
             Assert.IsNotNull(sp, kMonitorPath);
             Assert.That(sp.BodyLength, Is.InRange(1.5f, 1.65f));
         }
+
+        [Test] public void DebugView_BuildsLines_NoAllocAfterWarmup()
+        {
+            var w = NewWorld();
+            var sp = CreatureTestSpecies.Lizardish(); trash.Add(sp);
+            var area = EnclosureArea.For(Vector3.zero, Vector3.up, 3f, sp, 1f);
+            w.Spawn(sp, Vector3.zero, Vector3.forward, new WanderBrain(area, 3), area, 1);
+            var view = go.AddComponent<CreatureDebugView>();
+            int n = view.BuildLines();
+            int legs = sp.legs.Length, joints = sp.JointCount;
+            Assert.AreEqual(2 * (joints - 1) + 2 * 12 * joints + 8 * legs + 2 * 64, n, "chain + ellipses + legs/rest crosses + safe disc");
+            Assert.AreEqual(0, n % 2, "lines are vertex pairs");
+            for (int f = 0; f < 5; f++) { w.TickAll(1f / 60f); view.BuildLines(); }
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int f = 0; f < 60; f++) { w.TickAll(1f / 60f); view.BuildLines(); }
+            Assert.AreEqual(0L, GC.GetAllocatedBytesForCurrentThread() - before, "bytes allocated building the debug lines");
+        }
     }
 }

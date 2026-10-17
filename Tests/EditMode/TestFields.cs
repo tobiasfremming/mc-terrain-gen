@@ -53,4 +53,13 @@ namespace TerrainGen.Tests
         public override float Sample(Vector3 p, float filterWidth) => Mathf.Max(-p.y, Mathf.Min(p.y - 20f, 30f - p.y));
         protected override void OnValidate() { }
     }
+
+    // Rolling ground: y = amplitude * sin(x * k) * cos(z * k). Positive (solid) below.
+    public class RollingField : DensityField
+    {
+        public float amplitude = 0.08f, k = 4f;
+        public float SurfaceY(float x, float z) => amplitude * Mathf.Sin(x * k) * Mathf.Cos(z * k);
+        public override float Sample(Vector3 p, float filterWidth) => SurfaceY(p.x, p.z) - p.y;
+        protected override void OnValidate() { }
+    }
 }

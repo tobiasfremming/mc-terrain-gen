@@ -55,6 +55,7 @@ public static class CreatureLabScene
         var lab = root.AddComponent<CreatureLab>();
         lab.species = species;
         lab.borderMaterial = borderMat;
+        root.AddComponent<CreatureDebugView>();
         copies.Add(root);
 
         render.ApplyTo(scene, copies);

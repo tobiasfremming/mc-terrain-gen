@@ -4,6 +4,7 @@ using UnityEngine;
 public struct LegState
 {
     public Vector3 shoulder, elbow, foot, footNormal, stepFrom, stepTo;
+    public Vector3 stepFromNormal, stepToNormal; // the foot's normal at lift-off and at the landing point
     public bool stepping; public float stepT;
 }
 
@@ -38,6 +39,7 @@ sealed class CreatureLegs
     readonly Vector3[] joints;
     readonly Quaternion[] rotations;
     readonly float scale;
+    readonly float timeScale;      // sqrt(scale): step times and the joint lead scale with it (CreatureSim.TimeScale)
     readonly LegSpec[] specs;
     public readonly LegState[] State;
     readonly Vector3[] target;     // intended foot position: planted point, or the moving step point
@@ -52,6 +54,8 @@ sealed class CreatureLegs
     readonly bool[] jointLimited;  // joint-range state from the last IK solve (UpdateThrottle)
     readonly float[] prevSwing, prevKnee; // last planted joint angles (-1 = none), for the angle rate
     int lastGroup = -1;
+    readonly int[] attachJoints;   // the distinct joints legs attach to
+    bool spreadNonZero;
 
     // Per spine joint: how far the body is lowered toward the ground so the legs on it can reach
     // (a leg whose rest point lies on much lower ground, e.g. one side of a steep face).
@@ -63,10 +67,11 @@ sealed class CreatureLegs
     public float Throttle { get; private set; } = 1f;
 
     public CreatureLegs(CreatureSpecies sp, IGroundProbe ground, Func<Vector3, Vector3> upAt,
-                        Vector3[] joints, Quaternion[] rotations, float scale)
+                        Vector3[] joints, Quaternion[] rotations, float scale, float timeScale = 1f)
     {
         this.sp = sp; this.ground = ground; this.upAt = upAt;
         this.joints = joints; this.rotations = rotations; this.scale = scale;
+        this.timeScale = timeScale > 0f ? timeScale : 1f;
         specs = sp.legs ?? new LegSpec[0];
         int c = specs.Length;
         Droop = new float[joints.Length]; DroopSpread = new float[joints.Length];
@@ -76,6 +81,15 @@ sealed class CreatureLegs
         prevSwing = new float[c]; prevKnee = new float[c];
         fwdLimit = new float[c]; backLimit = new float[c]; kneeRange = new float[c]; kneeFlex = new float[c];
         for (int l = 0; l < c; l++) { prevSwing[l] = -1f; prevKnee[l] = -1f; }
+        int na = 0; var tmp = new int[c];
+        for (int l = 0; l < c; l++)
+        {
+            bool seen = false;
+            for (int m = 0; m < na; m++) if (tmp[m] == specs[l].attachJoint) seen = true;
+            if (!seen) tmp[na++] = specs[l].attachJoint;
+        }
+        attachJoints = new int[na];
+        Array.Copy(tmp, attachJoints, na);
         for (int l = 0; l < c; l++)
         {
             // flat reference stance in the attach-joint frame (as StrideLimitedSpeed): independent of the spawn
@@ -101,6 +115,7 @@ sealed class CreatureLegs
             rest[l] = p;
             target[l] = p;
             State[l].footNormal = n.sqrMagnitude > 1e-12f ? n.normalized : u;
+            State[l].stepFromNormal = State[l].stepToNormal = State[l].footNormal;
         }
         SolveIK(0f);
         MaxSpeed = StrideLimitedSpeed();
@@ -132,13 +147,15 @@ sealed class CreatureLegs
             float perp2 = Mathf.Max(0f, v.sqrMagnitude - along * along);
             float reach = kStrideReach * (s.upperLength + s.lowerLength) * scale;
             float half = Mathf.Sqrt(Mathf.Max(0f, reach * reach - perp2));
-            float cycle = Mathf.Max(2, groups) * Mathf.Max(1e-3f, s.stepDuration);
+            float cycle = Mathf.Max(2, groups) * Mathf.Max(1e-3f, s.stepDuration * timeScale);
             best = Mathf.Min(best, kStrideUse * 2f * half / cycle);
         }
         // never a standstill for a stance the reach cannot cover; the throttle handles real ground
         best = Mathf.Max(best, 0.05f);
         return best;
     }
+
+    public Vector3 RestPoint(int l) => rest[l];
 
     Vector3 Mirror(Vector3 v, int l) { v.x *= specs[l].side; return v; }
     Vector3 Up(int l) { Vector3 u = upAt(joints[specs[l].attachJoint]); return u.sqrMagnitude > 1e-12f ? u.normalized : Vector3.up; }
@@ -148,7 +165,7 @@ sealed class CreatureLegs
     {
         int c = specs.Length;
         if (c == 0) return 0;
-        bool idle = speed < kIdleSpeed;
+        bool idle = speed < kIdleSpeed * timeScale; // Froude speeds scale with sqrt(size)
 
         // rest points
         for (int l = 0; l < c; l++)
@@ -175,7 +192,9 @@ sealed class CreatureLegs
                     if (d >= want - kRestSlack * scale) break;
                     float along = Mathf.Max(Vector3.Dot(v, outward), 0.3f * d);
                     Vector3 q = p + outward * ((want - d) * d / Mathf.Max(1e-5f, along));
-                    if (!ground.Probe(q, u, kProbeWindow * scale, out p, out _)) { p = q; break; }
+                    // a miss keeps the last point that was on the ground (q itself may be in the air)
+                    if (!ground.Probe(q, u, kProbeWindow * scale, out Vector3 pq, out _)) break;
+                    p = pq;
                 }
             }
             rest[l] = p;
@@ -188,18 +207,22 @@ sealed class CreatureLegs
         {
             if (!State[l].stepping) continue;
             LegSpec s = specs[l];
-            State[l].stepT += dt / Mathf.Max(1e-4f, s.stepDuration);
+            State[l].stepT += dt / Mathf.Max(1e-4f, s.stepDuration * timeScale);
             // re-aim at where the rest point will be on landing: in a turn the body does not travel straight
             Aim(l, speed, Mathf.Max(0f, 1f - State[l].stepT));
             if (State[l].stepT >= 1f)
             {
                 State[l].stepping = false; State[l].stepT = 1f;
                 target[l] = State[l].stepTo;
+                State[l].footNormal = State[l].stepToNormal;
             }
             else
             {
                 float t = State[l].stepT;
                 float sm = t * t * (3f - 2f * t);
+                // the foot turns from the ground it left to the ground it lands on over the swing
+                Vector3 fn = Vector3.Lerp(State[l].stepFromNormal, State[l].stepToNormal, sm);
+                State[l].footNormal = fn.sqrMagnitude > 1e-12f ? fn.normalized : State[l].stepToNormal;
                 // the swing passes over the rest point at mid-step (quadratic Bezier through it), so the
                 // limb swings through its rest pose instead of cutting past the shoulder
                 Vector3 a = State[l].stepFrom, b = State[l].stepTo;
@@ -259,8 +282,10 @@ sealed class CreatureLegs
     // again once every leg has slack. Smallest mechanism that keeps feet within reach of lower ground.
     void UpdateDroop(float dt)
     {
-        for (int j = 0; j < Droop.Length; j++)
+        bool anyDroop = false;
+        for (int a = 0; a < attachJoints.Length; a++)
         {
+            int j = attachJoints[a];
             float need = float.NegativeInfinity; bool any = false;
             for (int l = 0; l < specs.Length; l++)
             {
@@ -276,10 +301,14 @@ sealed class CreatureLegs
             }
             if (!any) continue;
             float cap = kDroopMaxFrac * sp.joints[j].clearance * scale;
-            float step = kDroopRate * scale * dt;
+            float step = kDroopRate * scale / timeScale * dt;
             if (need > 0f) Droop[j] = Mathf.Min(cap, Droop[j] + Mathf.Min(need * 0.5f, step));
             else if (need < -kDroopSlack * scale && Droop[j] > 0f) Droop[j] = Mathf.Max(0f, Droop[j] - step);
+            if (Droop[j] > 0f) anyDroop = true;
         }
+        // no droop anywhere and none spread from before: the spread is all zeros already
+        if (!anyDroop && !spreadNonZero) return;
+        spreadNonZero = anyDroop;
 
         // Spread each joint's droop over its neighbours (cosine falloff, 4 joints) so the spine bends
         // smoothly instead of notching and segment lengths stay put.
@@ -303,12 +332,13 @@ sealed class CreatureLegs
         // The species' overshoot, trimmed so the foot can still reach it; fixed for the whole step so
         // re-aiming in flight only follows the body (an idle tidy-up lands exactly on the rest point).
         Vector3 fwd = rotations[s.attachJoint] * Vector3.forward;
-        float over = speed < kIdleSpeed ? 0f : s.overshoot * scale;
+        float over = speed < kIdleSpeed * timeScale ? 0f : s.overshoot * scale;
         float maxDist = kLandReach * (s.upperLength + s.lowerLength) * scale;
         for (int i = 0; i < 6 && over > 1e-4f && (rest[l] + fwd * over - State[l].shoulder).sqrMagnitude > maxDist * maxDist; i++)
             over *= 0.6f;
         stepOver[l] = over;
         State[l].stepFrom = target[l];
+        State[l].stepFromNormal = State[l].footNormal;
         Aim(l, speed, 1f);
         State[l].stepT = 0f;
         State[l].stepping = true;
@@ -321,13 +351,13 @@ sealed class CreatureLegs
     {
         LegSpec s = specs[l];
         Vector3 fwd = rotations[s.attachJoint] * Vector3.forward;
-        float travel = Mathf.Max(0f, speed) * s.stepDuration * remaining;
+        float travel = Mathf.Max(0f, speed) * s.stepDuration * timeScale * remaining;
         Vector3 goal = rest[l] + fwd * (travel + stepOver[l]);
         Vector3 u = Up(l);
         Vector3 p = goal, n = u;
-        if (!ground.Probe(goal, u, kProbeWindow * scale, out p, out n)) { p = goal; n = State[l].footNormal; }
+        if (!ground.Probe(goal, u, kProbeWindow * scale, out p, out n)) { p = goal; n = State[l].stepToNormal.sqrMagnitude > 0.5f ? State[l].stepToNormal : State[l].footNormal; }
         State[l].stepTo = p;
-        State[l].footNormal = n.sqrMagnitude > 1e-12f ? n.normalized : u;
+        State[l].stepToNormal = n.sqrMagnitude > 1e-12f ? n.normalized : u;
     }
 
     // A swinging foot passes the shoulder: keep it at least as far away as the knee's flex limit
@@ -408,7 +438,7 @@ sealed class CreatureLegs
         JointAngles(l, st.shoulder, st.elbow, st.foot, out float swing, out float knee, out float swingLim, out float kneeLim);
         float ps = prevSwing[l], pk = prevKnee[l];
         prevSwing[l] = swing; prevKnee[l] = knee;
-        float lead = dt > 0f && ps >= 0f ? kJointLeadSec / dt : 0f;
+        float lead = dt > 0f && ps >= 0f ? kJointLeadSec * timeScale / dt : 0f;
         float swingP = swing + Mathf.Max(0f, swing - ps) * lead;
         float kneeP = knee + Mathf.Max(0f, knee - pk) * lead;
         if (swingP <= swingLim && kneeP <= kneeLim) return 1f;

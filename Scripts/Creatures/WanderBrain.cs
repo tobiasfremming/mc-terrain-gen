@@ -41,7 +41,7 @@ public sealed class WanderBrain : ICreatureBrain
         {
             Vector3 d = goal - head;
             d -= area.up * Vector3.Dot(d, area.up);
-            if (d.magnitude <= arriveRadius)
+            if (d.magnitude <= arriveRadius * sim.SizeScale)
             {
                 walking = false;
                 pauseLen = pauseLeft = Mathf.Lerp(pauseMin, pauseMax, Rand());
@@ -62,7 +62,7 @@ public sealed class WanderBrain : ICreatureBrain
         {
             float into = pauseLen - pauseLeft; // time since pause start
             if (Mathf.Abs(into - 0.5f * pauseLen) <= 0.5f * kLookDuration)
-                return head + Quaternion.AngleAxis(lookSign * kLookAngle, area.up) * Vector3.ProjectOnPlane(heading, area.up).normalized * kLookDistance;
+                return head + Quaternion.AngleAxis(lookSign * kLookAngle, area.up) * Vector3.ProjectOnPlane(heading, area.up).normalized * (kLookDistance * sim.SizeScale);
         }
         return head;
     }

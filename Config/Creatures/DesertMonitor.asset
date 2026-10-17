@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 39d3296fcbe55a0429fe582610f52ec3, type: 3}
   m_Name: DesertMonitor
   m_EditorClassIdentifier: TerrainGen.Runtime::CreatureSpecies
+  scale: 4
   spacing: 0.06
   joints:
   - halfWidth: 0.022
@@ -192,7 +193,7 @@ MonoBehaviour:
   - attachJoint: 13
     side: -1
     shoulderOffset: {x: 0.05, y: -0.02, z: 0}
-    restOffset: {x: 0.22, y: 0, z: -0.02}
+    restOffset: {x: 0.22, y: 0, z: 0.01}
     upperLength: 0.145
     lowerLength: 0.135
     upperRadius: 0.032
@@ -213,7 +214,7 @@ MonoBehaviour:
   - attachJoint: 13
     side: 1
     shoulderOffset: {x: 0.05, y: -0.02, z: 0}
-    restOffset: {x: 0.22, y: 0, z: -0.02}
+    restOffset: {x: 0.22, y: 0, z: 0.01}
     upperLength: 0.145
     lowerLength: 0.135
     upperRadius: 0.032
@@ -239,24 +240,24 @@ MonoBehaviour:
   undulationHz: 1.4
   gaitSwayDeg: 12
   gaitRollDeg: 3
-  subSteps: 2
+  subSteps: 1
   eyeJoint: 1
   eyeOffset: {x: 0.024, y: 0.014, z: 0.008}
   eyeRadius: 0.007
   ringSegments: 16
   ringsPerSegment: 3
   look:
-    dorsal: {r: 0.8666667, g: 0.73333335, b: 0.5176471, a: 1}
-    flank: {r: 0.8117647, g: 0.627451, b: 0.40784314, a: 1}
-    belly: {r: 0.9411765, g: 0.89411765, b: 0.7764706, a: 1}
-    pattern: {r: 0.3529412, g: 0.2509804, b: 0.16862746, a: 1}
+    dorsal: {r: 0.8, g: 0.62, b: 0.4, a: 1}
+    flank: {r: 0.76, g: 0.53, b: 0.32, a: 1}
+    belly: {r: 0.92, g: 0.82, b: 0.64, a: 1}
+    pattern: {r: 0.27, g: 0.17, b: 0.1, a: 1}
     patternType: 4
     patternScale: 9
     patternContrast: 0.7
     patternSoftness: 0.25
     spotScale: 0.08
-    smoothness: 0.45
-    rimStrength: 0.45
+    smoothness: 0.5
+    rimStrength: 0.6
     subsurface: 0.3
     sizeJitter: 0.08
     hueJitter: 0.01
