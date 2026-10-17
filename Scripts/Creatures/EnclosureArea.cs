@@ -11,6 +11,13 @@ public struct EnclosureArea
     public Vector3[] obstacleCenters;
     public float[] obstacleRadii;
     public float keepOut;
+    // Climbing: the highest a head may get above the centre along up (0 = no cap; the sim brakes at it, a
+    // ClimbingBrain turns back below it), and which obstacles may be climbed (parallel to obstacleCenters;
+    // null = none).
+    public float maxHeight;
+    public bool[] obstacleClimbable;
+
+    public bool IsClimbable(int obstacle) => obstacleClimbable != null && obstacle >= 0 && obstacle < obstacleClimbable.Length && obstacleClimbable[obstacle];
 
     public int ObstacleCount => obstacleCenters != null ? obstacleCenters.Length : 0;
 

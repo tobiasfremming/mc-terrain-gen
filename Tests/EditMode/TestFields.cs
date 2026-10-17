@@ -79,4 +79,12 @@ namespace TerrainGen.Tests
         }
         protected override void OnValidate() { }
     }
+
+    // Flat ground at y = 0 and a terrain cliff: a vertical wall at z = wallZ up to y = height, flat on top.
+    public class CliffField : DensityField
+    {
+        public float wallZ = 2f, height = 6f;
+        public override float Sample(Vector3 p, float filterWidth) => Mathf.Max(-p.y, Mathf.Min(height - p.y, p.z - wallZ));
+        protected override void OnValidate() { }
+    }
 }

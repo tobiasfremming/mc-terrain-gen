@@ -69,8 +69,8 @@ MonoBehaviour:
     restOffset: {x: 0.2, y: 0, z: 0.11}
     upperLength: 0.105
     lowerLength: 0.125
-    upperRadius: 0.017
-    lowerRadius: 0.0095
+    upperRadius: 0.0145
+    lowerRadius: 0.008
     pole: {x: 0, y: 1, z: -0.15}
     stepThreshold: 0.075
     stepDuration: 0.11
@@ -90,8 +90,8 @@ MonoBehaviour:
     restOffset: {x: 0.2, y: 0, z: 0.11}
     upperLength: 0.105
     lowerLength: 0.125
-    upperRadius: 0.017
-    lowerRadius: 0.0095
+    upperRadius: 0.0145
+    lowerRadius: 0.008
     pole: {x: 0, y: 1, z: -0.15}
     stepThreshold: 0.075
     stepDuration: 0.11
@@ -111,8 +111,8 @@ MonoBehaviour:
     restOffset: {x: 0.235, y: 0, z: 0}
     upperLength: 0.115
     lowerLength: 0.135
-    upperRadius: 0.017
-    lowerRadius: 0.0095
+    upperRadius: 0.0145
+    lowerRadius: 0.008
     pole: {x: 0, y: 1, z: 0}
     stepThreshold: 0.075
     stepDuration: 0.11
@@ -132,8 +132,8 @@ MonoBehaviour:
     restOffset: {x: 0.235, y: 0, z: 0}
     upperLength: 0.115
     lowerLength: 0.135
-    upperRadius: 0.017
-    lowerRadius: 0.0095
+    upperRadius: 0.0145
+    lowerRadius: 0.008
     pole: {x: 0, y: 1, z: 0}
     stepThreshold: 0.075
     stepDuration: 0.11
@@ -153,8 +153,8 @@ MonoBehaviour:
     restOffset: {x: 0.215, y: 0, z: -0.09}
     upperLength: 0.125
     lowerLength: 0.15
-    upperRadius: 0.017
-    lowerRadius: 0.0095
+    upperRadius: 0.0145
+    lowerRadius: 0.008
     pole: {x: 0, y: 1, z: 0.15}
     stepThreshold: 0.075
     stepDuration: 0.11
@@ -174,8 +174,8 @@ MonoBehaviour:
     restOffset: {x: 0.215, y: 0, z: -0.09}
     upperLength: 0.125
     lowerLength: 0.15
-    upperRadius: 0.017
-    lowerRadius: 0.0095
+    upperRadius: 0.0145
+    lowerRadius: 0.008
     pole: {x: 0, y: 1, z: 0.15}
     stepThreshold: 0.075
     stepDuration: 0.11
@@ -199,23 +199,23 @@ MonoBehaviour:
   gaitRollDeg: 0
   subSteps: 2
   eyeJoint: 0
-  eyeOffset: {x: 0.029, y: 0.008, z: 0.006}
-  eyeRadius: 0.0085
+  eyeOffset: {x: 0.027, y: 0.008, z: 0.008}
+  eyeRadius: 0.0058
   ringSegments: 18
   ringsPerSegment: 3
   look:
-    dorsal: {r: 0.085, g: 0.078, b: 0.072, a: 1}
-    flank: {r: 0.1, g: 0.09, b: 0.082, a: 1}
-    belly: {r: 0.15, g: 0.125, b: 0.105, a: 1}
-    pattern: {r: 0.24, g: 0.205, b: 0.17, a: 1}
+    dorsal: {r: 0.15, g: 0.125, b: 0.105, a: 1}
+    flank: {r: 0.13, g: 0.11, b: 0.095, a: 1}
+    belly: {r: 0.2, g: 0.16, b: 0.125, a: 1}
+    pattern: {r: 0.3, g: 0.245, b: 0.19, a: 1}
     patternType: 3
     patternScale: 22
-    patternContrast: 0.45
+    patternContrast: 0.5
     patternSoftness: 0.45
     spotScale: 0.1
-    smoothness: 0.78
-    rimStrength: 0.45
-    subsurface: 0.04
+    smoothness: 0.82
+    rimStrength: 0.75
+    subsurface: 0.05
     sizeJitter: 0.07
     hueJitter: 0.008
     valueJitter: 0.05

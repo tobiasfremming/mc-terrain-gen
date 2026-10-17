@@ -45,6 +45,14 @@ sealed class CreatureLegs
     // (the creep covers the sway settling while the body brakes); a moving point (the swing, the landing
     // point) also spends its own motion from the slack the last check left.
     const float kTrunkTravel = 2f, kTrunkCreep = 0.1f;
+    // Climbing: a rest point whose ground faces the leg's up less than this (a trunk curving away under a wide
+    // stance) is replaced by a wrap cast toward the spine's ground point, so the foot hugs the surface.
+    const float kGrazing = 0.3f;
+    // Climbing grip: on a surface steeper than this steepness a step starts only while at least one foot per
+    // girdle and half of all feet stay planted.
+    const float kGripSteep = 0.5f;
+    const float kTrunkSameFace = 0.8f; // climbing: trunk keep-out only from spine segments whose up is within ~35 deg
+    const float kClimbJointRelax = 1f; // climbing: share of the joint-range brake removed (the steps remain)
 
     readonly CreatureSpecies sp;
     readonly IGroundProbe ground;
@@ -76,6 +84,8 @@ sealed class CreatureLegs
     float trunkTravel;                     // the current sub-step's bound on joint motion (kTrunkTravel)
     readonly int[] attachJoints;   // the distinct joints legs attach to
     bool spreadNonZero;
+    readonly CreatureClimb climb;  // null: walking only
+    readonly int[] footSource;     // per leg: what its foot stands on, for the probe's tie preference
 
     // Per spine joint: how far the body is lowered toward the ground so the legs on it can reach
     // (a leg whose rest point lies on much lower ground, e.g. one side of a steep face).
@@ -87,9 +97,9 @@ sealed class CreatureLegs
     public float Throttle { get; private set; } = 1f;
 
     public CreatureLegs(CreatureSpecies sp, IGroundProbe ground, Func<Vector3, Vector3> upAt,
-                        Vector3[] joints, Quaternion[] rotations, float scale, float timeScale = 1f)
+                        Vector3[] joints, Quaternion[] rotations, float scale, float timeScale = 1f, CreatureClimb climb = null)
     {
-        this.sp = sp; this.ground = ground; this.upAt = upAt;
+        this.sp = sp; this.ground = ground; this.upAt = upAt; this.climb = climb;
         this.joints = joints; this.rotations = rotations; this.scale = scale;
         this.timeScale = timeScale > 0f ? timeScale : 1f;
         specs = sp.legs ?? new LegSpec[0];
@@ -99,6 +109,7 @@ sealed class CreatureLegs
         restUpper = new Vector3[c]; restKnee = new float[c]; minReach = new float[c];
         stepOver = new float[c]; jointLimited = new bool[c]; restReach = new float[c];
         prevSwing = new float[c]; prevKnee = new float[c];
+        footSource = new int[c];
         fwdLimit = new float[c]; backLimit = new float[c]; kneeRange = new float[c]; kneeFlex = new float[c];
         trunkKeep = new float[c]; trunkStep = new float[c]; trunkLo = new int[c]; trunkHi = new int[c]; trunkSlack = new float[c];
         trunkHalfWidth = new float[c];
@@ -187,7 +198,61 @@ sealed class CreatureLegs
     public Vector3 RestPoint(int l) => rest[l];
 
     Vector3 Mirror(Vector3 v, int l) { v.x *= specs[l].side; return v; }
-    Vector3 Up(int l) { Vector3 u = upAt(joints[specs[l].attachJoint]); return u.sqrMagnitude > 1e-12f ? u.normalized : Vector3.up; }
+    Vector3 Up(int l)
+    {
+        if (Climbing) return climb.Up[specs[l].attachJoint];
+        Vector3 u = upAt(joints[specs[l].attachJoint]); return u.sqrMagnitude > 1e-12f ? u.normalized : Vector3.up;
+    }
+
+    // ---- climbing ----
+
+    bool Climbing => climb != null && climb.Active;
+    // The attach joint's steepness (0 walking, 1 on a vertical surface) and a gait factor lerped by it.
+    float Steep(int l) => Climbing ? climb.Steep[specs[l].attachJoint] : 0f;
+    static float Factor(float f, float steep) => 1f + (f - 1f) * steep;
+
+    // The foot's ground along u: the plain probe while walking; climbing, the surface probe with the leg's
+    // slot (k: 0 rest, 1 rest slide, 2 landing) and its tie preference.
+    bool FootProbe(int l, int k, Vector3 near, Vector3 u, out Vector3 p, out Vector3 n)
+    {
+        if (!Climbing)
+        {
+            if (climb == null) return ground.Probe(near, u, kProbeWindow * scale, out p, out n);
+            // walking near colliders: the same answer as the plain probe, with the leg's slot (cached raycasts)
+            bool ok = climb.Surface.Probe(near, u, kProbeWindow * scale, SurfaceHit.NoSource, climb.LegSlot(l, k), out SurfaceHit wh);
+            p = wh.point; n = wh.normal;
+            return ok;
+        }
+        if (climb.Surface.Probe(near, u, kProbeWindow * scale, footSource[l], climb.LegSlot(l, k), out SurfaceHit h))
+        {
+            footSource[l] = h.source; p = h.point; n = h.normal;
+            return true;
+        }
+        p = near; n = u;
+        return false;
+    }
+
+    // A foot may lift on a steep surface only if the creature keeps its grip: one planted foot per girdle and
+    // half of all feet.
+    bool GripHolds(int l)
+    {
+        int c = specs.Length, planted = 0;
+        for (int m = 0; m < c; m++) if (m != l && !State[m].stepping) planted++;
+        if (2 * planted < c) return false;
+        for (int a = 0; a < attachJoints.Length; a++)
+        {
+            int j = attachJoints[a];
+            bool legs = false, held = false;
+            for (int m = 0; m < c; m++)
+            {
+                if (specs[m].attachJoint != j) continue;
+                legs = true;
+                if (m != l && !State[m].stepping) held = true;
+            }
+            if (legs && !held) return false;
+        }
+        return true;
+    }
 
     // Returns the number of steps started this sub-step.
     public int Update(float dt, float speed)
@@ -206,7 +271,20 @@ sealed class CreatureLegs
             Vector3 near = joints[s.attachJoint] + r * (Mirror(s.restOffset, l) * scale);
             Vector3 sh = joints[s.attachJoint] + r * (Mirror(s.shoulderOffset, l) * scale);
             State[l].shoulder = sh;
-            if (!ground.Probe(near, u, kProbeWindow * scale, out Vector3 p, out _)) continue; // hold the last rest
+            bool got = FootProbe(l, 0, near, u, out Vector3 p, out Vector3 pn);
+            if (Climbing && (!got || Vector3.Dot(pn, u) < kGrazing))
+            {
+                // the surface curves away under the stance (a trunk): cast toward the spine's own ground point
+                int aj = s.attachJoint;
+                Vector3 anchor = joints[aj] - u * (sp.joints[aj].clearance * scale * climb.ClearanceScale(aj));
+                Vector3 d = anchor - near;
+                float len = d.magnitude;
+                if (len > 1e-5f && climb.Surface.Cast(near, d / len, 1.5f * len, out SurfaceHit wh))
+                {
+                    p = wh.point; footSource[l] = wh.source; got = true;
+                }
+            }
+            if (!got) continue; // hold the last rest
             // Uphill (one side of a cross slope) the ground rises toward the shoulder and the rest stance
             // would fold the knee far past its rest bend: slide the rest point outward along the ground
             // until it is as far from the shoulder as on flat ground.
@@ -223,7 +301,7 @@ sealed class CreatureLegs
                     float along = Mathf.Max(Vector3.Dot(v, outward), 0.3f * d);
                     Vector3 q = p + outward * ((want - d) * d / Mathf.Max(1e-5f, along));
                     // a miss keeps the last point that was on the ground (q itself may be in the air)
-                    if (!ground.Probe(q, u, kProbeWindow * scale, out Vector3 pq, out _)) break;
+                    if (!FootProbe(l, 1, q, u, out Vector3 pq, out _)) break;
                     p = pq;
                 }
             }
@@ -238,7 +316,9 @@ sealed class CreatureLegs
             if (!State[l].stepping) continue;
             trunkSlack[l] = 0f; // the foot lands somewhere new: check it when planted
             LegSpec s = specs[l];
-            State[l].stepT += dt / Mathf.Max(1e-4f, s.stepDuration * timeScale);
+            float stepTime = s.stepDuration * timeScale;
+            if (Climbing) stepTime *= Factor(sp.climb.StepTimeFactor, Steep(l));
+            State[l].stepT += dt / Mathf.Max(1e-4f, stepTime);
             // re-aim at where the rest point will be on landing: in a turn the body does not travel straight
             Aim(l, speed, Mathf.Max(0f, 1f - State[l].stepT));
             if (State[l].stepT >= 1f)
@@ -259,7 +339,9 @@ sealed class CreatureLegs
                 Vector3 a = State[l].stepFrom, b = State[l].stepTo;
                 Vector3 ctrl = 2f * rest[l] - 0.5f * (a + b);
                 Vector3 path = (1f - sm) * (1f - sm) * a + 2f * (1f - sm) * sm * ctrl + sm * sm * b;
-                target[l] = KeepOutOfFlex(l, GatedKeepOff(l, path, ref swingSlack[l], ref swingPrev[l]) + Up(l) * (s.stepLift * scale * Mathf.Sin(Mathf.PI * t)));
+                float lift = s.stepLift * scale;
+                if (Climbing) lift *= Factor(sp.climb.LiftFactor, Steep(l));
+                target[l] = KeepOutOfFlex(l, GatedKeepOff(l, path, ref swingSlack[l], ref swingPrev[l]) + Up(l) * (lift * Mathf.Sin(Mathf.PI * t)));
             }
         }
 
@@ -269,6 +351,7 @@ sealed class CreatureLegs
             LegSpec s = specs[l];
             float dist = (target[l] - rest[l]).magnitude;
             float thr = s.stepThreshold * scale;
+            if (Climbing) thr *= Factor(sp.climb.StrideFactor, Steep(l));
             // Also step when the planted foot nears full extension: with short-limbed rear legs the
             // reach runs out before stepThreshold does, and the IK would drag the foot.
             float reach = (s.upperLength + s.lowerLength) * scale * kOverextend;
@@ -301,6 +384,7 @@ sealed class CreatureLegs
             for (int m = 0; m < c; m++)
                 if (m != l && specs[m].gaitGroup == g && State[m].stepping && State[m].stepT < 0.5f) joinable = true;
             if (lastGroup == g && otherEligible && startedGroup != g && !joinable) continue;
+            if (Climbing && Steep(l) > kGripSteep && !GripHolds(l)) continue;
             StartStep(l, speed);
             lastGroup = g; startedGroup = g;
             started++;
@@ -365,6 +449,7 @@ sealed class CreatureLegs
         // re-aiming in flight only follows the body (an idle tidy-up lands exactly on the rest point).
         Vector3 fwd = rotations[s.attachJoint] * Vector3.forward;
         float over = speed < kIdleSpeed * timeScale ? 0f : s.overshoot * scale;
+        if (Climbing) over *= Factor(sp.climb.StrideFactor, Steep(l));
         float maxDist = kLandReach * (s.upperLength + s.lowerLength) * scale;
         for (int i = 0; i < 6 && over > 1e-4f && (rest[l] + fwd * over - State[l].shoulder).sqrMagnitude > maxDist * maxDist; i++)
             over *= 0.6f;
@@ -385,16 +470,17 @@ sealed class CreatureLegs
         LegSpec s = specs[l];
         Vector3 fwd = rotations[s.attachJoint] * Vector3.forward;
         float travel = Mathf.Max(0f, speed) * s.stepDuration * timeScale * remaining;
+        if (Climbing) travel *= Factor(sp.climb.StepTimeFactor, Steep(l));
         Vector3 goal = rest[l] + fwd * (travel + stepOver[l]);
         Vector3 u = Up(l);
         Vector3 p = goal, n = u;
-        if (!ground.Probe(goal, u, kProbeWindow * scale, out p, out n)) { p = goal; n = State[l].stepToNormal.sqrMagnitude > 0.5f ? State[l].stepToNormal : State[l].footNormal; }
+        if (!FootProbe(l, 2, goal, u, out p, out n)) { p = goal; n = State[l].stepToNormal.sqrMagnitude > 0.5f ? State[l].stepToNormal : State[l].footNormal; }
         // a landing point under the trunk (the inner feet of a tight turn) moves out from under it
         Vector3 q = GatedKeepOff(l, p, ref aimSlack[l], ref aimPrev[l]);
         if ((q - p).sqrMagnitude > 1e-12f)
         {
-            if (ground.Probe(q, u, kProbeWindow * scale, out Vector3 pq, out Vector3 nq)) { p = pq; n = nq; }
-            else p = q;
+            if (FootProbe(l, 2, q, u, out Vector3 pq, out Vector3 nq)) { p = pq; n = nq; }
+            else if (!Climbing) p = q; // climbing: a point pushed off the surface stays where the surface is
         }
         State[l].stepTo = p;
         State[l].stepToNormal = n.sqrMagnitude > 1e-12f ? n.normalized : u;
@@ -431,6 +517,8 @@ sealed class CreatureLegs
         for (int k = 0, count = hi - lo; k < count; k++)
         {
             int i = k < up ? at + k : at - 1 - (k - up);
+            // climbing: a segment on another face of the surface (past a corner) is not under this foot's plane
+            if (Climbing && Vector3.Dot(climb.Up[i], u) < kTrunkSameFace) continue;
             Vector3 a = joints[i];
             float apx = p.x - a.x, apy = p.y - a.y, apz = p.z - a.z;
             float pu = apx * u.x + apy * u.y + apz * u.z;
@@ -474,6 +562,8 @@ sealed class CreatureLegs
     // may have used up the slack (clearance beyond the keep-out distance) the last measurement left.
     Vector3 GatedKeepOff(int l, Vector3 p, ref float slack, ref Vector3 prev)
     {
+        // climbing: feet hug the surface the body is on, across corners the plan-view outline means nothing
+        if (Climbing) { prev = p; slack = 0f; return p; }
         slack -= (p - prev).magnitude + trunkTravel;
         prev = p;
         if (slack > 0f) return p;
@@ -487,6 +577,7 @@ sealed class CreatureLegs
     // joint can have moved since the last call (see kTrunkTravel).
     bool TrunkLimited(int l, float travel)
     {
+        if (Climbing) { trunkSlack[l] = 0f; return false; }
         trunkSlack[l] -= travel;
         if (trunkSlack[l] > 0f) return false;
         float c = TrunkClearance(l, target[l], out _);
@@ -518,7 +609,12 @@ sealed class CreatureLegs
         {
             jointLimited[l] = false;
             if (State[l].stepping) { prevSwing[l] = prevKnee[l] = -1f; continue; }
-            jointThrottle = Mathf.Min(jointThrottle, JointThrottle(l, dt));
+            float jt = JointThrottle(l, dt);
+            // Climbing over a turn the attach frame itself turns (its up follows the surface), which swings every
+            // planted limb in that frame at once: the joint limits still trigger steps, but brake the body only
+            // as much as on level ground.
+            if (Climbing) jt = Mathf.Lerp(jt, 1f, Steep(l) > 0f || climb.AheadWeight > 0f ? kClimbJointRelax : 0f);
+            jointThrottle = Mathf.Min(jointThrottle, jt);
             float reach = (specs[l].upperLength + specs[l].lowerLength) * scale;
             float now = (target[l] - State[l].shoulder).magnitude;
             // a stretch no step can cure (rest point itself out of reach) must not stop the body for good

@@ -13,6 +13,8 @@ public sealed class CreatureSim
     const float kSwayFull = 0.75f;  // girdle reach difference (leg lengths) that gives full sway
     const float kSwayTau = 0.08f;   // smoothing of the sway and roll signals, seconds
     const int kRollSpread = 3;      // a girdle's roll fades out over this many joints each way
+    const float kRunLo = 0.25f, kRunHi = 0.6f; // climbing: segment run/length below which its plane direction fades out
+    const int kPitchPasses = 4;     // pitch-fold limiter passes (each followed by a length restore)
 
     public readonly CreatureSpecies Species;
     public readonly float SizeScale;
@@ -42,16 +44,40 @@ public sealed class CreatureSim
     readonly int[] girdles;          // attach joints with legs on both sides, ascending
     readonly float[] swaySignal, rollSignal, swayAmp; // per girdle: smoothed -1..1 signals, amplitude (m)
     readonly float[] swayY, rollDeg; // per joint: lateral offset (m, +right) and roll (deg)
+    readonly float[] pitchLift;      // pitch-fold limiter scratch
     readonly CreatureLegs legs;
+    readonly CreatureClimb climb;    // null: this species cannot climb, or the ground is not an ISurfaceProbe
     readonly int n;
     Vector3 heading;
+    Vector3 headUp;                  // the head's up the heading was last made tangent to (parallel transport)
     float commanded;
+
+    // Climbing (CreatureClimb): only for a species with climb.canClimb on an ISurfaceProbe ground. Up is the up
+    // each joint grounds along (gravity's while the creature walks), ClimbWeight how far it follows the
+    // surface instead of gravity, Source what it stands on (0 = terrain, else a collider's instance id).
+    public readonly Vector3[] Up;
+    public readonly float[] ClimbWeight;
+    public readonly int[] Source;
+    public bool CanClimb => climb != null;
+    public bool Climbing => climb != null && climb.Active;
+    // A surface ahead is past the species' maxSurfaceAngle (an overhang): the creature brakes to a stop.
+    public bool Blocked => climb != null && climb.Blocked;
+    // Off: colliders are ignored (the creature walks on terrain only, through plants as before); terrain walls
+    // are still climbed.
+    public bool ClimbAllowed = true;
+    public Vector3 Heading => heading;
+    // The surfaces the creature probes (null when it cannot climb): casts for climb goals.
+    public ISurfaceProbe Surface => climb != null ? climb.Surface : null;
+    internal CreatureClimb Climb => climb;
+    internal float LegThrottle => legs.Throttle; // stats/tests: the gait's speed throttle (1 = free)
+    public float Steepness(int joint) => climb != null && climb.Active ? climb.Steep[joint] : 0f;
 
     public CreatureSim(CreatureSpecies sp, IGroundProbe ground, Func<Vector3, Vector3> upAt,
                        Vector3 position, Vector3 forward, float sizeScale = 1f, int seed = 0)
     {
         Species = sp; this.ground = ground; this.upAt = upAt; SizeScale = sizeScale;
-        spineGround = ground is CachedGroundProbe cache ? cache.Smooth : ground;
+        spineGround = ground is CachedGroundProbe cache ? cache.Smooth
+                    : ground is CompositeSurfaceProbe comp ? comp.Smooth : ground;
         TimeScale = Mathf.Sqrt(Mathf.Max(1e-4f, sizeScale));
         n = sp.JointCount;
         Joints = new Vector3[n]; Rotations = new Quaternion[n];
@@ -59,6 +85,7 @@ public sealed class CreatureSim
 
         Vector3 up = Norm(upAt(position), Vector3.up);
         heading = Tangent(forward, up);
+        headUp = up;
         float step = sp.spacing * sizeScale;
         for (int i = 0; i < n; i++)
         {
@@ -70,6 +97,7 @@ public sealed class CreatureSim
             Joints[i] = g + u * clear;
         }
         Path = (Vector3[])Joints.Clone();
+        pitchLift = new float[n];
         swayY = new float[n]; rollDeg = new float[n];
         girdles = FindGirdles(sp);
         swaySignal = new float[girdles.Length]; rollSignal = new float[girdles.Length]; swayAmp = new float[girdles.Length];
@@ -83,8 +111,15 @@ public sealed class CreatureSim
             // smoothstep between nodes peaks at slope 1.5 * 2A / D = tan(gaitSwayDeg)
             swayAmp[g] = d * step * tanSway / 3f;
         }
+        if (sp.climb.canClimb && ground is ISurfaceProbe surface) climb = new CreatureClimb(sp, surface, sizeScale, TimeScale);
+        if (climb != null)
+        {
+            Up = climb.Up; ClimbWeight = climb.Weight; Source = climb.Source;
+            Array.Copy(pathUp, Up, n);
+        }
+        else { Up = pathUp; ClimbWeight = new float[n]; Source = new int[n]; }
         UpdateFrames();
-        legs = new CreatureLegs(sp, ground, upAt, Joints, Rotations, sizeScale, TimeScale);
+        legs = new CreatureLegs(sp, ground, upAt, Joints, Rotations, sizeScale, TimeScale, climb);
         Legs = legs.State;
     }
 
@@ -121,10 +156,25 @@ public sealed class CreatureSim
         Time += dt;
         var sp = Species;
         float maxSpeed = sp.speed * TimeScale;
+        float window = kGroundWindow * SizeScale;
+        if (climb != null)
+        {
+            climb.ClimbAllowed = ClimbAllowed;
+            climb.Begin(dt, Path, pathUp, GroundNormals, heading, Speed, window);
+        }
+        bool climbing = climb != null && climb.Active;
 
-        // 1. head steering
+        // 1. head steering (climbing: in the head's surface plane, the heading carried over the up's turn)
         Vector3 head = Path[0];
-        Vector3 up = Norm(upAt(head), Vector3.up);
+        Vector3 up;
+        if (climbing)
+        {
+            up = Norm(climb.Up[0], Vector3.up);
+            heading = SurfaceMath.Transport(heading, headUp, up);
+            maxSpeed *= climb.SpeedFactor(heading);
+        }
+        else up = Norm(upAt(head), Vector3.up);
+        headUp = up;
         heading = Tangent(heading, up);
         Vector3 to = target - head;
         float dist = to.magnitude;
@@ -151,6 +201,8 @@ public sealed class CreatureSim
         float goal = Mathf.Max(0f, want);
         float rate = sp.accel;
         if (cap < goal) { goal = cap; if (goal < commanded) rate = 3f * sp.accel; }
+        // an overhang ahead, or the enclosure's height cap reached going up: brake to a stop (turning is free)
+        if (climbing && (climb.Blocked || AboveCap(head, heading))) { goal = 0f; rate = 3f * sp.accel; }
         commanded = Mathf.MoveTowards(commanded, goal, rate * dt);
         Vector3 start = head;
         head += heading * (commanded * dt);
@@ -173,13 +225,33 @@ public sealed class CreatureSim
             var hv = new Vector3(v.x - u.x * rise, v.y - u.y * rise, v.z - u.z * rise);
             float run = Mathf.Sqrt(hv.x * hv.x + hv.y * hv.y + hv.z * hv.z);
             // the previous segment's ground direction, in this joint's tangent plane (it already is on a flat world)
-            float pu = prevBack.x * u.x + prevBack.y * u.y + prevBack.z * u.z;
-            Vector3 pb = pu * pu < 1e-10f ? prevBack : Norm(new Vector3(prevBack.x - u.x * pu, prevBack.y - u.y * pu, prevBack.z - u.z * pu), prevBack);
+            Vector3 pb;
+            if (climbing)
+            {
+                // the previous direction lies in joint i-1's tangent plane: carry it over to joint i's (a plain
+                // projection is ill-conditioned where the body turns up a wall and loses its lateral sense)
+                pb = SurfaceMath.Transport(prevBack, pathUp[i - 1], u);
+                float q = pb.x * u.x + pb.y * u.y + pb.z * u.z;
+                pb = Norm(new Vector3(pb.x - u.x * q, pb.y - u.y * q, pb.z - u.z * q), prevBack);
+            }
+            else
+            {
+                float pu = prevBack.x * u.x + prevBack.y * u.y + prevBack.z * u.z;
+                pb = pu * pu < 1e-10f ? prevBack : Norm(new Vector3(prevBack.x - u.x * pu, prevBack.y - u.y * pu, prevBack.z - u.z * pu), prevBack);
+            }
             Vector3 d;
             if (js[i].rigid || run < 1e-6f) d = pb;
             else
             {
                 d = hv / run;
+                // climbing: a segment nearly along this joint's up (over an edge the up turns faster than the body
+                // can bend) has no reliable direction in the joint's plane - keep the previous one there
+                if (climbing)
+                {
+                    float steepness = run / Mathf.Max(1e-6f, Mathf.Sqrt(run * run + rise * rise));
+                    float trust = SurfaceMath.SmoothStep(kRunLo, kRunHi, steepness);
+                    if (trust < 1f) d = Norm(pb + (d - pb) * trust, pb);
+                }
                 // the bend cone: only a direction past the limit is turned back onto it
                 float lim = js[i].bendLimitDeg * Mathf.Deg2Rad;
                 if (pb.x * d.x + pb.y * d.y + pb.z * d.z < Mathf.Cos(lim))
@@ -191,22 +263,28 @@ public sealed class CreatureSim
             prevBack = d;
         }
 
-        // 3. ground: smooth height offset and normal; hold on probe miss
+        // 3. ground: smooth height offset and normal; hold on probe miss. Climbing: along each joint's own up,
+        // at the steepness-scaled clearance, with a wrap cast past an edge.
         float k = 1f - Mathf.Exp(-dt / (kGroundTau * TimeScale));
-        float window = kGroundWindow * SizeScale;
         float[] droop = legs.DroopSpread;
         for (int i = 0; i < n; i++)
         {
             Vector3 p = Path[i];
-            Vector3 u = Norm(upAt(p), up);
+            Vector3 u = climbing ? climb.Up[i] : Norm(upAt(p), up);
             pathUp[i] = u;
             float clear = js[i].clearance * SizeScale;
+            if (climbing) clear *= climb.ClearanceScale(i);
             var near = new Vector3(p.x - u.x * clear, p.y - u.y * clear, p.z - u.z * clear);
             Vector3 g0 = groundPoint[i];
             float hPrev = (g0.x - near.x) * u.x + (g0.y - near.y) * u.y + (g0.z - near.z) * u.z;
             float hs = hPrev;
             Vector3 nrm = GroundNormals[i];
-            if (spineGround.Probe(near, u, window, out Vector3 gp, out Vector3 gn))
+            Vector3 gp, gn;
+            bool got = climbing
+                ? climb.ProbeJoint(i, near, u, climb.Window(i, window, clear), p, i == 0 ? heading : Norm(Path[i - 1] - p, heading), clear, out gp, out gn)
+                : climb != null ? climb.ProbeWalking(i, near, u, window, out gp, out gn) // the same terrain answer; colliders cached per slot
+                : spineGround.Probe(near, u, window, out gp, out gn);
+            if (got)
             {
                 float hProbe = (gp.x - near.x) * u.x + (gp.y - near.y) * u.y + (gp.z - near.z) * u.z;
                 hs = hPrev + (hProbe - hPrev) * k;
@@ -221,6 +299,12 @@ public sealed class CreatureSim
             Path[i] = new Vector3(g.x + u.x * lift, g.y + u.y * lift, g.z + u.z * lift);
         }
         RestoreLengths(seg);
+        // climbing, the body never folds sharply in pitch (ground -> wall, over an edge): lift the fold (only while
+        // climbing: walking stays exactly the walking code - the limiter's on/off at its threshold jittered R25's holes)
+        if (climbing)
+            for (int pass = 0; pass < kPitchPasses && CreatureClimb.LimitPitch(Path, pathUp, seg, sp.climb.PitchLimitDeg, pitchLift); pass++) RestoreLengths(seg);
+        // the up field follows the new ground normals (the next sub-step's chain step and grounding use it)
+        if (climbing) climb.UpdateUpField(dt, Path, GroundNormals, pathUp, upAt);
 
         // 4. gait sway: the displayed body is the path bent toward the reaching legs
         ApplySway(dt);
@@ -242,6 +326,7 @@ public sealed class CreatureSim
                 f = Norm(new Vector3(a.x - b.x, a.y - b.y, a.z - b.z), Vector3.forward);
             }
             Vector3 g = GroundNormals[i];
+            if (climb != null && climb.Active) g = SurfaceMath.Slerp(g, climb.Up[i], climb.Weight[i]);
             float gf = g.x * f.x + g.y * f.y + g.z * f.z;
             var u = new Vector3(g.x - f.x * gf, g.y - f.y * gf, g.z - f.z * gf);
             if (u.sqrMagnitude < 1e-8f) u = Vector3.ProjectOnPlane(Vector3.up, f);
@@ -276,6 +361,7 @@ public sealed class CreatureSim
         float maxSpeed = sp.speed * TimeScale;
         float fade = maxSpeed > 1e-4f ? Mathf.Clamp01(commanded / (0.3f * maxSpeed)) : 0f;
         float k = 1f - Mathf.Exp(-dt / (kSwayTau * TimeScale));
+        bool climbing = climb != null && climb.Active;
         LegSpec[] specs = sp.legs;
         for (int g = 0; g < G; g++)
         {
@@ -292,6 +378,7 @@ public sealed class CreatureSim
                 if (Legs[l].stepping) roll += s.side * Mathf.Sin(Mathf.PI * Legs[l].stepT);
             }
             float sway = Mathf.Clamp((sumR / cR - sumL / cL) / kSwayFull, -1f, 1f) * fade;
+            if (climbing) sway *= 1f - 0.5f * climb.Steep[j]; // half the sway on a vertical surface
             swaySignal[g] = Mathf.Lerp(swaySignal[g], sway, k);
             rollSignal[g] = Mathf.Lerp(rollSignal[g], Mathf.Clamp(roll, -1f, 1f) * fade, k);
         }
@@ -340,12 +427,21 @@ public sealed class CreatureSim
             float slack = 0f;
             if (!sp.joints[i].rigid)
             {
-                float cd = Mathf.Clamp(prevPath.x * d.x + prevPath.y * d.y + prevPath.z * d.z, -1f, 1f);
+                float cd;
+                if (climbing)
+                {
+                    // the lateral bend only: a corner's pitch (ground -> wall) must not use up the bend limit
+                    Vector3 uu = climb.Up[i];
+                    Vector3 pp = Norm(prevPath - uu * Vector3.Dot(prevPath, uu), prevPath), dd = Norm(d - uu * Vector3.Dot(d, uu), d);
+                    cd = Mathf.Clamp(Vector3.Dot(pp, dd), -1f, 1f);
+                }
+                else cd = Mathf.Clamp(prevPath.x * d.x + prevPath.y * d.y + prevPath.z * d.z, -1f, 1f);
                 slack = Mathf.Max(0f, sp.joints[i].bendLimitDeg - Mathf.Acos(cd) * Mathf.Rad2Deg);
             }
             turn = Mathf.Clamp(turn, prevTurn - slack, prevTurn + slack);
             prevPath = d; prevTurn = turn;
-            if (turn != 0f) d = Rotate(d, GroundNormals[i], turn * Mathf.Deg2Rad);
+            // climbing: about the smooth up field (a corner's probe normals jump between its two surfaces)
+            if (turn != 0f) d = Rotate(d, climbing ? climb.Up[i] : GroundNormals[i], turn * Mathf.Deg2Rad);
             Vector3 jp = Joints[i - 1];
             Joints[i] = new Vector3(jp.x + d.x * len, jp.y + d.y * len, jp.z + d.z * len);
         }
@@ -381,6 +477,15 @@ public sealed class CreatureSim
             float g = Mathf.Sqrt(Mathf.Max(0f, seg * seg - rise * rise) / run2);
             Path[i] = new Vector3(a.x + hv.x * g + u.x * rise, a.y + hv.y * g + u.y * rise, a.z + hv.z * g + u.z * rise);
         }
+    }
+
+    // The enclosure's height cap (EnclosureArea.maxHeight) reached by a head that is still heading up.
+    bool AboveCap(Vector3 head, Vector3 dir)
+    {
+        if (!Bounds.HasValue) return false;
+        EnclosureArea a = Bounds.Value;
+        if (!(a.maxHeight > 0f)) return false;
+        return Vector3.Dot(head - a.center, a.up) >= a.maxHeight && Vector3.Dot(dir, a.up) > 0.1f;
     }
 
     // The leg's current ground-projected rest point (debug view).

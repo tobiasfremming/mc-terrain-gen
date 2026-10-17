@@ -18,8 +18,8 @@ MonoBehaviour:
   surfaceStyle: 6
   hardness: 0.6
   blendSharpness: 1
-  colorFlat: {r: 0.86, g: 0.62, b: 0.36, a: 1}
-  colorSteep: {r: 0.8, g: 0.52, b: 0.32, a: 1}
+  colorFlat: {r: 0.9357, g: 0.8095, b: 0.6343, a: 1}
+  colorSteep: {r: 0.9063, g: 0.7484, b: 0.6012, a: 1}
   albedo: {fileID: 0}
   normalMap: {fileID: 0}
   flora:

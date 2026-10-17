@@ -49,7 +49,27 @@ public sealed class CreatureLab : MonoBehaviour
         public CreatureEnclosure enclosure;
         public CreatureSim sim;
         public int seed;
+        public EnclosurePlant plant;
     }
+
+    // Climbing (2026-10-17): the shade tree is a climbable obstacle for a species that can climb, up to
+    // kPlantClimbShare of the plant's height (and the species' own cap); such a species gets a ClimbingBrain.
+    const float kPlantClimbShare = 0.45f;
+
+    internal static EnclosureArea AreaFor(CreatureEnclosure enc, CreatureSpecies sp, float maxScale, EnclosurePlant plant)
+    {
+        EnclosureArea area = enc.AreaFor(sp, maxScale);
+        if (plant != null && sp.climb.canClimb && area.ObstacleCount > 0)
+        {
+            area.obstacleClimbable = new bool[area.ObstacleCount];
+            for (int i = 0; i < area.obstacleClimbable.Length; i++) area.obstacleClimbable[i] = true;
+            area.maxHeight = Mathf.Min(sp.climb.MaxHeightBodyLengths * sp.BodyLength * maxScale, kPlantClimbShare * plant.Height);
+        }
+        return area;
+    }
+
+    internal static ICreatureBrain BrainFor(EnclosureArea area, CreatureSpecies sp, int seed)
+        => sp.climb.canClimb && area.obstacleClimbable != null ? new ClimbingBrain(area, seed) : (ICreatureBrain)new WanderBrain(area, seed);
 
     readonly List<Entry> entries = new List<Entry>();
     CreatureWorld placedWorld;
@@ -95,8 +115,8 @@ public sealed class CreatureLab : MonoBehaviour
             float maxScale = MaxScale(e.species, scale);
             e.enclosure.radius = EnclosureRadius(e.species, maxScale);
             e.enclosure.Build(ground);
-            EnclosureArea area = e.enclosure.AreaFor(e.species, maxScale);
-            e.sim = placedWorld.Spawn(e.species, area.center, face, new WanderBrain(area, e.seed), area, e.seed, scale);
+            EnclosureArea area = AreaFor(e.enclosure, e.species, maxScale, e.plant);
+            e.sim = placedWorld.Spawn(e.species, area.center, face, BrainFor(area, e.species, e.seed), area, e.seed, scale);
         }
     }
 
@@ -176,10 +196,10 @@ public sealed class CreatureLab : MonoBehaviour
 
             Vector3 face = Vector3.ProjectOnPlane(origin - center, cUp);
             if (face.sqrMagnitude < 1e-6f) face = fwd;
-            if (enclosurePlant != null) PlacePlant(enc, ground, center, cUp, radius, face.normalized, k);
-            EnclosureArea area = enc.AreaFor(sp, maxScale);
-            CreatureSim sim = world.Spawn(sp, center, face.normalized, new WanderBrain(area, seed + k), area, seed + k, scale);
-            entries.Add(new Entry { species = sp, scale = scale, enclosure = enc, sim = sim, seed = seed + k });
+            EnclosurePlant plant = enclosurePlant != null ? PlacePlant(enc, ground, center, cUp, radius, face.normalized, k) : null;
+            EnclosureArea area = AreaFor(enc, sp, maxScale, plant);
+            CreatureSim sim = world.Spawn(sp, center, face.normalized, BrainFor(area, sp, seed + k), area, seed + k, scale);
+            entries.Add(new Entry { species = sp, scale = scale, enclosure = enc, sim = sim, seed = seed + k, plant = plant });
             sb.Append($" {sp.name} at {center} (r {radius:F1} m, flatness {flatness:F3})");
             float dist = Vector3.ProjectOnPlane(center - origin, up).magnitude - radius;
             if (dist < nearestDist) { nearestDist = dist; nearestCentre = center; nearestRadius = radius; }
@@ -228,7 +248,7 @@ public sealed class CreatureLab : MonoBehaviour
 
     // The shade tree: plantOffset x radius from the centre, 70 deg round from the player's side (in view, not
     // in the way), on the probed ground; its trunk becomes the enclosure's obstacle.
-    void PlacePlant(CreatureEnclosure enc, IGroundProbe ground, Vector3 center, Vector3 up, float radius, Vector3 towardPlayer, int k)
+    EnclosurePlant PlacePlant(CreatureEnclosure enc, IGroundProbe ground, Vector3 center, Vector3 up, float radius, Vector3 towardPlayer, int k)
     {
         Vector3 dir = Quaternion.AngleAxis(70f, up) * towardPlayer;
         Vector3 at = center + dir * (plantOffset * radius);
@@ -241,6 +261,7 @@ public sealed class CreatureLab : MonoBehaviour
         plant.Init(enclosurePlant, seed + k, plantScale);
         enc.obstacles.Clear();
         enc.obstacles.Add(new Vector4(at.x, at.y, at.z, plant.TrunkRadius));
+        return plant;
     }
 
     // The k-th of n slots on an arc of radius arcRadius around origin, centred on fwd; adjacent slots are
