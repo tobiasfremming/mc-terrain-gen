@@ -39,9 +39,11 @@ namespace TerrainGen.Tests
         static CreatureSim RestSim(CreatureSpecies sp, Vector3 at) =>
             new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, at, Vector3.forward);
 
-        [Test] public void Instance_StructIs16Bytes()
+        // 32 bytes since the octopus: seed, hueShift, valueShift, sizeScale, cloak, chroma, flash, cloudPhase
+        // (CreatureSkin.hlsl matches field for field).
+        [Test] public void Instance_StructIs32Bytes()
         {
-            Assert.AreEqual(16, Marshal.SizeOf<CreatureInstance>());
+            Assert.AreEqual(32, Marshal.SizeOf<CreatureInstance>());
         }
 
         [Test] public void Renderer_GrowsWithoutLosingSims()

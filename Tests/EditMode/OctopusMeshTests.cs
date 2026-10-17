@@ -273,6 +273,34 @@ namespace TerrainGen.Tests
             Assert.LessOrEqual(worstWeb, 0.03f * webTris, "web folds");
         }
 
+        // The squash-and-stretch run (OctopusSimTests.SquishRun): the shell never inverts, at the stretch peak,
+        // through the squash and the jiggle.
+        [Test] public void Mesh_SquishPoses_NoInvertedTris()
+        {
+            var sp = CephalopodSpec.Default; sp.breathAmp = -1f;
+            OctopusMeshBuilder.Data d = OctopusMeshBuilder.BuildData(sp);
+            Matrix4x4[] bind = OctopusRestPose.BindPoses(sp);
+            var body = new OctopusBody(sp, Vector3.zero, Quaternion.identity);
+            body.SetAllLimp(true);
+            TentacleChain arm = body.Arms[0];
+            arm.Pin(arm.N - 1, arm.X[arm.N - 1], Vector3.up);
+            body.ExtraDamping = 4f;
+            for (int f = 0; f < 900; f++) body.Tick(1f / 60f);
+            body.ExtraDamping = 0f;
+            int worst = 0; string first = "none"; int sampled = 0;
+            OctopusSimTests.SquishRun(body, sp, out _, out _, out _, out _, out _, (f, e) =>
+            {
+                if (f > 120 || f % 3 != 0) return;
+                sampled++;
+                CountInverted(d, SkinMatrices(body, bind), bind, out string fi, out int[] per);
+                int inv = 0;
+                for (int p = 0; p < per.Length; p++) if (p != OctopusMeshBuilder.PartWeb) inv += per[p];
+                if (inv > worst) { worst = inv; first = $"frame {f} (extent x{e:F3}): {fi}"; }
+            });
+            Assert.Greater(sampled, 30);
+            Assert.AreEqual(0, worst, "inverted triangles outside the web; " + first);
+        }
+
         // The shared part ids: the eye is the creature shader's eye part; the octopus parts come after the spine ones.
         [Test] public void Mesh_Octopus_PartIdsMatchCreatureBuilder()
         {

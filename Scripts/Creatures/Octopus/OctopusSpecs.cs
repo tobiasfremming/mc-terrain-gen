@@ -31,8 +31,8 @@ public struct TentacleSpec
     public int Segments => segments >= 4 ? segments : 24;
     public float Length => length > 0f ? length : 1.6f;
     public float RootRadius => rootRadius > 0f ? rootRadius : 0.05f;
-    public float TipRadius => tipRadius > 0f ? tipRadius : 0.0035f;
-    public float Taper => taper > 0f ? taper : 1.15f;
+    public float TipRadius => tipRadius > 0f ? tipRadius : 0.006f;
+    public float Taper => taper > 0f ? taper : 0.9f;
     public float Flatten => flatten > 0f ? flatten : 0.85f;
     public float BendLimitDeg => bendLimitDeg > 0f ? bendLimitDeg : 28f;
     public float TipCurlDeg => tipCurlDeg > 0f ? tipCurlDeg : 24f;
@@ -96,15 +96,49 @@ public struct CephalopodSpec
     public float EyeRadius => eyeRadius > 0f ? eyeRadius : 0.03f;
     public float SiphonLength => siphonLength > 0f ? siphonLength : 0.07f;
     public float SiphonRadius => siphonRadius > 0f ? siphonRadius : 0.018f;
-    public float Beta => beta > 0f ? Mathf.Min(beta, 1f) : 0.35f;
+    public float Beta => beta > 0f ? Mathf.Min(beta, 1f) : 0.7f;
     public float HeadStiffness => headStiffness > 0f ? Mathf.Min(headStiffness, 1f) : 0.6f;
-    public float TipStiffness => tipStiffness > 0f ? Mathf.Min(tipStiffness, 1f) : 0.15f;
+    public float TipStiffness => tipStiffness > 0f ? Mathf.Min(tipStiffness, 1f) : 0.03f;
     // breathAmp < 0 disables breathing (tests); 0 = default
     public float BreathAmp => breathAmp > 0f ? breathAmp : breathAmp < 0f ? 0f : 0.03f;
     public float BreathHz => breathHz > 0f ? breathHz : 0.4f;
-    public float BodyDamping => bodyDamping > 0f ? bodyDamping : 1.5f;
+    public float BodyDamping => bodyDamping > 0f ? bodyDamping : 0.3f;
     public int SubSteps => subSteps > 0 ? subSteps : 3;
     public int Iterations => iterations > 0 ? iterations : 3;
 
+    public OctopusLook look;
+
     public static CephalopodSpec Default => new CephalopodSpec();
+
+    // null when valid, else the first problem found.
+    public string Validate()
+    {
+        if (armCount != 0 && armCount < 2) return "cephalopod.armCount must be >= 2";
+        if (arm.segments != 0 && arm.segments < 4) return "cephalopod.arm.segments must be >= 4";
+        if (arm.minStretch > 0f && arm.maxStretch > 0f && arm.minStretch > arm.maxStretch) return "cephalopod.arm stretch range is inverted";
+        return null;
+    }
+}
+
+// The octopus look (Shaders/CreatureOctopus.shader), on top of CreatureLook's palette (dorsal / flank /
+// belly / pattern = the dark chromatophore colour). 0 = default for every number.
+[Serializable]
+public struct OctopusLook
+{
+    public Color sucker, subsurface;      // sucker rims / cups; red-orange light through thin arms and web
+    public float chromaScale;             // chromatophore cells per metre
+    public float papillae;                // papillae bump strength (normal only)
+    public float suckerSize;              // sucker radius as a fraction of the arm radius
+    public float cloudSpeed;              // passing-cloud bands, m/s along the body
+    public float wetness;                 // clear-coat strength
+    public float rimGlint;                // cloak edge glint
+
+    public float ChromaScale => chromaScale > 0f ? chromaScale : 55f;
+    public float Papillae => papillae > 0f ? papillae : 0.5f;
+    public float SuckerSize => suckerSize > 0f ? suckerSize : 0.32f;
+    public float CloudSpeed => cloudSpeed > 0f ? cloudSpeed : 0.35f;
+    public float Wetness => wetness > 0f ? wetness : 0.8f;
+    public float RimGlint => rimGlint > 0f ? rimGlint : 0.6f;
+    public Color Sucker => sucker.a > 0f ? sucker : new Color(0.93f, 0.78f, 0.68f, 1f);
+    public Color Subsurface => subsurface.a > 0f ? subsurface : new Color(0.95f, 0.35f, 0.18f, 1f);
 }

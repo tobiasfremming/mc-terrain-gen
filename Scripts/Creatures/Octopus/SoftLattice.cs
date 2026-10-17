@@ -6,11 +6,12 @@ using UnityEngine;
 // iteration:
 //   Apq = sum m (x - c)(q - qc)^T,  R = rotation of Apq (warm-started polar extraction),
 //   A = Apq Aqq^-1 normalised to det 1,  T = R + beta (A - R) normalised to det 1 again,
-//   T x= breathing (radial 1 + b, axial 1 / (1 + b)^2 about the rest mantle axis: also det 1),
 //   goal g = T (q - qc) + c,  x += k (g - x).
 // Clusters are applied one after another (each conserves linear momentum exactly). k runs from the head
 // (stiff) to the mantle tip (soft), so the mantle trails, overshoots and jiggles; det 1 keeps the volume.
-// ClusterGoal/ClusterCentre are the soft bones' affine transforms (OctopusBody.WriteBoneWorld).
+// ClusterGoal/ClusterCentre are the soft bones' affine transforms (OctopusBody.WriteBoneWorld); breathing
+// (radial 1 + b, axial 1 / (1 + b)^2 about the rest mantle axis: det 1) is applied to those bone
+// transforms only, not to the simulated goals.
 // No allocation after construction; no engine calls.
 public sealed class SoftLattice
 {
@@ -33,7 +34,7 @@ public sealed class SoftLattice
     public float Time { get; private set; }
     public float Breath { get; private set; } // current b
 
-    readonly M3[] clusterGoal;
+    readonly M3[] clusterGoal, boneGoal;
     readonly M3[] aqqInv;
     readonly float[] clusterMass;
     readonly int[] cStart, cCount, cIdx;
@@ -71,7 +72,7 @@ public sealed class SoftLattice
         cStart = new int[ClusterCount]; cCount = new int[ClusterCount]; cIdx = new int[total];
         ClusterRotation = new Quaternion[ClusterCount]; ClusterCentre = new Vector3[ClusterCount];
         ClusterRestCentre = new Vector3[ClusterCount]; ClusterStiffness = new float[ClusterCount];
-        clusterGoal = new M3[ClusterCount]; aqqInv = new M3[ClusterCount]; clusterMass = new float[ClusterCount];
+        clusterGoal = new M3[ClusterCount]; boneGoal = new M3[ClusterCount]; aqqInv = new M3[ClusterCount]; clusterMass = new float[ClusterCount];
         breathes = new bool[ClusterCount];
         int o = 0;
         for (int c = 0; c < ClusterCount; c++)
@@ -87,7 +88,7 @@ public sealed class SoftLattice
             ClusterRestCentre[c] = qc; clusterMass[c] = m;
             ClusterRotation[c] = rotation;
             ClusterCentre[c] = position + rotation * qc;
-            clusterGoal[c] = M3.FromQuaternion(rotation);
+            clusterGoal[c] = M3.FromQuaternion(rotation); boneGoal[c] = clusterGoal[c];
             ClusterStiffness[c] = Mathf.Lerp(sp.HeadStiffness, sp.TipStiffness, OctopusShape.ClusterStiffnessPos[c]);
             breathes[c] = OctopusShape.ClusterBreathes[c];
             o += mem.Length;
@@ -99,7 +100,8 @@ public sealed class SoftLattice
         restVolume = SignedVolume();
     }
 
-    internal M3 ClusterGoal(int c) => clusterGoal[c];
+    // The soft bone transform of cluster c: the shape-matching goal with the breathing applied.
+    internal M3 ClusterGoal(int c) => boneGoal[c];
 
     public Vector3 CentreOfMass()
     {
@@ -118,6 +120,15 @@ public sealed class SoftLattice
     }
 
     // Scalar float maths in the hot paths: Vector3 operators are calls on Mono.
+    // Asleep (OctopusBody.Asleep): the particles stay put, the breathing phase advances (FitAll then puts
+    // it in the soft-bone transforms).
+    public void AdvanceBreath(float dt)
+    {
+        Time += dt;
+        Breath = BreathAmp * MathF.Sin(2f * Mathf.PI * BreathHz / MathF.Sqrt(sizeScale) * Time);
+        UpdateBreath();
+    }
+
     public void Integrate(float h, Vector3 refVel)
     {
         Time += h;
@@ -190,6 +201,7 @@ public sealed class SoftLattice
         ClusterRotation[c] = q;
         M3 r3 = M3.FromQuaternion(q);
         M3 t = r3;
+        bool br = breathes[c] && Breath != 0f;
         if (Beta > 0f)
         {
             M3 a = apq * aqqInv[c];
@@ -202,8 +214,10 @@ public sealed class SoftLattice
                 t = d2 > 1e-6f ? t * (1f / MathF.Pow(d2, 1f / 3f)) : r3;
             }
         }
-        if (breathes[c] && Breath != 0f) t = t * breath;
+        // breathing is skin deep: it shapes the soft bones only, never the simulated goals (driving the
+        // lattice with it swayed the whole hanging body and kept it from ever settling)
         clusterGoal[c] = t;
+        boneGoal[c] = br ? t * breath : t;
         ClusterCentre[c].x = cx; ClusterCentre[c].y = cy; ClusterCentre[c].z = cz;
     }
 

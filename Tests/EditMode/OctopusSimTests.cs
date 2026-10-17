@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -209,7 +210,8 @@ namespace TerrainGen.Tests
             Assert.Less(miss, 0.15f * spec.Length);
         }
 
-        // Bone k: +Z along segment k, scale (sigma, sigma, s) with sigma^2 s = squeeze^2 (volume-preserving stretch).
+        // Bone k: +Z along segment k, scale (sigma, sigma, s) with sigma = squeeze x max(0.93, 1/sqrt(s)): a
+        // volume-preserving stretch, except that a muscular arm under load never thins below 0.93.
         [Test] public void Tentacle_BonesFollowSegments_VolumePreservingScale()
         {
             var c = NewChain(out _);
@@ -224,7 +226,9 @@ namespace TerrainGen.Tests
                 Assert.AreEqual(seg.magnitude / c.Spacing, z.magnitude, 1e-3f, "bone z scale = stretch, bone " + k);
                 Vector3 x = new Vector3(m[k].m00, m[k].m10, m[k].m20), y = new Vector3(m[k].m01, m[k].m11, m[k].m21);
                 float det = Vector3.Dot(Vector3.Cross(x, y), z);
-                Assert.AreEqual(c.Squeeze[k] * c.Squeeze[k], det, 2e-3f, "det = squeeze^2, bone " + k);
+                float st = seg.magnitude / c.Spacing, sigma = c.Squeeze[k] * Mathf.Max(0.93f, 1f / Mathf.Sqrt(st));
+                Assert.AreEqual(sigma * sigma * st, det, 2e-3f, "det = sigma^2 s, bone " + k);
+                Assert.GreaterOrEqual(x.magnitude, 0.93f * c.Squeeze[k] - 1e-4f, "thinner than the cap, bone " + k);
             }
         }
 
@@ -346,9 +350,11 @@ namespace TerrainGen.Tests
             Assert.That(dmax, Is.LessThanOrEqualTo(1.03f), what + ": soft bone det");
         }
 
-        // A hard pull stretches the body along the pull, then it squashes past its rest shape (overshoot) and
-        // settles: squash and stretch from the soft clusters, not from animation.
-        [Test] public void Body_HardPull_StretchesThenSquashesAndSettles()
+        // Squishiness is a binding user requirement. A hard pull (the anchored arm contracting to minimum length
+        // in 0.15 s, the whole body hanging on it) visibly stretches the mantle, which then squashes past its
+        // rest shape and jiggles for 2-4 visible oscillations before settling. Both ends of every range are
+        // pinned, so the body can neither silently go stiff nor turn to jelly.
+        [Test] public void Body_HardPull_SquashStretchJiggle_InRange()
         {
             var sp = NoBreath();
             var b = new OctopusBody(sp, Vector3.zero, Quaternion.identity);
@@ -356,10 +362,24 @@ namespace TerrainGen.Tests
             TentacleChain arm = b.Arms[0];
             arm.Pin(arm.N - 1, arm.X[arm.N - 1], Vector3.up);
             Settle(b, 15f);
+            SquishRun(b, sp, out float rise, out float max, out float minAfter, out int halfOscillations, out float final);
+            TestContext.Out.WriteLine($"rise {rise:F3} m; stretch max {max:F4}, squash min {minAfter:F4}, visible half-oscillations {halfOscillations}, final {final:F4}");
+            Assert.Greater(rise, 0.1f, "the contracting arm did not pull the body up");
+            Assert.That(max, Is.InRange(1.12f, 1.20f), "mantle stretch under a hard pull (12-20 %)");
+            Assert.That(minAfter, Is.InRange(0.85f, 0.95f), "squash / overshoot after the pull");
+            Assert.That(halfOscillations, Is.InRange(4, 8), "visible jiggle: 2-4 oscillations beyond +-1.5 %");
+            Assert.AreEqual(1f, final, 0.01f, "does not settle back to its shape");
+        }
+
+        // The hard-pull run shared with the mesh test: per frame, the head-front to apex extent / its hanging value.
+        internal static void SquishRun(OctopusBody b, CephalopodSpec sp, out float rise, out float max, out float minAfter,
+                                       out int halfOscillations, out float final, Action<int, float> each = null)
+        {
+            TentacleChain arm = b.Arms[0];
             float rest = Extent(b), y0 = b.CentreOfMass().y;
-            float max = 0f, minAfter = float.MaxValue;
-            int tMax = -1;
-            for (int f = 1; f <= 150; f++)
+            max = 0f; minAfter = float.MaxValue; halfOscillations = 0;
+            int tMax = -1, side = 0;
+            for (int f = 1; f <= 300; f++)
             {
                 float s = Mathf.Lerp(1f, sp.arm.MinStretch, Mathf.Clamp01(f / 9f));
                 for (int j = 0; j < arm.N - 1; j++) arm.LengthTarget[j] = s;
@@ -367,19 +387,107 @@ namespace TerrainGen.Tests
                 float e = Extent(b) / rest;
                 if (e > max) { max = e; tMax = f; }
                 else if (tMax > 0) minAfter = Mathf.Min(minAfter, e);
+                int sd = e > 1.015f ? 1 : e < 0.985f ? -1 : 0;
+                if (sd != 0 && sd != side) { if (side != 0) halfOscillations++; side = sd; }
+                each?.Invoke(f, e);
             }
-            float final = Extent(b) / rest;
-            TestContext.Out.WriteLine($"rise {b.CentreOfMass().y - y0:F3} m; stretch max {max:F4} (frame {tMax}), then min {minAfter:F4}, final {final:F4}");
-            Assert.Greater(b.CentreOfMass().y - y0, 0.1f, "the contracting arm did not pull the body up");
-            Assert.Greater(max, 1.02f, "no stretch under the pull");
-            Assert.Less(minAfter, 0.995f, "no squash / overshoot after the pull");
-            Assert.AreEqual(1f, final, 0.01f, "does not settle back to its shape");
+            rise = b.CentreOfMass().y - y0;
+            final = Extent(b) / rest;
         }
 
         internal static float Det3(Matrix4x4 m) =>
             m.m00 * (m.m11 * m.m22 - m.m12 * m.m21) - m.m01 * (m.m10 * m.m22 - m.m12 * m.m20) + m.m02 * (m.m10 * m.m21 - m.m11 * m.m20);
 
         static float Extent(OctopusBody b) => (b.Lattice.X[OctopusShape.HeadFront] - b.Lattice.X[OctopusShape.Apex]).magnitude;
+
+        // ------------------------------------------------------------------ sleep (resting cost)
+
+        static OctopusBody RestingBody()
+        {
+            var b = new OctopusBody(CephalopodSpec.Default, Vector3.zero, Quaternion.identity);
+            foreach (TentacleChain ch in b.Arms) ch.Pin(ch.N - 1, ch.X[ch.N - 1], Vector3.up);
+            return b;
+        }
+
+        static bool TickUntilAsleep(OctopusBody b, float maxSeconds)
+        {
+            for (int f = 0; f < (int)(60 * maxSeconds) && !b.Asleep; f++) b.Tick(Dt);
+            return b.Asleep;
+        }
+
+        // A settled resting octopus (every arm anchored, muscles on, breathing) falls asleep: its particles
+        // stop exactly, the soft bones keep breathing, and a tick costs a small fraction of a simulated one.
+        [Test] public void Body_Sleep_SettledRestFallsAsleep_StillBreathes()
+        {
+            OctopusBody b = RestingBody();
+            Assert.IsTrue(TickUntilAsleep(b, 40f), "a settled resting body never fell asleep");
+            TestContext.Out.WriteLine($"asleep after {b.Time:F1} s");
+            var x0 = (Vector3[])b.Lattice.X.Clone();
+            var tip0 = (Vector3[])b.Arms[2].X.Clone();
+            var m = new Matrix4x4[b.BoneCount];
+            float s3 = b.SizeScale * b.SizeScale * b.SizeScale, lo = float.MaxValue, hi = float.MinValue;
+            int mid = b.SoftBone(OctopusShape.ClusterMid);
+            for (int f = 0; f < 150; f++)
+            {
+                b.Tick(Dt);
+                Assert.IsTrue(b.Asleep, "woke up on its own at frame " + f);
+                b.WriteBoneWorld(m, 0);
+                lo = Mathf.Min(lo, m[mid].m00); hi = Mathf.Max(hi, m[mid].m00);
+                Assert.AreEqual(1f, Det3(m[mid]) / s3, 1e-3f, "breathing changed the volume");
+            }
+            for (int i = 0; i < x0.Length; i++) Assert.AreEqual(x0[i], b.Lattice.X[i], "lattice particle " + i + " moved while asleep");
+            for (int k = 0; k < tip0.Length; k++) Assert.AreEqual(tip0[k], b.Arms[2].X[k], "arm particle " + k + " moved while asleep");
+            Assert.Greater(hi - lo, 1e-3f, "the mantle did not breathe while asleep");
+
+            // cost: asleep vs the same body simulated
+            var sw = Stopwatch.StartNew();
+            for (int f = 0; f < 120; f++) { b.Tick(Dt); b.WriteBoneWorld(m, 0); }
+            double asleep = sw.Elapsed.TotalMilliseconds;
+            b.AllowSleep = false;
+            sw.Restart();
+            for (int f = 0; f < 120; f++) { b.Tick(Dt); b.WriteBoneWorld(m, 0); }
+            double awake = sw.Elapsed.TotalMilliseconds;
+            TestContext.Out.WriteLine($"tick + bones: asleep {asleep / 120 * 1000:F1} us, awake {awake / 120 * 1000:F1} us");
+            Assert.Less(asleep, 0.3 * awake, "sleeping is not cheaper");
+        }
+
+        // Anything that could move the body wakes it on the next tick: a muscle target, the sinus, tone, a
+        // particle moved from outside, gravity, a pin released or added.
+        [Test] public void Body_Sleep_WakesOnAnyChange()
+        {
+            OctopusBody b = RestingBody();
+            TentacleChain arm = b.Arms[3];
+            var changes = new (string what, Action apply, Action undo)[]
+            {
+                ("length target", () => arm.LengthTarget[5] += 1e-3f, () => arm.LengthTarget[5] -= 1e-3f),
+                ("bend target", () => arm.SetTargetShape(arm.X[arm.N - 1] + Vector3.up, 0.5f, false), () => arm.ClearTargetShape()),
+                ("sinus", () => arm.SinusAmount = 1f, () => arm.SinusAmount = 0f),
+                ("tone", () => arm.Tone = 0.5f, () => arm.Tone = 1f),
+                ("lattice particle moved", () => b.Lattice.X[OctopusShape.Apex] += new Vector3(0f, 0f, 1e-4f), null),
+                ("arm particle moved", () => arm.X[10] += new Vector3(1e-4f, 0f, 0f), null),
+                ("gravity", () => b.Gravity = new Vector3(0.5f, -9.8f, 0f), () => b.Gravity = new Vector3(0f, -9.81f, 0f)),
+                ("pin added", () => arm.Pin(12, arm.X[12], Vector3.up), () => arm.Unpin(12)),
+                ("pin released", () => arm.Unpin(arm.N - 1), null),
+            };
+            foreach (var c in changes)
+            {
+                Assert.IsTrue(TickUntilAsleep(b, 60f), "did not (re)settle before: " + c.what);
+                c.apply();
+                b.Tick(Dt);
+                Assert.IsFalse(b.Asleep, "still asleep after: " + c.what);
+                c.undo?.Invoke();
+            }
+        }
+
+        // Never asleep while moving: falling, swinging, or with the travelling sinus on.
+        [Test] public void Body_Sleep_NotWhileMoving()
+        {
+            var fall = new OctopusBody(CephalopodSpec.Default, new Vector3(0f, 50f, 0f), Quaternion.identity);
+            for (int f = 0; f < 120; f++) { fall.Tick(Dt); Assert.IsFalse(fall.Asleep, "asleep in free fall"); }
+            OctopusBody b = RestingBody();
+            b.Arms[1].SinusAmount = 1f;
+            for (int f = 0; f < 60 * 40; f++) { b.Tick(Dt); Assert.IsFalse(b.Asleep, "asleep with the sinus on"); }
+        }
 
         // An impossible grip (two opposite arms pinned beyond their stretched reach) lets go instead of
         // tearing the body apart.

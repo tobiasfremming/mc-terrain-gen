@@ -33,7 +33,9 @@ internal static class OctopusShape
         new[] { 4, 5, 6, 7, 8, 9, 10, 11, 13 },
         new[] { 8, 9, 10, 11, 13 },
     };
-    public static readonly float[] ClusterStiffnessPos = { 0.15f, 0f, 0.45f, 0.7f, 1f };
+    public static readonly float[] ClusterStiffnessPos = { 0f, 0f, 0.7f, 0.9f, 1f }; // crown and head firm (they carry the arms), mantle soft
+    // relative lattice masses: ring 0 (crown), ring 1 (neck), ring 2 (mantle), head front, apex
+    internal static readonly float[] MassWeights = { 1.0f, 0.9f, 1.3f, 1.6f, 1.0f }; // heavy mantle: it lags, stretches, overshoots
     public static readonly bool[] ClusterBreathes = { false, false, true, true, true };
 
     // ------------------------------------------------------------------ axis
@@ -163,8 +165,9 @@ internal static class OctopusShape
     public static float[] LatticeMassWeights()
     {
         var m = new float[LatticeCount];
-        for (int k = 0; k < 4; k++) { m[k] = 1.0f; m[4 + k] = 0.9f; m[8 + k] = 0.8f; }
-        m[HeadFront] = 1.6f; m[Apex] = 0.5f;
+        float[] w = MassWeights;
+        for (int k = 0; k < 4; k++) { m[k] = w[0]; m[4 + k] = w[1]; m[8 + k] = w[2]; }
+        m[HeadFront] = w[3]; m[Apex] = w[4];
         return m;
     }
 
