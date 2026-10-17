@@ -43,7 +43,7 @@ public sealed class TentacleAgent
     OctopusController owner;
     readonly float[] drapeUntil;
     uint rng;
-    float nextExplore, zipStart, anchoredAt, peelNext, holdUntil;
+    float nextExplore, zipStart, anchoredAt, peelNext, holdUntil, idleUntil;
     int zipDone, best = -1, exploreCount;
     Vector3 reachGoal;
     bool reachGoalFresh = true;
@@ -122,6 +122,7 @@ public sealed class TentacleAgent
         if (StateTime < 0.3f) return;
         // idle while enough others hold on and the brain only wants rest; else start feeling
         bool rest = c.Intent.mode == OctoMode.Rest || c.Intent.mode == OctoMode.Hold;
+        if (c.Time < idleUntil && rest) return;   // pausing after a fruitless search
         if (!rest || c.Board.AnchoredCount < c.RestAnchors) Enter(State.Feel);
     }
 
@@ -150,6 +151,15 @@ public sealed class TentacleAgent
             exploreCount++;
             if (c.Hints != null && (exploreCount & 1) == 0) ExploreHint(c, root, axis, L);
             else ExploreCast(c, root, axis, L);
+        }
+
+        // at rest, a search that finds nothing pauses for a while (an octopus does not sweep forever)
+        bool resting = c.Intent.mode == OctoMode.Rest || c.Intent.mode == OctoMode.Hold;
+        if (resting && StateTime > 6f * c.Body.TimeScale)
+        {
+            idleUntil = c.Time + (4f + 4f * Rand()) * c.Body.TimeScale;
+            Enter(State.Curl);
+            return;
         }
 
         best = BestCandidate(c);

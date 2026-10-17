@@ -56,6 +56,33 @@ namespace TerrainGen.Tests
             return false;
         }
 
+        // After travelling, a resting octopus hanging between two bars settles: contact planes must not throw
+        // the body back and forth across a bar (a contact normal flipped toward the body centre did, at 0.1 to
+        // 0.5 m per frame). Whether it falls asleep is reported.
+        [Test] public void Rest_AfterTravel_Settles()
+        {
+            var s = TwoBars();
+            var body = new OctopusBody(CephalopodSpec.Default, new Vector3(0f, 2.0f, 0f), Quaternion.identity);
+            var c = new OctopusController(body, s);
+            c.AnchorNearby();
+            for (int f = 0; f < 240; f++) c.Tick(1f / 60f);
+            c.Intent = new OctoIntent { mode = OctoMode.Travel, goal = new Vector3(2.0f, 2.0f, 0f), urgency = 0.6f };
+            for (int f = 0; f < 720; f++) c.Tick(1f / 60f);
+            c.Intent = new OctoIntent { mode = OctoMode.Rest, goal = body.HeadCentre };
+            for (int f = 0; f < 300; f++) c.Tick(1f / 60f);
+            float worst = 0f; Vector3 last = body.HeadCentre; int asleepAt = -1;
+            for (int f = 0; f < 60 * 30; f++)
+            {
+                c.Tick(1f / 60f);
+                worst = Mathf.Max(worst, (body.HeadCentre - last).magnitude); last = body.HeadCentre;
+                if (asleepAt < 0 && body.Asleep) asleepAt = f;
+            }
+            TestContext.Out.WriteLine($"worst head motion per frame after 5 s of rest {worst * 1000f:F1} mm, asleep after {(asleepAt < 0 ? "never" : ((asleepAt + 300) / 60f).ToString("F1") + " s")}");
+            Assert.Less(worst, 0.02f, "the resting body jumps");
+            // not asserted yet: an anchored arm's unpinned run still flickers ~4 cm as a contact plane lapses and
+            // is renewed, which keeps the body awake here (see the octopus Editor report)
+        }
+
         // The body travels from one bar to the next by its arms alone: arms on the new bar pull, arms behind
         // let go, the body swings across and never falls.
         [Test] public void Brachiate_TwoBars_Crosses()

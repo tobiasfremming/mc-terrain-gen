@@ -75,10 +75,12 @@ namespace TerrainGen.Tests
             if (Inside(near))
             {
                 if (!March(near, u, window, true, out float t, out Vector3 n, out int src)) return false;
+                if (Vector3.Dot(n, u) < 0f) n = -n;   // as PhysicsSurfaceProbe: normals face the up given
                 hit = new SurfaceHit { point = near + u * t, normal = n, source = src, distance = t };
                 return true;
             }
             if (!March(near, -u, window, false, out float t2, out Vector3 n2, out int src2)) return false;
+            if (Vector3.Dot(n2, u) < 0f) n2 = -n2;
             hit = new SurfaceHit { point = near - u * t2, normal = n2, source = src2, distance = -t2 };
             return true;
         }
@@ -90,6 +92,7 @@ namespace TerrainGen.Tests
             if (Inside(origin)) return false;
             Vector3 d = dir.normalized;
             if (!March(origin, d, maxDist, false, out float t, out Vector3 n, out int src)) return false;
+            if (Vector3.Dot(n, d) > 0f) n = -n;   // as PhysicsSurfaceProbe: against the ray
             hit = new SurfaceHit { point = origin + d * t, normal = n, source = src, distance = t };
             return true;
         }
