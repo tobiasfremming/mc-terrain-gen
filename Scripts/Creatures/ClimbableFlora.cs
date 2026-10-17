@@ -66,6 +66,17 @@ public sealed class ClimbableFlora : MonoBehaviour
             b.Expand(2f * reach * sim.SizeScale);
             scatter.GetClimbables(b, found);
         }
+        // self-ticking bodies (the tree octopus): their simulated points, grown by their own reach
+        var bodies = world.Bodies;
+        for (int s = 0; s < bodies.Count; s++)
+        {
+            ICreatureBody body = bodies[s];
+            Vector3 lo = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue), hi = -lo;
+            body.EncapsulateBounds(ref lo, ref hi);
+            var b = new Bounds(0.5f * (lo + hi), hi - lo);
+            b.Expand(2f * reach * body.SizeScale);
+            scatter.GetClimbables(b, found);
+        }
 
         for (int i = 0; i < pool.Count; i++) pool[i].wanted = false;
         seen.Clear();

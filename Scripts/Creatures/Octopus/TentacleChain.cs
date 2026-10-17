@@ -68,6 +68,12 @@ public sealed class TentacleChain
     // curl, which is defined in the twisted frame, and can keep a toned arm oscillating).
     public Vector3 AxisOrigin, AxisDir;
     public float ExtraDamping;               // absolute velocity damping, 1/s (settling, tests)
+    // Tip-led reaching: each free particle is pulled toward its place on the last SetTargetShape's FABRIK
+    // chain by this fraction per solver iteration, rising from 0 at the root to 1 x at the tip. 0 = off
+    // (the curvature muscle alone). Reaching and striking arms use it: the curvature target holds a shape,
+    // the pull carries the tip to the target against gravity.
+    public float ShapePull;
+    bool hasShape;
     // Particles closer to the root than this (in particles) cannot twist: the web holds the arm base.
     // The cap then grows by MaxTwistDeg per particle. 0 = no cap (a free-standing arm).
     public float TwistFreeFrom;
@@ -161,6 +167,7 @@ public sealed class TentacleChain
     // Rest shape: curl toward ventral, rest lengths.
     public void ClearTargetShape()
     {
+        hasShape = false;
         for (int j = 0; j < N - 1; j++) { BendTarget[j] = restCurl[j]; LengthTarget[j] = 1f; }
     }
 
@@ -189,6 +196,7 @@ public sealed class TentacleChain
                 prev = d;
             }
         }
+        hasShape = true;
         // transported frames along the FABRIK chain, starting at the root frame
         Vector3 px = RootFrame * Vector3.right, pz = RootFrame * Vector3.forward;
         for (int j = 0; j < N - 1; j++)
@@ -381,6 +389,18 @@ public sealed class TentacleChain
         }
 
         Tethers();
+
+        if (ShapePull > 0f && hasShape)
+        {
+            float inv = 1f / (N - 1);
+            for (int k = 1; k < N; k++)
+            {
+                if (Pinned[k]) continue;
+                float w = ShapePull * k * inv;
+                Vector3 x = X[k], f = fab[k];
+                X[k].x = x.x + (f.x - x.x) * w; X[k].y = x.y + (f.y - x.y) * w; X[k].z = x.z + (f.z - x.z) * w;
+            }
+        }
 
         // pins hold exactly
         for (int k = 1; k < N; k++) if (Pinned[k]) X[k] = PinPoint[k];

@@ -90,13 +90,13 @@ namespace TerrainGen.Tests
             var s = new AnalyticSurfaces().AddCapsule(new Vector3(-0.05f, 2f, 0f), new Vector3(3f, 2f, 0f), 0.06f);
             TentacleChain arm = ArmAtBranch(s, 2f, out SurfaceHit contact, out Vector3 tipDir);
             var w = new WrapMarch(arm.N);
-            // the coil advances toward the root side; put the root side past the twig's end (-X)
-            w.Plan(s, arm, contact, arm.N - 1, tipDir, new Vector3(-5f, 2f, 0f), 2, 0);
+            // the coil advances toward the root side; put the root side past the twig's end (-X), above and in front (where a root is)
+            w.Plan(s, arm, contact, arm.N - 1, tipDir, new Vector3(-5f, 2.6f, -0.8f), 2, 0);
             TestContext.Out.WriteLine($"twig: {w.Count} pins, {w.WrapTurns:F2} turns");
             AssertPinsOnSurface(s, arm, w, 0.002f);
             var full = new WrapMarch(arm.N);
             var s2 = new AnalyticSurfaces().AddCapsule(new Vector3(-3f, 2f, 0f), new Vector3(3f, 2f, 0f), 0.06f);
-            full.Plan(s2, arm, contact, arm.N - 1, tipDir, new Vector3(-5f, 2f, 0f), 2, 0);
+            full.Plan(s2, arm, contact, arm.N - 1, tipDir, new Vector3(-5f, 2.6f, -0.8f), 2, 0);
             Assert.Less(w.Count, full.Count, "the wrap did not stop at the twig's end");
             for (int i = 0; i < w.Count; i++) Assert.Greater(w.Point[i].x, -0.05f - 0.1f, "a pin past the twig's end");
         }

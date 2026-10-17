@@ -1,0 +1,107 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39d3296fcbe55a0429fe582610f52ec3, type: 3}
+  m_Name: TreeOctopus
+  m_EditorClassIdentifier: TerrainGen.Runtime::CreatureSpecies
+  scale: 1
+  spacing: 0
+  joints: []
+  headCapLength: 0
+  tailTipLength: 0
+  legs: []
+  speed: 0
+  turnRateDeg: 0
+  accel: 0
+  turnSlowdown: 0
+  undulationDeg: 0
+  undulationHz: 0
+  gaitSwayDeg: 0
+  gaitRollDeg: 0
+  subSteps: 3
+  eyeJoint: 0
+  eyeOffset: {x: 0, y: 0, z: 0}
+  eyeRadius: 0
+  ringSegments: 16
+  ringsPerSegment: 3
+  look:
+    dorsal: {r: 0.5, g: 0.22, b: 0.14, a: 1}
+    flank: {r: 0.72, g: 0.38, b: 0.25, a: 1}
+    belly: {r: 0.93, g: 0.8, b: 0.7, a: 1}
+    pattern: {r: 0.22, g: 0.08, b: 0.06, a: 1}
+    patternType: 0
+    patternScale: 0
+    patternContrast: 0
+    patternSoftness: 0
+    spotScale: 0
+    smoothness: 0.6
+    rimStrength: 0.35
+    subsurface: 0.45
+    sizeJitter: 0.06
+    hueJitter: 0.02
+    valueJitter: 0.06
+  bodyPlan: 1
+  cephalopod:
+    armCount: 0
+    arm:
+      segments: 0
+      length: 0
+      rootRadius: 0
+      tipRadius: 0
+      taper: 0
+      flatten: 0
+      bendLimitDeg: 0
+      tipCurlDeg: 0
+      minStretch: 0
+      maxStretch: 0
+      maxTwistDeg: 0
+      twistRateDeg: 0
+      wrapSqueeze: 0
+      bulge: 0
+      muscle: 0
+      damping: 0
+      massPerArm: 0
+      sinusAmpDeg: 0
+      sinusHz: 0
+      sinusWaves: 0
+      wrapPitchDeg: 0
+      wrapReach: 0
+      reachSpeed: 0
+      strikeTime: 0
+      suckerRows: 0
+      suckerSize: 0
+    bodyMass: 0
+    webRadius: 0
+    webDepth: 0
+    headRadius: 0
+    mantleRadius: 0
+    mantleLength: 0
+    mantleTiltDeg: 0
+    eyeRadius: 0
+    siphonLength: 0
+    siphonRadius: 0
+    beta: 0
+    headStiffness: 0
+    tipStiffness: 0
+    breathAmp: 0
+    breathHz: 0
+    bodyDamping: 0
+    subSteps: 0
+    iterations: 0
+    look:
+      sucker: {r: 0, g: 0, b: 0, a: 0}
+      subsurface: {r: 0, g: 0, b: 0, a: 0}
+      chromaScale: 0
+      papillae: 0
+      suckerSize: 0
+      cloudSpeed: 0
+      wetness: 0
+      rimGlint: 0

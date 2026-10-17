@@ -13,11 +13,11 @@ using UnityEngine;
 //   Wrap march     from the contact (the tip) backwards along a helix (pitch WrapPitchDeg) around the
 //                  estimated axis, one arm spacing per step; each step's helix point is snapped to the real
 //                  surface by Probe along the local radial direction and becomes a pin at hit + n x armRadius;
-//                  the axis is re-estimated every 4 pins at the latest hit; a miss ends the wrap.
+//                  the axis is re-estimated every ReestimateEvery pins at the latest hit; a miss ends the wrap.
 // Output: Count pins (particle index, point, normal, source), tip first. Scratch arrays, no allocation per call.
 public sealed class WrapMarch
 {
-    public const int ReestimateEvery = 4;
+    public const int ReestimateEvery = 6;
     public const float AxisOffsetRadii = 1.5f;   // tangent probe offset, x arm radius
     public const float MinConfidence = 0.5f;
 
@@ -33,11 +33,13 @@ public sealed class WrapMarch
     public int Probes;   // cumulative
 
     readonly int capacity;
+    readonly float[] turnsAt;   // cumulative turns at each wrap pin
 
     public WrapMarch(int capacity)
     {
         this.capacity = capacity;
         Particle = new int[capacity]; Point = new Vector3[capacity]; Normal = new Vector3[capacity]; Source = new int[capacity];
+        turnsAt = new float[capacity];
     }
 
     // Local tube fit at a surface hit. False when the probes miss (no surface around the hit).
@@ -144,6 +146,7 @@ public sealed class WrapMarch
         float sense = OctoMath.Dot(tipDir, c0) >= 0f ? 1f : -1f;      // tip leads in +sense; we march back: -sense
         float advance = OctoMath.Dot(rootSide - contact.point, axis) >= 0f ? 1f : -1f;
         Add(tip, contact.point + n0 * armR0, n0, contact.source);
+        turnsAt[0] = 0f;
         float angle = 0f, axial = 0f, total = 0f;
         Vector3 lastHit = contact.point;
         int since = 0;
@@ -165,6 +168,7 @@ public sealed class WrapMarch
             lastHit = h.point;
             total += dTheta;
             WrapTurns = total / (2f * Mathf.PI);
+            turnsAt[Count - 1] = WrapTurns;
             if (++since >= ReestimateEvery)
             {
                 since = 0;
@@ -178,6 +182,10 @@ public sealed class WrapMarch
             }
         }
         Axis = axis; Radius = r;
+        // leave the branch on the side that faces the root: the free run from the root to the coil must not
+        // cut through the branch (trim trailing pins whose surface faces away from the root)
+        while (Count > 1 && OctoMath.Dot(Normal[Count - 1], rootSide - Point[Count - 1]) < 0f) Count--;
+        WrapTurns = Count > 0 ? turnsAt[Count - 1] : 0f;
     }
 
     void Add(int k, Vector3 p, Vector3 n, int source)
