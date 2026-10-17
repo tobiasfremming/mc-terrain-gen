@@ -21,6 +21,8 @@ Shader "MarchingCubes/Creature"
         _GroundBounce ("Ground bounce colour", Color) = (0.62, 0.46, 0.3, 1)
         _GroundBounceStrength ("Ground bounce strength", Range(0, 1)) = 0.3
         _RimPower ("Rim power", Range(1, 8)) = 4
+        _AmbientTint ("Ambient warm tint", Color) = (1, 0.8, 0.58, 1)
+        _AmbientWarmth ("Ambient warmth (sand bounce)", Range(0, 1)) = 0.5
         _EyeSmoothness ("Eye smoothness", Range(0, 1)) = 0.9
         _GradientWarp ("Colour gradient wobble", Range(0, 1)) = 0.25
         _Mottle ("Fine mottling", Range(0, 0.5)) = 0.08
@@ -47,6 +49,8 @@ Shader "MarchingCubes/Creature"
         half4 _GroundBounce;
         half _GroundBounceStrength;
         half _RimPower;
+        half4 _AmbientTint;
+        half _AmbientWarmth;
         half _EyeSmoothness;
         half _GradientWarp;
         half _Mottle;
@@ -174,6 +178,8 @@ Shader "MarchingCubes/Creature"
                 lp.bellyOcclusion = _BellyOcclusion;
                 lp.groundBounce = _GroundBounce.rgb * _GroundBounceStrength;
                 lp.rimPower = _RimPower;
+                lp.ambientTint = _AmbientTint.rgb;
+                lp.ambientWarmth = _AmbientWarmth;
 
                 float2 screenUV = GetNormalizedScreenSpaceUV(i.positionCS);
                 half3 rgb = CreatureShade(s, lp, posWS, screenUV);

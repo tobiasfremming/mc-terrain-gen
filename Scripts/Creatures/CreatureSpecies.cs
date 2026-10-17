@@ -56,6 +56,10 @@ public struct CreatureLook
 [CreateAssetMenu(menuName = "Marching Cubes/Creature Species")]
 public class CreatureSpecies : ScriptableObject
 {
+    // Size of the species relative to the authored dimensions below (lengths in metres at scale 1). Every
+    // individual's sizeScale = scale x (1 +- look.sizeJitter); the gait's timing follows sqrt(sizeScale).
+    [Tooltip("Overall size multiplier; everything - body, legs, gait timing (sqrt(scale)), enclosure - follows it.")]
+    [Min(0.05f)] public float scale = 1f;
     public float spacing;
     public SpineJoint[] joints;
     public float headCapLength, tailTipLength;
@@ -73,6 +77,11 @@ public class CreatureSpecies : ScriptableObject
     public float eyeRadius;
     public int ringSegments = 16, ringsPerSegment = 3;
     public CreatureLook look;
+
+    // Raised when the asset is edited (Inspector, play mode included): the creature lab respawns the
+    // species at its new scale.
+    public static event Action<CreatureSpecies> Changed;
+    void OnValidate() => Changed?.Invoke(this);
 
     public int JointCount => joints != null ? joints.Length : 0;
     int LegCount => legs != null ? legs.Length : 0;
@@ -103,6 +112,7 @@ public class CreatureSpecies : ScriptableObject
         int n = JointCount;
         if (n < 2) return "joints: need at least 2 spine joints";
         if (!(spacing > 0f)) return "spacing must be > 0";
+        if (!(scale > 0f)) return "scale must be > 0";
         if (eyeJoint < 0 || eyeJoint >= n) return "eyeJoint out of range";
         for (int i = 0; i < LegCount; i++)
         {

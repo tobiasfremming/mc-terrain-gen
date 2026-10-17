@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 
 // Procedural creature spine: a steered head drags a bend-limited chain that rides the ground.
@@ -15,6 +16,10 @@ public sealed class CreatureSim
 
     public readonly CreatureSpecies Species;
     public readonly float SizeScale;
+    // Gait time scale, sqrt(SizeScale) (Froude similarity: a bigger animal of the same build walks with
+    // slower steps at a speed ~ sqrt(size)). Speed caps and step times scale with it, turn and
+    // undulation rates inversely; accelerations do not.
+    public readonly float TimeScale;
     public readonly Vector3[] Joints;
     public readonly Quaternion[] Rotations;
     public readonly Vector3[] GroundNormals;
@@ -44,6 +49,7 @@ public sealed class CreatureSim
                        Vector3 position, Vector3 forward, float sizeScale = 1f, int seed = 0)
     {
         Species = sp; this.ground = ground; this.upAt = upAt; SizeScale = sizeScale;
+        TimeScale = Mathf.Sqrt(Mathf.Max(1e-4f, sizeScale));
         n = sp.JointCount;
         Joints = new Vector3[n]; Rotations = new Quaternion[n];
         GroundNormals = new Vector3[n]; groundPoint = new Vector3[n];
@@ -75,7 +81,7 @@ public sealed class CreatureSim
             swayAmp[g] = d * step * tanSway / 3f;
         }
         UpdateFrames();
-        legs = new CreatureLegs(sp, ground, upAt, Joints, Rotations, sizeScale);
+        legs = new CreatureLegs(sp, ground, upAt, Joints, Rotations, sizeScale, TimeScale);
         Legs = legs.State;
     }
 
@@ -101,8 +107,9 @@ public sealed class CreatureSim
         dt = Mathf.Clamp(dt, 0f, kMaxDt);
         int sub = Mathf.Max(1, Species.subSteps);
         float h = dt / sub;
-        for (int s = 0; s < sub; s++) SubStep(h, target);
-        UpdateFrames();
+        // every sub-step ends with fresh frames (the legs read them); only a zero dt needs them here
+        if (h > 0f) for (int s = 0; s < sub; s++) SubStep(h, target);
+        else UpdateFrames();
     }
 
     void SubStep(float dt, Vector3 target)
@@ -110,6 +117,7 @@ public sealed class CreatureSim
         if (!(dt > 0f)) return;
         Time += dt;
         var sp = Species;
+        float maxSpeed = sp.speed * TimeScale;
 
         // 1. head steering
         Vector3 head = Path[0];
@@ -123,20 +131,20 @@ public sealed class CreatureSim
         {
             desired.Normalize();
             // a standing creature does not wiggle: fade the sway in with travel speed
-            float sway = sp.speed > 1e-4f ? Mathf.Clamp01(commanded / (0.3f * sp.speed)) : 1f;
-            float und = sway * sp.undulationDeg * Mathf.Sin(2f * Mathf.PI * sp.undulationHz * Time);
+            float sway = maxSpeed > 1e-4f ? Mathf.Clamp01(commanded / (0.3f * maxSpeed)) : 1f;
+            float und = sway * sp.undulationDeg * Mathf.Sin(2f * Mathf.PI * sp.undulationHz / TimeScale * Time);
             if (und != 0f) desired = Quaternion.AngleAxis(und, up) * desired;
             float ang = Vector3.SignedAngle(heading, desired, up);
             turnAngle = Mathf.Abs(ang);
             // Turning in place swings the rigid head and drags the front of the body, so a leg at its
             // stretch or joint-range limit throttles the turn as well as the speed.
-            float maxTurn = sp.turnRateDeg * dt * legs.Throttle;
+            float maxTurn = sp.turnRateDeg / TimeScale * dt * legs.Throttle;
             heading = Quaternion.AngleAxis(Mathf.Clamp(ang, -maxTurn, maxTurn), up) * heading;
         }
-        float want = Mathf.Min(sp.speed, 2.5f * dist) * (1f - sp.turnSlowdown * turnAngle / 180f);
+        float want = Mathf.Min(maxSpeed, 2.5f * dist) * (1f - sp.turnSlowdown * turnAngle / 180f);
         // A creature cannot outrun its legs: the gait caps the speed, and slows it when a planted foot
         // nears full stretch. The cap is approached with accel-limited easing (braking 3x harder).
-        float cap = Mathf.Min(sp.speed * legs.Throttle, legs.MaxSpeed);
+        float cap = Mathf.Min(maxSpeed * legs.Throttle, legs.MaxSpeed);
         float goal = Mathf.Max(0f, want);
         float rate = sp.accel;
         if (cap < goal) { goal = cap; if (goal < commanded) rate = 3f * sp.accel; }
@@ -150,37 +158,51 @@ public sealed class CreatureSim
         // 2. chain
         float seg = sp.spacing * SizeScale;
         Vector3 prevBack = -heading;
+        SpineJoint[] js = sp.joints;
         for (int i = 1; i < n; i++)
         {
-            Vector3 d = Path[i] - Path[i - 1];
-            d = d.sqrMagnitude > 1e-12f ? d.normalized : prevBack;
-            float lim = sp.joints[i].rigid ? 0f : sp.joints[i].bendLimitDeg * Mathf.Deg2Rad;
-            d = Vector3.RotateTowards(prevBack, d, lim, 0f);
-            Path[i] = Path[i - 1] + d * seg;
+            Vector3 a = Path[i - 1], b = Path[i];
+            Vector3 d;
+            if (js[i].rigid) d = prevBack;
+            else
+            {
+                d = Norm(new Vector3(b.x - a.x, b.y - a.y, b.z - a.z), prevBack);
+                // the bend cone: only a direction past the limit is turned back onto it
+                float lim = js[i].bendLimitDeg * Mathf.Deg2Rad;
+                if (prevBack.x * d.x + prevBack.y * d.y + prevBack.z * d.z < Mathf.Cos(lim))
+                    d = Vector3.RotateTowards(prevBack, d, lim, 0f);
+            }
+            Path[i] = new Vector3(a.x + d.x * seg, a.y + d.y * seg, a.z + d.z * seg);
             prevBack = d;
         }
 
         // 3. ground: smooth height offset and normal; hold on probe miss
-        float k = 1f - Mathf.Exp(-dt / kGroundTau);
+        float k = 1f - Mathf.Exp(-dt / (kGroundTau * TimeScale));
+        float window = kGroundWindow * SizeScale;
+        float[] droop = legs.DroopSpread;
         for (int i = 0; i < n; i++)
         {
-            Vector3 u = Norm(upAt(Path[i]), up);
-            float clear = sp.joints[i].clearance * SizeScale;
-            Vector3 near = Path[i] - u * clear;
-            float hPrev = Vector3.Dot(groundPoint[i] - near, u);
+            Vector3 p = Path[i];
+            Vector3 u = Norm(upAt(p), up);
+            float clear = js[i].clearance * SizeScale;
+            var near = new Vector3(p.x - u.x * clear, p.y - u.y * clear, p.z - u.z * clear);
+            Vector3 g0 = groundPoint[i];
+            float hPrev = (g0.x - near.x) * u.x + (g0.y - near.y) * u.y + (g0.z - near.z) * u.z;
             float hs = hPrev;
             Vector3 nrm = GroundNormals[i];
-            if (ground.Probe(near, u, kGroundWindow * SizeScale, out Vector3 gp, out Vector3 gn))
+            if (ground.Probe(near, u, window, out Vector3 gp, out Vector3 gn))
             {
-                float hProbe = Vector3.Dot(gp - near, u);
-                hs = Mathf.Lerp(hPrev, hProbe, k);
+                float hProbe = (gp.x - near.x) * u.x + (gp.y - near.y) * u.y + (gp.z - near.z) * u.z;
+                hs = hPrev + (hProbe - hPrev) * k;
                 // smoothing may lag a rising slope, but never let the body sink more than 5 mm into it
-                if (hs < hProbe - kMaxSink) hs = hProbe - kMaxSink;
-                nrm = Norm(Vector3.Lerp(nrm, gn, k), u);
+                if (hs < hProbe - kMaxSink * SizeScale) hs = hProbe - kMaxSink * SizeScale;
+                nrm = Norm(new Vector3(nrm.x + (gn.x - nrm.x) * k, nrm.y + (gn.y - nrm.y) * k, nrm.z + (gn.z - nrm.z) * k), u);
             }
-            groundPoint[i] = near + u * hs;
+            var g = new Vector3(near.x + u.x * hs, near.y + u.y * hs, near.z + u.z * hs);
+            groundPoint[i] = g;
             GroundNormals[i] = nrm;
-            Path[i] = groundPoint[i] + u * (clear - legs.DroopSpread[i]);
+            float lift = clear - droop[i];
+            Path[i] = new Vector3(g.x + u.x * lift, g.y + u.y * lift, g.z + u.z * lift);
         }
 
         // 4. gait sway: the displayed body is the path bent toward the reaching legs
@@ -195,14 +217,28 @@ public sealed class CreatureSim
     {
         for (int i = 0; i < n; i++)
         {
-            Vector3 f = i == 0 ? heading : Joints[i - 1] - Joints[i];
-            f = f.sqrMagnitude > 1e-12f ? f.normalized : (i == 0 ? heading : Vector3.forward);
-            Vector3 u = Vector3.ProjectOnPlane(GroundNormals[i], f);
+            Vector3 f;
+            if (i == 0) f = Norm(heading, Vector3.forward);
+            else
+            {
+                Vector3 a = Joints[i - 1], b = Joints[i];
+                f = Norm(new Vector3(a.x - b.x, a.y - b.y, a.z - b.z), Vector3.forward);
+            }
+            Vector3 g = GroundNormals[i];
+            float gf = g.x * f.x + g.y * f.y + g.z * f.z;
+            var u = new Vector3(g.x - f.x * gf, g.y - f.y * gf, g.z - f.z * gf);
             if (u.sqrMagnitude < 1e-8f) u = Vector3.ProjectOnPlane(Vector3.up, f);
             if (u.sqrMagnitude < 1e-8f) u = Vector3.ProjectOnPlane(Vector3.right, f);
-            u.Normalize();
-            if (rollDeg != null && rollDeg[i] != 0f) u = Quaternion.AngleAxis(rollDeg[i], f) * u;
-            Rotations[i] = Quaternion.LookRotation(f, u);
+            u = Norm(u, u);
+            if (rollDeg != null && rollDeg[i] != 0f)
+            {
+                // u is perpendicular to f: rotating it about f is u cos + (f x u) sin
+                float r = rollDeg[i] * Mathf.Deg2Rad, c = Mathf.Cos(r), sn = Mathf.Sin(r);
+                u = new Vector3(u.x * c + (f.y * u.z - f.z * u.y) * sn,
+                                u.y * c + (f.z * u.x - f.x * u.z) * sn,
+                                u.z * c + (f.x * u.y - f.y * u.x) * sn);
+            }
+            Rotations[i] = Basis(f, u);
         }
     }
 
@@ -220,8 +256,9 @@ public sealed class CreatureSim
             Array.Copy(Path, Joints, n);
             return;
         }
-        float fade = sp.speed > 1e-4f ? Mathf.Clamp01(commanded / (0.3f * sp.speed)) : 0f;
-        float k = 1f - Mathf.Exp(-dt / kSwayTau);
+        float maxSpeed = sp.speed * TimeScale;
+        float fade = maxSpeed > 1e-4f ? Mathf.Clamp01(commanded / (0.3f * maxSpeed)) : 0f;
+        float k = 1f - Mathf.Exp(-dt / (kSwayTau * TimeScale));
         LegSpec[] specs = sp.legs;
         for (int g = 0; g < G; g++)
         {
@@ -283,13 +320,22 @@ public sealed class CreatureSim
             Vector3 d = len > 1e-9f ? v / len : prevPath;
             // moving joint i to the right of joint i-1 turns the backward segment toward -right
             float turn = -Mathf.Rad2Deg * Mathf.Asin(Mathf.Clamp((swayY[i] - swayY[i - 1]) / seg, -0.5f, 0.5f));
-            float slack = sp.joints[i].rigid ? 0f : Mathf.Max(0f, sp.joints[i].bendLimitDeg - Vector3.Angle(prevPath, d));
+            float slack = 0f;
+            if (!sp.joints[i].rigid)
+            {
+                float cd = Mathf.Clamp(prevPath.x * d.x + prevPath.y * d.y + prevPath.z * d.z, -1f, 1f);
+                slack = Mathf.Max(0f, sp.joints[i].bendLimitDeg - Mathf.Acos(cd) * Mathf.Rad2Deg);
+            }
             turn = Mathf.Clamp(turn, prevTurn - slack, prevTurn + slack);
             prevPath = d; prevTurn = turn;
-            if (turn != 0f) d = Quaternion.AngleAxis(turn, GroundNormals[i]) * d;
-            Joints[i] = Joints[i - 1] + d * len;
+            if (turn != 0f) d = Rotate(d, GroundNormals[i], turn * Mathf.Deg2Rad);
+            Vector3 jp = Joints[i - 1];
+            Joints[i] = new Vector3(jp.x + d.x * len, jp.y + d.y * len, jp.z + d.z * len);
         }
     }
+
+    // The leg's current ground-projected rest point (debug view).
+    public Vector3 LegRestPoint(int leg) => legs.RestPoint(leg);
 
     // Spine, leg and eye bones in world space, in the species bone order.
     public void WriteBoneWorld(Matrix4x4[] dst, int offset)
@@ -308,7 +354,52 @@ public sealed class CreatureSim
         }
     }
 
-    static Vector3 Norm(Vector3 v, Vector3 fallback) => v.sqrMagnitude > 1e-12f ? v.normalized : fallback;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static Vector3 Norm(Vector3 v, Vector3 fallback)
+    {
+        float m = v.x * v.x + v.y * v.y + v.z * v.z;
+        if (!(m > 1e-12f)) return fallback;
+        float inv = 1f / Mathf.Sqrt(m);
+        return new Vector3(v.x * inv, v.y * inv, v.z * inv);
+    }
+
+    // v rotated about the unit axis a by rad (Rodrigues).
+    static Vector3 Rotate(Vector3 v, Vector3 a, float rad)
+    {
+        float c = Mathf.Cos(rad), s = Mathf.Sin(rad), ad = (a.x * v.x + a.y * v.y + a.z * v.z) * (1f - c);
+        return new Vector3(v.x * c + (a.y * v.z - a.z * v.y) * s + a.x * ad,
+                           v.y * c + (a.z * v.x - a.x * v.z) * s + a.y * ad,
+                           v.z * c + (a.x * v.y - a.y * v.x) * s + a.z * ad);
+    }
+
+    // Quaternion.LookRotation(f, u) for a unit f and a unit u perpendicular to it, built from the rotation
+    // matrix with columns (u x f, u, f): the frame convention's right, up and forward (cheaper than the
+    // engine call, which the sim makes for every joint twice a frame).
+    internal static Quaternion Basis(Vector3 f, Vector3 u)
+    {
+        float rx = u.y * f.z - u.z * f.y, ry = u.z * f.x - u.x * f.z, rz = u.x * f.y - u.y * f.x;
+        float m00 = rx, m01 = u.x, m02 = f.x, m10 = ry, m11 = u.y, m12 = f.y, m20 = rz, m21 = u.z, m22 = f.z;
+        float tr = m00 + m11 + m22;
+        if (tr > 0f)
+        {
+            float s = 0.5f / Mathf.Sqrt(tr + 1f);
+            return new Quaternion((m21 - m12) * s, (m02 - m20) * s, (m10 - m01) * s, 0.25f / s);
+        }
+        if (m00 > m11 && m00 > m22)
+        {
+            float s = 2f * Mathf.Sqrt(1f + m00 - m11 - m22), inv = 1f / s;
+            return new Quaternion(0.25f * s, (m01 + m10) * inv, (m02 + m20) * inv, (m21 - m12) * inv);
+        }
+        if (m11 > m22)
+        {
+            float s = 2f * Mathf.Sqrt(1f + m11 - m00 - m22), inv = 1f / s;
+            return new Quaternion((m01 + m10) * inv, 0.25f * s, (m12 + m21) * inv, (m02 - m20) * inv);
+        }
+        {
+            float s = 2f * Mathf.Sqrt(1f + m22 - m00 - m11), inv = 1f / s;
+            return new Quaternion((m02 + m20) * inv, (m12 + m21) * inv, 0.25f * s, (m10 - m01) * inv);
+        }
+    }
 
     static Vector3 Tangent(Vector3 v, Vector3 up)
     {

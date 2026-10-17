@@ -30,7 +30,7 @@ public sealed class CreatureEnclosure : MonoBehaviour
     // world origin with no rotation.
     internal void Build(IGroundProbe ground)
     {
-        if (curb != null) Destroy(curb);
+        if (curb != null) { if (Application.isPlaying) Destroy(curb); else DestroyImmediate(curb); }
         Mesh m = BuildCurb(ground, transform.position, transform.up, radius, curbHeight, curbWidth, segments);
         m.name = name + " Curb";
         curb = new GameObject("Curb");

@@ -111,5 +111,31 @@ namespace TerrainGen.Tests
             int count = 0; foreach (bool b in seen) if (b) count++;
             Assert.GreaterOrEqual(count, 6, "sectors visited");
         }
+
+        // R21: the shipped monitor at its species scale (4x) in an enclosure sized by the lab's rule, on the
+        // flat plane: 10 minutes of wander, every joint and foot inside the curb.
+        [Test] public void Containment_ScaledMonitor_LabRadius_AllInside()
+        {
+            var monitor = UnityEditor.AssetDatabase.LoadAssetAtPath<CreatureSpecies>(CreatureWorldTests.kMonitorPath);
+            Assert.IsNotNull(monitor);
+            Assert.Greater(monitor.scale, 1f, "the monitor ships scaled up (R21)");
+            float maxScale = CreatureLab.MaxScale(monitor);
+            float radius = CreatureLab.EnclosureRadius(monitor, maxScale);
+            Assert.GreaterOrEqual(radius, 2f * monitor.BodyLength * maxScale - 1e-4f);
+            for (int seed = 1; seed <= 3; seed++)
+            {
+                var area = EnclosureArea.For(Vector3.zero, Vector3.up, radius, monitor, maxScale);
+                var sim = new CreatureSim(monitor, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, maxScale, seed) { Bounds = area };
+                var brain = new WanderBrain(area, seed);
+                float far = 0f;
+                for (int t = 0; t < (int)(10 * 60 / Dt); t++)
+                {
+                    sim.Tick(Dt, brain.Target(sim, Dt));
+                    AssertInside(sim, area, "scaled monitor seed " + seed);
+                    far = Mathf.Max(far, area.PlanarDistance(sim.Joints[0]));
+                }
+                Assert.Greater(far, 0.5f * area.safeRadius, "the wander never went far: test does not bite");
+            }
+        }
     }
 }

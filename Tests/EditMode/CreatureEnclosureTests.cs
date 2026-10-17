@@ -92,5 +92,65 @@ namespace TerrainGen.Tests
             Assert.IsTrue(m.Success, "defaultDensity is not an asset reference");
             Assert.AreEqual(desertGuid, m.Groups[1].Value, "defaultDensity is not DesertWorld");
         }
+
+        // R22: changing a species' scale (or the lab's override) respawns its creature at the new size, rebuilds
+        // the enclosure for it, and drops the old creature from the world and its renderer.
+        [Test] public void Lab_ScaleChange_RespawnsAtNewSize()
+        {
+            var sp = CreatureTestSpecies.Lizardish(); trash.Add(sp);
+            sp.scale = 3f;
+            var go = new GameObject("LabTest"); trash.Add(go);
+            var world = go.AddComponent<CreatureWorld>();
+            world.creatureMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/TerrainGen/Config/Creatures/Creature.mat");
+            world.SetGround(new FlatGroundProbe(), _ => Vector3.up);
+            var lab = go.AddComponent<CreatureLab>();
+            lab.species = new[] { sp };
+            var player = new GameObject("Player"); trash.Add(player);
+            try
+            {
+                lab.Place(world, player.transform, Vector3.zero);
+                CreatureSim before = lab.SimFor(0);
+                float r0 = lab.EnclosureFor(0).radius;
+                Assert.IsNotNull(before);
+                Assert.AreEqual(1, world.Sims.Count);
+
+                sp.scale = 6f;
+                lab.ApplyScales();
+                CreatureSim after = lab.SimFor(0);
+                Assert.AreNotSame(before, after, "the creature was not respawned");
+                Assert.AreEqual(2f * before.SizeScale, after.SizeScale, 1e-4f, "size scale");
+                Assert.AreEqual(2f * r0, lab.EnclosureFor(0).radius, 1e-3f, "enclosure radius");
+                Assert.AreEqual(1, world.Sims.Count, "the old creature is still in the world");
+                Assert.AreSame(after, world.Sims[0]);
+                var rs = (System.Collections.Generic.List<CreatureRenderer>)typeof(CreatureWorld).GetField("renderers", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(world);
+                Assert.AreEqual(1, rs[0].Count, "the old creature is still drawn");
+
+                // an override wins over the species' scale
+                lab.scaleOverrides = new[] { 4.5f };
+                lab.ApplyScales();
+                Assert.AreEqual(4.5f / 6f * after.SizeScale, lab.SimFor(0).SizeScale, 1e-4f, "override scale");
+                Assert.AreEqual(1, world.Sims.Count);
+                // no change, no respawn
+                CreatureSim same = lab.SimFor(0);
+                lab.ApplyScales();
+                Assert.AreSame(same, lab.SimFor(0));
+
+                EnclosureArea area = same.Bounds.Value;
+                Assert.AreEqual(lab.EnclosureFor(0).radius, area.radius, 1e-4f);
+                for (int t = 0; t < 1800; t++)
+                {
+                    world.TickAll(1f / 30f);
+                    for (int i = 0; i < same.Joints.Length; i++)
+                        Assert.LessOrEqual(area.PlanarDistance(same.Joints[i]), area.radius, "joint " + i + " t=" + same.Time);
+                    for (int l = 0; l < same.Legs.Length; l++)
+                        Assert.LessOrEqual(area.PlanarDistance(same.Legs[l].foot), area.radius, "foot " + l + " t=" + same.Time);
+                }
+            }
+            finally
+            {
+                // edit mode sends no OnDestroy: release the renderers by hand
+                typeof(CreatureWorld).GetMethod("OnDestroy", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(world, null);
+            }
+        }
     }
 }

@@ -20,7 +20,7 @@ namespace TerrainGen.Tests
 
         static CreatureSim Cruise(CreatureSpecies sp)
         {
-            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
+            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, sp.scale);
             for (int t = 0; t < kWarmup; t++) sim.Tick(kDt, new Vector3(0f, 0f, 1000f));
             return sim;
         }
@@ -103,7 +103,8 @@ namespace TerrainGen.Tests
             }
             float mean = sum / kTicks;
             TestContext.Out.WriteLine($"cruise speed mean {mean:F2} m/s, min {min:F2} m/s");
-            Assert.GreaterOrEqual(mean, 0.5f, "cruise speed (R8)");
+            // R8 at the reference size, Froude-scaled (R21): cruise ~ sqrt(size)
+            Assert.GreaterOrEqual(mean, 0.5f * Mathf.Sqrt(sp.scale), "cruise speed (R8)");
         }
 
         // ---- R17: gait-coupled spine sway ----
@@ -168,7 +169,7 @@ namespace TerrainGen.Tests
             TestContext.Out.WriteLine($"shoulder sway p2p {(hi - lo) * 100f:F1} cm; corr(shoulder, reach L-R) {cr:F2}; corr(shoulder, hip) {ch:F2}");
             Assert.Greater(cr, 0.5f, "shoulder sway not phase-locked to the front legs");
             Assert.Less(ch, -0.5f, "hip girdle not in opposite phase");
-            Assert.GreaterOrEqual(hi - lo, 0.015f, "shoulder sway amplitude");
+            Assert.GreaterOrEqual(hi - lo, 0.015f * sp.scale, "shoulder sway amplitude");
         }
 
         [Test] public void Gait_SpineSway_ZeroWhenIdle()
@@ -188,8 +189,8 @@ namespace TerrainGen.Tests
             float offset = 0f;
             for (int l = 0; l < c; l++) offset = Mathf.Max(offset, Mathf.Abs(LeftOffset(sim, sp.legs[l].attachJoint)));
             TestContext.Out.WriteLine($"idle girdle lateral motion {worst * 1000f:F2} mm, offset {offset * 1000f:F2} mm");
-            Assert.Less(worst, 0.005f);
-            Assert.Less(offset, 0.001f, "girdle still swayed at idle");
+            Assert.Less(worst, 0.005f * sp.scale);
+            Assert.Less(offset, 0.001f * sp.scale, "girdle still swayed at idle");
         }
 
         // The sway must keep what the gait guarantees: planted feet stay put, segments keep their length,
@@ -243,9 +244,9 @@ namespace TerrainGen.Tests
         [Test] public void Monitor_TargetOutside_Contained()
         {
             var sp = Monitor();
-            var area = EnclosureArea.For(Vector3.zero, Vector3.up, 4f, sp, 1f);
-            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward) { Bounds = area };
-            var target = new Vector3(30f, 0f, 5f);
+            var area = EnclosureArea.For(Vector3.zero, Vector3.up, 4f * sp.scale, sp, sp.scale);
+            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, sp.scale) { Bounds = area };
+            var target = new Vector3(30f, 0f, 5f) * sp.scale;
             for (int t = 0; t < 1200; t++)
             {
                 sim.Tick(1f / 30f, target);
@@ -264,7 +265,7 @@ namespace TerrainGen.Tests
             try
             {
                 tilt.normal = new Vector3(Mathf.Sin(30f * Mathf.Deg2Rad), Mathf.Cos(30f * Mathf.Deg2Rad), 0f);
-                var sim = new CreatureSim(sp, new FieldGroundProbe(tilt), _ => Vector3.up, Vector3.zero, Vector3.forward);
+                var sim = new CreatureSim(sp, new FieldGroundProbe(tilt), _ => Vector3.up, Vector3.zero, Vector3.forward, sp.scale);
                 int planted = 0; float worstFoot = 0f, worstSink = 0f;
                 for (int t = 0; t < kTicks; t++)
                 {
@@ -286,7 +287,7 @@ namespace TerrainGen.Tests
                         Assert.Less(sink, 0.02f, "joint " + i + " t=" + sim.Time);
                     }
                 }
-                var flat = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
+                var flat = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, sp.scale);
                 for (int t = 0; t < kTicks; t++) flat.Tick(kDt, new Vector3(0f, 0f, 1000f));
                 float flatDist = flat.Joints[0].magnitude, dist = sim.Joints[0].magnitude;
                 TestContext.Out.WriteLine($"worst planted foot {worstFoot * 1000f:F1} mm, worst joint sink {worstSink * 1000f:F1} mm, progress {dist:F2} m vs flat {flatDist:F2} m");

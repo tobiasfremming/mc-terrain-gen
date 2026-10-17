@@ -215,5 +215,35 @@ namespace TerrainGen.Tests
             Assert.IsNotNull(mat.shader);
             Assert.AreEqual(kShader, mat.shader.name);
         }
+
+        // Ledger (Task 7): ~1 in 4 positioned captures missed the creature. The draw's culling bounds must hold
+        // every skinned vertex, for the shipped monitor at its scale, walking a tight turn.
+        [Test] public void Renderer_Bounds_ContainEverySkinnedVertex()
+        {
+            var sp = UnityEditor.AssetDatabase.LoadAssetAtPath<CreatureSpecies>(CreatureWorldTests.kMonitorPath);
+            Assert.IsNotNull(sp);
+            var r = NewRenderer(sp);
+            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, new Vector3(3f, 0f, -2f), Vector3.forward, sp.scale * 1.08f);
+            r.Add(sim, new CreatureInstance { sizeScale = sim.SizeScale });
+            Vector3[] v = r.Mesh.vertices;
+            var w = new List<Vector4>(); r.Mesh.GetUVs(2, w);
+            int outside = 0; float worst = 0f;
+            for (int t = 0; t < 240; t++)
+            {
+                float a = t / 60f * 2f;
+                sim.Tick(1f / 60f, new Vector3(3f, 0f, -2f) + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * sp.scale);
+                if (t % 20 != 19) continue;
+                r.Render();
+                Bounds b = r.LastBounds;
+                Matrix4x4[] skin = r.SkinForTest;
+                for (int i = 0; i < v.Length; i++)
+                {
+                    Vector4 s = w[i];
+                    Vector3 p = s.z * skin[(int)s.x].MultiplyPoint3x4(v[i]) + s.w * skin[(int)s.y].MultiplyPoint3x4(v[i]);
+                    if (!b.Contains(p)) { outside++; worst = Mathf.Max(worst, Mathf.Sqrt(b.SqrDistance(p))); }
+                }
+            }
+            Assert.AreEqual(0, outside, $"vertices outside the culling bounds (worst {worst:F3} m)");
+        }
     }
 }

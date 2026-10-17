@@ -53,6 +53,8 @@ public sealed class CreatureRenderer : IDisposable
     public int Count => sims.Count;
 
     internal Matrix4x4[] SkinForTest => _skin;
+    // the world bounds of the last Render (the draw's culling bounds)
+    public Bounds LastBounds { get; private set; }
 
     public CreatureRenderer(CreatureSpecies sp, Material material)
     {
@@ -147,8 +149,15 @@ public sealed class CreatureRenderer : IDisposable
             for (int b = 0; b < bonesPer; b++) _skin[o + b] = boneScratch[b] * bindPoses[b];
             Vector3[] j = sim.Joints;
             for (int k = 0; k < j.Length; k++) { lo = Vector3.Min(lo, j[k]); hi = Vector3.Max(hi, j[k]); }
+            LegState[] legs = sim.Legs;
+            for (int k = 0; k < legs.Length; k++) { lo = Vector3.Min(lo, legs[k].foot); hi = Vector3.Max(hi, legs[k].foot); }
             maxScale = Mathf.Max(maxScale, sim.SizeScale);
         }
+
+        var bounds = new Bounds();
+        bounds.SetMinMax(lo, hi);
+        bounds.Expand(2f * reach * maxScale);
+        LastBounds = bounds;
 
         if (!gpu || material == null) return;
 
@@ -169,9 +178,6 @@ public sealed class CreatureRenderer : IDisposable
         props.SetVector(kSurfaceParams, new Vector4(look.smoothness, look.rimStrength, look.subsurface, 0f));
         props.SetVector(kBodyParams, bodyParams);
 
-        var bounds = new Bounds();
-        bounds.SetMinMax(lo, hi);
-        bounds.Expand(2f * reach * maxScale);
         rp.worldBounds = bounds;
         rp.matProps = props;
         Graphics.RenderMeshPrimitives(rp, Mesh, 0, n);
