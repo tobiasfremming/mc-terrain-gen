@@ -2,10 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using NUnit.Framework;
+using TerrainGen.Tests;
 using UnityEditor;
 using UnityEngine;
 
-namespace TerrainGen.Tests
+// Timing tests live in their own namespace so the routine creature filter (`TerrainGen.Tests.Creature`,
+// a regex on the full test name) does not run them: wall-time bounds are noisy in a busy Editor. They still
+// run in a full EditMode run, and on demand with the group filter `TerrainGen.Tests.Perf` or category `Perf`.
+namespace TerrainGen.Tests.Perf
 {
     // Simulation cost on the real lab terrain (ruling R3: Config/Test/DesertWorld.asset, the BiomeDensityField
     // the Creature Lab uses), with the ground set up exactly as CreatureWorld.Spawn sets it up.
@@ -13,21 +17,109 @@ namespace TerrainGen.Tests
     [Category("Perf")]
     public class CreaturePerfTests
     {
-        const string kDesertWorld = "Assets/TerrainGen/Config/Test/DesertWorld.asset";
         const float kDt = 1f / 60f;
         const int kWarmup = 60, kFrames = 300;
-        // the lab's enclosure on the DesertWorld dunes (Task 8 placement)
-        static readonly Vector3 kLabCentre = new Vector3(-11.87f, 2.44f, 26.28f);
-
-        static readonly Func<Vector3, Vector3> Up = _ => Vector3.up;
 
         DensityField field;
 
-        [SetUp]
-        public void SetUp()
+        [SetUp] public void SetUp() => field = CreatureDesertWorld.Field();
+
+        // Per-frame wall time of ticking every sim once (median over kFrames after kWarmup), plus field samples
+        // and the managed allocations over the timed frames (GcAllocs: a counter that works on Unity's Mono).
+        static double Run(List<CreatureSim> sims, List<WanderBrain> brains, FieldGroundProbe shared, out double meanMs, out double maxMs, out float samplesPerFrame, out int gcAllocs)
         {
-            field = AssetDatabase.LoadAssetAtPath<DensityField>(kDesertWorld);
+            var sw = new Stopwatch();
+            var times = new double[kFrames];
+            for (int f = 0; f < kWarmup; f++)
+                for (int i = 0; i < sims.Count; i++) sims[i].Tick(kDt, brains[i].Target(sims[i], kDt));
+            int s0 = shared.SampleCount;
+            gcAllocs = GcAllocs.Count(() =>
+            {
+                for (int f = 0; f < kFrames; f++)
+                {
+                    sw.Restart();
+                    for (int i = 0; i < sims.Count; i++) sims[i].Tick(kDt, brains[i].Target(sims[i], kDt));
+                    sw.Stop();
+                    times[f] = sw.Elapsed.TotalMilliseconds;
+                }
+            });
+            samplesPerFrame = (shared.SampleCount - s0) / (float)kFrames;
+            double sum = 0, max = 0;
+            for (int i = 0; i < kFrames; i++) { sum += times[i]; max = Math.Max(max, times[i]); }
+            meanMs = sum / kFrames; maxMs = max;
+            Array.Sort(times);
+            return times[kFrames / 2];
+        }
+
+        [Test] public void Perf_OneLizard_Under0_1ms()
+        {
+            var shared = new FieldGroundProbe(field);
+            var sims = CreatureDesertWorld.Spawn(shared, 1, out var brains, out var caches);
+            double median = Run(sims, brains, shared, out double mean, out double max, out float spf, out int gc);
+            float moved = (sims[0].Joints[0] - CreatureDesertWorld.Ground(shared, CreatureDesertWorld.kLabCentre)).magnitude;
+            TestContext.Out.WriteLine($"1 monitor on DesertWorld: median {median:F4} ms, mean {mean:F4} ms, max {max:F4} ms; " +
+                $"field samples/frame {spf:F1}; ground queries {caches[0].Queries}, node probes {caches[0].NodeProbes}; GC allocs {gc}; head moved {moved:F2} m");
+            GcAllocs.AssertCounterWorks();
+            Assert.AreEqual(0, gc, "managed allocations while ticking");
+            Assert.LessOrEqual(median, 0.1, "median sim ms per creature per frame");
+        }
+
+        [Test] public void Perf_100Lizards_Under3ms() // name kept from the brief; bound per R23
+        {
+            var shared = new FieldGroundProbe(field);
+            var sims = CreatureDesertWorld.Spawn(shared, 100, out var brains, out var caches);
+            double median = Run(sims, brains, shared, out double mean, out double max, out float spf, out int gc);
+            int nodes = 0; foreach (var c in caches) nodes += c.NodeProbes;
+            TestContext.Out.WriteLine($"100 monitors on DesertWorld: median {median:F3} ms, mean {mean:F3} ms, max {max:F3} ms; " +
+                $"field samples/frame {spf:F1}; node probes {nodes}; GC allocs {gc}");
+            GcAllocs.AssertCounterWorks();
+            Assert.AreEqual(0, gc, "managed allocations while ticking");
+            // Ruling R23: 4 ms, not the spec's 3 ms stress target. The single-creature target is beaten 2.5x; what
+            // remains is Mono per-operation overhead across 26 joints x 100 (ground probing is ~2% of it now).
+            // Burst/jobs over the flat per-creature arrays is the spec's later path to 3 ms.
+            Assert.LessOrEqual(median, 4.0, "median sim ms for 100 creatures per frame (R23)");
+        }
+
+        [Test] public void Build_Time_Under5ms()
+        {
+            var sp = CreatureTestSpecies.Lizardish();
+            try
+            {
+                UnityEngine.Object.DestroyImmediate(CreatureMeshBuilder.Build(sp)); // warm-up (JIT)
+                var ms = new List<double>();
+                for (int i = 0; i < 5; i++)
+                {
+                    var sw = Stopwatch.StartNew();
+                    Mesh m = CreatureMeshBuilder.Build(sp);
+                    sw.Stop();
+                    ms.Add(sw.Elapsed.TotalMilliseconds);
+                    UnityEngine.Object.DestroyImmediate(m);
+                }
+                ms.Sort();
+                TestContext.Out.WriteLine($"build ms: {string.Join(", ", ms)}");
+                Assert.Less(ms[2], 5.0, "median build time");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(sp); }
+        }
+    }
+}
+
+namespace TerrainGen.Tests
+{
+    // The lab's real terrain and the monitor spawned on it as CreatureWorld.Spawn does it; shared by the
+    // perf tests and the correctness test below.
+    static class CreatureDesertWorld
+    {
+        const string kDesertWorld = "Assets/TerrainGen/Config/Test/DesertWorld.asset";
+        // the lab's enclosure on the DesertWorld dunes (Task 8 placement)
+        internal static readonly Vector3 kLabCentre = new Vector3(-11.87f, 2.44f, 26.28f);
+        static readonly Func<Vector3, Vector3> Up = _ => Vector3.up;
+
+        internal static DensityField Field()
+        {
+            var field = AssetDatabase.LoadAssetAtPath<DensityField>(kDesertWorld);
             Assert.IsNotNull(field, kDesertWorld);
+            return field;
         }
 
         static CreatureSpecies Monitor()
@@ -37,14 +129,14 @@ namespace TerrainGen.Tests
             return sp;
         }
 
-        Vector3 Ground(FieldGroundProbe probe, Vector3 p)
+        internal static Vector3 Ground(FieldGroundProbe probe, Vector3 p)
         {
             Assert.IsTrue(probe.Probe(new Vector3(p.x, p.y + 4f, p.z), Vector3.up, 12f, out Vector3 g, out _), "no ground at " + p);
             return g;
         }
 
         // n monitors in one lab-sized enclosure, each with its own ground cache over one shared field probe.
-        List<CreatureSim> Spawn(FieldGroundProbe shared, int n, out List<WanderBrain> brains, out List<CachedGroundProbe> caches)
+        internal static List<CreatureSim> Spawn(FieldGroundProbe shared, int n, out List<WanderBrain> brains, out List<CachedGroundProbe> caches)
         {
             var sp = Monitor();
             Vector3 c = Ground(shared, kLabCentre);
@@ -66,64 +158,20 @@ namespace TerrainGen.Tests
             }
             return sims;
         }
+    }
 
-        // Per-frame wall time of ticking every sim once (median over kFrames after kWarmup), plus field samples.
-        static double Run(List<CreatureSim> sims, List<WanderBrain> brains, FieldGroundProbe shared, out double meanMs, out double maxMs, out float samplesPerFrame, out long gcBytes)
-        {
-            var sw = new Stopwatch();
-            var times = new double[kFrames];
-            int s0 = 0; long bytes0 = 0;
-            for (int f = 0; f < kWarmup + kFrames; f++)
-            {
-                if (f == kWarmup) { s0 = shared.SampleCount; bytes0 = GC.GetAllocatedBytesForCurrentThread(); }
-                sw.Restart();
-                for (int i = 0; i < sims.Count; i++) sims[i].Tick(kDt, brains[i].Target(sims[i], kDt));
-                sw.Stop();
-                if (f >= kWarmup) times[f - kWarmup] = sw.Elapsed.TotalMilliseconds;
-            }
-            gcBytes = GC.GetAllocatedBytesForCurrentThread() - bytes0;
-            samplesPerFrame = (shared.SampleCount - s0) / (float)kFrames;
-            double sum = 0, max = 0;
-            for (int i = 0; i < kFrames; i++) { sum += times[i]; max = Math.Max(max, times[i]); }
-            meanMs = sum / kFrames; maxMs = max;
-            Array.Sort(times);
-            return times[kFrames / 2];
-        }
-
-        [Test] public void Perf_OneLizard_Under0_1ms()
-        {
-            var shared = new FieldGroundProbe(field);
-            var sims = Spawn(shared, 1, out var brains, out var caches);
-            double median = Run(sims, brains, shared, out double mean, out double max, out float spf, out long gc);
-            float moved = (sims[0].Joints[0] - Ground(shared, kLabCentre)).magnitude;
-            TestContext.Out.WriteLine($"1 monitor on DesertWorld: median {median:F4} ms, mean {mean:F4} ms, max {max:F4} ms; " +
-                $"field samples/frame {spf:F1}; ground queries {caches[0].Queries}, node probes {caches[0].NodeProbes}; GC {gc} B; head moved {moved:F2} m");
-            Assert.AreEqual(0L, gc, "bytes allocated while ticking");
-            Assert.LessOrEqual(median, 0.1, "median sim ms per creature per frame");
-        }
-
-        [Test] public void Perf_100Lizards_Under3ms() // name kept from the brief; bound per R23
-        {
-            var shared = new FieldGroundProbe(field);
-            var sims = Spawn(shared, 100, out var brains, out var caches);
-            double median = Run(sims, brains, shared, out double mean, out double max, out float spf, out long gc);
-            int nodes = 0; foreach (var c in caches) nodes += c.NodeProbes;
-            TestContext.Out.WriteLine($"100 monitors on DesertWorld: median {median:F3} ms, mean {mean:F3} ms, max {max:F3} ms; " +
-                $"field samples/frame {spf:F1}; node probes {nodes}; GC {gc} B");
-            Assert.AreEqual(0L, gc, "bytes allocated while ticking");
-            // Ruling R23: 4 ms, not the spec's 3 ms stress target. The single-creature target is beaten 2.5x; what
-            // remains is Mono per-operation overhead across 26 joints x 100 (ground probing is ~2% of it now).
-            // Burst/jobs over the flat per-creature arrays is the spec's later path to 3 ms.
-            Assert.LessOrEqual(median, 4.0, "median sim ms for 100 creatures per frame (R23)");
-        }
+    public class CreatureDesertWorldTests
+    {
+        const float kDt = 1f / 60f;
 
         // The cache must not cost the look: on the real dunes, planted feet stay on the true sand and the spine
         // keeps its clearance over the true ground (no float, no sink).
         [Test] public void Cached_Monitor_OnDesertWorld_StaysOnTheSand()
         {
+            var field = CreatureDesertWorld.Field();
             var shared = new FieldGroundProbe(field);
             var truth = new FieldGroundProbe(field);
-            var sims = Spawn(shared, 1, out var brains, out _);
+            var sims = CreatureDesertWorld.Spawn(shared, 1, out var brains, out _);
             CreatureSim sim = sims[0];
             var sp = sim.Species;
             float worstFoot = 0f, worstSink = float.NegativeInfinity, worstFloat = float.NegativeInfinity, minSlopeDot = 1f;
@@ -157,6 +205,19 @@ namespace TerrainGen.Tests
             // body tolerances in the creature's own size (1 cm sink, 2 cm float at the reference size); feet absolute
             Assert.LessOrEqual(worstSink, 0.01f * sim.SizeScale, "the body sinks into the true sand");
             Assert.LessOrEqual(worstFloat, 0.02f * sim.SizeScale, "a spine joint floats above its clearance");
+        }
+
+        // The routine no-alloc check on the real terrain (the perf tests carry the same check but are not routine):
+        // ticking through the ground cache over the field probe, after the cache's first fill.
+        [Test] public void Monitor_OnDesertWorld_TickDoesNotAllocate()
+        {
+            var shared = new FieldGroundProbe(CreatureDesertWorld.Field());
+            var sims = CreatureDesertWorld.Spawn(shared, 2, out var brains, out _);
+            Action frame = () => { for (int i = 0; i < sims.Count; i++) sims[i].Tick(kDt, brains[i].Target(sims[i], kDt)); };
+            for (int f = 0; f < 60; f++) frame();
+            GcAllocs.AssertCounterWorks();
+            int allocs = GcAllocs.Count(() => { for (int f = 0; f < 240; f++) frame(); });
+            Assert.AreEqual(0, allocs, "managed allocations while ticking on the real terrain");
         }
     }
 }

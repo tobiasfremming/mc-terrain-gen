@@ -220,6 +220,8 @@ public static class PlantMeshBuilder
         }
 
         // Pass 2: emit a ring per used node.
+        // Vertex colours stay sRGB as authored; the shaders decode them
+        // (Shaders/PlantColor.hlsl). Do not linearize here as well.
         Color32 bark = profile.stemColor;
         bark.a = 255; // vertex alpha is the NON-emission mask: 255 = unlit by itself
         for (int i = 0; i < n; i++)

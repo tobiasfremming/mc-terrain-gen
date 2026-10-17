@@ -33,6 +33,7 @@ Shader "MarchingCubes/Grass"
         HLSLINCLUDE
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
         #include "Compute/GrassCommon.hlsl"
+        #include "SrgbColor.hlsl"
 
         CBUFFER_START(UnityPerMaterial)
         half _Wrap;
@@ -139,9 +140,13 @@ Shader "MarchingCubes/Grass"
             float taper = 1.0 - t * (0.4 + 0.6 * t);   // slender: 0.86 at a quarter, 0.65 halfway, 0 at the tip
             posWS += sideDir * (side * 0.5 * width * widen * taper);
 
-            // Colours were biome-blended when the blade was scattered.
-            half3 base = (half3)GrassUnpack565(b.colors & 0xFFFFu);
-            half3 tipC = (half3)GrassUnpack565(b.colors >> 16);
+            // Colours were biome-blended when the blade was scattered. The
+            // record holds them in sRGB, as authored (Biome.grassColorBase/Tip
+            // reach the compute through SetVectorArray, which never converts):
+            // decoded here, once. Not on the C# side: 5/6/5-bit LINEAR colour
+            // would crush dark greens (sRGB 0.06 -> linear 0.005 -> 0 of 31).
+            half3 base = (half3)MC_SrgbToLinear(GrassUnpack565(b.colors & 0xFFFFu));
+            half3 tipC = (half3)MC_SrgbToLinear(GrassUnpack565(b.colors >> 16));
             half tint = (half)lerp(0.8, 1.2, GrassHash01(b.seed ^ 0x51ED270Bu));
 
             BladeVertex o;
@@ -290,6 +295,36 @@ Shader "MarchingCubes/Grass"
             }
 
             half DepthFrag(Varyings i) : SV_Target { return 0; }
+            ENDHLSL
+        }
+
+        // Unlit albedo, for TerrainGrassColourSpaceTests only. The LightMode
+        // tag is one no URP renderer draws, so it never runs in a frame; the
+        // test selects it by name and reads back BuildBlade's linear albedo.
+        Pass
+        {
+            Name "AlbedoDebug"
+            Tags { "LightMode" = "MarchingCubesAlbedoDebug" }
+            ZWrite Off
+            ZTest Always
+
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex AlbedoVert
+            #pragma fragment AlbedoFrag
+
+            struct Varyings { float4 positionCS : SV_POSITION; float3 albedo : TEXCOORD0; };
+
+            Varyings AlbedoVert(uint vid : SV_VertexID, uint iid : SV_InstanceID)
+            {
+                BladeVertex b = BuildBlade(vid, iid);
+                Varyings o;
+                o.positionCS = TransformWorldToHClip(b.posWS);
+                o.albedo = b.albedo;
+                return o;
+            }
+
+            float4 AlbedoFrag(Varyings i) : SV_Target { return float4(i.albedo, 1.0); }
             ENDHLSL
         }
     }

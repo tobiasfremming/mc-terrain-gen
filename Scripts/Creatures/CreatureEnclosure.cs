@@ -24,6 +24,7 @@ public sealed class CreatureEnclosure : MonoBehaviour
     };
 
     GameObject curb;
+    Mesh curbMesh; // owned: destroyed with the curb it belongs to
 
     public EnclosureArea AreaFor(CreatureSpecies sp, float sizeScale)
     {
@@ -42,9 +43,10 @@ public sealed class CreatureEnclosure : MonoBehaviour
     // world origin with no rotation.
     internal void Build(IGroundProbe ground)
     {
-        if (curb != null) { if (Application.isPlaying) Destroy(curb); else DestroyImmediate(curb); }
+        DestroyCurb();
         Mesh m = BuildCurb(ground, transform.position, transform.up, radius, curbHeight, curbWidth, segments);
         m.name = name + " Curb";
+        curbMesh = m;
         curb = new GameObject("Curb");
         curb.transform.SetParent(transform, false);
         curb.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
@@ -52,6 +54,15 @@ public sealed class CreatureEnclosure : MonoBehaviour
         curb.AddComponent<MeshFilter>().sharedMesh = m;
         var r = curb.AddComponent<MeshRenderer>();
         r.sharedMaterial = borderMaterial;
+    }
+
+    void OnDestroy() => DestroyCurb();
+
+    void DestroyCurb()
+    {
+        if (curb != null) { if (Application.isPlaying) Destroy(curb); else DestroyImmediate(curb); }
+        if (curbMesh != null) { if (Application.isPlaying) Destroy(curbMesh); else DestroyImmediate(curbMesh); }
+        curb = null; curbMesh = null;
     }
 
     // A closed ring strip around `center` (world space). Every vertex is probed to the ground, so the curb

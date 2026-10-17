@@ -29,10 +29,14 @@ public sealed class FieldGroundProbe : IGroundProbe
     const float kStep = 0.5f;          // fallback scan step: TerrainQuery's, the 0.5 m LOD0 cell
     const float kFineStep = 0.125f;    // scan step within the window: a dug hole's lip can be thinner than a cell
 
-    readonly DensityField field;
+    DensityField field;
     public int SampleCount; // cumulative field samples, for perf stats
 
     public FieldGroundProbe(DensityField field) { this.field = field; }
+
+    // The field probed. CreatureWorld re-points it when the terrain rebuilds its physics field (a new object),
+    // so the caches layered over this probe keep working on the live field.
+    public DensityField Field { get => field; set => field = value; }
 
     // The up-facing surface (air above, solid below) NEAREST to `near` along up: the first one below it
     // when near is in air, the first one above it when near is inside solid. A body that probes from its
@@ -153,6 +157,12 @@ public sealed class CachedGroundProbe : IGroundProbe
     int version, lastVersion = -1, lastIx, lastIz, l00, l10, l01, l11;
     float lastLo, lastHi;
     bool lastStep;
+    // The last cell's Hermite tangents per edge (x slopes on its z = 0 / z = 1 edges, z slopes on its x = 0 /
+    // x = 1 edges) and its node height range. On an edge with a step the node slopes are limited to the
+    // edge's secant (Fritsch-Carlson: same sign, at most 3x), so the smooth S stays between the two nodes
+    // instead of overshooting a dug rim by up to ~25 cm; a step cell's patch is also clamped to its node range.
+    // Limiting per edge (from the edge's two nodes only) keeps the patch continuous across cells.
+    float ex00, ex10, ex01, ex11, ez00, ez01, ez10, ez11, lastMin, lastMax;
 
     public CachedGroundProbe(IGroundProbe inner, float extent, float cell = DefaultCell)
     {
@@ -228,6 +238,7 @@ public sealed class CachedGroundProbe : IGroundProbe
             lastLo = Mathf.Max(Mathf.Max(offLo[s00], offLo[s10]), Mathf.Max(offLo[s01], offLo[s11]));
             lastHi = Mathf.Min(Mathf.Min(offHi[s00], offHi[s10]), Mathf.Min(offHi[s01], offHi[s11]));
             lastStep = StepMiss(s00, s10, s01, s11) > kExactTol;
+            SetCellTangents(s00, s10, s01, s11);
             y = Patch(fx, fz, s00, s10, s01, s11);
         }
         if (lastStep && exactSteps) { ExactQueries++; return inner.Probe(near, up, window, out point, out normal); }
@@ -244,15 +255,50 @@ public sealed class CachedGroundProbe : IGroundProbe
     }
 
     // Bicubic Hermite with zero twist over the cell at (fx, fz): value basis a = 1 - 3t^2 + 2t^3 and
-    // b = 1 - a, slope basis c = t (1 - t)^2 and d = t^2 (t - 1), times the cell. Exact on planes.
+    // b = 1 - a, slope basis c = t (1 - t)^2 and d = t^2 (t - 1), times the cell. Exact on planes. The
+    // tangents are the cell's edge tangents (SetCellTangents); a step cell is clamped to its node range.
     float Patch(float fx, float fz, int s00, int s10, int s01, int s11)
     {
         float ax = 1f - fx * fx * (3f - 2f * fx), bx = 1f - ax, cx = cell * fx * (1f - fx) * (1f - fx), dx = cell * fx * fx * (fx - 1f);
         float az = 1f - fz * fz * (3f - 2f * fz), bz = 1f - az, cz = cell * fz * (1f - fz) * (1f - fz), dz = cell * fz * fz * (fz - 1f);
-        return az * (ax * height[s00] + bx * height[s10] + cx * slopeX[s00] + dx * slopeX[s10])
-             + bz * (ax * height[s01] + bx * height[s11] + cx * slopeX[s01] + dx * slopeX[s11])
-             + cz * (ax * slopeZ[s00] + bx * slopeZ[s10]) + dz * (ax * slopeZ[s01] + bx * slopeZ[s11]);
+        float y = az * (ax * height[s00] + bx * height[s10] + cx * ex00 + dx * ex10)
+                + bz * (ax * height[s01] + bx * height[s11] + cx * ex01 + dx * ex11)
+                + cz * (ax * ez00 + bx * ez10) + dz * (ax * ez01 + bx * ez11);
+        return lastStep ? Mathf.Clamp(y, lastMin, lastMax) : y;
     }
+
+    // The cell's edge tangents and node range (see ex00..). An edge whose slopes miss its height step by
+    // more than kExactTol, or that ends on a wall node, is a step edge: its tangents are limited.
+    void SetCellTangents(int s00, int s10, int s01, int s11)
+    {
+        float h0 = height[s00], h1 = height[s10], h2 = height[s01], h3 = height[s11];
+        lastMin = Mathf.Min(Mathf.Min(h0, h1), Mathf.Min(h2, h3));
+        lastMax = Mathf.Max(Mathf.Max(h0, h1), Mathf.Max(h2, h3));
+        ex00 = slopeX[s00]; ex10 = slopeX[s10]; ex01 = slopeX[s01]; ex11 = slopeX[s11];
+        ez00 = slopeZ[s00]; ez01 = slopeZ[s01]; ez10 = slopeZ[s10]; ez11 = slopeZ[s11];
+        if (!lastStep) return;
+        LimitEdge(s00, s10, ref ex00, ref ex10);
+        LimitEdge(s01, s11, ref ex01, ref ex11);
+        LimitEdge(s00, s01, ref ez00, ref ez01);
+        LimitEdge(s10, s11, ref ez10, ref ez11);
+    }
+
+    // Fritsch-Carlson on one edge a -> b with tangents ma, mb (dh per metre along the edge), if it is a step
+    // edge: a tangent against the secant's sign becomes 0, one steeper than 3x the secant is cut to 3x. The
+    // edge's cubic is then monotone, inside [h_a, h_b].
+    void LimitEdge(int a, int b, ref float ma, ref float mb)
+    {
+        float step = height[b] - height[a];
+        bool wall = nodeNormal[a].y < kMaxNy || nodeNormal[b].y < kMaxNy;
+        if (!wall && Mathf.Abs(step - 0.5f * cell * (ma + mb)) <= kExactTol) return;
+        float d = step * invCell;
+        if (Mathf.Abs(d) < 1e-6f) { ma = mb = 0f; return; }
+        ma = d > 0f ? Mathf.Clamp(ma, 0f, 3f * d) : Mathf.Clamp(ma, 3f * d, 0f);
+        mb = d > 0f ? Mathf.Clamp(mb, 0f, 3f * d) : Mathf.Clamp(mb, 3f * d, 0f);
+    }
+
+    // The node height range and step flag of the cell the last query read (tests).
+    internal bool LastCell(out float min, out float max) { min = lastMin; max = lastMax; return lastStep; }
 
     // How far do the nodes' height steps disagree with their slopes? Along each cell edge the end nodes'
     // slopes predict the step (trapezoid rule); a step they do not explain is a cliff or a hole's wall

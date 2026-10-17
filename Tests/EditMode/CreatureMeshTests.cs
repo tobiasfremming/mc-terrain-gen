@@ -304,23 +304,5 @@ namespace TerrainGen.Tests
             }
             return sb.ToString();
         }
-
-        [Test] public void Build_Time_Under5ms()
-        {
-            var sp = Keep(CreatureTestSpecies.Lizardish());
-            Object.DestroyImmediate(CreatureMeshBuilder.Build(sp)); // warm-up (JIT)
-            var ms = new List<double>();
-            for (int i = 0; i < 5; i++)
-            {
-                var sw = Stopwatch.StartNew();
-                Mesh m = CreatureMeshBuilder.Build(sp);
-                sw.Stop();
-                ms.Add(sw.Elapsed.TotalMilliseconds);
-                Object.DestroyImmediate(m);
-            }
-            ms.Sort();
-            TestContext.Out.WriteLine($"build ms: {string.Join(", ", ms)}");
-            Assert.Less(ms[2], 5.0, "median build time");
-        }
     }
 }

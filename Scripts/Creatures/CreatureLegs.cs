@@ -32,6 +32,19 @@ sealed class CreatureLegs
     // The throttle acts on the angle predicted this far ahead from its current rate: in a tight coil the
     // body can swing a planted limb by ~5 deg per frame, faster than the accel-limited speed can brake.
     const float kJointLeadSec = 0.04f;
+    // Trunk keep-out (final review): in a tight turn the curled trunk sweeps over the inner feet. Every
+    // foot keeps a plan-view clearance from the trunk outline (the spine's segments widened by the joints'
+    // half-widths), as fractions of the leg's rest gap (rest point's lateral offset minus its girdle's
+    // half-width, species data): landing points and the swing are pushed out to kTrunkKeepFrac, and a
+    // planted foot the trunk has swung over to within kTrunkStepFrac steps. (Slowing the body as well, like
+    // the joint-range throttle, stalled the tight circle and broke its joint-range and skinning bounds.)
+    const float kTrunkKeepFrac = 0.35f, kTrunkStepFrac = 0.6f;
+    // A trunk check is skipped while the trunk cannot have closed in on the point since the last one: the
+    // spine only moves by travelling (follow-the-leader; turning in place moves no joint, the sway fades
+    // with speed), so no joint moves more than (kTrunkTravel x speed + kTrunkCreep x size) x dt in a sub-step
+    // (the creep covers the sway settling while the body brakes); a moving point (the swing, the landing
+    // point) also spends its own motion from the slack the last check left.
+    const float kTrunkTravel = 2f, kTrunkCreep = 0.1f;
 
     readonly CreatureSpecies sp;
     readonly IGroundProbe ground;
@@ -54,6 +67,13 @@ sealed class CreatureLegs
     readonly bool[] jointLimited;  // joint-range state from the last IK solve (UpdateThrottle)
     readonly float[] prevSwing, prevKnee; // last planted joint angles (-1 = none), for the angle rate
     int lastGroup = -1;
+    readonly float[] trunkKeep, trunkStep; // keep-out and step distances from the trunk outline, unscaled
+    readonly int[] trunkLo, trunkHi;       // the spine segments a leg's foot can reach: [lo, hi)
+    readonly float[] trunkHalfWidth;       // the widest half-width of those segments' joints, unscaled
+    readonly float[] trunkSlack;           // planted foot: how far the trunk may close in before a re-check (0 = check)
+    readonly float[] swingSlack, aimSlack; // the same for the swinging foot and its landing point
+    readonly Vector3[] swingPrev, aimPrev; // ... and where those were at the last sub-step
+    float trunkTravel;                     // the current sub-step's bound on joint motion (kTrunkTravel)
     readonly int[] attachJoints;   // the distinct joints legs attach to
     bool spreadNonZero;
 
@@ -80,6 +100,9 @@ sealed class CreatureLegs
         stepOver = new float[c]; jointLimited = new bool[c]; restReach = new float[c];
         prevSwing = new float[c]; prevKnee = new float[c];
         fwdLimit = new float[c]; backLimit = new float[c]; kneeRange = new float[c]; kneeFlex = new float[c];
+        trunkKeep = new float[c]; trunkStep = new float[c]; trunkLo = new int[c]; trunkHi = new int[c]; trunkSlack = new float[c];
+        trunkHalfWidth = new float[c];
+        swingSlack = new float[c]; aimSlack = new float[c]; swingPrev = new Vector3[c]; aimPrev = new Vector3[c];
         for (int l = 0; l < c; l++) { prevSwing[l] = -1f; prevKnee[l] = -1f; }
         int na = 0; var tmp = new int[c];
         for (int l = 0; l < c; l++)
@@ -101,6 +124,12 @@ sealed class CreatureLegs
             restUpper[l] = (el - sh).normalized;
             restKnee[l] = Vector3.Angle(el - sh, ft - el);
             restReach[l] = (ft - sh).magnitude;
+            float gap = Mathf.Max(0f, Mathf.Abs(s.restOffset.x) - sp.joints[s.attachJoint].halfWidth);
+            trunkKeep[l] = kTrunkKeepFrac * gap; trunkStep[l] = kTrunkStepFrac * gap;
+            // the spine segments within the foot's reach along the body, +1 for the segment it starts in
+            int span = sp.spacing > 0f ? Mathf.CeilToInt((s.upperLength + s.lowerLength + s.overshoot + Mathf.Abs(s.shoulderOffset.z)) / sp.spacing) + 1 : 0;
+            trunkLo[l] = Mathf.Max(0, s.attachJoint - span); trunkHi[l] = Mathf.Min(joints.Length - 1, s.attachJoint + span);
+            for (int i = trunkLo[l]; i <= trunkHi[l]; i++) trunkHalfWidth[l] = Mathf.Max(trunkHalfWidth[l], sp.joints[i].halfWidth);
             float bend = Mathf.Min(170f, restKnee[l] + kneeFlex[l]) * Mathf.Deg2Rad;
             float a = s.upperLength, b = s.lowerLength;
             minReach[l] = Mathf.Sqrt(Mathf.Max(0f, a * a + b * b + 2f * a * b * Mathf.Cos(bend)));
@@ -166,6 +195,7 @@ sealed class CreatureLegs
         int c = specs.Length;
         if (c == 0) return 0;
         bool idle = speed < kIdleSpeed * timeScale; // Froude speeds scale with sqrt(size)
+        trunkTravel = (kTrunkTravel * Mathf.Max(0f, speed) + kTrunkCreep * scale) * dt;
 
         // rest points
         for (int l = 0; l < c; l++)
@@ -206,6 +236,7 @@ sealed class CreatureLegs
         for (int l = 0; l < c; l++)
         {
             if (!State[l].stepping) continue;
+            trunkSlack[l] = 0f; // the foot lands somewhere new: check it when planted
             LegSpec s = specs[l];
             State[l].stepT += dt / Mathf.Max(1e-4f, s.stepDuration * timeScale);
             // re-aim at where the rest point will be on landing: in a turn the body does not travel straight
@@ -228,7 +259,7 @@ sealed class CreatureLegs
                 Vector3 a = State[l].stepFrom, b = State[l].stepTo;
                 Vector3 ctrl = 2f * rest[l] - 0.5f * (a + b);
                 Vector3 path = (1f - sm) * (1f - sm) * a + 2f * (1f - sm) * sm * ctrl + sm * sm * b;
-                target[l] = KeepOutOfFlex(l, path + Up(l) * (s.stepLift * scale * Mathf.Sin(Mathf.PI * t)));
+                target[l] = KeepOutOfFlex(l, GatedKeepOff(l, path, ref swingSlack[l], ref swingPrev[l]) + Up(l) * (s.stepLift * scale * Mathf.Sin(Mathf.PI * t)));
             }
         }
 
@@ -245,7 +276,8 @@ sealed class CreatureLegs
             // only if stepping to the rest point would actually shorten the reach (else it is a zero-length step loop)
             bool stretched = now > reach && (rest[l] - State[l].shoulder).magnitude < now - kStepGain * scale;
             bool overFlexed = !State[l].stepping && jointLimited[l]; // from the last IK solve
-            eligible[l] = !State[l].stepping && (dist > thr || stretched || overFlexed || (idle && dist > kIdleTidyFraction * thr));
+            bool underTrunk = !State[l].stepping && TrunkLimited(l, trunkTravel);
+            eligible[l] = !State[l].stepping && (dist > thr || stretched || overFlexed || underTrunk || (idle && dist > kIdleTidyFraction * thr));
         }
 
         // start steps
@@ -339,6 +371,7 @@ sealed class CreatureLegs
         stepOver[l] = over;
         State[l].stepFrom = target[l];
         State[l].stepFromNormal = State[l].footNormal;
+        swingSlack[l] = aimSlack[l] = 0f; // a new swing and landing point: check both
         Aim(l, speed, 1f);
         State[l].stepT = 0f;
         State[l].stepping = true;
@@ -356,6 +389,13 @@ sealed class CreatureLegs
         Vector3 u = Up(l);
         Vector3 p = goal, n = u;
         if (!ground.Probe(goal, u, kProbeWindow * scale, out p, out n)) { p = goal; n = State[l].stepToNormal.sqrMagnitude > 0.5f ? State[l].stepToNormal : State[l].footNormal; }
+        // a landing point under the trunk (the inner feet of a tight turn) moves out from under it
+        Vector3 q = GatedKeepOff(l, p, ref aimSlack[l], ref aimPrev[l]);
+        if ((q - p).sqrMagnitude > 1e-12f)
+        {
+            if (ground.Probe(q, u, kProbeWindow * scale, out Vector3 pq, out Vector3 nq)) { p = pq; n = nq; }
+            else p = q;
+        }
         State[l].stepTo = p;
         State[l].stepToNormal = n.sqrMagnitude > 1e-12f ? n.normalized : u;
     }
@@ -374,6 +414,86 @@ sealed class CreatureLegs
         Vector3 h = v - u * vert;
         if (h.sqrMagnitude < 1e-10f) h = rotations[specs[l].attachJoint] * Vector3.right * specs[l].side;
         return sh + u * vert + h.normalized * Mathf.Sqrt(dMin * dMin - vert * vert);
+    }
+
+    // Plan-view clearance of p from the trunk outline near leg l (in the plane across the attach joint's up):
+    // distance to the nearest spine segment minus its half-width there. away = the unit push direction out
+    // of that segment (in the plane), or the leg's side when p is on the spine line.
+    float TrunkClearance(int l, Vector3 p, out Vector3 away)
+    {
+        Vector3 u = Up(l);
+        float best = float.PositiveInfinity, bx = 0f, by = 0f, bz = 0f, bd = 0f;
+        SpineJoint[] js = sp.joints;
+        // from the girdle outward, so the nearest segments come first and the far ones are rejected cheaply:
+        // a segment whose start is further than best + its length (+10 %) + the widest half-width cannot be nearer
+        int lo = trunkLo[l], hi = trunkHi[l], at = Mathf.Clamp(specs[l].attachJoint, lo, hi), up = hi - at;
+        float pad = (1.1f * sp.spacing + trunkHalfWidth[l]) * scale;
+        for (int k = 0, count = hi - lo; k < count; k++)
+        {
+            int i = k < up ? at + k : at - 1 - (k - up);
+            Vector3 a = joints[i];
+            float apx = p.x - a.x, apy = p.y - a.y, apz = p.z - a.z;
+            float pu = apx * u.x + apy * u.y + apz * u.z;
+            apx -= u.x * pu; apy -= u.y * pu; apz -= u.z * pu;
+            if (best < float.PositiveInfinity)
+            {
+                float r = best + pad;
+                if (r > 0f && apx * apx + apy * apy + apz * apz > r * r) continue;
+            }
+            Vector3 b = joints[i + 1];
+            float abx = b.x - a.x, aby = b.y - a.y, abz = b.z - a.z;
+            float au = abx * u.x + aby * u.y + abz * u.z;
+            abx -= u.x * au; aby -= u.y * au; abz -= u.z * au;
+            float ab2 = abx * abx + aby * aby + abz * abz;
+            float t = ab2 > 1e-12f ? (apx * abx + apy * aby + apz * abz) / ab2 : 0f;
+            t = t < 0f ? 0f : (t > 1f ? 1f : t);
+            float dx = apx - abx * t, dy = apy - aby * t, dz = apz - abz * t;
+            float d = Mathf.Sqrt(dx * dx + dy * dy + dz * dz);
+            float c = d - (js[i].halfWidth + (js[i + 1].halfWidth - js[i].halfWidth) * t) * scale;
+            if (c < best) { best = c; bx = dx; by = dy; bz = dz; bd = d; }
+        }
+        if (bd > 1e-6f) away = new Vector3(bx / bd, by / bd, bz / bd);
+        else away = rotations[specs[l].attachJoint] * Vector3.right * specs[l].side;
+        return best;
+    }
+
+    // Moves p out from under the trunk to the keep-out distance, in the plane (its height is kept).
+    Vector3 KeepOffTrunk(int l, Vector3 p)
+    {
+        float keep = trunkKeep[l] * scale;
+        for (int k = 0; k < 2; k++) // a push off one segment may approach the next one of a curl
+        {
+            float c = TrunkClearance(l, p, out Vector3 away);
+            if (c >= keep) break;
+            p += away * (keep - c);
+        }
+        return p;
+    }
+
+    // KeepOffTrunk for a point that moves from sub-step to sub-step, measured only once it and the trunk
+    // may have used up the slack (clearance beyond the keep-out distance) the last measurement left.
+    Vector3 GatedKeepOff(int l, Vector3 p, ref float slack, ref Vector3 prev)
+    {
+        slack -= (p - prev).magnitude + trunkTravel;
+        prev = p;
+        if (slack > 0f) return p;
+        float c = TrunkClearance(l, p, out _);
+        slack = c - trunkKeep[l] * scale;
+        return slack >= 0f ? p : KeepOffTrunk(l, p);
+    }
+
+    // A planted foot under the trunk: true while it is inside the step distance and its landing point (the
+    // rest point, moved off the trunk) would clear the trunk by kStepGain more. travel = how far any spine
+    // joint can have moved since the last call (see kTrunkTravel).
+    bool TrunkLimited(int l, float travel)
+    {
+        trunkSlack[l] -= travel;
+        if (trunkSlack[l] > 0f) return false;
+        float c = TrunkClearance(l, target[l], out _);
+        trunkSlack[l] = c - trunkStep[l] * scale;
+        if (trunkSlack[l] > 0f) return false;
+        float land = Mathf.Max(TrunkClearance(l, rest[l], out _), trunkKeep[l] * scale);
+        return land > c + kStepGain * scale;
     }
 
     void SolveIK(float dt)

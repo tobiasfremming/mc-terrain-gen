@@ -494,6 +494,15 @@ public class MCChunkManager : MonoBehaviour
     // for field; keep the two in lockstep. Height lines are ABSOLUTE local
     // heights, which in globe mode means distance from the planet centre --
     // hence the radius added here, once, rather than in every shader.
+    //
+    // Colours: Biome.colorFlat/colorSteep are Inspector colours, authored in
+    // sRGB. SetGlobalVectorArray copies floats verbatim (unlike SetColor, which
+    // converts in a Linear project), so they are converted here, once, with
+    // ShadingColor -- the shaders use _BiomeShadeFlat/Steep as linear albedo
+    // next to material colours (_MtnSnowColor, _DoloScreeColor, ...) that Unity
+    // has already converted. Here rather than in SandTerrain.shader: the values
+    // are full floats (no banding to avoid) and the shader would otherwise pay
+    // a pow per biome per pixel.
     public static void PublishBiomeShadingGlobals(BiomeDensityField world, PlanetField planet)
     {
         int max = BiomeDensityField.MaxBiomes;
@@ -520,8 +529,8 @@ public class MCChunkManager : MonoBehaviour
             bias[i] = b != null ? b.bias : -10f; // same "unassigned" bias the CPU softmax uses
             if (b == null) { a[i] = new Vector4(0f, 1f, 0f, 0f); continue; }
             a[i] = new Vector4((float)b.surfaceStyle, Mathf.Max(0.01f, b.blendSharpness), b.hardness, 0f);
-            flat[i] = b.colorFlat;
-            steep[i] = b.colorSteep;
+            flat[i] = ShadingColor(b.colorFlat);
+            steep[i] = ShadingColor(b.colorSteep);
             switch (b.surfaceStyle)
             {
                 case Biome.SurfaceStyle.Dolomite:
@@ -564,6 +573,14 @@ public class MCChunkManager : MonoBehaviour
         Shader.SetGlobalVectorArray("_BiomeShadeFlat", flat);
         Shader.SetGlobalVectorArray("_BiomeShadeSteep", steep);
         Shader.SetGlobalVectorArray("_BiomeShadeLines", lines);
+    }
+
+    // An sRGB-authored Color as the linear value a shader should shade with,
+    // exactly what Material.SetColor uploads: converted in a Linear project,
+    // passed through in a Gamma one. For colours sent with SetVector(Array).
+    public static Vector4 ShadingColor(Color srgb)
+    {
+        return QualitySettings.activeColorSpace == ColorSpace.Linear ? (Vector4)srgb.linear : (Vector4)srgb;
     }
 
     // Lets a BiomeWorld asset pick which material (and therefore shader) the

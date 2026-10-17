@@ -297,6 +297,86 @@ namespace TerrainGen.Tests
             Assert.Greater(maxBend, 0.9f * 20f, "the turn never reached the bend limit");
         }
     
+        // Final review Important 1: in a tight turn the inner legs must not tuck under or through the trunk.
+        // The lab shot (t9-3) showed inner feet planted under the curled trunk: planted feet had no body
+        // keep-out, so the body swung over them. Two measures, metres at the creature's size:
+        //  - trunk: plan-view clearance of the shank's lower half and the foot (3 samples, mid-shank to foot)
+        //    from the trunk outline: horizontal distance to the nearest spine segment minus that segment's
+        //    half-width (interpolated). The trunk = the spine from two joints before the first girdle to two
+        //    after the last. The knee half of the shank sits high beside the flank and is reported only.
+        //  - girdle: lateral offset of the whole lower limb (knee to foot) to the leg's own side in its
+        //    girdle's frame, minus the girdle's half-width (the leg never crosses under its own girdle).
+        static void LegClearance(CreatureSim sim, ref float trunk, ref float knee, ref float girdle, ref string trunkAt, string tag)
+        {
+            var sp = sim.Species;
+            int lo = int.MaxValue, hi = 0;
+            foreach (var ls in sp.legs) { lo = Mathf.Min(lo, ls.attachJoint - 2); hi = Mathf.Max(hi, ls.attachJoint + 2); }
+            lo = Mathf.Max(0, lo); hi = Mathf.Min(sim.Joints.Length - 1, hi);
+            for (int l = 0; l < sim.Legs.Length; l++)
+            {
+                LegState st = sim.Legs[l];
+                LegSpec ls = sp.legs[l];
+                Quaternion inv = Quaternion.Inverse(sim.Rotations[ls.attachJoint]);
+                float ghw = sp.joints[ls.attachJoint].halfWidth * sim.SizeScale;
+                for (int k = 0; k <= 4; k++)
+                {
+                    Vector3 p = Vector3.Lerp(st.elbow, st.foot, k / 4f);
+                    girdle = Mathf.Min(girdle, (inv * (p - sim.Joints[ls.attachJoint])).x * ls.side - ghw);
+                    for (int i = lo; i < hi; i++)
+                    {
+                        Vector3 a = sim.Joints[i], b = sim.Joints[i + 1];
+                        var ab = new Vector2(b.x - a.x, b.z - a.z); var ap = new Vector2(p.x - a.x, p.z - a.z);
+                        float t = Mathf.Clamp01(Vector2.Dot(ap, ab) / Mathf.Max(1e-12f, ab.sqrMagnitude));
+                        float c = (ap - ab * t).magnitude - Mathf.Lerp(sp.joints[i].halfWidth, sp.joints[i + 1].halfWidth, t) * sim.SizeScale;
+                        if (k < 2) knee = Mathf.Min(knee, c);
+                        else if (c < trunk) { trunk = c; trunkAt = $"{tag} leg {l} k={k} by joint {i + t:F1} stepping={st.stepping}"; }
+                    }
+                }
+            }
+        }
+
+        // The minimum-radius circle of TightTurnJointRanges, and three 60 s wanders in a lab-sized enclosure (the
+        // turns of the t9-3 shot). Asserts trunk clearance >= 0 and girdle clearance >= minGirdleFrac x scale.
+        internal static void TightTurnLegClearance(CreatureSpecies sp, float minGirdleFrac)
+        {
+            float sc = sp.scale, ts = Mathf.Sqrt(sc);
+            float trunk = float.MaxValue, knee = float.MaxValue, girdle = float.MaxValue, maxBend = 0f;
+            string at = "-";
+            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, sc);
+            Vector3 centre = new Vector3(0f, 0f, 0.25f) * sc;
+            for (int t = 0; t < (int)(300 * ts); t++)
+            {
+                float a = t / 60f * 3f / ts;
+                sim.Tick(1f / 60f, centre + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * (0.12f * sc));
+                for (int i = 1; i < sp.JointCount - 1; i++)
+                    maxBend = Mathf.Max(maxBend, Vector3.Angle(sim.Joints[i - 1] - sim.Joints[i], sim.Joints[i] - sim.Joints[i + 1]));
+                LegClearance(sim, ref trunk, ref knee, ref girdle, ref at, "circle t=" + t);
+            }
+            for (int seed = 1; seed <= 3; seed++)
+            {
+                var area = EnclosureArea.For(Vector3.zero, Vector3.up, CreatureLab.EnclosureRadius(sp, sc), sp, sc);
+                var ws = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, sc, seed) { Bounds = area };
+                var brain = new WanderBrain(area, seed);
+                for (int t = 0; t < 3600; t++)
+                {
+                    ws.Tick(1f / 60f, brain.Target(ws, 1f / 60f));
+                    LegClearance(ws, ref trunk, ref knee, ref girdle, ref at, "wander seed " + seed + " t=" + t);
+                }
+            }
+            string sum = $"{sp.name}: shank/foot clearance from the trunk {trunk * 100f:F1} cm ({at}); knee half of the shank {knee * 100f:F1} cm; " +
+                         $"lower limb beside its girdle {girdle * 100f:F1} cm; spine bend max {maxBend:F1}";
+            TestContext.Out.WriteLine(sum);
+            Assert.Greater(maxBend, 0.9f * 20f, "the turn never reached the bend limit");
+            Assert.GreaterOrEqual(trunk, 0f, "a leg tucked under the trunk: " + sum);
+            Assert.GreaterOrEqual(girdle, minGirdleFrac * sc, "a leg crossed under its girdle: " + sum);
+        }
+
+        [Test] public void Legs_TightTurn_LegsClearTheTrunk()
+        {
+            sp = CreatureTestSpecies.Lizardish();
+            TightTurnLegClearance(sp, 0.01f);
+        }
+
         // The lower bone's roll must follow the upper bone (shared knee hinge): projecting the pole onto
         // each bone separately flips it by 180 deg when the pole lies between them, collapsing the knee skin.
         [Test] public void LegBones_LowerRollFollowsUpper()

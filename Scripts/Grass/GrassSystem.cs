@@ -41,6 +41,10 @@ public sealed class GrassSystem : System.IDisposable
         public const int MaxBiomes = 8; // = BiomeDensityField.MaxBiomes = MC_MAX_BIOMES
 
         public Vector4[] table;      // x blades per m^2, y local height where grass stops (radius added), z fade metres
+        // sRGB, as authored in the Inspector, and deliberately NOT converted:
+        // the scatter packs them into RGB565 in the blade record, where linear
+        // dark greens would crush to zero, and Grass.shader decodes them once
+        // after unpacking (MC_SrgbToLinear). Do not pass Color.linear here.
         public Vector4[] baseColors;
         public Vector4[] tipColors;
         // False: no biome world (GrassLab, plain heightfields). Slot 0 applies
