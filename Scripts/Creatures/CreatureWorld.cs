@@ -232,6 +232,38 @@ public sealed class CreatureWorld : MonoBehaviour
         return renderers[renderers.Count - 1];
     }
 
+    // A tree octopus (a Cephalopod species). Its surfaces are the terrain plus every registered collider (real
+    // geometry only); hints are optional (null = probe only). The brain is kept inside `bounds` (centre,
+    // radius, maxHeight). scale > 0 overrides the species' scale. It is ticked and drawn like any body.
+    public OctopusCreature SpawnOctopus(CreatureSpecies sp, Vector3 position, Quaternion rotation, EnclosureArea? bounds, int seed,
+                                        float scale = 0f, BranchHints hints = null)
+    {
+        if (sp == null) throw new ArgumentNullException(nameof(sp));
+        if (sp.bodyPlan != CreatureBodyPlan.Cephalopod) throw new ArgumentException(sp.name + " is not a cephalopod", nameof(sp));
+        string err = sp.Validate();
+        if (err != null) throw new ArgumentException(sp.name + ": " + err, nameof(sp));
+        IGroundProbe g = Ground;
+        if (g == null) throw new InvalidOperationException("CreatureWorld: no ground (no MCChunkManager in the scene and SetGround not called)");
+        CreatureInstance inst = Individual(sp, seed, scale > 0f ? scale : sp.scale);
+        ISurfaceProbe probe;
+        var surf = new PhysicsSurfaceProbe(Surfaces);
+        if (groundSource == GroundSource.Physics) probe = surf;
+        else probe = terrainProbe != null ? new CompositeSurfaceProbe(g, surf, terrainProbe, upAt)
+                                          : new CompositeSurfaceProbe(g, surf, g is FieldGroundProbe fp ? fp.Field : null, upAt);
+        if (Application.isPlaying && GetComponent<ClimbableFlora>() == null && FindAnyObjectByType<PlantScatter>() != null)
+            gameObject.AddComponent<ClimbableFlora>();
+        var oct = new OctopusCreature(sp, probe, upAt, position, rotation, inst.sizeScale, seed, hints);
+        if (bounds.HasValue)
+        {
+            EnclosureArea a = bounds.Value;
+            oct.Brain.EnclosureCentre = a.center;
+            oct.Brain.EnclosureRadius = a.radius;
+            oct.Brain.HeightCap = a.maxHeight > 0f ? a.maxHeight : float.PositiveInfinity;
+        }
+        AddBody(oct, inst);
+        return oct;
+    }
+
     // Removes a creature: no longer ticked or drawn. False if it is not in this world.
     public bool Despawn(CreatureSim sim)
     {

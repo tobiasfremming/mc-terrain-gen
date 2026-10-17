@@ -49,6 +49,7 @@ public sealed class OctopusBody
     // infeasible pull) lets go, instead of tearing the lattice. The arm agent (phase B) takes this over.
     public bool ReleaseOverloadedPins = true;
     public const float OverloadRelease = 1.02f;
+    public int OverloadReleases;   // cumulative: grips the body tore loose
 
     public OctopusBody(CephalopodSpec spec, Vector3 position, Quaternion rotation, float sizeScale = 1f)
     {
@@ -314,7 +315,7 @@ public sealed class OctopusBody
         for (int a = 0; a < ArmCount; a++)
         {
             TentacleChain ch = Arms[a];
-            if (ReleaseOverloadedPins && ch.Overload > OverloadRelease && ch.OverloadedPin > 0) ch.Unpin(ch.OverloadedPin);
+            if (ReleaseOverloadedPins && ch.Overload > OverloadRelease && ch.OverloadedPin > 0) { ch.Unpin(ch.OverloadedPin); OverloadReleases++; }
             SyncRoot(a);
             ch.EndSubStep(h);
         }

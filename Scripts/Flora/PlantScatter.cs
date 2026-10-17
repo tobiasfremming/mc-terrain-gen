@@ -739,6 +739,24 @@ public class PlantScatter : MonoBehaviour
         }
     }
 
+    // The skeleton of a scattered plant (species index and variant as GetClimbables reports them), plant-local
+    // (apply the instance's trs). Perception and planning only - never a contact surface. Null when the
+    // species' prototype set has no source grammar. Append-only API (tree octopus branch hints).
+    public LSkeleton GetSkeleton(int species, int variant)
+    {
+        if (species < 0 || species >= _table.Length) return null;
+        PlantSpecies sp = _table[species].sp;
+        return sp != null ? PlantSkeletons.For(sp.prototypes, variant) : null;
+    }
+
+    // The profile a scattered species was baked from (null if unknown). Append-only API.
+    public PlantProfile ProfileOf(int species)
+    {
+        if (species < 0 || species >= _table.Length) return null;
+        PlantSpecies sp = _table[species].sp;
+        return sp != null && sp.prototypes != null ? sp.prototypes.source : null;
+    }
+
     // ---- background building ------------------------------------------------
 
     void EnsureWorkers()
