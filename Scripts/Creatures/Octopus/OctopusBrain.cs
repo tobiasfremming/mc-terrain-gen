@@ -25,6 +25,13 @@ public sealed class OctopusBrain
     public const float PerceptionSeconds = 0.2f;
     public const float ConeDeg = 270f;
     public const float WatchedAngleDeg = 15f, WatchedRange = 12f;
+    // Watched has hysteresis and a minimum hold: it starts inside 15 deg / 12 m, ends only outside 25 deg /
+    // 14 m, and neither state changes within WatchedHoldSeconds of the last change - a gaze wandering over the
+    // cone's edge flipped it (and the freeze and the cloak with it) every few frames: the "glitching" cloak.
+    public const float WatchedExitAngleDeg = 25f, WatchedExitRange = 14f, WatchedHoldSeconds = 2f;
+    // The cloak: its target is held CloakHoldSeconds before it may change (a retreat's cloak is exempt: it is
+    // the answer to a threat), and the value ramps at CloakRate per second (full range in ~0.5 s), never steps.
+    public const float CloakHoldSeconds = 2f, CloakRate = 2f;
 
     public State Mode { get; private set; }
     public float StateTime { get; private set; }
@@ -49,6 +56,7 @@ public sealed class OctopusBrain
 
     uint rng;
     float nextPerception, nextExplore, calmUntil, lastSeenTime = -100f, strikeAt;
+    float watchedChanged = -100f, cloakGoal, cloakGoalChanged = -100f, time;
     Vector3 lastVel, goal;
     bool seen;
 
@@ -67,6 +75,7 @@ public sealed class OctopusBrain
     public void Tick(float dt, OctopusController c)
     {
         StateTime += dt;
+        time = c.Time;
         c.EnclosureCentre = EnclosureCentre; c.EnclosureRadius = EnclosureRadius;
         float L = c.Body.Arms[0].Length;
         Vector3 head = c.Body.HeadCentre;
@@ -200,12 +209,19 @@ public sealed class OctopusBrain
 
     void UpdateWatched(Vector3 head)
     {
-        Watched = false;
-        if (!ViewerValid) return;
-        Vector3 d = head - ViewerPosition;
-        float dist = d.magnitude;
-        if (dist > WatchedRange || dist < 1e-3f) return;
-        Watched = Vector3.Angle(ViewerForward, d) < WatchedAngleDeg;
+        bool raw;
+        if (!ViewerValid) raw = false;
+        else
+        {
+            Vector3 d = head - ViewerPosition;
+            float dist = d.magnitude;
+            float ang = dist < 1e-3f ? 180f : Vector3.Angle(ViewerForward, d);
+            raw = Watched ? dist <= WatchedExitRange && ang <= WatchedExitAngleDeg
+                          : dist <= WatchedRange && ang < WatchedAngleDeg;
+        }
+        if (raw == Watched || time - watchedChanged < WatchedHoldSeconds) return;
+        Watched = raw;
+        watchedChanged = time;
     }
 
     // ------------------------------------------------------------------ look
@@ -221,7 +237,9 @@ public sealed class OctopusBrain
             case State.Retreat: chromaTarget = 0.2f; cloakTarget = Flash > 0.05f ? 0f : 1f; break;
             case State.CanopyRest: chromaTarget = 0.3f + 0.25f * Mathf.Sin(0.13f * StateTime); break;
         }
-        Cloak = Mathf.MoveTowards(Cloak, cloakTarget, dt * (cloakTarget > Cloak ? 1.5f : 0.6f));
+        bool threat = Mode == State.Retreat;
+        if (cloakTarget != cloakGoal && (threat || time - cloakGoalChanged >= CloakHoldSeconds)) { cloakGoal = cloakTarget; cloakGoalChanged = time; }
+        Cloak = Mathf.MoveTowards(Cloak, cloakGoal, dt * CloakRate);
         Chroma = Mathf.MoveTowards(Chroma, chromaTarget, dt * 1.2f);
         Flash = Mathf.MoveTowards(Flash, 0f, dt / 0.3f);
         // passing clouds run faster when stalking

@@ -143,13 +143,10 @@ public sealed class OctopusController
 
         gripPlanned = false;
         Brain?.Tick(dt, this);
-        DbgPhase?.Invoke("start");
         for (int a = 0; a < Agents.Length; a++) Agents[a].Tick(dt, this);
-        DbgPhase?.Invoke("agents");
         RestRelax();
         bool wasAsleep = Body.Asleep;
         Body.Tick(dt);
-        DbgPhase?.Invoke("body");
         if (Body.Asleep && wasAsleep)
         {
             // asleep: nothing moves, so contact neither changes nor ages - the planes holding the parts that
@@ -168,7 +165,6 @@ public sealed class OctopusController
             // inside the surface, and show as a jump the moment the octopus falls asleep)
             if (Body.Asleep) Body.ResnapSleep();
         }
-        DbgPhase?.Invoke("planes");
         RememberMotion();
 
         QueriesThisFrame = queries;
@@ -181,10 +177,10 @@ public sealed class OctopusController
     // curled arms have (TentacleAgent.RestRelaxRate), so the last swing on the holds dies out in a second or
     // two and the body can fall asleep. Off again the moment any arm does anything else.
     public bool Settled { get; private set; }
-    public static float BendMax = 0.12f;       // x arm length: thicker surfaces keep flat contact planes
+    public const float BendMax = 0.12f;       // x arm length: thicker surfaces keep flat contact planes
     public float NextRestRelease;              // a settled rest lets go of a taut spare hold at most this often
-    public static float RestHoldTone = 0.5f;
-    public static float RestSlack = 1.06f;      // a holding arm's free run's length target in a settled rest   // a holding arm's muscle tone in a settled rest (relaxed)
+    public const float RestHoldTone = 0.5f;
+    public const float RestSlack = 1.06f;      // a holding arm's free run's length target in a settled rest   // a holding arm's muscle tone in a settled rest (relaxed)
 
     void RestRelax()
     {
@@ -203,8 +199,8 @@ public sealed class OctopusController
             if (Agents[a].Mode == TentacleAgent.State.Anchored)
             {
                 if (Body.Arms[a].ExtraDamping != want) Body.Arms[a].ExtraDamping = want;
-                if (settled && (Dbg & 64) == 0) Body.Arms[a].Tone = RestHoldTone;
-                if (settled && (Dbg & 128) == 0)
+                if (settled) Body.Arms[a].Tone = RestHoldTone;
+                if (settled)
                 {
                     // and lets its run go a little slack: holds taken one by one never agree exactly, and eight
                     // taut runs pulling against each other set the solver ringing (a 2-tick flicker at the roots)
@@ -298,9 +294,8 @@ public sealed class OctopusController
             if (!(r > 0f) || r > BendMax * Body.Arms[0].Length || (d - dn * r).sqrMagnitude > 0.09f * r * r + 1e-4f * Body.SizeScale * Body.SizeScale) continue;
             ax *= 1f / Mathf.Sqrt(al2);
             if (r < bend) { bend = r; axis = ax; }
-            if ((Dbg & 1) == 0 && r < planes[i].bend) { planes[i].bend = r; planes[i].axis = ax; }
+            if (r < planes[i].bend) { planes[i].bend = r; planes[i].axis = ax; }
         }
-        if ((Dbg & 1) != 0) bend = float.PositiveInfinity;
         planes[slot] = new Plane { point = h.point, normal = nn, axis = axis, until = Time + PlaneSeconds, radius = radius, bend = bend, owner = owner };
         if (OctoMath.Dot(h.normal, Up) > 0.5f) groundedUntil = Time + 0.5f;
     }
@@ -435,7 +430,7 @@ public sealed class OctopusController
             }
         }
         float until = Time + PlaneSeconds;
-        for (int i = 0; i < planeCount; i++) if ((Dbg & 2) == 0 && planeTouched[i] && planes[i].until < until) planes[i].until = until;
+        for (int i = 0; i < planeCount; i++) if (planeTouched[i] && planes[i].until < until) planes[i].until = until;
     }
 
     // lattice: the particle's index; it is pushed out of another particle's plane only if it was in front of
@@ -453,8 +448,6 @@ public sealed class OctopusController
     // as long as the touch does. Letting a plane in use lapse every PlaneSeconds dropped the particle on it
     // into the bark until a probe or the sweep found the surface again, then threw it back out - a perched
     // octopus twitched forever and never slept.
-    public static int Dbg;
-    public static Action<string> DbgPhase;
     const float kTouch = 1.5f, kStatic = 1f;
     readonly bool[] planeTouched = new bool[MaxPlanes];
 
@@ -490,7 +483,7 @@ public sealed class OctopusController
                 // well clear, or far behind the plane (the other side of a branch): not this plane's business
                 if (h >= kTouch * clearance || h < -4f * clearance - 0.3f * Body.SizeScale) continue;
                 if ((rel - n * h).sqrMagnitude > pl.radius * pl.radius) continue;   // outside the plane's patch
-                if ((Dbg & 16) == 0 && arm >= 0 && havePrev && arm < frameArms.Length && OctoMath.Dot(frameArms[arm] - pl.point, n) < -clearance) continue;
+                if (arm >= 0 && havePrev && arm < frameArms.Length && OctoMath.Dot(frameArms[arm] - pl.point, n) < -clearance) continue;
             }
             if (lattice >= 0 && pl.owner != lattice && havePrev && OctoMath.Dot(frameLattice[lattice] - pl.point, pl.normal) < -clearance) continue;
             // a resting touch keeps the plane alive; one that has to shove the particle hard every tick is fighting
@@ -507,7 +500,7 @@ public sealed class OctopusController
             // static friction (Coulomb, mu = kStatic): a particle pressed onto the surface does not creep along
             // it - its slide over this tick, if smaller than kStatic x the press, is taken back. Without it a
             // loaded hold crept a few mm/s for ever under the body's weight and the octopus never slept.
-            if ((Dbg & 32) == 0 && havePrev && (lattice >= 0 || arm >= 0) && (arm < 0 || arm < frameArms.Length))
+            if (havePrev && (lattice >= 0 || arm >= 0) && (arm < 0 || arm < frameArms.Length))
             {
                 Vector3 start = lattice >= 0 ? frameLattice[lattice] : frameArms[arm];
                 Vector3 slide = x - start;

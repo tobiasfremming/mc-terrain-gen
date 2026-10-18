@@ -273,7 +273,7 @@ public sealed class TentacleChain
 
         // the muscles follow a new shape over ~1/ShapeRate s instead of at once: a target switched in one step
         // (curl -> feel, a new reach) flicked the arm at up to 14 m/s for a few frames, the visible whip
-        float follow = (OctopusController.Dbg & 8) != 0 ? 1f : 1f - MathF.Exp(-ShapeRate * h / MathF.Sqrt(SizeScale));
+        float follow = 1f - MathF.Exp(-ShapeRate * h / MathF.Sqrt(SizeScale));
         for (int j = 0; j < N - 1; j++)
         {
             Vector3 m = muscleBend[j], g = BendTarget[j];

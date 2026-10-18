@@ -164,10 +164,50 @@ namespace TerrainGen.Tests
             Assert.Greater(stalking, 30, "never stalked");
             Assert.Greater(frozen, 30, "did not freeze while watched");
             Assert.That(brain.Cloak, Is.InRange(0.45f, 0.7f), "partial cloak while watched");
-            brain.ViewerForward = -brain.ViewerForward;   // the player looks away
-            for (int f = 0; f < 60; f++) { prey.Step(Dt); c.Tick(Dt); }
+            brain.ViewerForward = -brain.ViewerForward;   // the player looks away (watched holds >= 2 s)
+            for (int f = 0; f < 150; f++) { prey.Step(Dt); c.Tick(Dt); }
             Assert.IsFalse(brain.Watched);
             Assert.AreEqual(OctoMode.Stalk, c.Intent.mode, "still frozen after the player looked away");
+        }
+
+        // User report: "it turns basically invisible sometimes, in a way that looks like it's glitching". A 60 s
+        // stalk with a viewer whose gaze wanders across the watched cone's edge every frame (a player looking
+        // around): being watched holds for at least 2 s with hysteresis, the cloak ramps (no step faster than
+        // ~0.5 s for the full range) and settles - few reversals, never per-frame noise.
+        [Test] public void Cloak_NoFlicker_WhileStalked()
+        {
+            OctopusController c = Rig(Canopy(), new Vector3(0f, 2.0f, 0f), out OctopusBody body, out OctopusBrain brain);
+            c.AnchorNearby();
+            for (int f = 0; f < 60; f++) c.Tick(Dt);
+            var prey = new TestPrey { Pos = body.HeadCentre + new Vector3(0f, -1.8f, 3.5f), Vel = new Vector3(0.05f, 0f, 0f), Grabbable = false };
+            brain.Prey.Add(prey);
+            brain.ViewerValid = true;
+            brain.ViewerPosition = body.HeadCentre + new Vector3(0f, -1f, 6f);
+            uint rng = 12345u;
+            int watchFlips = 0, reversals = 0, stalking = 0; bool lastW = false; float lastCloak = brain.Cloak, lastSign = 0f, maxRate = 0f;
+            for (int f = 0; f < 60 * 60; f++)
+            {
+                // the gaze: around the octopus, wandering 0-30 deg off it, with per-frame jitter
+                rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+                float jitter = ((rng & 0xFFFF) / 65535f - 0.5f) * 8f;
+                float off = 15f + 12f * Mathf.Sin(f * Dt * 0.7f) + jitter;
+                Vector3 toOct = (body.HeadCentre - brain.ViewerPosition).normalized;
+                float ca = Mathf.Cos(off * Mathf.Deg2Rad), sa = Mathf.Sin(off * Mathf.Deg2Rad);
+                brain.ViewerForward = new Vector3(ca * toOct.x + sa * toOct.z, toOct.y, -sa * toOct.x + ca * toOct.z);
+                prey.Step(Dt);
+                c.Tick(Dt);
+                if (brain.Mode == OctopusBrain.State.Stalk) stalking++;
+                if (brain.Watched != lastW) { watchFlips++; lastW = brain.Watched; }
+                float d = brain.Cloak - lastCloak;
+                maxRate = Mathf.Max(maxRate, Mathf.Abs(d) / Dt);
+                if (Mathf.Abs(d) > 1e-5f) { float sg = Mathf.Sign(d); if (lastSign != 0f && sg != lastSign) reversals++; lastSign = sg; }
+                lastCloak = brain.Cloak;
+            }
+            TestContext.Out.WriteLine($"stalking {stalking} frames, watched flips {watchFlips}, cloak reversals {reversals}, max |dcloak/dt| {maxRate:F2}/s, mode {brain.Mode}");
+            Assert.Greater(stalking, 60 * 20, "the test does not bite: it hardly stalked");
+            Assert.LessOrEqual(watchFlips, 30, "watched flickers (60 s / 2 s minimum hold)");
+            Assert.LessOrEqual(reversals, 16, "the cloak keeps reversing");
+            Assert.LessOrEqual(maxRate, 2.05f, "the cloak steps");
         }
 
         // Dropped beside a tree onto the ground: it lands (impact squash), crawls to the trunk and climbs back

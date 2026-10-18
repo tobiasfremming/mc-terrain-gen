@@ -178,7 +178,9 @@ Shader "MarchingCubes/CreatureOctopus"
 
                 // cloak first: survivors only pay for the rest
                 float glint = 0.0;
-                if (i.inst.w > 0.0) glint = CreatureCloak(i.inst.w, i.positionCS.xy, CreatureValueNoise(P * 5.0, 0x2545F491u));
+                // coarse surface patches (P x 2: hand-sized at scale 1) so a partial cloak reads as deliberate camouflage
+                // blotches riding on the skin, not a fine speckle
+                if (i.inst.w > 0.0) glint = CreatureCloak(i.inst.w, i.positionCS.xy, CreatureValueNoise(P * 2.0, 0x2545F491u));
 
                 // --- counter-shaded base: pale oral side, warm flanks, dark aboral side
                 float dorsal = uv1.y + 0.25 * (CreatureValueNoise(P * 7.0, 0x7FEB352Du) - 0.5) * 2.0;
