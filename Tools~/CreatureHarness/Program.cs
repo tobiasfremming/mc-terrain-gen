@@ -36,15 +36,13 @@ public static class Program
     static readonly Dictionary<string, string> kKnown = new Dictionary<string, string>
     {
         { "CreatureMonitorTests.Monitor_TightTurn_LegsClearTheTrunk",
-          "offline: drift at wander seed 3 t=3208 of a 60 s run; fails the same on a7665f2 (before the legs merge); PASSES in Unity 2026-10-18" },
+          "offline: drift at wander seed 2 t=1683 of a 60 s run (seed 3 t=3208 before the CreatureSim swing guard); fails the same on a7665f2 (before the legs merge); PASSES in Unity 2026-10-18 (recheck after the swing guard)" },
         { "CreatureMonitorTests.Monitor_MaxBend_NoInvertedTriangles",
           "offline: one near-zero triangle (-2e-6) at t=324; fails the same on a7665f2; PASSES in Unity 2026-10-18" },
         { "CreatureKitTests(DesertMonitor).MaxBend",
           "offline: the same near-zero triangle as Monitor_MaxBend_NoInvertedTriangles; PASSES in Unity 2026-10-18" },
         { "CreatureKitTests(KitMonitor).MaxBend",
           "offline: KitMonitor is DesertMonitor in the kit format (bit-identical): the same near-zero triangle 3356 at t=324" },
-        { "CreatureKitTests(WingedSerpent).Gait",
-          "finding: a hind foot at full reach (0.999) is dragged 0.5-5.5 mm while the gait throttle holds the body at 0 (weave t=7.2..13.7 s); fails in Unity 2026-10-18 too (weave t=3.60: foot 3 slid 0.574 mm)" },
         { "CreatureKitTests(WingedSerpent).Size",
           "offline: stop-go walk (throttle 0 on ~25 %) makes the motion chaotic: 0.9x/1.1x distance 6 % apart; PASSES in Unity 2026-10-18" },
         { "CreatureKitTests(TestHexapod).Size",

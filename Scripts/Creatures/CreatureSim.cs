@@ -13,6 +13,16 @@ public sealed class CreatureSim
     const float kSwayFull = 0.75f;  // girdle reach difference (leg lengths) that gives full sway
     const float kSwayTau = 0.08f;   // smoothing of the sway and roll signals, seconds
     const int kRollSpread = 3;      // a girdle's roll fades out over this many joints each way
+    // Swing guard: the legs assume the spine only moves by travelling (follow-the-leader). A chain coiled against
+    // its bend cones and turned through a rigid neck amplifies the turn down the body instead (a 1 deg head turn
+    // in place swung the winged serpent's hips 25-50 mm and 10-15 deg in a tick: its short hind legs could not
+    // step while the other gait group was in the air, so the IK dragged a planted foot and folded the leg root).
+    // Walking, a sub-step that would move a girdle further than (kSwingTravel x max(speed, top speed) +
+    // kSwingCreep x size) x dt is retried with its turn halved, then none, then (the last try) held still.
+    // Every legacy species walks within 0.75 of the bound in the golden runs (bit-identical); the monitor's
+    // tight-turn wander reaches it on ~10 sub-steps a minute (its own, milder whip).
+    const float kSwingTravel = 2f, kSwingCreep = 0.1f;
+    const int kSwingTries = 4;
     const float kRunLo = 0.25f, kRunHi = 0.6f; // climbing: segment run/length below which its plane direction fades out
     const int kPitchPasses = 4;     // pitch-fold limiter passes (each followed by a length restore)
 
@@ -41,6 +51,7 @@ public sealed class CreatureSim
     readonly Vector3[] pathUp;       // up at each path joint, from the grounding pass (the next chain step reads it)
     // The follow-the-leader body path (chain + ground). Joints is this path with the gait sway applied.
     internal readonly Vector3[] Path;
+    readonly Vector3[] pathStart;    // swing guard: the path before this sub-step's chain step
     readonly int[] girdles;          // attach joints with legs on both sides, ascending
     readonly float[] swaySignal, rollSignal, swayAmp; // per girdle: smoothed -1..1 signals, amplitude (m)
     readonly float[] swayY, rollDeg; // per joint: lateral offset (m, +right) and roll (deg)
@@ -112,6 +123,7 @@ public sealed class CreatureSim
             Joints[i] = g + u * clear;
         }
         Path = (Vector3[])Joints.Clone();
+        pathStart = new Vector3[n];
         pitchLift = new float[n];
         swayY = new float[n]; rollDeg = new float[n];
         girdles = FindGirdles(sp);
@@ -205,7 +217,8 @@ public sealed class CreatureSim
         Vector3 to = target - head;
         float dist = to.magnitude;
         Vector3 desired = Vector3.ProjectOnPlane(to, up);
-        float turnAngle = 0f;
+        float turnAngle = 0f, turned = 0f;
+        Vector3 heading0 = heading;
         if (desired.sqrMagnitude > 1e-10f)
         {
             desired.Normalize();
@@ -218,7 +231,8 @@ public sealed class CreatureSim
             // Turning in place swings the rigid head and drags the front of the body, so a leg at its
             // stretch or joint-range limit throttles the turn as well as the speed.
             float maxTurn = sp.turnRateDeg / TimeScale * dt * legs.Throttle;
-            heading = Quaternion.AngleAxis(Mathf.Clamp(ang, -maxTurn, maxTurn), up) * heading;
+            turned = Mathf.Clamp(ang, -maxTurn, maxTurn);
+            heading = Quaternion.AngleAxis(turned, up) * heading;
         }
         float want = Mathf.Min(maxSpeed, 2.5f * dist) * (1f - sp.turnSlowdown * turnAngle / 180f);
         // A creature cannot outrun its legs: the gait caps the speed, and slows it when a planted foot
@@ -236,57 +250,29 @@ public sealed class CreatureSim
         Speed = (head - start).magnitude / dt;
         Path[0] = head;
 
-        // 2. chain. The bend cone and the rigid joints act on the segments' directions along the ground
-        // (the lizard's lateral bending); each segment keeps its own pitch from the last sub-step, so the
-        // chain never flattens what the ground set (R25: a rigid neck copied the level heading, and the
-        // grounding then stretched it over any drop). Lengths are exact.
+        // 2. chain (Chain), then the swing guard (kSwingTravel)
         float seg = sp.spacing * SizeScale;
-        Vector3 prevBack = -heading;
         SpineJoint[] js = sp.joints;
-        for (int i = 1; i < n; i++)
+        bool guard = !climbing && girdles.Length > 0;
+        if (guard) Array.Copy(Path, pathStart, n);
+        Chain(seg, climbing);
+        if (guard)
         {
-            Vector3 a = Path[i - 1], u = pathUp[i];
-            Vector3 v = Path[i] - a;
-            float rise = u.x * v.x + u.y * v.y + u.z * v.z;
-            var hv = new Vector3(v.x - u.x * rise, v.y - u.y * rise, v.z - u.z * rise);
-            float run = Mathf.Sqrt(hv.x * hv.x + hv.y * hv.y + hv.z * hv.z);
-            // the previous segment's ground direction, in this joint's tangent plane (it already is on a flat world)
-            Vector3 pb;
-            if (climbing)
+            float bound = (kSwingTravel * Mathf.Max(Speed, sp.speed * TimeScale) + kSwingCreep * SizeScale) * dt;
+            float f = 1f;
+            for (int tryNo = 0; tryNo < kSwingTries && GirdleSwing() > bound; tryNo++)
             {
-                // the previous direction lies in joint i-1's tangent plane: carry it over to joint i's (a plain
-                // projection is ill-conditioned where the body turns up a wall and loses its lateral sense)
-                pb = SurfaceMath.Transport(prevBack, pathUp[i - 1], u);
-                float q = pb.x * u.x + pb.y * u.y + pb.z * u.z;
-                pb = Norm(new Vector3(pb.x - u.x * q, pb.y - u.y * q, pb.z - u.z * q), prevBack);
+                // the turn is halved first (it is what whips the coil), the advance only on the last try
+                bool last = tryNo + 1 == kSwingTries;
+                f = last || tryNo + 2 == kSwingTries ? 0f : 0.5f * f;
+                Array.Copy(pathStart, Path, n);
+                heading = Quaternion.AngleAxis(turned * f, up) * heading0;
+                head = start + heading * (commanded * dt * (last ? 0f : 1f));
+                if (Bounds.HasValue) head = Bounds.Value.ClampToSafe(head);
+                Speed = (head - start).magnitude / dt;
+                Path[0] = head;
+                Chain(seg, climbing);
             }
-            else
-            {
-                float pu = prevBack.x * u.x + prevBack.y * u.y + prevBack.z * u.z;
-                pb = pu * pu < 1e-10f ? prevBack : Norm(new Vector3(prevBack.x - u.x * pu, prevBack.y - u.y * pu, prevBack.z - u.z * pu), prevBack);
-            }
-            Vector3 d;
-            if (js[i].rigid || run < 1e-6f) d = pb;
-            else
-            {
-                d = hv / run;
-                // climbing: a segment nearly along this joint's up (over an edge the up turns faster than the body
-                // can bend) has no reliable direction in the joint's plane - keep the previous one there
-                if (climbing)
-                {
-                    float steepness = run / Mathf.Max(1e-6f, Mathf.Sqrt(run * run + rise * rise));
-                    float trust = SurfaceMath.SmoothStep(kRunLo, kRunHi, steepness);
-                    if (trust < 1f) d = Norm(pb + (d - pb) * trust, pb);
-                }
-                // the bend cone: only a direction past the limit is turned back onto it
-                float lim = js[i].bendLimitDeg * Mathf.Deg2Rad;
-                if (pb.x * d.x + pb.y * d.y + pb.z * d.z < Mathf.Cos(lim))
-                    d = Vector3.RotateTowards(pb, d, lim, 0f);
-            }
-            float len = Mathf.Sqrt(run * run + rise * rise);
-            float sp1 = len > 1e-6f ? rise / len : 0f, cp = len > 1e-6f ? run / len : 1f;
-            Path[i] = new Vector3(a.x + (d.x * cp + u.x * sp1) * seg, a.y + (d.y * cp + u.y * sp1) * seg, a.z + (d.z * cp + u.z * sp1) * seg);
-            prevBack = d;
         }
 
         // 3. ground: smooth height offset and normal; hold on probe miss. Climbing: along each joint's own up,
@@ -368,6 +354,73 @@ public sealed class CreatureSim
 
     // The gait bob's current height offset of the body (m, + up); 0 without gaitBob.
     public float BobOffset => bobY;
+
+    // 2. chain. The bend cone and the rigid joints act on the segments' directions along the ground
+    // (the lizard's lateral bending); each segment keeps its own pitch from the last sub-step, so the
+    // chain never flattens what the ground set (R25: a rigid neck copied the level heading, and the
+    // grounding then stretched it over any drop). Lengths are exact.
+    void Chain(float seg, bool climbing)
+    {
+        Vector3 prevBack = -heading;
+        SpineJoint[] js = Species.joints;
+        for (int i = 1; i < n; i++)
+        {
+            Vector3 a = Path[i - 1], u = pathUp[i];
+            Vector3 v = Path[i] - a;
+            float rise = u.x * v.x + u.y * v.y + u.z * v.z;
+            var hv = new Vector3(v.x - u.x * rise, v.y - u.y * rise, v.z - u.z * rise);
+            float run = Mathf.Sqrt(hv.x * hv.x + hv.y * hv.y + hv.z * hv.z);
+            // the previous segment's ground direction, in this joint's tangent plane (it already is on a flat world)
+            Vector3 pb;
+            if (climbing)
+            {
+                // the previous direction lies in joint i-1's tangent plane: carry it over to joint i's (a plain
+                // projection is ill-conditioned where the body turns up a wall and loses its lateral sense)
+                pb = SurfaceMath.Transport(prevBack, pathUp[i - 1], u);
+                float q = pb.x * u.x + pb.y * u.y + pb.z * u.z;
+                pb = Norm(new Vector3(pb.x - u.x * q, pb.y - u.y * q, pb.z - u.z * q), prevBack);
+            }
+            else
+            {
+                float pu = prevBack.x * u.x + prevBack.y * u.y + prevBack.z * u.z;
+                pb = pu * pu < 1e-10f ? prevBack : Norm(new Vector3(prevBack.x - u.x * pu, prevBack.y - u.y * pu, prevBack.z - u.z * pu), prevBack);
+            }
+            Vector3 d;
+            if (js[i].rigid || run < 1e-6f) d = pb;
+            else
+            {
+                d = hv / run;
+                // climbing: a segment nearly along this joint's up (over an edge the up turns faster than the body
+                // can bend) has no reliable direction in the joint's plane - keep the previous one there
+                if (climbing)
+                {
+                    float steepness = run / Mathf.Max(1e-6f, Mathf.Sqrt(run * run + rise * rise));
+                    float trust = SurfaceMath.SmoothStep(kRunLo, kRunHi, steepness);
+                    if (trust < 1f) d = Norm(pb + (d - pb) * trust, pb);
+                }
+                // the bend cone: only a direction past the limit is turned back onto it
+                float lim = js[i].bendLimitDeg * Mathf.Deg2Rad;
+                if (pb.x * d.x + pb.y * d.y + pb.z * d.z < Mathf.Cos(lim))
+                    d = Vector3.RotateTowards(pb, d, lim, 0f);
+            }
+            float len = Mathf.Sqrt(run * run + rise * rise);
+            float sp1 = len > 1e-6f ? rise / len : 0f, cp = len > 1e-6f ? run / len : 1f;
+            Path[i] = new Vector3(a.x + (d.x * cp + u.x * sp1) * seg, a.y + (d.y * cp + u.y * sp1) * seg, a.z + (d.z * cp + u.z * sp1) * seg);
+            prevBack = d;
+        }
+    }
+
+    // Swing guard: the largest distance a girdle's path joint moved in this sub-step's chain step.
+    float GirdleSwing()
+    {
+        float worst = 0f;
+        for (int g = 0; g < girdles.Length; g++)
+        {
+            int j = girdles[g];
+            worst = Mathf.Max(worst, (Path[j] - pathStart[j]).sqrMagnitude);
+        }
+        return Mathf.Sqrt(worst);
+    }
 
     void UpdateFrames()
     {

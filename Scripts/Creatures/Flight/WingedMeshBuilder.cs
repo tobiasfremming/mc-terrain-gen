@@ -381,7 +381,7 @@ public static class WingedMeshBuilder
                     Grid(first, sn);
                 }
             }
-            HumerusPatch(w, st, chord, bone[MembraneZones], sectorN);
+            HumerusPatch(w, st, chord, WingBoneLayout.WingBone(n, legs, w, WingBoneLayout.HumerusPatch), sectorN);
         }
 
         // winding: front faces along sn; row 0 is a pole (one triangle per quad)
@@ -401,15 +401,13 @@ public static class WingedMeshBuilder
                 }
         }
 
-        // The membrane between the humerus and the flank: a fan from the elbow, which both of its bones carry
-        // exactly, between the arm zone's far edge (elbow -> rear flank attach, on the arm sector) and the
-        // humerus, out to the flank (rear flank attach -> shoulder). Rows run out from the elbow (row 0, the
-        // pole) through the arm zone's far-edge points, so the two share that edge vertex for vertex; columns
-        // are spaced evenly in angle and blend the arm sector into the humerus by that angle, as the wrist's
-        // fan zones do.
-        void HumerusPatch(int w, WingState st, Vector3[] chord, int armRib, Vector3 nz)
+        // The membrane between the humerus and the flank: a fan from the elbow between the arm zone's far edge
+        // (elbow -> rear flank attach, on the arm sector) and the humerus, out to the flank (rear flank attach ->
+        // shoulder). Rows run out from the elbow (row 0, the pole) through the arm zone's far-edge points, so the
+        // two share that edge vertex for vertex; columns are spaced evenly in angle. All of it rides the humerus
+        // patch bone (CreatureWings.HumerusPatch), exact on that triangle, so both shared edges stay exact.
+        void HumerusPatch(int w, WingState st, Vector3[] chord, int patchBone, Vector3 nz)
         {
-            int hum = WingBoneLayout.LegBone(n, wings[w].leg, 0);
             Vector3 E = st.elbow, W = st.wrist;
             Vector3 A = chord[0] - E, B = st.shoulder - E;           // to the rear flank attach, to the shoulder
             float la = A.magnitude, lb = B.magnitude;
@@ -435,7 +433,7 @@ public static class WingedMeshBuilder
                         float reach = th > 1e-4f && den > 1e-6f ? la * lb * Mathf.Sin(th) / den : Mathf.Lerp(la, lb, u);
                         Vector3 dir = th > 1e-4f ? (Mathf.Sin(th - ph) * da + Mathf.Sin(ph) * db) / Mathf.Sin(th) : da;
                         Vector3 p = i == 0 ? chord[rows - j] : E + dir * (reach * v);
-                        Vector4 skin = Blend(armRib, hum, u);
+                        Vector4 skin = Rigid(patchBone); // exact on the elbow, rear attach, shoulder triangle
                         Vertex(p, sg * (i == 0 ? nz : np), (p - W).magnitude, (MembraneZones - u) / MembraneZones, PartMembrane, sg * (0.1f + 0.9f * v), skin);
                     }
                 }

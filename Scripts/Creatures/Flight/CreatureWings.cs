@@ -52,6 +52,8 @@ public sealed class CreatureWings
     public readonly Vector3[] ArmRibUp, PatchUp;
     public readonly float[] RearJoint;
     readonly float[] armSign, patchSign;
+    readonly float[] groundWeight;         // per wing: how far the current pose is the ground pose (groundLiftDeg)
+    readonly float[] flankRise;            // per wing: this pose's flank attach rise (groundFlankRise x ground x fold^2)
     readonly float[] ribRestLength;        // in the rest pose at scale 1
 
     public CreatureWings(CreatureSpecies sp, WingSpec[] wings, Vector3[] joints, Quaternion[] rotations, float scale = 1f)
@@ -69,7 +71,8 @@ public sealed class CreatureWings
         RibTarget = new Vector3[c * WingSpec.Ribs]; RibLength = new float[c * WingSpec.Ribs];
         ribRestLength = new float[c * WingSpec.Ribs];
         ArmRibUp = new Vector3[c]; PatchUp = new Vector3[c]; RearJoint = new float[c];
-        armSign = new float[c]; patchSign = new float[c];
+        armSign = new float[c]; patchSign = new float[c]; groundWeight = new float[c];
+        flankRise = new float[c];
 
         for (int w = 0; w < c; w++)
         {
@@ -240,6 +243,7 @@ public sealed class CreatureWings
         hOut = hOut.sqrMagnitude > 1e-12f ? hOut.normalized : r * (Vector3.right * side[w]);
         Vector3 nw = Rotate(r * Vector3.up, axis, ang);
         if (st.tilt != 0f) nw = Rotate(nw, hOut, side[w] * st.tilt);
+        groundWeight[w] = 0f;
         PoseHand(w, js, rs, sc, nw);
     }
 
@@ -273,6 +277,7 @@ public sealed class CreatureWings
             nw = Vector3.Lerp(nw, nf, Mathf.Clamp01(flightWeight));
         }
         else { st.tilt = 0f; st.angleRate = 0f; }
+        groundWeight[w] = 1f - Mathf.Clamp01(flightWeight);
         PoseHand(w, joints, rotations, scale, nw);
     }
 
@@ -288,6 +293,18 @@ public sealed class CreatureWings
     }
 
     public Vector3 ArmPole(int w) => rotations[attach[w]] * poleLocal[w];
+
+    // The thumb claw's tip (WingedMeshBuilder.Arm: a curved cone off the wrist's leading edge, rigid to the
+    // hand bone), from the current hand frame: what stands on the ground in a wing-walk (groundWristLift).
+    public Vector3 ThumbTip(int w)
+    {
+        ref WingState st = ref State[w];
+        WingSpec ws = specs[w];
+        float rl = Mathf.Max(1e-4f, sp.legs[ws.leg].lowerRadius), len = Mathf.Max(1e-3f, ws.thumbLength);
+        Vector3 x = Vector3.Cross(st.handNormal, st.handOut), fwd = -side[w] * x;
+        Vector3 dir = (fwd * 0.8f + st.handNormal * 0.3f - st.handOut * 0.2f).normalized;
+        return st.wrist + (fwd * (0.6f * rl) + dir * len - st.handNormal * (0.25f * len)) * scale;
+    }
 
     // Back to the spread glide pose's stroke state (a launch): angle 0, no upstroke.
     public void ResetStroke(float fold)
@@ -308,6 +325,7 @@ public sealed class CreatureWings
         Quaternion r = rs[attach[w]];
         Vector3 hOut = wrist - st.elbow;
         hOut = hOut.sqrMagnitude > 1e-12f ? hOut.normalized : r * (Vector3.right * side[w]);
+        flankRise[w] = ws.groundFlankRise * groundWeight[w] * st.fold * st.fold;
 
         // Flank ribs (1: rear attach, 2: front attach) from the wrist to the flank. When the wrist comes in
         // line with the body (an arm reaching far forward in a wing-walk step, the body curled in a turn)
@@ -372,6 +390,30 @@ public sealed class CreatureWings
         if (ho.sqrMagnitude > 1e-8f) hOut = ho.normalized;
         else { nw -= hOut * Vector3.Dot(nw, hOut); nw = nw.sqrMagnitude > 1e-12f ? nw.normalized : r * Vector3.up; }
         Vector3 hBack = side[w] * Vector3.Cross(nw, hOut);
+        // the ground pose's lift (WingSpec.groundLiftDeg): the folded fan turns up about the rear flank rib until
+        // its middle finger rises liftDeg above the girdle's plane; the rib, the flank and the forearm stay put
+        Vector3 nwFlat = nw; // the fan's plane before the lift (the rear flank rib keeps its roll from it)
+        float lift = ws.groundLiftDeg * groundWeight[w] * fw;
+        if (lift > 0f)
+        {
+            Vector3 gu = r * Vector3.up;
+            float a1 = Mathf.Lerp(ws.fingerSpreadDeg[1], ws.fingerFoldDeg[1], st.fold) * Mathf.Deg2Rad;
+            Vector3 d1 = Mathf.Cos(a1) * hOut + Mathf.Sin(a1) * hBack;
+            Vector3 q = d1 - rr * Vector3.Dot(d1, rr);  // in the plane, square to the rib, on the fingers' side
+            if (q.sqrMagnitude > 1e-6f)
+            {
+                q.Normalize();
+                float elev = Mathf.Asin(Mathf.Clamp(Vector3.Dot(q, gu), -1f, 1f)) * Mathf.Rad2Deg;
+                float turn = (lift - elev) * Mathf.Deg2Rad;
+                if (turn > 0f)
+                {
+                    float sgn = Vector3.Dot(Vector3.Cross(rr, q), gu) >= 0f ? 1f : -1f; // the sense that lifts q
+                    nw = Rotate(nw, rr, sgn * turn);
+                    hOut = Rotate(hOut, rr, sgn * turn);
+                    hBack = side[w] * Vector3.Cross(nw, hOut);
+                }
+            }
+        }
         st.handOut = hOut; st.handNormal = nw;
 
         // Fingers fan out in the wing plane. Order invariant: finger k stays at least (4 - k) x gap ahead
@@ -407,7 +449,10 @@ public sealed class CreatureWings
         for (int k = 0; k < WingSpec.Ribs; k++)
         {
             int i = w * WingSpec.Ribs + k;
-            Vector3 u = nw - RibDir[i] * Vector3.Dot(nw, RibDir[i]);
+            // the rear flank rib keeps its roll from the fan's plane before the ground lift: it borders the arm
+            // sector, which the lift does not turn (rolled with the fan, the sector's rib column faced away)
+            Vector3 nk = k == 1 ? nwFlat : nw;
+            Vector3 u = nk - RibDir[i] * Vector3.Dot(nk, RibDir[i]);
             if (u.sqrMagnitude < 1e-10f) u = Vector3.Cross(RibDir[i], hOut);
             RibUp[i] = u.sqrMagnitude > 1e-12f ? u.normalized : Vector3.up;
         }
@@ -445,10 +490,10 @@ public sealed class CreatureWings
     {
         int j0 = Mathf.Clamp((int)joint, 0, js.Length - 1), j1 = Mathf.Min(j0 + 1, js.Length - 1);
         float f = Mathf.Clamp01(joint - j0);
-        float inset = specs[w].membraneInset * sc * side[w];
-        Vector3 p0 = js[j0] + rs[j0] * new Vector3(inset * sp.joints[j0].halfWidth, 0f, 0f);
+        float inset = specs[w].membraneInset * sc * side[w], rise = flankRise[w] * sc;
+        Vector3 p0 = js[j0] + rs[j0] * new Vector3(inset * sp.joints[j0].halfWidth, rise * sp.joints[j0].halfHeight, 0f);
         if (f <= 0f) return p0;
-        Vector3 p1 = js[j1] + rs[j1] * new Vector3(inset * sp.joints[j1].halfWidth, 0f, 0f);
+        Vector3 p1 = js[j1] + rs[j1] * new Vector3(inset * sp.joints[j1].halfWidth, rise * sp.joints[j1].halfHeight, 0f);
         return Vector3.Lerp(p0, p1, f);
     }
 
@@ -491,7 +536,27 @@ public sealed class CreatureWings
                 float stretch = RibLength[i] / Mathf.Max(1e-6f, ribRestLength[i] * scale);
                 dst[b] = Matrix4x4.TRS(st.wrist, Look(RibDir[i], RibUp[i]), Vector3.one * (scale * stretch));
             }
+            dst[offset + sp.WingBone(w, WingBoneLayout.HumerusPatch)] = HumerusPatch(w);
         }
+    }
+
+    // The humerus patch bone (WingBoneLayout.HumerusPatch): an affine frame at the elbow on the rear flank attach,
+    // the shoulder and their plane's normal (x scale). The patch is a fan inside the triangle elbow, rear flank
+    // attach, shoulder, so it maps exactly onto the current triangle: its edge on the arm sector's crease (the
+    // elbow -> rear attach chord, which the sector maps exactly too) and its edge on the humerus. Its normal axis
+    // is the triangle's own (the frame's determinant never changes sign): the patch cannot turn inside out.
+    public Matrix4x4 HumerusPatch(int w)
+    {
+        ref WingState st = ref State[w];
+        Vector3 c0 = RibTarget[w * WingSpec.Ribs + 1] - st.elbow, c1 = st.shoulder - st.elbow;
+        Vector3 cn = Vector3.Cross(c0, c1);
+        Vector3 c2 = (cn.sqrMagnitude > 1e-12f ? cn.normalized : -patchSign[w] * PatchUp[w]) * scale;
+        Vector3 o = st.elbow;
+        var m = Matrix4x4.identity;
+        m.m00 = c0.x; m.m01 = c1.x; m.m02 = c2.x; m.m03 = o.x;
+        m.m10 = c0.y; m.m11 = c1.y; m.m12 = c2.y; m.m13 = o.y;
+        m.m20 = c0.z; m.m21 = c1.z; m.m22 = c2.z; m.m23 = o.z;
+        return m;
     }
 
     // The arm sector bone (WingBoneLayout.ArmRib): an affine frame at the wrist on the rear flank rib (to its

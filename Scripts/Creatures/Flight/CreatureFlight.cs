@@ -48,6 +48,7 @@ public sealed class CreatureFlight
     readonly Vector3[] snapshot;         // touchdown: the body when it touched down
     readonly Vector3[] offset;           // touchdown: hovering pose - grounded pose, eased out
     readonly float[] tuck;               // per leg: 0 walked .. 1 tucked
+    readonly float[] wristLift;          // per wing: the wing-walk's wrist lift (groundWristLift), held for the blends
     bool offsetValid;
 
     public readonly FlightModel Model;
@@ -80,6 +81,7 @@ public sealed class CreatureFlight
         for (int w = 0; w < sp.WingCount; w++) wingLeg[sp.wings[w].leg] = true;
         air = new Vector3[n]; snapshot = new Vector3[n]; offset = new Vector3[n];
         tuck = new float[sp.legs.Length];
+        wristLift = new float[sp.WingCount];
         AirWeight = new float[n];
         Vector3 fwd = sim.Rotations[0] * Vector3.forward;
         Model = new FlightModel(f, scale, sim.Joints[girdle], Vector3.zero, fwd);
@@ -601,15 +603,35 @@ public sealed class CreatureFlight
             ref LegState ls = ref legs[l];
             Vector3 target = Wings.FlightWristTarget(w, out Vector3 shoulder);
             Vector3 legFoot = ls.foot;
-            Vector3 wristTarget = armBlend >= 1f ? target : armBlend <= 0f ? legFoot : Vector3.Lerp(legFoot, target, armBlend);
+            Vector3 legWrist = legFoot;
+            if (armBlend > 0f && wristLift[w] > 0f) // launching / touching down: from the raised wing-walk wrist
+                legWrist += (ls.footNormal.sqrMagnitude > 0.5f ? ls.footNormal : sim.Rotations[specs[l].attachJoint] * Vector3.up) * wristLift[w];
+            Vector3 wristTarget = armBlend >= 1f ? target : armBlend <= 0f ? legFoot : Vector3.Lerp(legWrist, target, armBlend);
             Vector3 sh = armBlend <= 0f ? ls.shoulder : shoulder;
             LegSpec arm = specs[l];
             Vector3 elbow = TwoBoneIK.Solve(sh, wristTarget, arm.upperLength * scale, arm.lowerLength * scale, Wings.ArmPole(w), out Vector3 wrist);
             float fold = Mathf.Max(foldFloor, Wings.State[w].fold);
             if (armBlend <= 0f) { elbow = ls.elbow; wrist = ls.foot; fold = 1f; }
             Wings.PoseBetween(w, sh, elbow, wrist, fold, armBlend);
-            // the arm as the renderer's bounds and the debug view see it
-            ls.shoulder = sh; ls.elbow = elbow; ls.foot = wrist;
+            if (armBlend <= 0f && sp.wings[w].groundWristLift > 0f)
+            {
+                // standing on the thumb claws (WingSpec.groundWristLift): the wrist raised off the foot point until
+                // the thumb's tip is on it, at most groundWristLift (two passes: the hand frame follows the arm)
+                Vector3 fu = ls.footNormal.sqrMagnitude > 0.5f ? ls.footNormal : sim.Rotations[arm.attachJoint] * Vector3.up;
+                float hMax = sp.wings[w].groundWristLift * scale, h = hMax;
+                for (int pass = 0; pass < 2; pass++)
+                {
+                    elbow = TwoBoneIK.Solve(sh, ls.foot + fu * h, arm.upperLength * scale, arm.lowerLength * scale, Wings.ArmPole(w), out wrist);
+                    Wings.PoseBetween(w, sh, elbow, wrist, fold, 0f);
+                    h = Mathf.Clamp(h - Vector3.Dot(Wings.ThumbTip(w) - ls.foot, fu), 0f, hMax);
+                }
+                elbow = TwoBoneIK.Solve(sh, ls.foot + fu * h, arm.upperLength * scale, arm.lowerLength * scale, Wings.ArmPole(w), out wrist);
+                Wings.PoseBetween(w, sh, elbow, wrist, fold, 0f);
+                wristLift[w] = h;
+            }
+            // the arm as the renderer's bounds and the debug view see it (on the ground the foot stays the gait's)
+            ls.shoulder = sh; ls.elbow = elbow;
+            if (armBlend > 0f) ls.foot = wrist;
         }
         Wings.WriteBones(dst, offsetIndex);
 

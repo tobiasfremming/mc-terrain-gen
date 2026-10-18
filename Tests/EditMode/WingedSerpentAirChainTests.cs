@@ -11,10 +11,14 @@ namespace TerrainGen.Tests
     // User feedback 2026-10-18: a deeper downstroke and a bigger bob. The bob is measured over 4-10 s with a
     // 0.75 s high-pass (kBobWindow; was 3.5-7 s and 0.375 s, which ate part of the slower ~2.2 Hz beat):
     // girdle ~0.16 m p-p (0.110 before the change by the same measure).
+    // Second request the same day ("way further down"): the wrist sweeps ~0.96 m down at ~1.3-1.5 Hz; the
+    // high-pass is 1.0 s (kBobWindow 90 -> 120, one slower beat), the girdle bobs ~0.33 m p-p, and with the
+    // bob's wavelength (~3.7 m at 5 m/s) longer than the body the mid-body rides the girdle's path (its bob
+    // ~= the girdle's instead of half of it); the head is held stiller (headStabilise 0.15 -> 0.35 s).
     public class WingedSerpentAirChainTests
     {
         const float H = 1f / 120f;
-        const int kBobWindow = 90;          // high-pass: samples (0.75 s)
+        const int kBobWindow = 120;         // high-pass: samples (1.0 s)
         const float kBobFrom = 4f, kBobTo = 10f;
         readonly List<Object> trash = new List<Object>();
 
@@ -156,8 +160,8 @@ namespace TerrainGen.Tests
             float pg = PeakToPeak(g), pm = PeakToPeak(m), pt = PeakToPeak(t);
             float lag = Lag(g, m, 60);
             TestContext.WriteLine($"bob p-p: girdle {pg:F3} m, mid {pm:F3}, tail {pt:F3}; mid lag {lag:F3} s (proto 0.111 / 0.060 / 0.027, 0.18 s)");
-            Assert.That(pg, Is.InRange(0.14f, 0.22f), "girdle bob (stylised, ~16 cm: 1.4-1.6x the prototype's 0.11 m)");
-            Assert.Less(pm, pg, "mid-body bobs less than the shoulders");
+            Assert.That(pg, Is.InRange(0.22f, 0.4f), "girdle bob (stylised, ~33 cm: the deep downstroke; 0.14-0.22 before it)");
+            Assert.Less(pm, 1.15f * pg, "mid-body bobs no more than the shoulders (rides their path; was < 1x)");
             Assert.Greater(pm, 0.15f * pg, "mid-body follows the bob");
             Assert.Less(pt, pm, "tail bobs least");
             Assert.That(lag, Is.InRange(0.05f, 0.35f), "the wave travels down the body");
