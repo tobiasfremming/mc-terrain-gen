@@ -1129,7 +1129,7 @@ MonoBehaviour:
   undulationHz: 1
   gaitSwayDeg: 6
   gaitRollDeg: 3
-  subSteps: 2
+  subSteps: 1
   eyeJoint: 0
   eyeOffset: {x: 0.004, y: 0.009, z: 0.011}
   eyeRadius: 0.0022

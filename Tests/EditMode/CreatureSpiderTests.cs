@@ -328,6 +328,48 @@ namespace TerrainGen.Tests
             }
         }
 
+        // Size variation: an individual at 0.9x and 1.1x the species' scale walks with its feet planted and on
+        // the ground, and its skinned mesh never inverts through the tightest turn.
+        [TestCase(kDaddyPath, 0.9f)]
+        [TestCase(kDaddyPath, 1.1f)]
+        [TestCase(kTarantulaPath, 0.9f)]
+        [TestCase(kTarantulaPath, 1.1f)]
+        public void Spiders_SizeVariation_FeetPlanted_NoInvertedTriangles(string path, float f)
+        {
+            var sp = Load(path);
+            float sc = sp.scale * f;
+            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, sc);
+            int n = sim.Legs.Length, checkedCount = 0;
+            var prev = new Vector3[n]; var prevPlanted = new bool[n];
+            float slide = 0f, offGround = 0f, travelled = 0f;
+            Vector3 lastHead = sim.Joints[0];
+            for (int t = 0; t < 900; t++)
+            {
+                travelled += (sim.Joints[0] - lastHead).magnitude; lastHead = sim.Joints[0];
+                Vector3 fwd = sim.Rotations[0] * Vector3.forward;
+                sim.Tick(kDt, sim.Joints[0] + Quaternion.AngleAxis(50f * Mathf.Sin(t / 50f), Vector3.up) * fwd * (2f * sc));
+                for (int l = 0; l < n; l++)
+                {
+                    if (!Walking(sp, l)) continue;
+                    LegState st = sim.Legs[l];
+                    bool planted = !st.stepping || st.stepT < 0f;
+                    if (planted && prevPlanted[l])
+                    {
+                        slide = Mathf.Max(slide, (st.foot - prev[l]).magnitude);
+                        offGround = Mathf.Max(offGround, Mathf.Abs(st.foot.y));
+                        checkedCount++;
+                    }
+                    prev[l] = st.foot; prevPlanted[l] = planted;
+                }
+            }
+            TestContext.Out.WriteLine($"{sp.name} at {f}x (sizeScale {sc:F3}): worst planted slide {slide:E1} m, worst foot height {offGround * 1000f:F2} mm over {checkedCount} samples; head travelled {travelled:F2} m");
+            Assert.Greater(checkedCount, 2000);
+            Assert.Less(slide, 1e-5f * sc, "a planted foot slid");
+            Assert.Less(offGround, 0.02f * sc, "a planted foot left the ground");
+            Assert.Greater(travelled, 1.5f * sp.BodyLength * sc, "it must walk (the tarantula cruises slowly: about two body lengths in the 15 s)");
+            CreatureMeshTests.MaxBendNoInvertedTriangles(sp, sc);
+        }
+
         // ================================================================ tarantula
 
         [Test] public void Tarantula_IsAsAuthored()

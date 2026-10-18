@@ -1,0 +1,4 @@
+# build output of the offline harness (never committed)
+bin/
+obj/
+*.user
