@@ -14,7 +14,15 @@ public static class CreatureLabScene
     const string kConfigPath = "Assets/TerrainGen/Config/Creatures/CreatureLabWorldConfig.asset";
     const string kCreatureMaterialPath = "Assets/TerrainGen/Config/Creatures/Creature.mat";
     const string kBorderMaterialPath = "Assets/TerrainGen/Config/Creatures/EnclosureBorder.mat";
-    static readonly string[] kSpeciesPaths = { "Assets/TerrainGen/Config/Creatures/DesertMonitor.asset" };
+    // the lab's species, one enclosure each (the scene's hand wiring - scale overrides - is not rebuilt)
+    static readonly string[] kSpeciesPaths =
+    {
+        "Assets/TerrainGen/Config/Creatures/DesertMonitor.asset",
+        "Assets/TerrainGen/Config/Creatures/DesertSnake.asset",
+        "Assets/TerrainGen/Config/Creatures/DesertBeetle.asset",
+        "Assets/TerrainGen/Config/Creatures/DaddyLongLegs.asset",
+        "Assets/TerrainGen/Config/Creatures/Tarantula.asset",
+    };
 
     static readonly string[] kRoots = { "Directional Light", "Global Volume", "Player", "TargetTransform", "Terrain", "TerrainGrass" };
 

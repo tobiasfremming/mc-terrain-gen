@@ -42,7 +42,8 @@ public sealed class CreatureRenderer : IDisposable
         kSurfaceParams = Shader.PropertyToID("_SurfaceParams"), kBodyParams = Shader.PropertyToID("_BodyParams"),
         kOctoColors0 = Shader.PropertyToID("_OctoSucker"), kOctoColors1 = Shader.PropertyToID("_OctoSubsurface"),
         kOctoParams = Shader.PropertyToID("_OctoParams"), kOctoParams2 = Shader.PropertyToID("_OctoParams2"),
-        kMembraneColor = Shader.PropertyToID("_MembraneColor"), kMembraneParams = Shader.PropertyToID("_MembraneParams");
+        kMembraneColor = Shader.PropertyToID("_MembraneColor"), kMembraneParams = Shader.PropertyToID("_MembraneParams"),
+        kBandColor = Shader.PropertyToID("_BandColor"), kSheenColor = Shader.PropertyToID("_SheenColor"); // arthropod bands, velvet sheen (alpha = strength)
 
     readonly CreatureSpecies sp;
     readonly Material material;
@@ -225,6 +226,9 @@ public sealed class CreatureRenderer : IDisposable
         props.SetFloat(kPatternType, (float)look.patternType);
         props.SetVector(kPatternParams, new Vector4(look.patternScale, look.patternContrast, look.patternSoftness, look.spotScale));
         props.SetVector(kSurfaceParams, new Vector4(look.smoothness, look.rimStrength, look.subsurface, 0f));
+        props.SetColor(kBandColor, look.bandColor);
+        Color sheen = look.sheenColor; sheen.a = look.sheen;
+        props.SetColor(kSheenColor, sheen);
         props.SetVector(kBodyParams, bodyParams);
         if (cephalopod)
         {

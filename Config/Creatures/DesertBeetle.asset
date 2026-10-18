@@ -66,129 +66,477 @@ MonoBehaviour:
   - attachJoint: 2
     side: -1
     shoulderOffset: {x: 0.0488, y: -0.0171, z: 0}
-    restOffset: {x: 0.2, y: 0, z: 0.11}
-    upperLength: 0.105
-    lowerLength: 0.125
-    upperRadius: 0.0145
-    lowerRadius: 0.008
-    pole: {x: 0, y: 1, z: -0.15}
+    restOffset: {x: 0.16985, y: 0, z: 0.08795}
+    upperLength: 0
+    lowerLength: 0
+    upperRadius: 0
+    lowerRadius: 0
+    pole: {x: 0, y: 1, z: 0}
     stepThreshold: 0.075
     stepDuration: 0.11
     stepLift: 0.045
     overshoot: 0.05
     gaitGroup: 0
-    footLength: 0.045
+    footLength: 0.012
     toeCount: 2
     forwardSwingLimitDeg: 0
     backSwingLimitDeg: 0
     kneeRangeDeg: 0
     kneeFlexDeg: 0
     kneeBlend: 0
+    segments:
+    - length: 0.0138
+      radiusStart: 0.016
+      radiusEnd: 0.015
+      restBendDeg: -10
+      minBendDeg: -35
+      maxBendDeg: 20
+      flexWeight: 0
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.0736
+      radiusStart: 0.014
+      radiusEnd: 0.011
+      restBendDeg: 40
+      minBendDeg: 0
+      maxBendDeg: 85
+      flexWeight: 0.35
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 1.1
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.0736
+      radiusStart: 0.008
+      radiusEnd: 0.006
+      restBendDeg: -85
+      minBendDeg: -150
+      maxBendDeg: -30
+      flexWeight: -1
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.0322
+      radiusStart: 0.005
+      radiusEnd: 0.0035
+      restBendDeg: 30
+      minBendDeg: -40
+      maxBendDeg: 100
+      flexWeight: 0
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    contactAngleDeg: 25
+    kneeLiftDeg: 0
+    swingRetract: 0.1
+    elevMinDeg: 0
+    elevMaxDeg: 0
+    liftDelay: 0
+    kneeJoint: 0
+    legSides: 8
+    feeler: 0
   - attachJoint: 2
     side: 1
     shoulderOffset: {x: 0.0488, y: -0.0171, z: 0}
-    restOffset: {x: 0.2, y: 0, z: 0.11}
-    upperLength: 0.105
-    lowerLength: 0.125
-    upperRadius: 0.0145
-    lowerRadius: 0.008
-    pole: {x: 0, y: 1, z: -0.15}
-    stepThreshold: 0.075
-    stepDuration: 0.11
-    stepLift: 0.045
-    overshoot: 0.05
-    gaitGroup: 1
-    footLength: 0.045
-    toeCount: 2
-    forwardSwingLimitDeg: 0
-    backSwingLimitDeg: 0
-    kneeRangeDeg: 0
-    kneeFlexDeg: 0
-    kneeBlend: 0
-  - attachJoint: 3
-    side: -1
-    shoulderOffset: {x: 0.044, y: -0.0162, z: 0}
-    restOffset: {x: 0.235, y: 0, z: 0}
-    upperLength: 0.115
-    lowerLength: 0.135
-    upperRadius: 0.0145
-    lowerRadius: 0.008
+    restOffset: {x: 0.16985, y: 0, z: 0.08795}
+    upperLength: 0
+    lowerLength: 0
+    upperRadius: 0
+    lowerRadius: 0
     pole: {x: 0, y: 1, z: 0}
     stepThreshold: 0.075
     stepDuration: 0.11
     stepLift: 0.045
     overshoot: 0.05
     gaitGroup: 1
-    footLength: 0.045
+    footLength: 0.012
     toeCount: 2
     forwardSwingLimitDeg: 0
     backSwingLimitDeg: 0
     kneeRangeDeg: 0
     kneeFlexDeg: 0
     kneeBlend: 0
+    segments:
+    - length: 0.0138
+      radiusStart: 0.016
+      radiusEnd: 0.015
+      restBendDeg: -10
+      minBendDeg: -35
+      maxBendDeg: 20
+      flexWeight: 0
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.0736
+      radiusStart: 0.014
+      radiusEnd: 0.011
+      restBendDeg: 40
+      minBendDeg: 0
+      maxBendDeg: 85
+      flexWeight: 0.35
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 1.1
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.0736
+      radiusStart: 0.008
+      radiusEnd: 0.006
+      restBendDeg: -85
+      minBendDeg: -150
+      maxBendDeg: -30
+      flexWeight: -1
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.0322
+      radiusStart: 0.005
+      radiusEnd: 0.0035
+      restBendDeg: 30
+      minBendDeg: -40
+      maxBendDeg: 100
+      flexWeight: 0
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    contactAngleDeg: 25
+    kneeLiftDeg: 0
+    swingRetract: 0.1
+    elevMinDeg: 0
+    elevMaxDeg: 0
+    liftDelay: 0
+    kneeJoint: 0
+    legSides: 8
+    feeler: 0
+  - attachJoint: 3
+    side: -1
+    shoulderOffset: {x: 0.044, y: -0.0162, z: 0}
+    restOffset: {x: 0.20731, y: 0, z: 0}
+    upperLength: 0
+    lowerLength: 0
+    upperRadius: 0
+    lowerRadius: 0
+    pole: {x: 0, y: 1, z: 0}
+    stepThreshold: 0.075
+    stepDuration: 0.11
+    stepLift: 0.045
+    overshoot: 0.05
+    gaitGroup: 1
+    footLength: 0.012
+    toeCount: 2
+    forwardSwingLimitDeg: 0
+    backSwingLimitDeg: 0
+    kneeRangeDeg: 0
+    kneeFlexDeg: 0
+    kneeBlend: 0
+    segments:
+    - length: 0.015
+      radiusStart: 0.016
+      radiusEnd: 0.015
+      restBendDeg: -10
+      minBendDeg: -35
+      maxBendDeg: 20
+      flexWeight: 0
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.08
+      radiusStart: 0.014
+      radiusEnd: 0.011
+      restBendDeg: 40
+      minBendDeg: 0
+      maxBendDeg: 85
+      flexWeight: 0.35
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 1.1
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.08
+      radiusStart: 0.008
+      radiusEnd: 0.006
+      restBendDeg: -85
+      minBendDeg: -150
+      maxBendDeg: -30
+      flexWeight: -1
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.035
+      radiusStart: 0.005
+      radiusEnd: 0.0035
+      restBendDeg: 30
+      minBendDeg: -40
+      maxBendDeg: 100
+      flexWeight: 0
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    contactAngleDeg: 25
+    kneeLiftDeg: 0
+    swingRetract: 0.1
+    elevMinDeg: 0
+    elevMaxDeg: 0
+    liftDelay: 0
+    kneeJoint: 0
+    legSides: 8
+    feeler: 0
   - attachJoint: 3
     side: 1
     shoulderOffset: {x: 0.044, y: -0.0162, z: 0}
-    restOffset: {x: 0.235, y: 0, z: 0}
-    upperLength: 0.115
-    lowerLength: 0.135
-    upperRadius: 0.0145
-    lowerRadius: 0.008
+    restOffset: {x: 0.20731, y: 0, z: 0}
+    upperLength: 0
+    lowerLength: 0
+    upperRadius: 0
+    lowerRadius: 0
     pole: {x: 0, y: 1, z: 0}
     stepThreshold: 0.075
     stepDuration: 0.11
     stepLift: 0.045
     overshoot: 0.05
     gaitGroup: 0
-    footLength: 0.045
+    footLength: 0.012
     toeCount: 2
     forwardSwingLimitDeg: 0
     backSwingLimitDeg: 0
     kneeRangeDeg: 0
     kneeFlexDeg: 0
     kneeBlend: 0
+    segments:
+    - length: 0.015
+      radiusStart: 0.016
+      radiusEnd: 0.015
+      restBendDeg: -10
+      minBendDeg: -35
+      maxBendDeg: 20
+      flexWeight: 0
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.08
+      radiusStart: 0.014
+      radiusEnd: 0.011
+      restBendDeg: 40
+      minBendDeg: 0
+      maxBendDeg: 85
+      flexWeight: 0.35
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 1.1
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.08
+      radiusStart: 0.008
+      radiusEnd: 0.006
+      restBendDeg: -85
+      minBendDeg: -150
+      maxBendDeg: -30
+      flexWeight: -1
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.035
+      radiusStart: 0.005
+      radiusEnd: 0.0035
+      restBendDeg: 30
+      minBendDeg: -40
+      maxBendDeg: 100
+      flexWeight: 0
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    contactAngleDeg: 25
+    kneeLiftDeg: 0
+    swingRetract: 0.1
+    elevMinDeg: 0
+    elevMaxDeg: 0
+    liftDelay: 0
+    kneeJoint: 0
+    legSides: 8
+    feeler: 0
   - attachJoint: 5
     side: -1
     shoulderOffset: {x: 0.0608, y: -0.02565, z: 0}
-    restOffset: {x: 0.215, y: 0, z: -0.09}
-    upperLength: 0.125
-    lowerLength: 0.15
-    upperRadius: 0.0145
-    lowerRadius: 0.008
-    pole: {x: 0, y: 1, z: 0.15}
+    restOffset: {x: 0.21219, y: 0, z: -0.0874}
+    upperLength: 0
+    lowerLength: 0
+    upperRadius: 0
+    lowerRadius: 0
+    pole: {x: 0, y: 1, z: 0}
     stepThreshold: 0.075
     stepDuration: 0.11
     stepLift: 0.045
     overshoot: 0.05
     gaitGroup: 0
-    footLength: 0.045
+    footLength: 0.012
     toeCount: 2
     forwardSwingLimitDeg: 0
     backSwingLimitDeg: 0
     kneeRangeDeg: 0
     kneeFlexDeg: 0
     kneeBlend: 0
+    segments:
+    - length: 0.0162
+      radiusStart: 0.016
+      radiusEnd: 0.015
+      restBendDeg: -10
+      minBendDeg: -35
+      maxBendDeg: 20
+      flexWeight: 0
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.0864
+      radiusStart: 0.014
+      radiusEnd: 0.011
+      restBendDeg: 40
+      minBendDeg: 0
+      maxBendDeg: 85
+      flexWeight: 0.35
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 1.1
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.0864
+      radiusStart: 0.008
+      radiusEnd: 0.006
+      restBendDeg: -85
+      minBendDeg: -150
+      maxBendDeg: -30
+      flexWeight: -1
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.0378
+      radiusStart: 0.005
+      radiusEnd: 0.0035
+      restBendDeg: 30
+      minBendDeg: -40
+      maxBendDeg: 100
+      flexWeight: 0
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    contactAngleDeg: 25
+    kneeLiftDeg: 0
+    swingRetract: 0.1
+    elevMinDeg: 0
+    elevMaxDeg: 0
+    liftDelay: 0
+    kneeJoint: 0
+    legSides: 8
+    feeler: 0
   - attachJoint: 5
     side: 1
     shoulderOffset: {x: 0.0608, y: -0.02565, z: 0}
-    restOffset: {x: 0.215, y: 0, z: -0.09}
-    upperLength: 0.125
-    lowerLength: 0.15
-    upperRadius: 0.0145
-    lowerRadius: 0.008
-    pole: {x: 0, y: 1, z: 0.15}
+    restOffset: {x: 0.21219, y: 0, z: -0.0874}
+    upperLength: 0
+    lowerLength: 0
+    upperRadius: 0
+    lowerRadius: 0
+    pole: {x: 0, y: 1, z: 0}
     stepThreshold: 0.075
     stepDuration: 0.11
     stepLift: 0.045
     overshoot: 0.05
     gaitGroup: 1
-    footLength: 0.045
+    footLength: 0.012
     toeCount: 2
     forwardSwingLimitDeg: 0
     backSwingLimitDeg: 0
     kneeRangeDeg: 0
     kneeFlexDeg: 0
     kneeBlend: 0
+    segments:
+    - length: 0.0162
+      radiusStart: 0.016
+      radiusEnd: 0.015
+      restBendDeg: -10
+      minBendDeg: -35
+      maxBendDeg: 20
+      flexWeight: 0
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.0864
+      radiusStart: 0.014
+      radiusEnd: 0.011
+      restBendDeg: 40
+      minBendDeg: 0
+      maxBendDeg: 85
+      flexWeight: 0.35
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 1.1
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.0864
+      radiusStart: 0.008
+      radiusEnd: 0.006
+      restBendDeg: -85
+      minBendDeg: -150
+      maxBendDeg: -30
+      flexWeight: -1
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    - length: 0.0378
+      radiusStart: 0.005
+      radiusEnd: 0.0035
+      restBendDeg: 30
+      minBendDeg: -40
+      maxBendDeg: 100
+      flexWeight: 0
+      liftWeight: 0
+      axisTiltDeg: 0
+      knuckle: 0
+      bandStart: 0
+      bandEnd: 0
+    contactAngleDeg: 25
+    kneeLiftDeg: 0
+    swingRetract: 0.1
+    elevMinDeg: 0
+    elevMaxDeg: 0
+    liftDelay: 0
+    kneeJoint: 0
+    legSides: 8
+    feeler: 0
   speed: 0.55
   turnRateDeg: 200
   accel: 3
@@ -219,3 +567,26 @@ MonoBehaviour:
     sizeJitter: 0.07
     hueJitter: 0.008
     valueJitter: 0.05
+    bandColor: {r: 0, g: 0, b: 0, a: 1}
+    sheen: 0
+    sheenColor: {r: 0, g: 0, b: 0, a: 1}
+  climb:
+    canClimb: 0
+    maxSurfaceAngleDeg: 0
+    maxHeightBodyLengths: 0
+    speedFactor: 0
+    descentSpeedFactor: 0
+    clearanceFactor: 0
+    strideFactor: 0
+    stepTimeFactor: 0
+    liftFactor: 0
+    upRateDeg: 0
+    upSmoothJoints: 0
+    pitchLimitDeg: 0
+    minWidthFactor: 0
+  gaitBob:
+    amplitude: 0
+    hz: 0
+    damping: 0
+  eyeCluster: []
+  appendages: []

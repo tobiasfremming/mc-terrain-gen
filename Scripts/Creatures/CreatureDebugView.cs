@@ -185,8 +185,19 @@ public sealed class CreatureDebugView : MonoBehaviour
         for (int l = 0; l < sim.Legs.Length; l++)
         {
             LegState st = sim.Legs[l];
-            Line(st.shoulder, st.elbow, kLeg);
-            Line(st.elbow, st.foot, kLeg);
+            LegSpec ls = sim.Species.legs[l];
+            if (ls.IsArthropod)
+            {
+                // every segment of an arthropod leg (coxa base .. foot)
+                Vector3[] pts = sim.LegPoints;
+                int o = sim.LegPointOffset(l);
+                for (int k = 0; k < ls.segments.Length; k++) Line(pts[o + k], pts[o + k + 1], kLeg);
+            }
+            else
+            {
+                Line(st.shoulder, st.elbow, kLeg);
+                Line(st.elbow, st.foot, kLeg);
+            }
             Vector3 q = sim.LegRestPoint(l);
             Line(q - Vector3.right * c, q + Vector3.right * c, kRest);
             Line(q - Vector3.forward * c, q + Vector3.forward * c, kRest);

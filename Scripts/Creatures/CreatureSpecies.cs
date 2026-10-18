@@ -45,6 +45,104 @@ public class LegSpec
     public float KneeRange => kneeRangeDeg > 0f ? kneeRangeDeg : DefaultKneeRangeDeg;
     public float KneeFlex => kneeFlexDeg > 0f ? kneeFlexDeg : KneeRange;
     public float KneeBlend => kneeBlend > 0f ? Mathf.Min(kneeBlend, 0.49f) : DefaultKneeBlend;
+
+    // ---- arthropod limb (design docs/superpowers/specs/2026-10-17-multi-segment-legs-spider-design.md) ----
+    // Non-empty segments replace the two-bone limb: N segments from the body outward (coxa .. tarsus), one
+    // bone each, solved by ArthropodLegIK. upperLength/lowerLength/radii/pole/kneeBlend are then unused;
+    // forward/backSwingLimitDeg limit the coxa's yaw, kneeRangeDeg/kneeFlexDeg the reach synergy s
+    // (extension/flexion, 0 = no extra limit), toeCount/footLength are the tarsus claws.
+    [Tooltip("Arthropod leg segments, body outward (coxa .. tarsus). Empty: the two-bone limb above.")]
+    public LegSegment[] segments;
+    [Tooltip("Arthropod: tarsus angle to the ground, degrees (0 = 20).")]
+    public float contactAngleDeg;
+    [Tooltip("Arthropod: the lift synergy at mid-swing, degrees (reshapes the leg; the foot stays on its path).")]
+    public float kneeLiftDeg;
+    [Tooltip("Arthropod: mid-swing pull of the foot toward the coxa, fraction of its distance - flexing lifts the knee.")]
+    public float swingRetract;
+    [Tooltip("Arthropod: in-plane pitch range, degrees (0, 0 = +-90); outside it the planted foot steps.")]
+    public float elevMinDeg, elevMaxDeg;
+    [Tooltip("Arthropod: lift-off delay per place behind the group's rearmost leg, fraction of a step (metachronal wave).")]
+    public float liftDelay;
+    [Tooltip("Arthropod: joint reported as the knee (debug, tests); 0 = the joint with the largest flexWeight.")]
+    public int kneeJoint;
+    [Tooltip("Arthropod mesh: sides of the segment tubes (0 = 8).")]
+    public int legSides;
+    [Tooltip("A feeler (pedipalp): posed in the attach frame at restOffset, never plants or steps.")]
+    public bool feeler;
+
+    public bool IsArthropod => segments != null && segments.Length > 0;
+    // bones of this leg: one per segment, or upper, lower, foot
+    public int SegmentCount => IsArthropod ? segments.Length : 3;
+    public float TotalLength
+    {
+        get
+        {
+            if (!IsArthropod) return upperLength + lowerLength;
+            float t = 0f;
+            for (int i = 0; i < segments.Length; i++) t += segments[i].length;
+            return t;
+        }
+    }
+    public ArthropodLegParams ModelParams => new ArthropodLegParams
+    {
+        contactAngleDeg = contactAngleDeg, kneeLiftDeg = kneeLiftDeg,
+        sMinDeg = kneeRangeDeg > 0f ? -kneeRangeDeg : float.NegativeInfinity,
+        sMaxDeg = kneeFlexDeg > 0f ? kneeFlexDeg : float.PositiveInfinity,
+        elevMinDeg = elevMinDeg, elevMaxDeg = elevMaxDeg, kneeJoint = kneeJoint,
+    };
+}
+
+// Bone order of the legs: each leg's SegmentCount bones in leg order (3 for a two-bone leg: upper, lower,
+// foot), after the spine. With two-bone legs only this is exactly the original 3-per-leg layout.
+// WingBoneLayout (feat/creature-wyvern) must use LegBones/LegStart here instead of 3 * legs.
+public static class LegBoneLayout
+{
+    public static int LegBones(LegSpec[] legs)
+    {
+        int c = 0;
+        if (legs != null) for (int i = 0; i < legs.Length; i++) c += legs[i] != null ? legs[i].SegmentCount : 3;
+        return c;
+    }
+
+    public static int LegStart(LegSpec[] legs, int leg)
+    {
+        int c = 0;
+        for (int i = 0; i < leg; i++) c += legs[i] != null ? legs[i].SegmentCount : 3;
+        return c;
+    }
+}
+
+// Vertical body bounce driven by the gait: each gait group's lift-off kicks a damped spring on the body's
+// height (0 amplitude = off).
+[Serializable]
+public struct GaitBob
+{
+    [Tooltip("Peak dip of the body per lift-off, metres at scale 1 (0 = off).")]
+    public float amplitude;
+    [Tooltip("Spring frequency, Hz at scale 1 (Froude-scaled).")]
+    public float hz;
+    [Tooltip("Damping ratio (0.2 bouncy .. 1 dead).")]
+    public float damping;
+}
+
+// An extra eye, rigid to the eye bone of its side: offset in the eye joint's frame (x mirrored; x = 0: one eye).
+[Serializable]
+public struct EyeSpot
+{
+    public Vector3 offset;
+    public float radius;
+}
+
+// A rigid curved cone on a spine joint (chelicerae, fangs, horns): base at offset (joint frame, x mirrored
+// when mirror), along direction (joint frame, x mirrored), curling down by curveDeg; a fang of fangLength
+// continues from its tip.
+[Serializable]
+public struct BodyAppendage
+{
+    public int joint;
+    public Vector3 offset, direction;
+    public float length, radiusStart, radiusEnd, curveDeg, fangLength;
+    public bool mirror;
 }
 
 // Climbing (0 = default for every number). A climbing species follows the surface it stands on - steep
@@ -99,6 +197,10 @@ public struct CreatureLook
     // its veins are (0..1), how dark its trailing rim is (0..1).
     public Color membrane;
     public float membraneTranslucency, veinContrast, membraneRim;
+    // arthropod knee bands (mesh part 9) and a velvet sheen lobe (0 = none)
+    public Color bandColor;
+    public float sheen;
+    public Color sheenColor;
 }
 
 [CreateAssetMenu(menuName = "Marching Cubes/Creature Species")]
@@ -133,21 +235,46 @@ public class CreatureSpecies : ScriptableObject
     // only with wings (CanFly).
     public WingSpec[] wings;
     public FlightSpec flight;
+    public GaitBob gaitBob;
+    public EyeSpot[] eyeCluster;
+    public BodyAppendage[] appendages;
 
     // Raised when the asset is edited (Inspector, play mode included): the creature lab respawns the
     // species at its new scale.
     public static event Action<CreatureSpecies> Changed;
-    void OnValidate() => Changed?.Invoke(this);
+    void OnValidate() { legModels = null; Changed?.Invoke(this); }
+
+    // The arthropod legs' solver models, built once per species leg (null for a two-bone leg) and shared by
+    // every individual: the solver's scratch makes them main-thread only, like the sims.
+    [NonSerialized] ArthropodLegModel[] legModels;
+    internal ArthropodLegModel LegModel(int leg)
+    {
+        LegSpec l = legs[leg];
+        if (l == null || !l.IsArthropod) return null;
+        if (legModels == null || legModels.Length != legs.Length) legModels = new ArthropodLegModel[legs.Length];
+        return legModels[leg] ?? (legModels[leg] = new ArthropodLegModel(l.segments, l.ModelParams));
+    }
+
+    // A leg's foot reach, metres at scale 1: upper + lower, or the arthropod's longest ankle reach plus its
+    // tarsus laid at the contact angle (step triggers, stride, throttle and sway measure against it).
+    public float LegReach(int leg)
+    {
+        LegSpec l = legs[leg];
+        if (!l.IsArthropod) return l.upperLength + l.lowerLength;
+        ArthropodLegModel m = LegModel(leg);
+        return m.Error != null ? l.TotalLength : m.ReachLong + m.TarsusLength * m.CosC;
+    }
 
     public int JointCount => joints != null ? joints.Length : 0;
     int LegCount => legs != null ? legs.Length : 0;
     public int WingCount => wings != null ? wings.Length : 0;
     public bool CanFly => WingCount > 0 && flight != null && flight.cruiseSpeed > 0f;
-    // Bone order (WingBoneLayout): spine, 3 per leg, 6 per wing, 2 eyes; without wings exactly as before.
-    public int BoneCount => WingBoneLayout.BoneCount(JointCount, LegCount, WingCount);
-    public int LegBone(int leg, int part) => JointCount + 3 * leg + part;
-    public int WingBone(int wing, int k) => WingBoneLayout.WingBone(JointCount, LegCount, wing, k);
-    public int EyeBone(int eye) => WingBoneLayout.EyeBone(JointCount, LegCount, WingCount, eye);
+    // Bone order: spine, the leg bones (LegBoneLayout: 3 per legacy leg, one per arthropod segment), 6 per
+    // wing (WingBoneLayout), 2 eyes. Wings and wing-walking legs are legacy two-bone legs.
+    public int BoneCount => JointCount + LegBoneLayout.LegBones(legs) + WingBoneLayout.BonesPerWing * WingCount + 2;
+    public int LegBone(int leg, int part) => JointCount + LegBoneLayout.LegStart(legs, leg) + part;
+    public int WingBone(int wing, int k) => JointCount + LegBoneLayout.LegBones(legs) + WingBoneLayout.BonesPerWing * wing + k;
+    public int EyeBone(int eye) => JointCount + LegBoneLayout.LegBones(legs) + WingBoneLayout.BonesPerWing * WingCount + eye;
     public float BodyLength => headCapLength + spacing * (JointCount - 1) + tailTipLength;
 
     public float MaxLateralReach
@@ -160,7 +287,7 @@ public class CreatureSpecies : ScriptableObject
             {
                 LegSpec l = legs[i];
                 if (l == null) continue;
-                r = Mathf.Max(r, Mathf.Abs(l.shoulderOffset.x) + l.upperLength + l.lowerLength);
+                r = Mathf.Max(r, Mathf.Abs(l.shoulderOffset.x) + (l.IsArthropod ? l.TotalLength : l.upperLength + l.lowerLength));
             }
             // a spread wing: the wrist's rest point plus its longest finger
             for (int w = 0; w < WingCount; w++)
@@ -191,7 +318,14 @@ public class CreatureSpecies : ScriptableObject
             if (l.attachJoint < 0 || l.attachJoint >= n) return $"legs[{i}].attachJoint {l.attachJoint} out of range 0..{n - 1}";
             if (l.side != -1 && l.side != 1) return $"legs[{i}].side must be -1 or +1";
             if (l.gaitGroup < 0 || l.gaitGroup > 31) return $"legs[{i}].gaitGroup must be in 0..31";
-            if (!(l.upperLength > 0f) || !(l.lowerLength > 0f)) return $"legs[{i}] limb lengths must be > 0";
+            if (l.IsArthropod)
+            {
+                string e = LegModel(i).Error;
+                if (e != null) return $"legs[{i}]: {e}";
+                if (l.swingRetract < 0f || l.swingRetract > 0.5f) return $"legs[{i}].swingRetract must be in 0..0.5";
+                if (l.liftDelay < 0f || l.liftDelay > 0.5f) return $"legs[{i}].liftDelay must be in 0..0.5";
+            }
+            else if (!(l.upperLength > 0f) || !(l.lowerLength > 0f)) return $"legs[{i}] limb lengths must be > 0";
             if (!(l.ForwardSwingLimit < 180f) || !(l.BackSwingLimit < 180f) || !(l.KneeRange < 180f) || !(l.KneeFlex < 180f))
                 return $"legs[{i}] joint-range limits must be < 180 deg";
         }
