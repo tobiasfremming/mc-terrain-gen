@@ -70,6 +70,8 @@ public sealed class TentacleAgent
     {
         Mode = s; StateTime = 0f;
         Arm.ExtraDamping = 0f;
+        // the muscles ease into a new shape, except a strike and a hold, which follow their prey at once
+        Arm.ShapeRate = s == State.Strike || s == State.Hold ? TentacleChain.FastShapeRate : TentacleChain.DefaultShapeRate;
         // the positional pull belongs to reaching and striking only
         if (s != State.Reach && s != State.Strike) Arm.ShapePull = s == State.Feel ? 0.01f : 0f;
     }
@@ -298,6 +300,24 @@ public sealed class TentacleAgent
         }
         for (int j = 0; j < Arm.N - 1; j++) Arm.LengthTarget[j] = Arm.Pinned[j + 1] ? 1f : lt;
         if (wantsRelease && c.Time - anchoredAt > 0.6f * ts && c.Board.CanRelease(Index)) BeginRelease(c);
+        // a settled rest lets a spare hold go that is pulled taut (beyond the arm's rest length): holds taken
+        // one by one rarely agree, and taut runs pulling against each other set the body flickering. One at a
+        // time, the tautest first, never below RestAnchors.
+        else if (c.Settled && Arm.Overload > TautHold && c.Board.AnchoredCount > c.RestAnchors && c.Time >= c.NextRestRelease
+                 && c.Board.CanRelease(Index) && TautestHold(c))
+        {
+            c.NextRestRelease = c.Time + 1f * ts;
+            BeginRelease(c);
+        }
+    }
+
+    public const float TautHold = 0.8f;   // Overload above which a spare hold is let go in a settled rest
+
+    bool TautestHold(OctopusController c)
+    {
+        for (int a = 0; a < c.Board.Arms; a++)
+            if (a != Index && c.Board.Anchored[a] && c.Board.Load[a] > Arm.Overload) return false;
+        return true;
     }
 
     void BeginRelease(OctopusController c) { peelNext = c.Time; ReleasesStarted++; Enter(State.Release); }

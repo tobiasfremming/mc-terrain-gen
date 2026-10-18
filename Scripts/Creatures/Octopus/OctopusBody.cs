@@ -207,6 +207,11 @@ public sealed class OctopusBody
     // tone, sinus or shape target changed, gravity changed. The next tick after waking simulates as usual.
     public bool AllowSleep = true;
     public const float SleepSpeed = 0.002f;
+    // A settled rest (set by the controller: every arm holds on or lies curled, the brain wants rest) sleeps at
+    // a looser bound: the last sub-millimetre solver wobble of a loaded hold is invisible, and sleeping
+    // freezes it out entirely. Anything still moving faster than this keeps the body awake.
+    public const float SettledSleepSpeed = 0.08f;
+    public bool Settled;
     public const int SleepFrames = 30;
     public bool Asleep { get; private set; }
     int calmFrames;
@@ -228,7 +233,7 @@ public sealed class OctopusBody
         for (int a = 0; a < ArmCount; a++) n += Arms[a].N;
         bool first = tickX == null;
         if (first) tickX = new Vector3[n];
-        float lim = SleepSpeed * SizeScale * dt;
+        float lim = (Settled ? SettledSleepSpeed : SleepSpeed) * SizeScale * dt;
         float maxD2 = 0f;
         int o = 0;
         Vector3[] lx = Lattice.X;
