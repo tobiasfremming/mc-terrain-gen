@@ -40,6 +40,7 @@ public sealed class SpineBody : ICreatureBody
             lo = Vector3.Min(lo, legs[k].foot); hi = Vector3.Max(hi, legs[k].foot);
             lo = Vector3.Min(lo, legs[k].elbow); hi = Vector3.Max(hi, legs[k].elbow); // an arthropod's knee peaks high above the body
         }
+        Sim.EncapsulatePartBounds(ref lo, ref hi);   // the kit's part runtimes (antenna strands)
     }
 
     public void Tick(float dt) => Sim.Tick(dt, Sim.Joints[0]);

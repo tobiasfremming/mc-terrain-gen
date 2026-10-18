@@ -57,11 +57,13 @@ namespace TerrainGen.Tests
 
         // ------------------------------------------------------------ what the kit knows per species
 
-        // The lab habitat a species gets from its legacy fields (CreatureLab.BrainFor / OctopusLab today; the
-        // roster's Habitat.For replaces this in T3.5).
+        // The lab habitat a species gets: the runtime's CreatureKit.LabHabitat (from its modules; T3.5). The
+        // legacy-fields rule it replaced is LegacyHabitatOf (CreatureKitLabTests.Habitat_Resolves pins them equal).
         public enum Habitat { Plain, Climbable, Aviary, Grove }
 
-        public static Habitat HabitatOf(CreatureSpecies sp)
+        public static Habitat HabitatOf(CreatureSpecies sp) => (Habitat)(int)CreatureKit.LabHabitat.For(sp);
+
+        public static Habitat LegacyHabitatOf(CreatureSpecies sp)
         {
             if (sp.bodyPlan == CreatureBodyPlan.Cephalopod) return Habitat.Grove;
             if (sp.CanFly) return Habitat.Aviary;

@@ -48,6 +48,8 @@ public sealed class FlightBrain : ICreatureBrain
     public PerchSpot LastPerch { get; private set; }
 
     float stateLeft, flightLeft, avoidIn, avoidLeft, avoidTurn;
+    // a twisting flyer (AirTwist: the dragon): time to the next manoeuvre, the altitude it is flown at
+    float twistIn = -1f, twistAlt;
     Vector3 waypoint;
     float cruiseAlt;
 
@@ -115,7 +117,7 @@ public sealed class FlightBrain : ICreatureBrain
         // airborne (from the launch on): patrol or soar, then choose a perch
         if (!fl.Airborne && fl.Mode != FlightMode.Launch) return head;
         flightLeft -= dt; stateLeft -= dt;
-        if (flightLeft <= 0f && ChoosePerch(sim)) return head;
+        if (flightLeft <= 0f && !(fl.Twist != null && fl.Twist.Busy) && ChoosePerch(sim)) return head;
         if (stateLeft <= 0f)
         {
             if (Current == State.Patrol && Rand() < kSoarChance) { Current = State.Soar; stateLeft = Lerp(kSoarMin, kSoarMax, Rand()); }
@@ -222,10 +224,52 @@ public sealed class FlightBrain : ICreatureBrain
             turn = avoidTurn * FlightModel.G * Mathf.Tan(sim.Species.flight.maxBankDeg * Mathf.Deg2Rad) / v;
             alt = Mathf.Max(alt, m.Altitude + 1f * sim.SizeScale);
         }
+        // a twisting flyer: a manoeuvre every so often, flown straight and level (the wall still wins)
+        if (fl.Twist != null) Manoeuvre(sim, fl.Twist, dt, ref turn, ref alt);
         // the wall last: once the tightest turn toward the middle barely fits, take it
         if (fl.WallTurn(out float wall)) turn = wall;
         float ceiling = Vector3.Dot(area.center, up) + (area.maxHeight > 0f ? 0.9f * area.maxHeight : float.MaxValue);
         fl.SetGoals(Mathf.Min(alt, ceiling), speed, turn);
+    }
+
+    // Corkscrews, barrel rolls, loops and slow rolls (AirTwist), one every intervalMin..intervalMax seconds
+    // (Froude-scaled) while patrolling or soaring, when the room it needs is there (AirTwist.Fits: roof,
+    // ground, the head's excursion inside the safe disc); else it tries again a second later. The altitude is
+    // held through it; the turns go on (a corkscrew round a soaring circle).
+    static readonly TwistManoeuvre[] kManoeuvres = { TwistManoeuvre.Corkscrew, TwistManoeuvre.BarrelRoll, TwistManoeuvre.Loop, TwistManoeuvre.SlowRoll };
+    static readonly float[] kManoeuvreWeights = { 0.35f, 0.25f, 0.2f, 0.2f };
+
+    void Manoeuvre(CreatureSim sim, AirTwist tw, float dt, ref float turn, ref float alt)
+    {
+        FlightModel m = sim.Flight.Model;
+        float T = sim.TimeScale;
+        AirTwistSpec spec = tw.Spec;
+        if (twistIn < 0f) twistIn = Lerp(spec.IntervalMin, spec.IntervalMax, Rand()) * T;
+        if (tw.Busy) { alt = twistAlt; return; }
+        twistIn -= dt;
+        if (twistIn > 0f || sim.Flight.Landing) return;
+        float total = 0f;
+        for (int k = 0; k < kManoeuvres.Length; k++) if (tw.Available(kManoeuvres[k])) total += kManoeuvreWeights[k];
+        if (total <= 0f) { twistIn = float.MaxValue; return; }
+        float r = Rand() * total;
+        TwistManoeuvre pick = TwistManoeuvre.None;
+        for (int k = 0; k < kManoeuvres.Length && pick == TwistManoeuvre.None; k++)
+        {
+            if (!tw.Available(kManoeuvres[k])) continue;
+            r -= kManoeuvreWeights[k];
+            if (r <= 0f || k == kManoeuvres.Length - 1) pick = kManoeuvres[k];
+        }
+        if (pick == TwistManoeuvre.None) pick = TwistManoeuvre.SlowRoll;
+        float side = Rand() < 0.5f ? -1f : 1f;
+        float speed = m.HorizontalSpeed;
+        if (tw.Fits(pick, m.Position, m.Forward, speed, sim.Flight.HeightAboveGround, sim.Flight.TurnRadius)
+            && tw.Begin(pick, speed, m.Forward, area.up, side))
+        {
+            twistAlt = m.Altitude;
+            alt = twistAlt;
+            twistIn = Lerp(spec.IntervalMin, spec.IntervalMax, Rand()) * T;
+        }
+        else twistIn = 1f * T;
     }
 
     // A perch spot (or open ground) that a probe down confirms: up-facing, inside the safe disc by a turn

@@ -42,6 +42,7 @@ namespace CreatureKit
         // the legacy view (FromLegacy): first bone of each leg, of the wing block, of the eyes
         int[] legStart;
         int wingStart, eyeStart;
+        int[] chainStart;
 
         public CreatureBoneLayout(IList<BoneBlock> blocks, PartKind[] order)
         {
@@ -75,32 +76,39 @@ namespace CreatureKit
         // ------------------------------------------------------------ legacy fields
 
         // The layout of a CreatureSpecies' legacy fields: spine joints, each leg's bones (3 for a two-bone leg,
-        // one per arthropod segment), 7 per wing, 2 eyes. Blocks: 0 = spine, 1..legs, then wings, then eyes.
+        // one per arthropod segment), 7 per wing (WingBoneLayout.BonesPerWing), 2 eyes, then one bone per antenna segment (Chain kind: none on
+        // any species without antennae, so every shipped layout is unchanged). Blocks: 0 = spine, 1..legs, then
+        // wings, then eyes, then antennae.
         public static CreatureBoneLayout FromLegacy(CreatureSpecies sp) => FromLegacy(sp, SpineOrder);
 
         // `order` exists for the RED test (a wrong block order must break the legacy equivalence).
         public static CreatureBoneLayout FromLegacy(CreatureSpecies sp, PartKind[] order)
         {
-            int legs = sp.legs != null ? sp.legs.Length : 0, wings = sp.WingCount;
-            var blocks = new List<BoneBlock>(legs + wings + 2) { new BoneBlock(PartKind.Body, "spine", sp.JointCount) };
+            int legs = sp.legs != null ? sp.legs.Length : 0, wings = sp.WingCount, chains = sp.AntennaCount;
+            var blocks = new List<BoneBlock>(legs + wings + 2 + chains) { new BoneBlock(PartKind.Body, "spine", sp.JointCount) };
             for (int l = 0; l < legs; l++) blocks.Add(new BoneBlock(PartKind.Limb, "leg" + l, sp.legs[l] != null ? sp.legs[l].SegmentCount : 3));
             for (int w = 0; w < wings; w++) blocks.Add(new BoneBlock(PartKind.Wing, "wing" + w, WingBoneLayout.BonesPerWing));
             blocks.Add(new BoneBlock(PartKind.Sense, "eyes", 2));
+            for (int a = 0; a < chains; a++) blocks.Add(new BoneBlock(PartKind.Chain, "antenna" + a, sp.antennae[a].Segments));
             var layout = new CreatureBoneLayout(blocks, order);
             layout.legStart = new int[legs];
             for (int l = 0; l < legs; l++) layout.legStart[l] = layout.Start(1 + l);
             layout.wingStart = layout.Start(1 + legs);
             layout.eyeStart = layout.Start(1 + legs + wings);
             if (wings == 0) layout.wingStart = layout.eyeStart;
+            layout.chainStart = new int[chains];
+            for (int a = 0; a < chains; a++) layout.chainStart[a] = layout.Start(2 + legs + wings + a);
             return layout;
         }
 
         // The legacy accessors for a layout built from parts (CompiledSpecies): leg l = the l-th limb part.
-        internal void SetLegacyStarts(int[] legs, int wings, int eyes) { legStart = legs; wingStart = wings; eyeStart = eyes; }
+        internal void SetLegacyStarts(int[] legs, int wings, int eyes, int[] chains = null) { legStart = legs; wingStart = wings; eyeStart = eyes; chainStart = chains; }
 
         public int LegBone(int leg, int part) => legStart[leg] + part;
         public int WingBone(int wing, int k) => wingStart + WingBoneLayout.BonesPerWing * wing + k;
         public int EyeBone(int eye) => eyeStart + eye;
+        // bone k of the a-th antenna (CreatureSpecies.antennae order)
+        public int ChainBone(int chain, int k) => chainStart[chain] + k;
         public int LegCount => legStart != null ? legStart.Length : 0;
 
         // ------------------------------------------------------------ invariants

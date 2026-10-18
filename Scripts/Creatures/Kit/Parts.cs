@@ -35,7 +35,7 @@ namespace CreatureKit
     [Serializable]
     [Part("SpineBody", PartKind.Body, Bones = "= joints", Summary = "Bend-limited follow-the-leader chain riding the ground or a climbed surface (CreatureSim). The body of every walker, snake and the wyvern.",
           System = "CreatureSim chain + grounding", MaterialLayers = new[] { 0 }, UseWhen = "anything with a backbone or a segmented trunk")]
-    public sealed class SpineBody : CreaturePart
+    public sealed partial class SpineBody : CreaturePart
     {
         [Param(ParamUnit.Metres, "segment length (joint spacing)", Example = "monitor 0.06, snake 0.03")] public float spacing = 0.06f;
         [Param(ParamUnit.Metres, "snout cap length in front of joint 0")] public float headCapLength = 0.05f;
@@ -197,7 +197,7 @@ namespace CreatureKit
     [Serializable]
     [Part("Leg2Bone", PartKind.Limb, Bones = "3", Summary = "Vertebrate two-bone limb: TwoBoneIK with a pole, rounded knee blend, swing/knee limits (R16), keep-out (R28). Also the wyvern's wing arm.",
           System = "CreatureLegs (gait groups, throttle, sway)", MaterialLayers = new[] { 1, 2 }, UseWhen = "lizards, mammals, birds' legs, wing arms")]
-    public sealed class Leg2Bone : LimbPart
+    public sealed partial class Leg2Bone : LimbPart
     {
         public const int Bones = 3; // upper, lower, foot
         [Param(ParamUnit.Metres, "upper bone length", Min = 0.005f, Max = 2f, Example = "monitor 0.145")] public float upperLength;
@@ -266,7 +266,7 @@ namespace CreatureKit
     [Serializable]
     [Part("ArthropodLeg", PartKind.Limb, Bones = "= segments", Summary = "3-7 rigid segments solved by synergy IK (ArthropodLegIK): high knees, tarsus at a contact angle, knee bands. Feeler role = a pedipalp.",
           System = "CreatureLegs + ArthropodLegModel", MaterialLayers = new[] { 1, 2, 9 }, UseWhen = "insects, spiders, crabs, centipedes; anything with visible segments")]
-    public sealed class ArthropodLeg : LimbPart
+    public sealed partial class ArthropodLeg : LimbPart
     {
         [Param(ParamUnit.Struct, "segments body outward (coxa .. tarsus), one bone each")] public SegmentDef[] segments = new SegmentDef[0];
         [Param(ParamUnit.Degrees, "tarsus angle to the ground, 0 = 20")] public float contactAngleDeg;
@@ -319,7 +319,7 @@ namespace CreatureKit
     [Serializable]
     [Part("Wing", PartKind.Wing, Bones = "7", Summary = "3-finger membrane wing on an arm limb (a Leg2Bone it names); a wingbeat is a step with a vertical comfort band (CreatureWings, FlightModel).",
           System = "CreatureFlight + CreatureWings", MaterialLayers = new[] { 8, 1, 2 }, UseWhen = "bats, pterosaurs, dragons; the Fly module makes it fly")]
-    public sealed class Wing : CreaturePart
+    public sealed partial class Wing : CreaturePart
     {
         public const int Bones = WingBoneLayout.BonesPerWing; // 3 fingers, 2 ribs, arm sector, humerus patch
         [Param(ParamUnit.PartRef, "the Leg2Bone this wing rides on (its role becomes WingArm); a mirrored wing names the unmirrored id and gets .L / .R")]
@@ -360,8 +360,8 @@ namespace CreatureKit
 
     [Serializable]
     [Part("RigidCone", PartKind.Rigid, Bones = "0 (1 with ownBone)", Summary = "Curved cone rigid to a spine joint: horn, spike, claw, chelicera with a fang (BodyAppendage). mirror emits the pair from this one part (no .L/.R: it has no bones). ownBone: the octopus siphon.",
-          System = "mesh only (CreatureMeshBuilder)", MaterialLayers = new[] { 2 }, UseWhen = "horns, spikes, fangs, mandibles, chelicerae")]
-    public sealed class RigidCone : CreaturePart
+          System = "mesh only (RigidCone.EmitMesh: a horn on the emitter)", MaterialLayers = new[] { 2 }, UseWhen = "horns, spikes, fangs, mandibles, chelicerae")]
+    public sealed partial class RigidCone : CreaturePart
     {
         [Param(ParamUnit.Direction, "direction in the joint frame (x mirrored)")] public Vector3 direction = new Vector3(0f, 1f, 0f);
         [Param(ParamUnit.Metres, "cone length")] public float length;
@@ -398,8 +398,8 @@ namespace CreatureKit
 
     [Serializable]
     [Part("Eyes", PartKind.Sense, Bones = "2", Summary = "Two glossy eye spheres on their own bones (sp.EyeBone), placed at the socket (joint, offset x mirrored); cluster eyes ride them (spiders).",
-          System = "CreatureSim.WriteBoneWorld", MaterialLayers = new[] { 3 }, UseWhen = "always (every shipped species has two eye bones)")]
-    public sealed class Eyes : CreaturePart
+          System = "EyesRuntime (part runtime: writes the two eye bones)", MaterialLayers = new[] { 3 }, UseWhen = "always (every shipped species has two eye bones)")]
+    public sealed partial class Eyes : CreaturePart
     {
         [Param(ParamUnit.Metres, "eye radius (0 = no visible eyes; the bones stay)")] public float radius;
         [Param(ParamUnit.Struct, "extra eyes rigid to the eye bones")] public EyeSpotDef[] cluster = new EyeSpotDef[0];

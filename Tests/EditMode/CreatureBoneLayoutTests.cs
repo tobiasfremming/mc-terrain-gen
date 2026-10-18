@@ -10,7 +10,8 @@ namespace TerrainGen.Tests
     // for every species asset and every test factory, so every golden hash stays put.
     public class CreatureBoneLayoutTests
     {
-        // The legacy formulas, transcribed from CreatureSpecies / LegBoneLayout / WingBoneLayout before T1.1 (7 bones per wing since the humerus patch bone).
+        // The legacy formulas, transcribed from CreatureSpecies / LegBoneLayout / WingBoneLayout before T1.1 (a wing:
+        // WingBoneLayout.BonesPerWing bones, 7 since the humerus patch bone; antennae appended after the eyes).
         static int LegacyLegBones(CreatureSpecies sp)
         {
             int c = 0;
@@ -23,10 +24,17 @@ namespace TerrainGen.Tests
             for (int i = 0; i < leg; i++) c += sp.legs[i] != null ? sp.legs[i].SegmentCount : 3;
             return c;
         }
-        static int LegacyBoneCount(CreatureSpecies sp) => sp.JointCount + LegacyLegBones(sp) + 7 * sp.WingCount + 2;
+        // antennae (kit T5.6) append one bone per segment after the eyes; no legacy index moves
+        static int AntennaBones(CreatureSpecies sp)
+        {
+            int c = 0;
+            for (int a = 0; a < sp.AntennaCount; a++) c += sp.antennae[a].Segments;
+            return c;
+        }
+        static int LegacyBoneCount(CreatureSpecies sp) => sp.JointCount + LegacyLegBones(sp) + WingBoneLayout.BonesPerWing * sp.WingCount + 2 + AntennaBones(sp);
         static int LegacyLegBone(CreatureSpecies sp, int leg, int part) => sp.JointCount + LegacyLegStart(sp, leg) + part;
-        static int LegacyWingBone(CreatureSpecies sp, int w, int k) => sp.JointCount + LegacyLegBones(sp) + 7 * w + k;
-        static int LegacyEyeBone(CreatureSpecies sp, int e) => sp.JointCount + LegacyLegBones(sp) + 7 * sp.WingCount + e;
+        static int LegacyWingBone(CreatureSpecies sp, int w, int k) => sp.JointCount + LegacyLegBones(sp) + WingBoneLayout.BonesPerWing * w + k;
+        static int LegacyEyeBone(CreatureSpecies sp, int e) => sp.JointCount + LegacyLegBones(sp) + WingBoneLayout.BonesPerWing * sp.WingCount + e;
 
         // null when the layout reproduces every legacy index
         internal static string LegacyProblem(CreatureSpecies sp, CreatureBoneLayout layout)
@@ -37,7 +45,7 @@ namespace TerrainGen.Tests
                 for (int k = 0; k < (sp.legs[l] != null ? sp.legs[l].SegmentCount : 3); k++)
                     if (layout.LegBone(l, k) != LegacyLegBone(sp, l, k)) return $"leg {l} bone {k}: {layout.LegBone(l, k)} != legacy {LegacyLegBone(sp, l, k)}";
             for (int w = 0; w < sp.WingCount; w++)
-                for (int k = 0; k < 6; k++)
+                for (int k = 0; k < WingBoneLayout.BonesPerWing; k++)
                     if (layout.WingBone(w, k) != LegacyWingBone(sp, w, k)) return $"wing {w} bone {k}: {layout.WingBone(w, k)} != legacy {LegacyWingBone(sp, w, k)}";
             for (int e = 0; e < 2; e++)
                 if (layout.EyeBone(e) != LegacyEyeBone(sp, e)) return $"eye {e}: {layout.EyeBone(e)} != legacy {LegacyEyeBone(sp, e)}";
@@ -97,8 +105,8 @@ namespace TerrainGen.Tests
                 Assert.AreEqual(n + 3, sp.LegBone(1, 0));
                 Assert.AreEqual(n + 6 + 4, sp.LegBone(3, 0));
                 Assert.AreEqual(n + 14, sp.WingBone(0, 0), "wings after the summed leg bones");
-                Assert.AreEqual(n + 14 + 14, sp.EyeBone(0));
-                Assert.AreEqual(n + 14 + 14 + 2, sp.BoneCount);
+                Assert.AreEqual(n + 14 + 2 * WingBoneLayout.BonesPerWing, sp.EyeBone(0));
+                Assert.AreEqual(n + 14 + 2 * WingBoneLayout.BonesPerWing + 2, sp.BoneCount);
             }
             finally { Object.DestroyImmediate(sp); }
         }
@@ -110,7 +118,9 @@ namespace TerrainGen.Tests
             CreatureBoneLayout layout = Spine(name).Layout;
             Assert.IsNull(layout.Check(), name);
             Assert.AreEqual(PartKind.Body, layout.Ranges[0].Kind, name);
-            Assert.AreEqual(PartKind.Sense, layout.Ranges[layout.Ranges.Length - 1].Kind, name + ": eyes last among the legacy blocks");
+            int last = layout.Ranges.Length - 1;
+            while (last > 0 && layout.Ranges[last].Kind == PartKind.Chain) last--;   // antennae come after the legacy blocks
+            Assert.AreEqual(PartKind.Sense, layout.Ranges[last].Kind, name + ": eyes last among the legacy blocks");
         }
 
         // A generic layout: block order, not request order, decides; bone-less parts take no bones.

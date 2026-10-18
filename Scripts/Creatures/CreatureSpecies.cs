@@ -202,6 +202,12 @@ public struct CreatureLook
     public Color bandColor;
     public float sheen;
     public Color sheenColor;
+    // Iridescent scale shimmer (the kit's Shimmer look, the dragon's signature; 0 = none): bands of thin-film
+    // colour (shimmerColor -> shimmerColor2 with the view angle) travelling head -> tail along the body every
+    // shimmerWavelength metres (rest arc, scale 1), one band passing a point every shimmerPeriod s (x sqrt of the
+    // species scale), at strength shimmer, glowing faintly by shimmerGlow.
+    public Color shimmerColor, shimmerColor2;
+    public float shimmer, shimmerWavelength, shimmerPeriod, shimmerGlow;
 }
 
 [CreateAssetMenu(menuName = "Marching Cubes/Creature Species")]
@@ -239,6 +245,11 @@ public class CreatureSpecies : ScriptableObject
     public GaitBob gaitBob;
     public EyeSpot[] eyeCluster;
     public BodyAppendage[] appendages;
+    // Membrane strips along the spine (the kit's FinStrip: manes, crests, fins), skinned to the spine; empty = none.
+    public FinStripSpec[] fins;
+    // Spring chains rooted on spine joints (the kit's Antenna: whiskers, barbels, feelers), one bone per segment
+    // after the eyes; empty = none (every shipped layout unchanged).
+    public AntennaSpec[] antennae;
 
     // ---- creature kit (design docs/superpowers/specs/2026-10-18-creature-kit-design.md, Config/Creatures/CATALOGUE.md) ----
     // kitVersion 0: the legacy fields above are the species. 1: the species is `parts` + `modules` (with their
@@ -265,6 +276,7 @@ public class CreatureSpecies : ScriptableObject
     // kitVersion 1: the runtime view is a hidden species holding the expanded legacy fields. It is reused on
     // every recompile (OnValidate may not destroy objects), so its identity is stable for the renderer.
     [NonSerialized] CreatureSpecies runtimeView;
+    [NonSerialized] CreatureKit.CompiledSpecies source;   // a runtime view: the compiled kit species it was written from
     CreatureKit.CompiledSpecies CompileKit()
     {
         CreatureKit.CompiledSpecies c = CreatureKit.CompiledSpecies.Compose(name, parts, modules);
@@ -280,6 +292,10 @@ public class CreatureSpecies : ScriptableObject
         runtimeView.legModels = null;
         runtimeView.InvalidateCompiled();
         c.Runtime = runtimeView;
+        // the runtime view's kit description is the authored one (its composed parts and modules, with any part
+        // type the legacy fields cannot hold), and so is its bone layout
+        runtimeView.compiled = c;
+        runtimeView.source = c;
         return c;
     }
 
@@ -307,6 +323,7 @@ public class CreatureSpecies : ScriptableObject
     public int JointCount => joints != null ? joints.Length : 0;
     int LegCount => legs != null ? legs.Length : 0;
     public int WingCount => wings != null ? wings.Length : 0;
+    public int AntennaCount => antennae != null ? antennae.Length : 0;
     public bool CanFly => WingCount > 0 && flight != null && flight.cruiseSpeed > 0f;
     // Bone order: spine, the leg bones (3 per legacy leg, one per arthropod segment), 6 per wing, 2 eyes -
     // the creature kit's generic registry (Kit/CreatureBoneLayout) built from these fields, cached. The cache
@@ -316,17 +333,19 @@ public class CreatureSpecies : ScriptableObject
     [NonSerialized] SpineJoint[] layoutJoints;
     [NonSerialized] LegSpec[] layoutLegs;
     [NonSerialized] WingSpec[] layoutWings;
+    [NonSerialized] AntennaSpec[] layoutAntennae;
     [NonSerialized] int layoutJointCount, layoutLegCount, layoutWingCount;
     public CreatureKit.CreatureBoneLayout Layout
     {
         get
         {
             if (kitVersion > 0 && !ReferenceEquals(Compiled.Runtime, this)) return Compiled.Runtime.Layout;
-            if (layout == null || !ReferenceEquals(layoutJoints, joints) || !ReferenceEquals(layoutLegs, legs) || !ReferenceEquals(layoutWings, wings)
+            if (source != null && source.Layout != null) return source.Layout;   // a kit runtime view: the parts' layout
+            if (layout == null || !ReferenceEquals(layoutJoints, joints) || !ReferenceEquals(layoutLegs, legs) || !ReferenceEquals(layoutWings, wings) || !ReferenceEquals(layoutAntennae, antennae)
                 || layoutJointCount != JointCount || layoutLegCount != LegCount || layoutWingCount != WingCount)
             {
                 layout = CreatureKit.CreatureBoneLayout.FromLegacy(this);
-                layoutJoints = joints; layoutLegs = legs; layoutWings = wings;
+                layoutJoints = joints; layoutLegs = legs; layoutWings = wings; layoutAntennae = antennae;
                 layoutJointCount = JointCount; layoutLegCount = LegCount; layoutWingCount = WingCount;
             }
             return layout;
@@ -337,6 +356,7 @@ public class CreatureSpecies : ScriptableObject
     public int LegBone(int leg, int part) => Layout.LegBone(leg, part);
     public int WingBone(int wing, int k) => Layout.WingBone(wing, k);
     public int EyeBone(int eye) => Layout.EyeBone(eye);
+    public int AntennaBone(int antenna, int k) => Layout.ChainBone(antenna, k);
     public float BodyLength => headCapLength + spacing * (JointCount - 1) + tailTipLength;
 
     public float MaxLateralReach
@@ -360,6 +380,16 @@ public class CreatureSpecies : ScriptableObject
                 if (ws.fingerLengths != null) for (int k = 0; k < ws.fingerLengths.Length; k++) finger = Mathf.Max(finger, ws.fingerLengths[k]);
                 r = Mathf.Max(r, Mathf.Abs(ws.restTip.x) + finger);
             }
+            // an antenna reaches out by its root offset and its length
+            for (int a = 0; a < AntennaCount; a++) r = Mathf.Max(r, Mathf.Abs(antennae[a].offset.x) + antennae[a].length);
+            // a fin strip stands out of the body by its height
+            if (fins != null)
+                foreach (FinStripSpec f in fins)
+                {
+                    int a = Mathf.Clamp(f.fromJoint, 0, Mathf.Max(0, JointCount - 1));
+                    float hh = JointCount > 0 ? joints[a].halfHeight : 0f;
+                    r = Mathf.Max(r, hh + Mathf.Max(f.heightStart, f.heightEnd));
+                }
             return r;
         }
     }

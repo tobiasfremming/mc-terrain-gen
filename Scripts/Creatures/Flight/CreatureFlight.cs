@@ -18,7 +18,7 @@ public enum FlightMode { Ground, Launch, Air, Flare, Touchdown }
 // the centre) with the outward velocity removed; a turn-back is the brain's job. The ground below the girdle
 // is probed a few times a second; the girdle never sinks below its clearance over it.
 // Allocation-free after construction; main thread.
-public sealed class CreatureFlight
+public sealed class CreatureFlight : CreatureKit.ILocomotionMode
 {
     const float kLaunchTime = 0.45f;     // s at scale 1
     const float kTouchdownTime = 0.5f;
@@ -93,6 +93,8 @@ public sealed class CreatureFlight
     }
 
     public bool Airborne => Mode == FlightMode.Air || Mode == FlightMode.Flare;
+    // A twisting flyer's manoeuvres (FlightSpec.twist, the dragon); null for every other flyer.
+    public AirTwist Twist => Chain.Twist;
     public int Girdle => girdle;
 
     // ------------------------------------------------------------------ commands (the brain)
@@ -175,7 +177,7 @@ public sealed class CreatureFlight
         float yaw = Vector3.SignedAngle(Model.Forward, to.normalized, up) * Mathf.Deg2Rad;
         float v = Mathf.Max(Model.HorizontalSpeed, f.minSpeed * T);
         float wMax = FlightModel.G * Mathf.Tan(f.maxBankDeg * Mathf.Deg2Rad) / v;
-        return Mathf.Clamp(kPursuitGain / T * yaw, -wMax, wMax);
+        return Mathf.Clamp(f.PursuitGain / T * yaw, -wMax, wMax);
     }
 
     // Land at point (source: what it is - 0 terrain, else a collider: a perch). From the air the landing
@@ -196,7 +198,7 @@ public sealed class CreatureFlight
     Vector3 entryPoint, finalDir;
     public Vector3 EntryPoint => entryPoint;
     public bool OnFinal => Landing && approach == Approach.Final;
-    const float kPursuitGain = 0.9f;       // turn rate per radian of heading error (/ sqrt(scale))
+    // turn rate per radian of heading error (/ sqrt(scale)): FlightSpec.PursuitGain (0 = 0.9)
     const float kGlideSlope = 0.3f;        // final: altitude above the flare per metre of distance
     const float kApproachHeight = 2f;      // m at scale 1 above the landing point at the entry
     const float kApproachSpeed = 0.85f;    // of cruise on the final
@@ -254,6 +256,10 @@ public sealed class CreatureFlight
     // ------------------------------------------------------------------ the sub-step
 
     // True when this sub-step was handled here (every mode but Ground).
+    // The creature kit's locomotion mode (CreatureSim asks it before walking each sub-step).
+    int CreatureKit.ILocomotionMode.Priority => 100;
+    bool CreatureKit.ILocomotionMode.SubStep(CreatureSim s, float dt, Vector3 target) => SubStep(dt, target);
+
     internal bool SubStep(float dt, Vector3 target)
     {
         GateSurfaces();
@@ -336,6 +342,13 @@ public sealed class CreatureFlight
         Model.Integrate(dt, Wings);
         Contain();
         ProbeGround();
+        if (Chain.Twist != null)
+        {
+            // the twisting head's path stays in the aviary and above the ground; calm while launching or landing
+            Chain.Twist.Bounds = sim.Bounds;
+            Chain.Twist.SetFloor(GroundBelow, Model.Up, sp.joints[girdle].clearance * scale);
+            Chain.Twist.Calm = Landing || Mode != FlightMode.Air;
+        }
         Chain.Step(dt, air, Model.Position, Model.Velocity, Model.BankedUp, Model.Up);
     }
 
@@ -490,17 +503,23 @@ public sealed class CreatureFlight
         if (Mode == FlightMode.Launch)
         {
             float t = ModeTime / (kLaunchTime * T);
+            // a twisting chain (AirTwist) starts as the grounded body and follows its own head up: it is the body at
+            // once (the weights still hand the legs and wings over); a trailing chain is blended in head first
+            bool follow = Chain.Twist != null;
             for (int i = 0; i < n; i++)
             {
                 float lag = kHeadLead * i / Mathf.Max(1, n - 1);
                 float w = Smooth01(t - lag);
                 AirWeight[i] = w;
-                J[i] = Vector3.Lerp(J[i], air[i], w);
+                J[i] = follow ? air[i] : Vector3.Lerp(J[i], air[i], w);
             }
             armBlend = Smooth01(t / kArmHandover);
             foldFloor = 1f - Smooth01(t / (1f + kHeadLead));
-            Relength(J);
-            UpFrames(J);
+            if (!follow)
+            {
+                Relength(J);
+                UpFrames(J);
+            }
         }
         else if (Mode == FlightMode.Touchdown)
         {
@@ -523,6 +542,13 @@ public sealed class CreatureFlight
             Relength(J);
             sim.RefreshFrames();
         }
+    }
+
+    // After the walking sub-step's frames: a twisting chain's launch body is the air chain itself (BeforeLegs), so
+    // its frames are the chain's (the walking frames' head follows the ground heading, not the rising head).
+    internal void AfterFrames()
+    {
+        if (Mode == FlightMode.Launch && Chain.Twist != null) Chain.WriteRotations(sim.Rotations);
     }
 
     // Perched (or any flyer on the ground): joints past the edge of what they stand on hang - a tail over a

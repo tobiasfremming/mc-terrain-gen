@@ -82,7 +82,7 @@ namespace CreatureKit
                 }
                 return;
             }
-            if (p.mirror && !(p is RigidCone))
+            if (p.mirror && !(p is RigidCone) && !(p is FinStrip))
             {
                 string arm = (p as Wing)?.arm;
                 for (int side = -1; side <= 1; side += 2)
@@ -227,7 +227,9 @@ namespace CreatureKit
                 if (Parts[i] is Eyes) eyes = Layout.Start(i);
                 if (Parts[i] is Wing && wings < 0) wings = Layout.Start(i);
             }
-            Layout.SetLegacyStarts(legStart, wings < 0 ? eyes : wings, eyes);
+            var chains = new List<int>();
+            for (int i = 0; i < Parts.Count; i++) if (Parts[i] is Antenna) chains.Add(Layout.Start(i));
+            Layout.SetLegacyStarts(legStart, wings < 0 ? eyes : wings, eyes, chains.ToArray());
         }
 
         // ------------------------------------------------------------ the legacy runtime fields
@@ -241,6 +243,11 @@ namespace CreatureKit
             Module<Skin>()?.WriteTo(ref look);
             if (Module<Membrane>() is Membrane mem) { look.membrane = mem.colour; look.membraneTranslucency = mem.translucency; look.veinContrast = mem.veinContrast; look.membraneRim = mem.rim; }
             if (Module<Chitin>() is Chitin ch) { look.bandColor = ch.bandColor; look.sheen = ch.sheen; look.sheenColor = ch.sheenColor; }
+            if (Module<Shimmer>() is Shimmer sh)
+            {
+                look.shimmerColor = sh.colour; look.shimmerColor2 = sh.colour2; look.shimmer = sh.strength;
+                look.shimmerWavelength = sh.wavelength; look.shimmerPeriod = sh.period; look.shimmerGlow = sh.glow;
+            }
             dst.look = look;
             if (Soft)
             {
@@ -284,9 +291,16 @@ namespace CreatureKit
                 dst.wings[w] = s;
             }
             dst.flight = Module<Fly>() is Fly fly ? KitTypes.Memberwise(fly.spec) : null;
+            if (dst.flight != null) dst.flight.twist = Module<Fly>().twist;
             var cones = new List<BodyAppendage>();
             foreach (CreaturePart p in Parts) if (p is RigidCone r && !r.ownBone) cones.Add(r.ToRuntime());
             dst.appendages = cones.ToArray();
+            var fins = new List<FinStripSpec>();
+            foreach (CreaturePart p in Parts) if (p is FinStrip fs) fins.Add(fs.ToRuntime());
+            dst.fins = fins.ToArray();
+            var ant = new List<AntennaSpec>();
+            foreach (CreaturePart p in Parts) if (p is Antenna an) ant.Add(an.ToRuntime());
+            dst.antennae = ant.ToArray();
             dst.InvalidateLayout();
         }
 

@@ -1,11 +1,11 @@
 using System.Collections.Generic;
+using CreatureKit;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-// Skinned mesh of a winged species (design section 6), built once in the rest pose:
-//   body, hind legs, eyes   CreatureMeshBuilder on a copy of the species without the wing arms, its bone
-//                           indices remapped to WingBoneLayout (legs keep their species index, eyes move
-//                           past the wing bones)
+// Skinned mesh of a winged species (design section 6), built once in the rest pose by the creature kit's part
+// emitter (Kit/PartMeshEmitter: every part draws itself; the body, hind legs, eyes, cones, fins and antennae as
+// for any species, on the full species' layout). The kit's Wing part draws its wing here (EmitWing):
 //   wing arms               tubes shoulder -> rounded elbow -> wrist, a wrist knuckle and a thumb claw
 //   fingers                 tapered tubes along the 3 finger bones
 //   membrane (part 8)       double-sided: a fan from the wrist over 5 zones between neighbouring rays
@@ -47,7 +47,7 @@ public static class WingedMeshBuilder
         return m;
     }
 
-    static Matrix4x4[] RestBoneWorld(CreatureSpecies sp, WingSpec[] wings, CreatureSim sim, out CreatureWings cw)
+    internal static Matrix4x4[] RestBoneWorld(CreatureSpecies sp, WingSpec[] wings, CreatureSim sim, out CreatureWings cw)
     {
         // the sim writes spine, legs and eyes (CreatureSpecies' layout is WingBoneLayout); the spread wings
         // override the arms' leg bones and write the finger and rib bones
@@ -65,15 +65,17 @@ public static class WingedMeshBuilder
         wings.WriteBones(dst, offset);
     }
 
-    public static Mesh Build(CreatureSpecies sp) => Build(sp, sp.wings);
+    public static Mesh Build(CreatureSpecies sp) => PartMeshEmitter.Build(sp);
     public static Matrix4x4[] BindPoses(CreatureSpecies sp) => BindPoses(sp, sp.wings);
 
-    public static Mesh Build(CreatureSpecies sp, WingSpec[] wings)
+    // wings: the species' own (sp.wings; the test factories pass them explicitly).
+    public static Mesh Build(CreatureSpecies sp, WingSpec[] wings) => PartMeshEmitter.Build(sp, wings);
+
+    // The kit's Wing part w (CreaturePart.EmitMesh): arm, fingers and membrane on the emitter's spread rest pose.
+    internal static void EmitWing(PartMeshEmitter m, int w)
     {
-        var b = new Builder(sp, wings);
-        b.BodyAndHindLegs();
-        for (int w = 0; w < b.WingCount; w++) { b.Arm(w); b.Fingers(w); b.Membrane(w); }
-        return b.ToMesh();
+        var b = new Builder(m);
+        b.Arm(w); b.Fingers(w); b.Membrane(w);
     }
 
     sealed class Builder
@@ -83,69 +85,16 @@ public static class WingedMeshBuilder
         readonly CreatureWings cw;
         readonly Matrix4x4[] bones;
         readonly int n, legs;
-        readonly List<Vector3> pos = new List<Vector3>(), nrm = new List<Vector3>();
-        readonly List<Vector2> uv0 = new List<Vector2>(), uv1 = new List<Vector2>();
-        readonly List<Vector4> uv2 = new List<Vector4>();
-        readonly List<int> tris = new List<int>();
+        readonly List<Vector3> pos, nrm;
+        readonly List<Vector2> uv0, uv1;
+        readonly List<Vector4> uv2;
+        readonly List<int> tris;
 
-        public int WingCount => wings.Length;
-
-        public Builder(CreatureSpecies sp, WingSpec[] wings)
+        public Builder(PartMeshEmitter m)
         {
-            this.sp = sp; this.wings = wings ?? new WingSpec[0];
+            sp = m.Species; wings = m.WingSpecs; cw = m.Wings; bones = m.Bones;
             n = sp.JointCount; legs = sp.legs != null ? sp.legs.Length : 0;
-            CreatureSim sim = CreatureRestPose.Sim(sp);
-            bones = RestBoneWorld(sp, this.wings, sim, out cw);
-        }
-
-        bool IsWingArm(int leg)
-        {
-            for (int w = 0; w < wings.Length; w++) if (wings[w].leg == leg) return true;
-            return false;
-        }
-
-        // ---------------------------------------------------------------- body (CreatureMeshBuilder)
-
-        public void BodyAndHindLegs()
-        {
-            var keep = new List<int>();
-            for (int l = 0; l < legs; l++) if (!IsWingArm(l)) keep.Add(l);
-            var copy = ScriptableObject.CreateInstance<CreatureSpecies>();
-            copy.name = sp.name;
-            copy.scale = sp.scale; copy.spacing = sp.spacing; copy.joints = sp.joints;
-            copy.headCapLength = sp.headCapLength; copy.tailTipLength = sp.tailTipLength;
-            copy.legs = new LegSpec[keep.Count];
-            for (int k = 0; k < keep.Count; k++) copy.legs[k] = sp.legs[keep[k]];
-            copy.speed = sp.speed; copy.turnRateDeg = sp.turnRateDeg; copy.accel = sp.accel; copy.turnSlowdown = sp.turnSlowdown;
-            copy.undulationDeg = sp.undulationDeg; copy.undulationHz = sp.undulationHz;
-            copy.gaitSwayDeg = sp.gaitSwayDeg; copy.gaitRollDeg = sp.gaitRollDeg; copy.subSteps = sp.subSteps;
-            copy.eyeJoint = sp.eyeJoint; copy.eyeOffset = sp.eyeOffset; copy.eyeRadius = sp.eyeRadius;
-            copy.ringSegments = sp.ringSegments; copy.ringsPerSegment = sp.ringsPerSegment; copy.look = sp.look;
-            Mesh body = CreatureMeshBuilder.Build(copy);
-            int kl = keep.Count;
-            Object.DestroyImmediate(copy);
-
-            var v = body.vertices; var nn = body.normals; var t = body.triangles;
-            var a = new List<Vector2>(); var c = new List<Vector2>(); var s = new List<Vector4>();
-            body.GetUVs(0, a); body.GetUVs(1, c); body.GetUVs(2, s);
-            Object.DestroyImmediate(body);
-            int baseIndex = pos.Count;
-            for (int i = 0; i < v.Length; i++)
-            {
-                Vector4 sk = s[i];
-                sk.x = Remap((int)(sk.x + 0.5f), kl, keep);
-                sk.y = Remap((int)(sk.y + 0.5f), kl, keep);
-                pos.Add(v[i]); nrm.Add(nn[i]); uv0.Add(a[i]); uv1.Add(c[i]); uv2.Add(sk);
-            }
-            for (int i = 0; i < t.Length; i++) tris.Add(baseIndex + t[i]);
-        }
-
-        int Remap(int b, int keptLegs, List<int> keep)
-        {
-            if (b < n) return b;
-            int r = b - n;
-            if (r < 3 * keptLegs) return WingBoneLayout.LegBone(n, keep[r / 3], r % 3);
-            return WingBoneLayout.EyeBone(n, legs, wings.Length, r - 3 * keptLegs);
+            pos = m.Lists.pos; nrm = m.Lists.nrm; uv0 = m.Lists.uv0; uv1 = m.Lists.uv1; uv2 = m.Lists.uv2; tris = m.Lists.tris;
         }
 
         // ---------------------------------------------------------------- primitives (after CreatureMeshBuilder)
@@ -439,19 +388,6 @@ public static class WingedMeshBuilder
                 }
                 GridRC(first, sg * np, rows, cols);
             }
-        }
-
-        public Mesh ToMesh()
-        {
-            var mesh = new Mesh { name = (sp != null ? sp.name : "") + " winged creature" };
-            if (pos.Count > 65535) mesh.indexFormat = IndexFormat.UInt32;
-            mesh.SetVertices(pos);
-            mesh.SetNormals(nrm);
-            mesh.SetUVs(0, uv0);
-            mesh.SetUVs(1, uv1);
-            mesh.SetUVs(2, uv2);
-            mesh.SetTriangles(tris, 0, true);
-            return mesh;
         }
     }
 }

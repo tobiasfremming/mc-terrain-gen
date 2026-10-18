@@ -25,6 +25,7 @@ public sealed class CreatureWorld : MonoBehaviour
     public const string OctopusShaderName = "MarchingCubes/CreatureOctopus";
 
     readonly List<CreatureSim> sims = new List<CreatureSim>();
+    readonly List<SpineBody> simBodies = new List<SpineBody>();         // per sim, parallel to sims: what the renderer draws
     readonly List<ICreatureBrain> brains = new List<ICreatureBrain>();
     readonly List<CreatureSpecies> species = new List<CreatureSpecies>();
     readonly List<CreatureRenderer> renderers = new List<CreatureRenderer>();
@@ -190,10 +191,33 @@ public sealed class CreatureWorld : MonoBehaviour
         simGrounds.Add(simGround);
         var sim = new CreatureSim(sp, simGround, upAt, position, forward, inst.sizeScale, seed) { Bounds = bounds };
 
-        RendererFor(sp).Add(sim, inst);
+        var body = new SpineBody(sim);
+        RendererFor(sp).Add(body, inst);
         sims.Add(sim);
+        simBodies.Add(body);
         brains.Add(brain);
         return sim;
+    }
+
+    // Any species, one entry (creature kit T3.3): a spine species becomes a CreatureSim driven by `brain` (null =
+    // the brain its behaviour modules ask for: CreatureKit.BrainFactory), a soft one an OctopusCreature with its
+    // own brain (hints optional). Returns the body the renderer draws. scale > 0 overrides the species' scale.
+    public ICreatureBody SpawnCreature(CreatureSpecies sp, Vector3 position, Quaternion rotation, EnclosureArea? bounds, int seed,
+                                       float scale = 0f, ICreatureBrain brain = null, PerchSpot[] perches = null, BranchHints hints = null)
+    {
+        if (sp == null) throw new ArgumentNullException(nameof(sp));
+        CreatureSpecies r = sp.Compiled.Runtime;
+        if (r.bodyPlan == CreatureBodyPlan.Cephalopod) return SpawnOctopus(r, position, rotation, bounds, seed, scale, hints);
+        if (brain == null && bounds.HasValue) brain = CreatureKit.BrainFactory.Create(r, bounds.Value, seed, perches);
+        Spawn(r, position, rotation * Vector3.forward, brain, bounds, seed, scale);
+        return simBodies[simBodies.Count - 1];
+    }
+
+    // The body the renderer draws for a spawned sim (null if it is not in this world).
+    public ICreatureBody BodyOf(CreatureSim sim)
+    {
+        int i = sims.IndexOf(sim);
+        return i >= 0 ? simBodies[i] : null;
     }
 
     // A self-ticking body (any plan): ticked in TickAll, drawn by its species' renderer.
@@ -233,13 +257,14 @@ public sealed class CreatureWorld : MonoBehaviour
         return renderers[renderers.Count - 1];
     }
 
-    // A tree octopus (a Cephalopod species). Its surfaces are the terrain plus every registered collider (real
+    // A tree octopus (a Cephalopod species; SpawnCreature takes any species). Its surfaces are the terrain plus every registered collider (real
     // geometry only); hints are optional (null = probe only). The brain is kept inside `bounds` (centre,
     // radius, maxHeight). scale > 0 overrides the species' scale. It is ticked and drawn like any body.
     public OctopusCreature SpawnOctopus(CreatureSpecies sp, Vector3 position, Quaternion rotation, EnclosureArea? bounds, int seed,
                                         float scale = 0f, BranchHints hints = null)
     {
         if (sp == null) throw new ArgumentNullException(nameof(sp));
+        sp = sp.Compiled.Runtime;   // creature kit: the runtime view (a legacy asset is its own)
         if (sp.bodyPlan != CreatureBodyPlan.Cephalopod) throw new ArgumentException(sp.name + " is not a cephalopod", nameof(sp));
         string err = sp.Validate();
         if (err != null) throw new ArgumentException(sp.name + ": " + err, nameof(sp));
@@ -275,7 +300,7 @@ public sealed class CreatureWorld : MonoBehaviour
         IGroundProbe sg = simGrounds[i];
         if (sg is CompositeSurfaceProbe comp) sg = comp.Terrain;
         if (sg is CachedGroundProbe cache) caches.Remove(cache);
-        sims.RemoveAt(i); brains.RemoveAt(i); simGrounds.RemoveAt(i);
+        sims.RemoveAt(i); simBodies.RemoveAt(i); brains.RemoveAt(i); simGrounds.RemoveAt(i);
         return true;
     }
 
@@ -339,7 +364,7 @@ public sealed class CreatureWorld : MonoBehaviour
     void OnDestroy()
     {
         for (int i = 0; i < renderers.Count; i++) renderers[i].Dispose();
-        renderers.Clear(); species.Clear(); sims.Clear(); brains.Clear(); caches.Clear(); simGrounds.Clear(); bodies.Clear();
+        renderers.Clear(); species.Clear(); sims.Clear(); simBodies.Clear(); brains.Clear(); caches.Clear(); simGrounds.Clear(); bodies.Clear();
         if (edits != null) { edits.RegionModified -= OnTerrainEdited; edits = null; }
         if (ownsSurfaces && surfaces != null) surfaces.Dispose();
         surfaces = null;
