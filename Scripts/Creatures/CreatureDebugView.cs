@@ -115,6 +115,13 @@ public sealed class CreatureDebugView : MonoBehaviour
 
     void Line(Vector3 a, Vector3 b, Color32 c)
     {
+        // VerticesFor is an estimate (arthropod segments, wings, climb goals, surfaces grow it); never trust it to
+        // be exact - grow instead of overrunning. Debug view only, and the buffer keeps its size once grown.
+        if (count + 2 > verts.Length)
+        {
+            int cap = Mathf.Max(64, 2 * verts.Length);
+            System.Array.Resize(ref verts, cap); System.Array.Resize(ref colors, cap);
+        }
         verts[count] = a; colors[count++] = c;
         verts[count] = b; colors[count++] = c;
     }
