@@ -69,7 +69,7 @@ namespace TerrainGen.Tests
         {
             Branches();
             CreatureSpecies sp = Octopus();
-            OctopusCreature oct = world.SpawnOctopus(sp, new Vector3(0f, 2.0f, 0f), Quaternion.identity, null, 3);
+            OctopusCreature oct = world.SpawnOctopus(sp, new Vector3(0f, 2.0f, 0f), Quaternion.identity, null, 3, 1f);   // the branches are sized for scale 1
             int held;
             using (PhysicsSurfaceProbe.Backfaces()) held = oct.AnchorNearby();
             Assert.GreaterOrEqual(held, 2, "did not take hold of the branches");
@@ -95,7 +95,7 @@ namespace TerrainGen.Tests
         {
             GcAllocs.AssertCounterWorks();
             Branches();
-            OctopusCreature oct = world.SpawnOctopus(Octopus(), new Vector3(0f, 2.0f, 0f), Quaternion.identity, null, 3);
+            OctopusCreature oct = world.SpawnOctopus(Octopus(), new Vector3(0f, 2.0f, 0f), Quaternion.identity, null, 3, 1f);
             using (PhysicsSurfaceProbe.Backfaces()) oct.AnchorNearby();
             oct.Brain.CanopyRegions.Add(new Vector3(2f, 2.3f, 0f)); oct.Brain.CanopyRegions.Add(new Vector3(-2f, 2.3f, 0f));
             var renderers = (List<CreatureRenderer>)typeof(CreatureWorld).GetField("renderers", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(world);
@@ -187,9 +187,10 @@ namespace TerrainGen.Tests
             TestContext.Out.WriteLine($"scale {lab.ChosenScale:F2}, anchors {oct.Controller.Board.AnchoredCount}, head max {headMax * 1000f:F1} mm/tick, " +
                 $"arm max {armMax * 1000f:F1} mm/tick (arm {worstArm} particle {worstK}), arm avg of per-tick max {armAvg * 1000f:F2} mm, asleep {b.Asleep}, planes {oct.Controller.ContactPlanes}");
             string stats = ($"head max {headMax * 1000f:F1} mm/tick, arm max {armMax * 1000f:F1} mm/tick (arm {worstArm} particle {worstK}), arm avg {armAvg * 1000f:F2} mm, asleep {b.Asleep}, anchors {oct.Controller.Board.AnchoredCount}, scale {lab.ChosenScale:F2}");
-            Assert.Less(headMax, 0.005f, "the perched body jitters: " + stats);
-            Assert.Less(armAvg, 0.002f, "the perched arms never settle: " + stats);
-            Assert.Less(armMax, 0.03f, "a perched arm particle jumps: " + stats);
+            float sc = oct.SizeScale;   // the species' lab scale (3.1 x jitter): motion bounds are lengths
+            Assert.Less(headMax, 0.005f * sc, "the perched body jitters: " + stats);
+            Assert.Less(armAvg, 0.002f * sc, "the perched arms never settle: " + stats);
+            Assert.Less(armMax, 0.03f * sc, "a perched arm particle jumps: " + stats);
         }
 
         // A creature as prey: its spine is the grab capsule, it struggles while held and flees after release.
@@ -243,7 +244,7 @@ namespace TerrainGen.Tests.Perf
                 geo.Branch(new Vector3(-3f, 2.5f, 0f), 0.06f, 6f);
                 geo.Branch(new Vector3(-3f, 2.5f, 1.1f), 0.06f, 6f);
                 Physics.SyncTransforms();
-                OctopusCreature oct = world.SpawnOctopus(CreatureOctopusWorldTests.Octopus(), new Vector3(0f, 2.0f, 0.1f), Quaternion.identity, null, 9);
+                OctopusCreature oct = world.SpawnOctopus(CreatureOctopusWorldTests.Octopus(), new Vector3(0f, 2.0f, 0.1f), Quaternion.identity, null, 9, 1f);   // bars sized for scale 1
                 using (PhysicsSurfaceProbe.Backfaces()) oct.AnchorNearby();
                 var active = new List<double>(); var resting = new List<double>();
                 int maxQ = 0;

@@ -17,10 +17,10 @@ namespace TerrainGen.Tests
             return c;
         }
 
-        static Vector3 Travel(OctopusController c, OctopusBody body, float s, float urgency = 0.6f)
+        static Vector3 Travel(OctopusController c, OctopusBody body, float s, float urgency = 0.6f, bool climb = false)
         {
             Vector3 goal = body.HeadCentre + new Vector3(1.6f * s, 0f, 0f);
-            c.Intent = new OctoIntent { mode = OctoMode.Travel, goal = goal, urgency = urgency };
+            c.Intent = new OctoIntent { mode = OctoMode.Travel, goal = goal, urgency = urgency, climb = climb };
             return goal;
         }
 
@@ -34,7 +34,7 @@ namespace TerrainGen.Tests
                 for (uint seed = 1; seed <= 3; seed++)
                 {
                     OctopusController c = Hanging(1, s, seed, out OctopusBody body);
-                    Travel(c, body, s);
+                    Travel(c, body, s, climb: true);   // (the hand-over-hand pull; swinging: two fixed grip groups, Swing_* tests)
                     double gripF = 0, otherF = 0; int gn = 0, on = 0, grips = 0, samples = 0;
                     for (int f = 0; f < 60 * 6; f++)
                     {
@@ -52,7 +52,8 @@ namespace TerrainGen.Tests
                     float gm = (float)(gripF / gn), om = (float)(otherF / on), avg = grips / (float)samples;
                     TestContext.Out.WriteLine($"scale {s} seed {seed}: grip arms face the route {gm:F2}, the others {om:F2}, grips per sample {avg:F1}");
                     Assert.Greater(gm, om + 0.4f, $"scale {s} seed {seed}: the grip arms do not face the route");
-                    Assert.That(avg, Is.InRange(1.0f, 4.0f), $"scale {s} seed {seed}: grip quota");
+                    // (swinging: the two grip groups, 6 arms; the two rearmost hang)
+                    Assert.That(avg, Is.InRange(1.0f, 6.0f), $"scale {s} seed {seed}: grip quota");
                 }
         }
 
@@ -157,7 +158,7 @@ namespace TerrainGen.Tests
                     if (f % (60 * 15) == 0)
                     {
                         // travel out and back, rest in between
-                        if ((f / (60 * 15)) % 2 == 0) Travel(c, body, 1f);
+                        if ((f / (60 * 15)) % 2 == 0) Travel(c, body, 1f, climb: true);   // (the pull: swinging keeps its roles, OctopusSwingTests)
                         else c.Intent = new OctoIntent { mode = OctoMode.Rest, goal = body.HeadCentre };
                     }
                     c.Tick(Dt);
@@ -191,14 +192,19 @@ namespace TerrainGen.Tests
         }
 
         // An arm that reports Failed gets a new role in that tick and is not given the failed role again during
-        // the cool-down.
+        // the cool-down (climbing, the hand-over-hand pull; a swinging grip-group arm keeps its role and searches
+        // again - Swing_FailedSearch_KeepsGroup).
         [Test] public void Roles_FailureReassigns()
         {
             OctopusController c = Hanging(1, 1f, 1, out OctopusBody body);
-            Travel(c, body, 1f);
-            for (int f = 0; f < 90; f++) c.Tick(Dt);
+            Travel(c, body, 1f, climb: true);
             int arm = -1;
-            for (int a = 0; a < 8; a++) if (c.Board.Role[a] == ArmRole.Grip) { arm = a; break; }
+            for (int f = 0; f < 90 && arm < 0; f++)
+            {
+                c.Tick(Dt);
+                // (after the first decisions, the first arm in the Grip role)
+                if (f >= 15) for (int a = 0; a < 8; a++) if (c.Board.Role[a] == ArmRole.Grip) { arm = a; break; }
+            }
             Assert.GreaterOrEqual(arm, 0, "no grip arm");
             c.Board.Report[arm] = ArmReport.Failed;
             c.Tick(Dt);

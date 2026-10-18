@@ -88,6 +88,7 @@ public sealed class OctopusBody
             }
             Arms[a] = new TentacleChain(spec.arm, position + rotation * r, rotation * armRestRot[a], SizeScale);
             Arms[a].TwistFreeFrom = spec.WebDepth * spec.arm.Length / spec.arm.Spacing;
+            Arms[a].Iterations = iterations;
         }
 
         eyeRest = new Vector3[2]; eyeRot = new Quaternion[2];

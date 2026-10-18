@@ -56,6 +56,12 @@ public sealed class TentacleChain
     public readonly Vector3[] BendTarget;    // per joint j (0..N-2): target direction of segment j in the frame of segment j-1
     public readonly bool[] Pinned;
     public readonly Vector3[] PinPoint, PinNormal;
+    // An eased pin (Pin(..., ease: true)) starts where the particle is and slides to PinGoal at PinEaseSpeed x
+    // sqrt(size) m/s: a pin that teleported its particle onto the surface moved it a size-proportional distance
+    // in one sub-step - a velocity growing with size instead of sqrt(size), so the zips and hauls of a large
+    // octopus jolted it far harder (in body weights) than a small one's.
+    public readonly Vector3[] PinGoal;
+    public const float PinEaseSpeed = 0.8f;
     public readonly int[] PinSource;
 
     public Vector3 Back;                     // virtual particle behind the root
@@ -83,6 +89,20 @@ public sealed class TentacleChain
     // The cap then grows by MaxTwistDeg per particle. 0 = no cap (a free-standing arm).
     public float TwistFreeFrom;
     public float Time => time;
+    // Size-free solver response (Froude similarity: lengths x s, times x sqrt s, masses x s^3). A PBD muscle or
+    // positional pull that corrects a fixed fraction k of its error per iteration acts like a spring whose
+    // stiffness relative to the weight it carries grows with size (the correction is a length, x s, per fixed
+    // sub-step; the weight's sag per sub-step is not): at 4x the muscles were four times too strong for the
+    // weight and the held runs fought each other and their holds. The solver's correction acts like an
+    // exponential relaxation, K = 1 - exp(-x) per sub-step with x proportional to the spring's w^2 h^2 (fitted on
+    // a hanging arm at tone 0.25 / 1 / 1.6: the normalised motion at 4x matches 1x within 3-5 % of the arm's
+    // length; K / s, the linear-spring guess, is right for weak muscles only and leaves toned arms floppy). A
+    // similar size-s arm has w^2 / s, so it corrects 1 - (1 - k)^(1/s) per pass; its velocity damping is
+    // Damping / sqrt s and its segment compliance is / s^2 (spring constants of a similar body grow with s^2).
+    // At scale 1 all three are exact.
+    public float SizeFree(float k) => invSize == 1f || k <= 0f ? k : k >= 1f ? 1f : 1f - MathF.Pow(1f - k, invSize);
+    public int Iterations = 3;               // solver passes per sub-step (OctopusBody sets its own; unused by SizeFree)
+    readonly float invSize;
     // Overload of the most loaded pin: root distance / the arc at maximum stretch (> 1 = the pins cannot all
     // hold: an infeasible pull). OverloadedPin is that pin, or -1. The maximum over the current sub-step's iterations.
     public float Overload { get; private set; }
@@ -104,12 +124,13 @@ public sealed class TentacleChain
         Spec = spec;
         N = spec.Segments;
         SizeScale = Mathf.Max(1e-3f, sizeScale);
+        invSize = SizeScale == 1f ? 1f : 1f / SizeScale;
         Spacing = spec.Spacing * SizeScale;
         X = new Vector3[N]; Prev = new Vector3[N]; InvMass = new float[N]; Mass = new float[N];
         Frames = new Quaternion[N]; Twist = new float[N]; Stretch = new float[N]; Squeeze = new float[N];
         LengthTarget = new float[N - 1]; restLength = new float[N - 1]; arc = new float[N];
         BendTarget = new Vector3[N - 1]; restCurl = new Vector3[N - 1]; localTarget = new Vector3[N - 1]; muscleBend = new Vector3[N - 1];
-        Pinned = new bool[N]; PinPoint = new Vector3[N]; PinNormal = new Vector3[N]; PinSource = new int[N];
+        Pinned = new bool[N]; PinPoint = new Vector3[N]; PinNormal = new Vector3[N]; PinSource = new int[N]; PinGoal = new Vector3[N];
         fab = new Vector3[N]; frameX = new Vector3[N]; rmfX = new Vector3[N]; rmfT = new Vector3[N];
 
         cosLimit = Mathf.Cos(spec.BendLimitDeg * Mathf.Deg2Rad);
@@ -152,12 +173,17 @@ public sealed class TentacleChain
         Back = root - (frame * Vector3.forward) * Spacing;
     }
 
-    public void Pin(int k, Vector3 point, Vector3 normal, int source = 0)
+    public void Pin(int k, Vector3 point, Vector3 normal, int source = 0, bool ease = false)
     {
         if (k <= 0 || k >= N) return; // the root belongs to the body
-        Pinned[k] = true; PinPoint[k] = point; PinNormal[k] = OctoMath.Norm(normal, Vector3.up); PinSource[k] = source;
-        X[k] = point; Prev[k] = point; InvMass[k] = 0f;
+        Vector3 from = Pinned[k] ? PinPoint[k] : X[k];
+        Pinned[k] = true; PinGoal[k] = point; PinNormal[k] = OctoMath.Norm(normal, Vector3.up); PinSource[k] = source;
+        if (ease) PinPoint[k] = from; else PinPoint[k] = point;
+        X[k] = PinPoint[k]; Prev[k] = PinPoint[k]; InvMass[k] = 0f;
     }
+
+    // a pin still sliding to its goal
+    public bool PinEasing(int k) => Pinned[k] && (PinPoint[k].x != PinGoal[k].x || PinPoint[k].y != PinGoal[k].y || PinPoint[k].z != PinGoal[k].z);
 
     public void Unpin(int k)
     {
@@ -260,18 +286,32 @@ public sealed class TentacleChain
     // free fall of the whole animal. The root is integrated by its owner.
     public void Integrate(float h, Vector3 refVel)
     {
-        float damp = MathF.Exp(-Spec.Damping * h), abs = MathF.Exp(-ExtraDamping * h);
+        float damp = MathF.Exp(-Spec.Damping * (invSize == 1f ? h : h / MathF.Sqrt(SizeScale))), abs = MathF.Exp(-ExtraDamping * h);
         float vmax = kMaxSpeed * MathF.Sqrt(SizeScale), vmax2 = vmax * vmax;
         float inv = 1f / h;
         float gx = Gravity.x * h, gy = Gravity.y * h, gz = Gravity.z * h;
         float rx = refVel.x, ry = refVel.y, rz = refVel.z;
         Vector3[] x = X, p = Prev;
         Overload = 0f; OverloadedPin = -1; // max over this sub-step's iterations
+        // A held run is damped relative to the motion it has as part of the swing - the body's velocity at the
+        // root, falling to the hold's (zero) at the base pin - and the arm past its hold relative to the hold. Damped
+        // relative to the whole animal's velocity instead, a run swinging about its hold lost the swing's energy in
+        // a few periods (the run's particles move slower than the body) and no pumping could build one.
+        int bp = -1;
+        for (int k = 1; k < N; k++) if (Pinned[k]) { bp = k; break; }
+        float invBp = bp > 0 ? 1f / bp : 0f;
+        float ease = PinEaseSpeed * MathF.Sqrt(SizeScale) * h;
         for (int k = 1; k < N; k++)
         {
-            if (Pinned[k]) { x[k] = PinPoint[k]; p[k] = PinPoint[k]; continue; }
+            if (Pinned[k])
+            {
+                if (PinEasing(k)) PinPoint[k] = Vector3.MoveTowards(PinPoint[k], PinGoal[k], ease);
+                x[k] = PinPoint[k]; p[k] = PinPoint[k]; continue;
+            }
             Vector3 xk = x[k], pk = p[k];
-            float vx = ((xk.x - pk.x) * inv - rx) * damp + rx, vy = ((xk.y - pk.y) * inv - ry) * damp + ry, vz = ((xk.z - pk.z) * inv - rz) * damp + rz;
+            float fr = bp > 0 ? (k < bp ? 1f - k * invBp : 0f) : 1f;
+            float qx = rx * fr, qy = ry * fr, qz = rz * fr;
+            float vx = ((xk.x - pk.x) * inv - qx) * damp + qx, vy = ((xk.y - pk.y) * inv - qy) * damp + qy, vz = ((xk.z - pk.z) * inv - qz) * damp + qz;
             vx = vx * abs + gx; vy = vy * abs + gy; vz = vz * abs + gz;
             float s2 = vx * vx + vy * vy + vz * vz;
             if (s2 > vmax2) { float f = vmax / MathF.Sqrt(s2); vx *= f; vy *= f; vz *= f; }
@@ -313,8 +353,8 @@ public sealed class TentacleChain
     // (joint j = segment j-1 -> j; joint 0 uses the virtual Back particle).
     public void SolveIteration(float h)
     {
-        float alpha = kDistCompliance / (h * h);
-        float k0 = Mathf.Clamp01(Tone * Spec.Muscle);
+        float alpha = kDistCompliance * invSize * invSize / (h * h);
+        float k0 = SizeFree(Mathf.Clamp01(Tone * Spec.Muscle));
         float cl = cosLimit, mn = minLen, mx = maxLen;
         Vector3 rootX = OctoMath.Rotate(RootFrame, 1f, 0f, 0f);
         Vector3[] X = this.X;
@@ -413,11 +453,11 @@ public sealed class TentacleChain
 
         if (ShapePull > 0f && hasShape)
         {
-            float inv = 1f / (N - 1);
+            float inv = 1f / (N - 1), pull = SizeFree(ShapePull);
             for (int k = 1; k < N; k++)
             {
                 if (Pinned[k]) continue;
-                float w = ShapePull * k * inv;
+                float w = pull * k * inv;
                 Vector3 x = X[k], f = fab[k];
                 X[k].x = x.x + (f.x - x.x) * w; X[k].y = x.y + (f.y - x.y) * w; X[k].z = x.z + (f.z - x.z) * w;
             }
@@ -520,7 +560,7 @@ public sealed class TentacleChain
     {
         Vector3 r0 = OctoMath.Rotate(RootFrame, 1f, 0f, 0f), r2 = OctoMath.Rotate(RootFrame, 0f, 0f, 1f);
         float rxx = r0.x, rxy = r0.y, rxz = r0.z, rzx = r2.x, rzy = r2.y, rzz = r2.z;
-        float rate = Spec.TwistRateDeg * Mathf.Deg2Rad * h;
+        float rate = Spec.TwistRateDeg * Mathf.Deg2Rad * (invSize == 1f ? h : h / MathF.Sqrt(SizeScale));   // deg/s, Froude-slowed
         float ax = AxisDir.x, ay = AxisDir.y, az = AxisDir.z, al = MathF.Sqrt(ax * ax + ay * ay + az * az);
         bool hasAxis = al > 1e-6f;
         if (hasAxis) { ax /= al; ay /= al; az /= al; }

@@ -8,8 +8,10 @@ using UnityEngine;
 // the branch hints), a curb around it, the octopus spawned and anchored in the central canopy, and a prey
 // creature wandering the floor. The player is prey too and the viewer the octopus freezes for. Lab default:
 // a grab holds 1.5 s, releases, fires events (logged here); no damage.
-// Size: the arms fit the branches - unless overridden, the scale is chosen so a mid-canopy branch takes at
-// least MinWrapTurns of wrap (user decision 3).
+// Size: the species pipeline (species.scale x the individual's look.sizeJitter = sizeScale; user 2026-10-18:
+// 4x the old lab size, TreeOctopus.scale 3.1). octopusScale > 0 overrides the species scale; fitScaleToBranches
+// (opt-in) instead chooses it so a mid-canopy branch takes at least MinWrapTurns of wrap (user decision 3, the
+// old default, 0.77 in the lab's grove). The curb is sized from the octopus: its goals and holds stay inside.
 [RequireComponent(typeof(CreatureWorld))]
 public sealed class OctopusLab : MonoBehaviour
 {
@@ -23,8 +25,10 @@ public sealed class OctopusLab : MonoBehaviour
     [Tooltip("The prey creature on the grove floor (e.g. the desert beetle or snake); none = only the player.")]
     public CreatureSpecies preySpecies;
     public float preyScale = 0f;
-    [Tooltip("Octopus size scale; 0 = fit to the grove's branches (MinWrapTurns).")]
+    [Tooltip("Octopus size scale; 0 = the species' scale (x the individual's size jitter).")]
     public float octopusScale = 0f;
+    [Tooltip("Opt-in: ignore the species' scale and fit the size to the grove's branches (MinWrapTurns).")]
+    public bool fitScaleToBranches = false;
     public float minWrapTurns = 1.2f;
     public int seed = 31;
     public Material borderMaterial;
@@ -93,7 +97,12 @@ public sealed class OctopusLab : MonoBehaviour
         float step = Mathf.Max(1.5f, canopyOverlap * canopy);
         int n = Mathf.Max(1, groveTrees);
         float groveRadius = n == 1 ? 0.5f * canopy : step * Mathf.Ceil((n - 1) / 6f) + 0.5f * canopy;
-        float radius = groveRadius + kMargin;
+        // the octopus's goals stay EnclosureRadius - 1.6 L from the curb and its holds 1.3 L (OctopusBrain.Clip,
+        // OctopusController.HoldInside): the curb lies that far beyond the grove, for the largest individual, so
+        // the whole grove is its to cross (a 4x octopus in a curb sized for 1x could not leave the centre tree)
+        float plannedScale = octopusScale > 0f ? octopusScale : fitScaleToBranches ? 4f : octopus.scale;
+        float armReach = 1.6f * octopus.cephalopod.arm.Length * CreatureLab.MaxScale(octopus, plannedScale);
+        float radius = groveRadius + Mathf.Max(kMargin, armReach);
 
         // a flat spot beyond the lab's enclosures, toward the player's left of the arc
         var placed = new List<Vector4>();
@@ -149,7 +158,7 @@ public sealed class OctopusLab : MonoBehaviour
         Physics.SyncTransforms();
 
         // size: fit the branches
-        ChosenScale = octopusScale > 0f ? octopusScale : FitScale(octopus.cephalopod, Hints, canopyRegions.Count > 0 ? canopyRegions[0] : centre + cUp * (0.55f * height), cUp);
+        ChosenScale = octopusScale > 0f ? octopusScale : !fitScaleToBranches ? octopus.scale : FitScale(octopus.cephalopod, Hints, canopyRegions.Count > 0 ? canopyRegions[0] : centre + cUp * (0.55f * height), cUp);
 
         // the octopus: in the central canopy, anchored
         var area = new EnclosureArea { center = centre, up = cUp, radius = radius, safeRadius = groveRadius, maxHeight = tallest };
@@ -229,9 +238,21 @@ public sealed class OctopusLab : MonoBehaviour
         roleText.Append("octopus  ").Append(Octopus.Brain.Mode).Append("  intent ").Append(c.Intent.mode)
                 .Append("  speed ").Append(c.Board.DesiredVelocity.magnitude.ToString("F2")).Append(" m/s  holds ").Append(b.AnchoredCount)
                 .Append("  role changes/min/arm ").Append((recent / (minutes * n)).ToString("F1")).Append('\n');
+        // the intent: where it is going, its route over the branches (waypoint / count), the swing
+        ArmCoordinator co = c.Coordinator;
+        BranchRoute route = co.Route;
+        roleText.Append("goal ").Append(Octopus.Brain.Goal.ToString("F1")).Append("  trips ").Append(Octopus.Brain.Trips).Append(" arrived ").Append(Octopus.Brain.Arrivals).Append("  route ");
+        if (route.Valid) { roleText.Append(route.Current).Append('/').Append(route.Count); if (!route.ReachesGoal) roleText.Append(" (partial)"); }
+        else roleText.Append('-');
+        roleText.Append("  swings ").Append(co.Swings).Append(" (branch to branch ").Append(co.BranchSwings).Append(")  swing ");
+        if (co.Swing.Valid) roleText.Append((co.Swing.Theta * Mathf.Rad2Deg).ToString("F0")).Append(" deg"); else roleText.Append('-');
+        if (co.Pumping) roleText.Append("  pumping");
+        roleText.Append('\n');
         for (int a = 0; a < n; a++)
         {
+            // P: the grip group the body hangs from, C: the group catching ahead
             roleText.Append(a).Append("  ").Append(b.Role[a].ToString().PadRight(7)).Append(c.Agents[a].Mode.ToString().PadRight(9))
+                    .Append(co.GroupOf(a) < 0 ? "   " : co.GroupOf(a) == b.PivotGroup ? "P  " : "C  ")
                     .Append((Octopus.Body.ArmForce[a].magnitude / weight).ToString("F1")).Append(" W");
             if (b.Pulling[a]) roleText.Append("  pulls");
             if (b.Anchored[a]) roleText.Append("  holds");
@@ -243,7 +264,7 @@ public sealed class OctopusLab : MonoBehaviour
     void OnGUI()
     {
         if (!showRoles || Octopus == null || roleCache.Length == 0) return;
-        GUI.Box(new Rect(10f, 10f, 430f, 22f + 16f * 9f), roleCache);
+        GUI.Box(new Rect(10f, 10f, 560f, 22f + 16f * 10f), roleCache);
     }
 
     static string Name(IPreyTarget p) => p is PlayerPrey ? "the player" : p is CreaturePrey cp ? cp.Sim.Species.name : "prey";

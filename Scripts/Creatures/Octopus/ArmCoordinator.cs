@@ -50,6 +50,7 @@ public sealed class ArmCoordinator
     readonly float[] facing, facingAnchor, lateral;
     float nextDecision;
     OctoMode lastMode;
+    bool lastClimb;
     bool started;
     uint rng;
     // rest variety (T6): idle slots re-rolled every 8-20 s (x TimeScale), with quiet windows
@@ -70,6 +71,8 @@ public sealed class ArmCoordinator
     {
         arms = body.ArmCount;
         Strain = new float[arms]; strainSince = new float[arms];
+        swingGroup = new int[arms]; swingBase = new float[arms]; pump = new float[arms]; strainLetGo = new bool[arms]; heldSince = new float[arms];
+        for (int a = 0; a < arms; a++) swingGroup[a] = -1;
         Forced = new int[arms];
         for (int a = 0; a < arms; a++) Forced[a] = -1;
         weight = body.TotalMass * OctopusController.Gravity;
@@ -108,9 +111,14 @@ public sealed class ArmCoordinator
             else if (now - strainSince[a] > StrainHoldSeconds * ts && b.CanRelease(a) && b.Role[a] != ArmRole.Strike
                      && (!Holds(b.Role[a]) || b.CommittedSupport > b.MinAnchors))
             {
-                // let go of it (no grip or support role for a while), at once
-                cooldown[a * RoleCount + (int)ArmRole.Anchor] = cooldown[a * RoleCount + (int)ArmRole.Grip] = now + FailCooldownSeconds * ts;
-                SetRole(b, a, ArmRole.Hang, now);
+                // let go of it (no grip or support role for a while), at once; a swinging arm keeps its group and
+                // only lets go (a role change per strain churned the roles)
+                if (SwingTravel(c.Intent) && grouped && swingGroup[a] >= 0) strainLetGo[a] = true;
+                else
+                {
+                    cooldown[a * RoleCount + (int)ArmRole.Anchor] = cooldown[a * RoleCount + (int)ArmRole.Grip] = now + FailCooldownSeconds * ts;
+                    SetRole(b, a, ArmRole.Hang, now);
+                }
                 strainSince[a] = now;
                 StrainReleases++;
                 strained = true;
@@ -123,9 +131,12 @@ public sealed class ArmCoordinator
                 // a fruitless search at rest with support to spare ends that arm's search until the intent changes
                 // or support drops (user report: an octopus that re-searched every few seconds never came to rest)
                 bool rest = !Travelling(c.Intent.mode) && b.Role[a] == ArmRole.Anchor && b.AnchoredCount > b.MinAnchors;
+                FailedReports++;
+                // swinging: the arm keeps its group and searches again (the body's swing brings new holds into
+                // reach; reassigning it churned roles for nothing)
+                if (SwingTravel(c.Intent) && grouped && swingGroup[a] >= 0) continue;
                 cooldown[a * RoleCount + (int)b.Role[a]] = rest ? float.PositiveInfinity : now + FailCooldownSeconds * ts;
                 failed = true;
-                FailedReports++;
             }
         // a grip arm done pulling (its hold passed or its run at its shortest) is not ranked for Grip for a while:
         // it becomes support or lets go, and another arm goes ahead (hand over hand)
@@ -137,7 +148,7 @@ public sealed class ArmCoordinator
             // a groom finished: that idle slot ends (the next burst picks again)
             if (b.Role[a] == ArmRole.Groom) { if (idleGroom == a) idleGroom = -1; cooldown[a * RoleCount + (int)ArmRole.Groom] = now + FailCooldownSeconds * ts; failed = true; }
         }
-        bool modeChanged = !started || c.Intent.mode != lastMode;
+        bool modeChanged = !started || c.Intent.mode != lastMode || c.Intent.climb != lastClimb;
         bool restNow = !Travelling(c.Intent.mode) && c.Intent.mode != OctoMode.Strike;
         if (!restNow || !wasRest) restSince = now;
         wasRest = restNow;
@@ -153,9 +164,11 @@ public sealed class ArmCoordinator
             Decide(c, modeChanged, failed, emergency);
             nextDecision = now + DecideSeconds * ts;
         }
-        lastMode = c.Intent.mode;
+        lastMode = c.Intent.mode; lastClimb = c.Intent.climb;
         started = true;
         for (int a = 0; a < arms; a++) if (b.Report[a] == ArmReport.Failed || b.Report[a] == ArmReport.Done) b.Report[a] = ArmReport.None;
+        if ((SwingTravel(c.Intent) || c.Intent.mode == OctoMode.Rest) && grouped) SwingTick(c, dt);
+        else EndSwing(b);
         PlanMotion(c);
     }
 
@@ -231,7 +244,15 @@ public sealed class ArmCoordinator
         int anchoredFree = 0;   // anchored arms not striking
         for (int a = 0; a < arms; a++) if (b.Anchored[a] && want[a] != ArmRole.Strike) anchoredFree++;
 
-        if (travel)
+        if (travel && SwingTravel(it))
+        {
+            DecideSwing(c, R, modeChanged);
+        }
+        else if (grouped && it.mode == OctoMode.Rest)
+        {
+            RestGrouped(c);
+        }
+        else if (travel)
         {
             // 2. grip: the arms facing the route (an arm already holding ahead counts double)
             int quota = it.mode == OctoMode.Stalk ? 2 : it.mode == OctoMode.Retreat ? 4 : it.urgency > 0.75f ? 4 : 3;
@@ -319,8 +340,10 @@ public sealed class ArmCoordinator
             // hold on (support emergency first), then idle
             int rest = Mathf.Max(c.RestAnchors, support);
             int have = 0;
+            // (a hold kept from a swing keeps its Grip role: both hold, neither pulls at rest - relabelling every
+            // hold at every rest and trip was most of the role churn)
             for (int a = 0; a < arms; a++)
-                if (want[a] != ArmRole.Strike && b.Anchored[a]) { want[a] = ArmRole.Anchor; have++; if (emergency) pre[a] = true; }
+                if (want[a] != ArmRole.Strike && b.Anchored[a]) { want[a] = b.Role[a] == ArmRole.Grip ? ArmRole.Grip : ArmRole.Anchor; have++; if (emergency) pre[a] = true; }
             // only as many go looking as holds are missing (the arms already looking first, then those whose
             // side faces up - branches are above): the rest stay curled, so the body settles
             // (falling or hanging on too little - a support emergency - every free arm grabs for a hold)
@@ -340,6 +363,8 @@ public sealed class ArmCoordinator
                 want[a] = ArmRole.Anchor; seek--;
                 if (emergency || have < b.MinAnchors) pre[a] = true;
             }
+            for (int a = 0; a < arms; a++)
+                if (want[a] == ArmRole.Rest && b.Role[a] == ArmRole.Hang && !b.Anchored[a]) want[a] = ArmRole.Hang;   // a calm drape stays
             IdleRoles(c, have >= rest);
         }
 
@@ -426,6 +451,8 @@ public sealed class ArmCoordinator
         for (int a = 0; a < arms; a++)
         {
             if (want[a] != ArmRole.Rest) continue;
+            // a free arm hanging from the swing keeps hanging at rest (a calm drape; no relabelling)
+            if (c.Board.Role[a] == ArmRole.Hang && !c.Board.Anchored[a] && a != idleFeel && a != idleGroom) { want[a] = ArmRole.Hang; continue; }
             if (!supportMet) continue;
             if (a == idleHang && !CoolingDown(a, ArmRole.Hang, now)) want[a] = ArmRole.Hang;
             else if (a == idleFeel && !CoolingDown(a, ArmRole.Feel, now)) want[a] = ArmRole.Feel;
@@ -461,6 +488,410 @@ public sealed class ArmCoordinator
             while (j >= 0 && s[order[j]] < s[v]) { order[j + 1] = order[j]; j--; }
             order[j + 1] = v;
         }
+    }
+
+    // ------------------------------------------------------------------ swinging (plan T7-T10)
+    // Travel and Retreat swing (user, 2026-10-18: "traverse the branches, letting the body swing under them";
+    // brachiation is the preferred locomotion). Six arms work as two grip groups - "hands" of three on either
+    // side of the route - and the two rearmost hang. The body hangs from one group (the pivot) and swings
+    // under its holds; the other group catches holds ahead; at the forward apex of the swing (the body stopped
+    // ahead, nearest the new holds) the pivot group lets go and the body swings on under the new holds. The
+    // groups then trade places. Roles stay put through all of it (Grip for the groups, Hang for the rear): only
+    // the group the body hangs from changes, so the roles do not churn.
+    // Lengths (blackboard SwingLen): the pivot group holds the length it had when the body swung onto it, and
+    // pumps around it while the catch is out of reach (shorter passing under the holds, longer at the apexes,
+    // and the holds ahead shorter while the body swings forward): energy from the arms, motion from gravity.
+    // The catching group follows the body without tension (its runs take in slack and pay out as the body
+    // swings) so a caught hold never yanks the body; at the transfer it holds that length.
+    // (a climb - back up from the ground, intent.climb - and a stalk keep the hand-over-hand pull: the body moves
+    // along the holds, not under them)
+    public static bool SwingTravel(in OctoIntent it) => (it.mode == OctoMode.Travel || it.mode == OctoMode.Retreat) && !it.climb;
+
+    public const float CatchAhead = 0.25f;            // x arm length: a hold this far ahead of the pivot catches
+    public const float PumpAfterSeconds = 0.8f;       // x TimeScale: no catch this long after a transfer -> pump
+    public const float PumpRadial = 0.07f, PumpDrive = 0.06f;
+    public const float PumpCapDeg = 45f, SwingDampAboveDeg = 52f, SwingDampRate = 1.4f;
+    public const float FollowSlack = 1.02f;
+    public const float MaxPumpRate = 0.6f;            // LengthTarget change per second (x 1/TimeScale)
+    public const float HangChord = 0.75f, HangReelRate = 0.12f;   // x arm length; LengthTarget per second (x 1/TimeScale)
+
+    public readonly SwingPhase Swing = new SwingPhase();
+    public readonly BranchRoute Route = new BranchRoute();   // the planned waypoints to the goal (with hints)
+    public const float ReplanSeconds = 6f;            // x TimeScale: no transfer this long -> plan again from here
+    public const float WaypointReach = 0.45f;         // x arm length: holds this near a waypoint have reached it
+    public const float CatchNear = 0.6f;              // x arm length: a catch this near the waypoint counts
+    public int Replans, WaypointsPassed;              // cumulative
+    public int Swings, BranchSwings, Regroups, PivotLost;   // cumulative: transfers, transfers onto another surface, group assignments, pivots that lost every hold
+    public float SwingDamping { get; private set; }   // extra body damping while the swing is too wide (1/s)
+    public bool Pumping { get; private set; }
+    public float PlayPump;                            // > 0: pump even without a catch waiting (idle swinging)
+    readonly int[] swingGroup;
+    readonly float[] swingBase, pump, heldSince;
+    readonly bool[] strainLetGo;
+    bool grouped;
+    Vector3 groupRoute;
+    float transferAt, caughtSince = -1f, plannedAt = -100f;
+    bool needPlan;
+    int pivotSource = -1;
+
+    public int GroupOf(int arm) => swingGroup[arm];
+    readonly int[] hangPair = { -1, -1 };
+
+    // Resting after a trip: the groups stay (their arms keep their Grip / Hang roles - relabelling them at every
+    // rest and trip was most of the role churn); every hold stays, the swing settles (SwingTick, arrived), free
+    // group arms take holds only until RestAnchors hold on; the hanging pair idles - now and then one grooms.
+    void RestGrouped(OctopusController c)
+    {
+        ArmBlackboard b = c.Board;
+        for (int a = 0; a < arms; a++)
+        {
+            if (want[a] == ArmRole.Strike) continue;
+            want[a] = swingGroup[a] >= 0 ? ArmRole.Grip : b.Anchored[a] ? ArmRole.Anchor : ArmRole.Rest;
+        }
+        IdleRoles(c, true);
+        for (int a = 0; a < arms; a++)
+        {
+            if (swingGroup[a] >= 0 || want[a] == ArmRole.Strike) continue;
+            if (want[a] == ArmRole.Feel || want[a] == ArmRole.Rest) want[a] = ArmRole.Hang;   // calm: no idle feeling
+        }
+    }
+
+    public const float ArriveLengths = 0.5f;   // x arm length, level distance: the swing has arrived
+    public bool SwingArrived { get; private set; }
+
+    static bool Arrived(OctopusController c)
+    {
+        Vector3 d = c.Intent.goal - c.Body.HeadCentre;
+        d -= c.Up * OctoMath.Dot(d, c.Up);
+        return d.magnitude < ArriveLengths * c.Body.Arms[0].Length;
+    }
+
+    void DecideSwing(OctopusController c, Vector3 R, bool modeChanged)
+    {
+        Vector3 Rl = Level(R, c.Up);
+        // (near the goal the route swings round as the body passes it: no regrouping there)
+        bool regroup = modeChanged || !grouped || OctoMath.Dot(Rl, groupRoute) < 0.5f && !Arrived(c);
+        if (regroup && Rl.sqrMagnitude > 0.5f) AssignGroups(c, Rl);
+        ArmBlackboard b = c.Board;
+        int groupHolds = 0;
+        for (int a = 0; a < arms; a++) if (b.Anchored[a] && swingGroup[a] >= 0 && !b.Command[a].letGo) groupHolds++;
+        for (int a = 0; a < arms; a++)
+        {
+            if (want[a] == ArmRole.Strike) continue;
+            want[a] = swingGroup[a] >= 0 ? ArmRole.Grip : ArmRole.Hang;
+            // the groups hold too little: a rear arm that still holds keeps holding, as support
+            if (swingGroup[a] < 0 && b.Anchored[a] && groupHolds < b.MinAnchors) { want[a] = ArmRole.Anchor; pre[a] = true; }
+        }
+    }
+
+    void AssignGroups(OctopusController c, Vector3 Rl)
+    {
+        ArmBlackboard b = c.Board;
+        Regroups++;
+        grouped = true;
+        groupRoute = Rl;
+        // the two arms facing most away from the route hang (the first time; afterwards the same two keep hanging -
+        // a new direction only re-splits the groups by side, so no role changes); the others split by side into
+        // two groups of three
+        int hang = Mathf.Min(2, Mathf.Max(0, arms - 4));
+        bool keep = hangPair[0] >= 0;
+        for (int a = 0; a < arms; a++) { sScore[a] = -facing[a]; swingGroup[a] = 0; }
+        if (keep) { for (int i = 0; i < hang; i++) swingGroup[hangPair[i]] = -1; }
+        else
+        {
+            SortBy(sScore);
+            for (int i = 0; i < hang; i++) { swingGroup[order[i]] = -1; hangPair[i] = order[i]; }
+        }
+        for (int a = 0; a < arms; a++) sScore[a] = swingGroup[a] < 0 ? -100f : lateral[a];
+        SortBy(sScore);
+        int n = arms - hang;
+        for (int i = 0; i < n; i++) swingGroup[order[i]] = i < (n + 1) / 2 ? 0 : 1;
+        // the body hangs from the group holding the most (ties: the one holding farther back, so the other
+        // reaches ahead)
+        int h0 = 0, h1 = 0; float x0 = 0f, x1 = 0f;
+        Vector3 head = c.Body.HeadCentre;
+        for (int a = 0; a < arms; a++)
+        {
+            if (!b.Anchored[a] || swingGroup[a] < 0) continue;
+            float x = OctoMath.Dot(b.Anchor[a] - head, Rl);
+            if (swingGroup[a] == 0) { h0++; x0 += x; } else { h1++; x1 += x; }
+        }
+        b.PivotGroup = h0 != h1 ? (h0 > h1 ? 0 : 1) : (h0 == 0 || x0 / h0 <= x1 / h1 ? 0 : 1);
+        for (int a = 0; a < arms; a++) { swingBase[a] = 0f; pump[a] = 0f; strainLetGo[a] = false; heldSince[a] = -1f; }
+        transferAt = c.Time; caughtSince = -1f; pivotSource = -1;
+        needPlan = true;
+        Swing.Reset();
+    }
+
+    void EndSwing(ArmBlackboard b)
+    {
+        if (!grouped && b.PivotGroup < 0) return;
+        grouped = false;
+        b.PivotGroup = -1;
+        for (int a = 0; a < arms; a++)
+        {
+            b.SwingLen[a] = 0f; swingGroup[a] = -1;
+            ArmCommand cmd = b.Command[a]; cmd.swing = false; cmd.letGo = false; cmd.group = -1; b.Command[a] = cmd; b.Group[a] = -1;
+        }
+        SwingDamping = 0f; Pumping = false;
+        Route.Clear(); b.HasSwingTarget = false;
+    }
+
+    // The run's length factor (as LengthTarget) at which its tether holds the base pin exactly where it is.
+    static float RunScale(TentacleChain ch)
+    {
+        int p = ch.BasePin();
+        if (p <= 0) return 0f;
+        return (ch.PinGoal[p] - ch.X[0]).magnitude / (TentacleChain.Taut * ch.Spacing * p);   // (an easing pin: where it goes)
+    }
+
+    // Every tick while swinging: the pivot, the phase, the transfer, the lengths, who may seek a hold.
+    void SwingTick(OctopusController c, float dt)
+    {
+        ArmBlackboard b = c.Board;
+        OctopusBody body = c.Body;
+        float L = body.Arms[0].Length, ts = body.TimeScale, now = c.Time;
+        Vector3 up = c.Up, Rl = Level(c.Intent.goal - body.HeadCentre, up);
+        if (Rl.sqrMagnitude < 0.5f) Rl = groupRoute;
+        float tipR = body.Spec.arm.TipRadius * body.SizeScale;
+        int pg = b.PivotGroup, fg = 1 - pg;
+        for (int a = 0; a < arms; a++)
+        {
+            if (!b.Anchored[a]) heldSince[a] = -1f;
+            else if (heldSince[a] < 0f) heldSince[a] = now;
+        }
+        int pivotN = PivotCentroid(b, pg, out Vector3 P);
+        // nothing to hang from in the pivot group, but the other group holds: the body hangs from that one
+        if (pivotN == 0 && PivotCentroid(b, fg, out _) > 0)
+        {
+            PivotLost++;
+            b.PivotGroup = pg = fg; fg = 1 - pg;
+            for (int a = 0; a < arms; a++) if (swingGroup[a] == pg) swingBase[a] = 0f;
+            pivotN = PivotCentroid(b, pg, out P);
+        }
+        if (pivotN == 0)
+        {
+            // hanging from nothing of the groups (the rear arms, or falling): every group arm looks for a hold
+            for (int a = 0; a < arms; a++) SetSwingCommand(b, a, swingGroup[a] >= 0, false, 0f);
+            Swing.Reset(); Pumping = false; SwingDamping = 0f;
+            return;
+        }
+        // the route: planned over the branch hints from the holds to the goal (again for a new goal, or when the
+        // swing has made no transfer for ReplanSeconds); the swing heads for its next waypoint
+        bool restingNow = c.Intent.mode == OctoMode.Rest;
+        if (restingNow && Route.Valid) Route.Clear();
+        bool newGoal = !restingNow && (needPlan || (Route.Goal - c.Intent.goal).sqrMagnitude > 0.09f * L * L);
+        needPlan = false;
+        // (a plan that found no route is tried again soon: the holds have moved)
+        float again = (Route.Valid ? ReplanSeconds : 1f) * ts;
+        if (c.Hints != null && !restingNow && (newGoal || !SwingArrived && now - transferAt > again && now - plannedAt > again))
+        {
+            if (!newGoal) Replans++;
+            Route.Plan(c.Hints, P, c.Intent.goal, up, L, 1.5f * tipR);
+            plannedAt = now;
+        }
+        if (c.Hints == null && Route.Valid) Route.Clear();
+        if (Route.Valid)
+        {
+            WaypointsPassed += Route.Advance(P, up, L, WaypointReach);
+            if (!Route.Done)
+            {
+                Vector3 wl = Level(Route.Next - P, up);
+                if (wl.sqrMagnitude > 0.5f) Rl = wl;
+            }
+        }
+        b.HasSwingTarget = Route.Valid && !Route.Done;
+        b.SwingTarget = b.HasSwingTarget ? Route.Next : c.Intent.goal;
+        // the pivot's front: catches count as ahead of its foremost hold (a pivot spread over two branches would
+        // otherwise take a catch on the forward one of them as a swing ahead - and hang between them, not swing)
+        float front = FrontOf(b, pg, P, Rl, out int rear, out float back);
+        b.SwingPivot = P + Rl * front; b.SwingRoute = Rl; b.SwingCentre = P;
+        // spread along the route (holds on two branches): the rearmost lets go, if the support allows - the body
+        // swings under the forward ones
+        if (front - back > SpreadLengths * L && rear >= 0 && b.CanRelease(rear) && pivotN > b.MinAnchorsHanging) SetLetGo(b, rear, true);
+        Swing.Update(body.Lattice.CentreOfMass(), P, up, Rl, OctopusController.Gravity, dt, 0.06f * ts);
+
+        int frontAhead = 0;
+        for (int a = 0; a < arms; a++)
+            if (b.Anchored[a] && swingGroup[a] == fg && !b.Command[a].letGo && IsCatch(b, a, P, Rl, front, L)) frontAhead++;
+        int need = Mathf.Min(b.MinAnchorsHanging, CountGroup(fg));
+        bool caught = need > 0 && frontAhead >= need;
+        if (caught && caughtSince < 0f) caughtSince = now;
+        if (!caught) caughtSince = -1f;
+
+        // arrived (the body is over the goal): no more transfers or pumping; every group arm may take a hold
+        // and the swing dies out (until the brain picks the next goal)
+        bool resting = c.Intent.mode == OctoMode.Rest;
+        SwingArrived = resting || Arrived(c);
+        // the transfer: at the forward apex (or with no swing to wait for, or once a whole swing has been missed)
+        float period = 2f * Mathf.PI / Mathf.Max(Swing.Natural, 1e-3f);
+        bool apex = !Swing.Valid || Swing.Amplitude < 4f * Mathf.Deg2Rad || Swing.Theta > 0f && Swing.Omega <= 0f;
+        if (caught && !SwingArrived && (apex || now - caughtSince > period))
+        {
+            for (int a = 0; a < arms; a++)
+            {
+                if (swingGroup[a] == pg && b.Anchored[a]) SetLetGo(b, a, true);
+                // the new pivot is the catch ahead only: a hold of that group beside or behind (an old hold) would
+                // keep the body from swinging on under the catch
+                if (swingGroup[a] == fg && b.Anchored[a] && !IsCatch(b, a, P, Rl, front, L)) SetLetGo(b, a, true);
+                if (swingGroup[a] >= 0) swingBase[a] = 0f;   // the new pivot locks the length it has now (below)
+            }
+            int src = MajoritySource(c, fg);
+            if (pivotSource >= 0 && src >= 0 && src != pivotSource) BranchSwings++;
+            pivotSource = src;
+            b.PivotGroup = pg = fg; fg = 1 - pg;
+            Swings++;
+            transferAt = now; caughtSince = -1f;
+            pivotN = PivotCentroid(b, pg, out P);
+            front = FrontOf(b, pg, P, Rl, out _, out _);
+            b.SwingPivot = P + Rl * front; b.SwingCentre = P;
+        }
+        else if (pivotSource < 0) pivotSource = MajoritySource(c, pg);
+
+        // pumping: while no catch is waiting (the holds ahead are out of reach) or for play, below the cap
+        float amp = Swing.Amplitude * Mathf.Rad2Deg;
+        bool pumpWanted = (!caught && now - transferAt > PumpAfterSeconds * ts) || PlayPump > 0f;
+        Pumping = pumpWanted && amp < PumpCapDeg && !SwingArrived;
+        SwingDamping = amp > SwingDampAboveDeg || SwingArrived ? SwingDampRate / ts : 0f;
+        bool swinging = Swing.Valid && Swing.Amplitude > 1f * Mathf.Deg2Rad;
+        float w = Swing.Valid ? Swing.Omega / Mathf.Max(Swing.Natural, 1e-3f) : 0f;
+        // the drive pulls the body the way it swings; from rest it drives at the natural frequency to seed it
+        bool still = !swinging || Mathf.Abs(w) < 0.15f * Mathf.Max(Swing.Amplitude, 0.05f);
+        float drive = !still ? Mathf.Clamp(w / Mathf.Max(Swing.Amplitude, 0.05f), -1f, 1f) : Mathf.Sin(Swing.Natural * now);
+        float radial = swinging ? 2f * Swing.Kinetic - 1f : 0f;
+        float maxStep = MaxPumpRate / ts * dt;
+
+        for (int a = 0; a < arms; a++)
+        {
+            int grp = swingGroup[a];
+            if (grp < 0) { SetSwingCommand(b, a, false, false, 0f); continue; }
+            TentacleChain ch = body.Arms[a];
+            bool anchored = b.Anchored[a];
+            bool letGo = b.Command[a].letGo;
+            if (letGo && !anchored && c.Agents[a].Mode != TentacleAgent.State.Release) letGo = false;
+            if (strainLetGo[a]) { if (anchored) letGo = true; strainLetGo[a] = false; }
+            // a hold on a very short run (taken at spawn, close under a branch) fights the others: let it go while
+            // the support allows (the swing's own catches take longer runs, TentacleAgent.SwingMinRun)
+            if (anchored && !letGo && ch.BasePin() > 0 && ch.BasePin() < TentacleAgent.MinRun && b.CanRelease(a) && b.AnchoredCount > b.MinAnchorsHanging) letGo = true;
+            float len = 0f;
+            if (!anchored) swingBase[a] = 0f;   // (a new hold takes the length it has when it is caught)
+            if (anchored)
+            {
+                float cur = RunScale(ch);
+                if (resting && !letGo)
+                {
+                    // resting: every hold keeps one length (a follow length re-read every tick kept the body awake)
+                    if (swingBase[a] <= 0f) swingBase[a] = Mathf.Clamp(cur, ch.Spec.MinStretch, ch.Spec.MaxStretch);
+                    len = swingBase[a];
+                    pump[a] = 0f;
+                }
+                else if (grp == pg && !letGo)
+                {
+                    // the pivot holds the length it has when the body swings onto it (a run shortened or lengthened
+                    // at that moment snatched or dropped the body); the pump works within the room the run has
+                    if (swingBase[a] <= 0f) swingBase[a] = Mathf.Clamp(cur, ch.Spec.MinStretch, ch.Spec.MaxStretch);
+                    // and then draws the body up toward a comfortable hang (HangChord x the arm's length below its
+                    // holds), slowly: a body hanging at full stretch cannot reach the next branch
+                    int bp = ch.BasePin();
+                    if (bp > 0 && !SwingArrived)
+                    {
+                        float hang = Mathf.Clamp(HangChord * L / (TentacleChain.Taut * ch.Spacing * bp), ch.Spec.MinStretch, ch.Spec.MaxStretch);
+                        if (swingBase[a] > hang) swingBase[a] = Mathf.MoveTowards(swingBase[a], hang, HangReelRate / ts * dt);
+                    }
+                    float along = Mathf.Clamp(OctoMath.Dot(b.Anchor[a] - P, Rl) / (0.15f * L), -1f, 1f);
+                    float target = Pumping ? -PumpRadial * radial - PumpDrive * drive * along : 0f;
+                    target = Mathf.Clamp(target, ch.Spec.MinStretch / swingBase[a] - 1f, ch.Spec.MaxStretch / swingBase[a] - 1f);
+                    pump[a] = Mathf.MoveTowards(pump[a], target, maxStep);
+                    len = swingBase[a] * (1f + pump[a]);
+                }
+                else
+                {
+                    // catching (or letting go): follow the body, no tension
+                    len = cur * FollowSlack;
+                    pump[a] = 0f;
+                    // a catch that does not lie ahead (beside or behind the pivot) is let go after a while
+                    if (grp == fg && !letGo && !SwingArrived && !IsCatch(b, a, P, Rl, front, L) && heldSince[a] >= 0f && now - heldSince[a] > 1.5f * ts && b.CanRelease(a))
+                        letGo = true;
+                }
+                len = Mathf.Clamp(len, ch.Spec.MinStretch, ch.Spec.MaxStretch);
+            }
+            // who seeks a hold: the catching group always; the pivot group only to make up the support
+            bool seek = !letGo && (resting ? b.AnchoredCount < c.RestAnchors && !anchored
+                                           : grp == fg || SwingArrived || pivotN < b.MinAnchorsHanging || b.AnchoredCount < b.MinAnchors);
+            SetSwingCommand(b, a, seek, letGo, len);
+        }
+    }
+
+    // A catch: a hold ahead of the pivot's front, or (with a route) one near the next waypoint.
+    bool IsCatch(ArmBlackboard b, int a, Vector3 P, Vector3 Rl, float front, float L)
+    {
+        Vector3 h = b.Anchor[a];
+        if (b.HasSwingTarget && (h - b.SwingTarget).magnitude < CatchNear * L && OctoMath.Dot(h - P, Rl) > front) return true;
+        return OctoMath.Dot(h - P, Rl) > front + CatchAhead * L;
+    }
+
+    public const float SpreadLengths = 0.35f;   // x arm length: a pivot spread farther along the route lets its rearmost go
+
+    // The foremost and rearmost of group g's holds along the route, relative to P (and the rearmost's arm).
+    float FrontOf(ArmBlackboard b, int g, Vector3 P, Vector3 Rl, out int rear, out float back)
+    {
+        float f = float.NegativeInfinity; back = float.PositiveInfinity; rear = -1;
+        for (int a = 0; a < arms; a++)
+        {
+            if (!b.Anchored[a] || swingGroup[a] != g || b.Command[a].letGo) continue;
+            float x = OctoMath.Dot(b.Anchor[a] - P, Rl);
+            if (x > f) f = x;
+            if (x < back) { back = x; rear = a; }
+        }
+        if (rear < 0) { back = 0f; return 0f; }
+        return f;
+    }
+
+    int PivotCentroid(ArmBlackboard b, int g, out Vector3 P)
+    {
+        P = Vector3.zero; int n = 0;
+        for (int a = 0; a < arms; a++)
+            if (b.Anchored[a] && swingGroup[a] == g && !b.Command[a].letGo) { P += b.Anchor[a]; n++; }
+        if (n > 0) P *= 1f / n;
+        return n;
+    }
+
+    int CountGroup(int g) { int n = 0; for (int a = 0; a < arms; a++) if (swingGroup[a] == g) n++; return n; }
+
+    int MajoritySource(OctopusController c, int g)
+    {
+        int best = -1, bestN = 0;
+        for (int a = 0; a < arms; a++)
+        {
+            if (swingGroup[a] != g || !c.Board.Anchored[a]) continue;
+            TentacleChain ch = c.Body.Arms[a];
+            int p = ch.BasePin();
+            if (p <= 0) continue;
+            int src = ch.PinSource[p], n = 0;
+            for (int o = 0; o < arms; o++)
+            {
+                if (swingGroup[o] != g || !c.Board.Anchored[o]) continue;
+                int q = c.Body.Arms[o].BasePin();
+                if (q > 0 && c.Body.Arms[o].PinSource[q] == src) n++;
+            }
+            if (n > bestN) { bestN = n; best = src; }
+        }
+        return best;
+    }
+
+    void SetLetGo(ArmBlackboard b, int a, bool v) { ArmCommand cmd = b.Command[a]; cmd.letGo = v; b.Command[a] = cmd; }
+
+    void SetSwingCommand(ArmBlackboard b, int a, bool seek, bool letGo, float len)
+    {
+        ArmCommand cmd = b.Command[a];
+        cmd.swing = swingGroup[a] >= 0;
+        cmd.group = swingGroup[a];
+        cmd.allowGrip = seek;
+        cmd.letGo = letGo;
+        if (cmd.swing) cmd.dir = b.SwingRoute;
+        b.Command[a] = cmd;
+        b.Group[a] = swingGroup[a];
+        b.SwingLen[a] = len;
     }
 
     // ------------------------------------------------------------------ motion
@@ -508,7 +939,7 @@ public sealed class ArmCoordinator
         int keep = b.Puller;
         b.Puller = -1;
         for (int a = 0; a < arms; a++) b.Pulling[a] = false;
-        if (!Travelling(it.mode)) return Vector3.zero;
+        if (!Travelling(it.mode) || SwingTravel(it)) return Vector3.zero;   // swinging: gravity moves the body
         float L = body.Arms[0].Length;
         Vector3 head = body.HeadCentre, g = it.goal - head;
         float gl = g.magnitude;

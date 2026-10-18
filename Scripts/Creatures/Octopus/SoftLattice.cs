@@ -135,7 +135,7 @@ public sealed class SoftLattice
         if (h != kFrame) { kFrame = h; kIterScale = h * kStiffnessRate / iterations; }
         Breath = BreathAmp * MathF.Sin(2f * Mathf.PI * BreathHz / MathF.Sqrt(sizeScale) * Time);
         UpdateBreath();
-        float damp = MathF.Exp(-Damping * h), abs = MathF.Exp(-ExtraDamping * h);
+        float damp = MathF.Exp(-Damping * (sizeScale == 1f ? h : h / MathF.Sqrt(sizeScale))), abs = MathF.Exp(-ExtraDamping * h);
         float inv = 1f / h, vmax = kMaxSpeed * MathF.Sqrt(sizeScale), vmax2 = vmax * vmax;
         float gx = Gravity.x * h, gy = Gravity.y * h, gz = Gravity.z * h;
         float rx = refVel.x, ry = refVel.y, rz = refVel.z;
@@ -158,6 +158,9 @@ public sealed class SoftLattice
         for (int c = 0; c < ClusterCount; c++)
         {
             float k = 1f - MathF.Pow(1f - ClusterStiffness[c], kIterScale);
+            // size-free (as TentacleChain.SizeFree): the relaxation exponent / s - the same squash, jiggle and settle
+            // as at scale 1, Froude-slowed
+            if (sizeScale != 1f) k = 1f - MathF.Pow(1f - ClusterStiffness[c], kIterScale / sizeScale);
             Fit(c);
             M3 t = clusterGoal[c];
             Vector3 cc = ClusterCentre[c], qc = ClusterRestCentre[c];

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 39d3296fcbe55a0429fe582610f52ec3, type: 3}
   m_Name: TreeOctopus
   m_EditorClassIdentifier: TerrainGen.Runtime::CreatureSpecies
-  scale: 1
+  scale: 3.1
   spacing: 0
   joints: []
   headCapLength: 0

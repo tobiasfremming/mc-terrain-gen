@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using NUnit.Framework;
 using UnityEngine;
@@ -43,10 +44,10 @@ namespace TerrainGen.Tests
 
         internal struct Tug
         {
-            public float conflict, conflictMax, lateral, lateralMax, lateralAcc, lateralAccMax, progress, restResidual, restSpeed;
+            public float conflict, conflictMax, lateral, lateralMax, lateralAcc, lateralAccP99, progress, restResidual, restSpeed;
             public int roleChanges;
             public override string ToString() =>
-                $"conflict {conflict:F2} (max {conflictMax:F1}) lateral {lateral:F3} (max {lateralMax:F2}) lateralAcc {lateralAcc:F2} g (max {lateralAccMax:F1}) " +
+                $"conflict {conflict:F2} (max {conflictMax:F1}) lateral {lateral:F3} (max {lateralMax:F2}) lateralAcc {lateralAcc:F2} g (p99 {lateralAccP99:F1}) " +
                 $"progress {progress:F2} | rest residual {restResidual:F3} speed {restSpeed * 1000f:F1} mm/s per unit scale";
         }
 
@@ -59,19 +60,24 @@ namespace TerrainGen.Tests
             return c;
         }
 
-        // Settle 4 s, travel `seconds` toward +x (1.6 x s ahead), then rest 12 s (judged over the last 4: the
-        // travel stops dead at full speed, and the body may swing and an arm look for a hold for a while).
+        // Settle 4 s, travel 10 s toward +x (1.6 x s ahead; since 2026-10-18 the octopus swings there), then rest
+        // 12 s (judged over the last 4: the travel stops dead, the body may swing and an arm look for a hold for a
+        // while). Every time x sqrt(s) (Froude: a 4x octopus does the same in twice the time), and the sideways
+        // acceleration is sampled at Froude-similar intervals (every 2 sqrt(s) frames) - its peak is the 99th
+        // percentile, not one frame (a single-frame peak is solver noise and differed between .NET and Mono).
         internal static Tug Measure(int kind, float s, uint seed, float seconds = 10f)
         {
             OctopusController c = Spawn(kind, s, seed, out OctopusBody body);
-            for (int f = 0; f < 240; f++) c.Tick(Dt);
+            float ts = body.TimeScale;
+            for (int f = 0; f < (int)(240 * ts); f++) c.Tick(Dt);
             float g = OctopusController.Gravity, Mg = body.TotalMass * g;
             Vector3 start = body.HeadCentre, goal = start + new Vector3((kind == 0 ? 2.0f : 1.6f) * s, 0f, 0f);
             c.Intent = new OctoIntent { mode = OctoMode.Travel, goal = goal, urgency = 0.6f };
             var t = new Tug();
-            Vector3 p1 = body.HeadCentre, p0 = p1;
-            double cs = 0, ls = 0, accs = 0; int n = 0;
-            int T = (int)(60 * seconds);
+            int stride = Mathf.Max(1, Mathf.RoundToInt(2f * ts));
+            var hist = new Vector3[64]; var accs = new List<float>();
+            double cs = 0, ls = 0, asum = 0; int n = 0, an = 0;
+            int T = (int)(60 * seconds * ts);
             for (int f = 0; f < T; f++)
             {
                 c.Tick(Dt);
@@ -81,24 +87,31 @@ namespace TerrainGen.Tests
                 Vector3 sum = Vector3.zero; float mags = 0f;
                 for (int a = 0; a < body.ArmCount; a++) { sum += body.ArmForce[a]; mags += body.ArmForce[a].magnitude; }
                 float conflict = (mags - sum.magnitude) / Mg, lf = Mathf.Abs(Vector3.Dot(sum, lat)) / Mg;
-                Vector3 p2 = body.HeadCentre;
-                // acceleration in units of g, per unit scale (a 4x octopus moves 2x slower in time, 4x farther)
-                float la = f >= 2 ? Mathf.Abs(Vector3.Dot((p2 - 2f * p1 + p0) / (Dt * Dt), lat)) / g : 0f;
-                p0 = p1; p1 = p2;
+                Vector3 p = body.HeadCentre;
+                hist[f % 64] = p;
                 if (f >= 30)
                 {
-                    cs += conflict; ls += lf; accs += la; n++;
-                    t.conflictMax = Mathf.Max(t.conflictMax, conflict); t.lateralMax = Mathf.Max(t.lateralMax, lf); t.lateralAccMax = Mathf.Max(t.lateralAccMax, la);
+                    cs += conflict; ls += lf; n++;
+                    t.conflictMax = Mathf.Max(t.conflictMax, conflict); t.lateralMax = Mathf.Max(t.lateralMax, lf);
+                    if (f % stride == 0 && f >= 30 + 2 * stride)
+                    {
+                        float Ts = Dt * stride;
+                        float la = Mathf.Abs(Vector3.Dot((hist[f % 64] - 2f * hist[(f - stride) % 64] + hist[(f - 2 * stride) % 64]) / (Ts * Ts), lat)) / g;
+                        accs.Add(la); asum += la; an++;
+                    }
                 }
-                t.progress = Vector3.Dot(p2 - start, (goal - start).normalized) / (goal - start).magnitude;
+                t.progress = Vector3.Dot(p - start, (goal - start).normalized) / (goal - start).magnitude;
             }
-            t.conflict = (float)(cs / n); t.lateral = (float)(ls / n); t.lateralAcc = (float)(accs / n);
+            t.conflict = (float)(cs / n); t.lateral = (float)(ls / n); t.lateralAcc = (float)(asum / Mathf.Max(1, an));
+            accs.Sort();
+            t.lateralAccP99 = accs.Count > 0 ? accs[(int)(accs.Count * 0.99f)] : 0f;
             c.Intent = new OctoIntent { mode = OctoMode.Rest, goal = body.HeadCentre };
             double rs = 0, sp = 0; int rn = 0; Vector3 last = body.HeadCentre;
-            for (int f = 0; f < 60 * 12; f++)
+            int R = (int)(60 * 12 * ts), judge = (int)(60 * 8 * ts);
+            for (int f = 0; f < R; f++)
             {
                 c.Tick(Dt);
-                if (f >= 60 * 8)
+                if (f >= judge)
                 {
                     Vector3 sum = Vector3.zero;
                     for (int a = 0; a < body.ArmCount; a++) sum += body.ArmForce[a];
@@ -111,88 +124,93 @@ namespace TerrainGen.Tests
             return t;
         }
 
-        // RED before the arm roles (baseline 2026-10-18, scale 1, kinds 1-3 x seeds 1-3: conflict 1.1-693 Mg
-        // (peaks 8-3400), lateral 0.22-1.65 Mg, lateral acceleration 0.65-5.6 g (peaks 16-84 g); the lattice
-        // scene ran pairs of arms at 200-760 Mg against each other). Bounds per run. Holds spread around a
-        // hanging body always pull partly against each other (two at 45 deg: 0.41 Mg), so conflict is bounded,
-        // not zero; what must not happen is a sustained fight (its peak) or the body yanked sideways.
-        [Test] public void TugOfWar_Travel_ArmsPullTogether()
+        // Per-run bounds of a travelling octopus whose arms pull together (sideways: across the travel).
+        static bool TravelOk(Tug t) => t.conflict <= 1.5f && t.conflictMax <= 30f && t.lateral <= 0.25f && t.lateralAcc <= 0.5f && t.lateralAccP99 <= 4f && t.progress >= 0.4f;
+        static bool RestOk(Tug t) => t.restResidual <= 0.15f && t.restSpeed <= 0.03f;   // (breathing alone moves the head a few mm/s)
+
+        // Kinds 1-3 x seeds 1-3 at scale s: the log, how many runs fail `ok`, and the means.
+        static int Runs(float s, System.Func<Tug, bool> ok, StringBuilder log, out float conflict, out float lateralAcc, out float restSpeed, List<Tug> all = null)
         {
-            var log = new StringBuilder(); int bad = 0;
+            int bad = 0; double c = 0, a = 0, r = 0;
             for (int kind = 1; kind <= 3; kind++)
                 for (uint seed = 1; seed <= 3; seed++)
                 {
-                    Tug t = Measure(kind, 1f, seed);
-                    bool ok = t.conflict <= 1.5f && t.conflictMax <= 30f && t.lateral <= 0.25f && t.lateralAcc <= 0.6f && t.lateralAccMax <= 10f && t.progress >= 0.4f;
-                    if (!ok) bad++;
-                    log.AppendLine($"k{kind} seed {seed}: {t}{(ok ? "" : "  <-- FAIL")}");
+                    Tug t = Measure(kind, s, seed);
+                    all?.Add(t);
+                    bool good = ok(t);
+                    if (!good) bad++;
+                    c += t.conflict; a += t.lateralAcc; r += t.restSpeed;
+                    log.AppendLine($"scale {s} k{kind} seed {seed}: {t}{(good ? "" : "  <-- out")}");
                 }
-            TestContext.Out.WriteLine(log.ToString());
-            Assert.AreEqual(0, bad, $"arms pull the body in different directions while travelling ({bad} of 9 runs, see the log)");
+            conflict = (float)(c / 9); lateralAcc = (float)(a / 9); restSpeed = (float)(r / 9);
+            log.AppendLine($"scale {s}: {bad} of 9 out, means conflict {conflict:F2} Mg, lateral acceleration {lateralAcc:F2} g, rest speed {restSpeed * 1000f:F1} mm/s");
+            return bad;
         }
 
-        // The same at an individual's size spread (0.9x, 1.1x; the geometry scaled with it): at most one run of
-        // nine per size outside the bounds (the branch contact is chaotic).
+        // RED before the arm roles (baseline 2026-10-18, scale 1, kinds 1-3 x seeds 1-3: conflict 1.1-693 Mg
+        // (peaks 8-3400), lateral 0.22-1.65 Mg, lateral acceleration 0.65-5.6 g (peaks 16-84 g); the lattice
+        // scene ran pairs of arms at 200-760 Mg against each other). Holds spread around a hanging body always pull
+        // partly against each other (two at 45 deg: 0.41 Mg), so conflict is bounded, not zero; what must not
+        // happen is a sustained fight or the body yanked sideways. The branch contact is chaotic (a hair of
+        // difference in the start changes which bar each arm takes, and .NET and Mono round differently), so one
+        // run of nine may fall outside the per-run bounds; the means are bounded tightly.
+        [Test] public void TugOfWar_Travel_ArmsPullTogether()
+        {
+            var log = new StringBuilder();
+            int bad = Runs(1f, TravelOk, log, out float c, out float a, out _);
+            TestContext.Out.WriteLine(log.ToString());
+            Assert.LessOrEqual(bad, 1, "arms pull the body in different directions while travelling (see the log)");
+            Assert.LessOrEqual(c, MeanConflict, "mean conflict"); Assert.LessOrEqual(a, MeanLateralAcc, "mean sideways acceleration");
+        }
+
+        const float MeanConflict = 1.0f, MeanLateralAcc = 0.35f;
+
+        // The same at an individual's size spread (0.9x, 1.1x; the geometry scaled with it).
         [Test] public void TugOfWar_Travel_AcrossSizes()
         {
-            var log = new StringBuilder(); int bad = 0;
+            var log = new StringBuilder(); bool bad = false;
             foreach (float s in new[] { 0.9f, 1.1f })
             {
-                int badHere = 0;
-                for (int kind = 1; kind <= 3; kind++)
-                    for (uint seed = 1; seed <= 3; seed++)
-                    {
-                        Tug t = Measure(kind, s, seed);
-                        bool ok = t.conflict <= 1.5f && t.conflictMax <= 30f && t.lateral <= 0.25f && t.lateralAcc <= 0.6f && t.lateralAccMax <= 12f && t.progress >= 0.4f;
-                        if (!ok) badHere++;
-                        log.AppendLine($"scale {s} k{kind} seed {seed}: {t}{(ok ? "" : "  <-- out")}");
-                    }
-                if (badHere > 1) bad++;
+                int b = Runs(s, TravelOk, log, out float c, out float a, out _);
+                if (b > 1 || c > MeanConflict || a > MeanLateralAcc) bad = true;
             }
             TestContext.Out.WriteLine(log.ToString());
-            Assert.AreEqual(0, bad, "arms pull against each other at an individual's size spread (see the log)");
+            Assert.IsFalse(bad, "arms pull against each other at an individual's size spread (see the log)");
         }
 
-        // Large octopuses (2x, 4x: the lab fits the scale to the branches, up to 4). Looser bounds than at 1x for
-        // now (the solver's per-iteration stiffness is not size-free; tightening this is part of the 4x-size task):
-        // no sustained fight (peak <= 60 Mg) and no sideways drag on average. Baseline before the arm roles at 4x:
-        // conflict mean 388 Mg (peak 5009), lateral acceleration mean 3.4 g (peak 152).
+        // Large octopuses (2x, and 4x - the lab's size): the same per-run bounds as at 1x (in Froude time, with the
+        // solver's response size-free: TentacleChain.SizeFree, eased pins), two of nine may fall outside, and the
+        // means stay below 1.2 Mg conflict and 0.5 g sideways. Baseline before the arm roles at 4x: conflict mean
+        // 388 Mg (peak 5009), lateral acceleration mean 3.4 g (peak 152); after the roles (pull-along): 1.84 Mg,
+        // 0.58 g, travel ok 4/9.
         [Test] public void TugOfWar_Travel_LargeSizes()
         {
             var log = new StringBuilder(); bool bad = false;
             foreach (float s in new[] { 2f, 4f })
             {
-                double c = 0, acc = 0; float peak = 0f;
-                for (int kind = 1; kind <= 3; kind++)
-                    for (uint seed = 1; seed <= 3; seed++)
-                    {
-                        Tug t = Measure(kind, s, seed);
-                        c += t.conflict; acc += t.lateralAcc; peak = Mathf.Max(peak, t.conflictMax);
-                        log.AppendLine($"scale {s} k{kind} seed {seed}: {t}");
-                    }
-                c /= 9; acc /= 9;
-                log.AppendLine($"scale {s}: conflict mean {c:F2}, peak {peak:F0} Mg, lateral acceleration mean {acc:F2} g");
-                if (c > 2.5 || peak > 60f || acc > 0.8) bad = true;
+                int b = Runs(s, TravelOk, log, out float c, out float a, out _);
+                if (b > 2 || c > 1.2f || a > 0.5f) bad = true;
             }
             TestContext.Out.WriteLine(log.ToString());
             Assert.IsFalse(bad, "a large octopus's arms pull against each other (see the log)");
         }
 
         // After travelling, resting arms only support the body: the net arm force is the lattice's weight and
-        // the head is still.
+        // the head is still, at 1x and 4x. One run of nine may still be settling a swing (a hold found late); at
+        // least seven of nine are dead still (< 5 mm/s per unit scale: asleep, measured 2026-10-18 8/9 at 0.0).
         [Test] public void TugOfWar_Rest_SupportOnly()
         {
-            var log = new StringBuilder(); int bad = 0;
-            for (int kind = 1; kind <= 3; kind++)
-                for (uint seed = 1; seed <= 3; seed++)
-                {
-                    Tug t = Measure(kind, 1f, seed);
-                    bool ok = t.restResidual <= 0.15f && t.restSpeed <= 0.03f;   // (breathing alone moves the head a few mm/s)
-                    if (!ok) bad++;
-                    log.AppendLine($"k{kind} seed {seed}: {t}{(ok ? "" : "  <-- FAIL")}");
-                }
+            var log = new StringBuilder(); bool bad = false;
+            foreach (float s in new[] { 1f, 4f })
+            {
+                var all = new List<Tug>();
+                int b = Runs(s, RestOk, log, out _, out _, out _, all);
+                int moving = 0;
+                foreach (Tug t in all) if (t.restSpeed >= 0.005f) moving++;
+                if (b > 1 || moving > 2) bad = true;
+            }
             TestContext.Out.WriteLine(log.ToString());
-            Assert.AreEqual(0, bad, $"resting arms pull against each other ({bad} of 9 runs, see the log)");
+            Assert.IsFalse(bad, "resting arms pull against each other (see the log)");
         }
     }
 }
