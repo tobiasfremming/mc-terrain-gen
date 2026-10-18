@@ -95,6 +95,10 @@ public struct CreatureLook
     public float patternScale, patternContrast, patternSoftness, spotScale;
     public float smoothness, rimStrength, subsurface;
     public float sizeJitter, hueJitter, valueJitter;   // per-individual ranges
+    // Winged species: the wing membrane (part 8): colour, how much light shines through it (0..1), how dark
+    // its veins are (0..1), how dark its trailing rim is (0..1).
+    public Color membrane;
+    public float membraneTranslucency, veinContrast, membraneRim;
 }
 
 [CreateAssetMenu(menuName = "Marching Cubes/Creature Species")]
@@ -124,6 +128,11 @@ public class CreatureSpecies : ScriptableObject
     public CreatureBodyPlan bodyPlan = CreatureBodyPlan.Spine;
     public CephalopodSpec cephalopod;
     public ClimbSpec climb;
+    // Winged species (Flight/, design 2026-10-17-winged-serpent): each wing's arm is one of the legs (walked
+    // on the ground: wing-walk), driven by its WingSpec in the air. Empty = no wings; flight data is used
+    // only with wings (CanFly).
+    public WingSpec[] wings;
+    public FlightSpec flight;
 
     // Raised when the asset is edited (Inspector, play mode included): the creature lab respawns the
     // species at its new scale.
@@ -132,9 +141,13 @@ public class CreatureSpecies : ScriptableObject
 
     public int JointCount => joints != null ? joints.Length : 0;
     int LegCount => legs != null ? legs.Length : 0;
-    public int BoneCount => JointCount + 3 * LegCount + 2;
+    public int WingCount => wings != null ? wings.Length : 0;
+    public bool CanFly => WingCount > 0 && flight != null && flight.cruiseSpeed > 0f;
+    // Bone order (WingBoneLayout): spine, 3 per leg, 6 per wing, 2 eyes; without wings exactly as before.
+    public int BoneCount => WingBoneLayout.BoneCount(JointCount, LegCount, WingCount);
     public int LegBone(int leg, int part) => JointCount + 3 * leg + part;
-    public int EyeBone(int eye) => JointCount + 3 * LegCount + eye;
+    public int WingBone(int wing, int k) => WingBoneLayout.WingBone(JointCount, LegCount, wing, k);
+    public int EyeBone(int eye) => WingBoneLayout.EyeBone(JointCount, LegCount, WingCount, eye);
     public float BodyLength => headCapLength + spacing * (JointCount - 1) + tailTipLength;
 
     public float MaxLateralReach
@@ -148,6 +161,15 @@ public class CreatureSpecies : ScriptableObject
                 LegSpec l = legs[i];
                 if (l == null) continue;
                 r = Mathf.Max(r, Mathf.Abs(l.shoulderOffset.x) + l.upperLength + l.lowerLength);
+            }
+            // a spread wing: the wrist's rest point plus its longest finger
+            for (int w = 0; w < WingCount; w++)
+            {
+                WingSpec ws = wings[w];
+                if (ws == null) continue;
+                float finger = 0f;
+                if (ws.fingerLengths != null) for (int k = 0; k < ws.fingerLengths.Length; k++) finger = Mathf.Max(finger, ws.fingerLengths[k]);
+                r = Mathf.Max(r, Mathf.Abs(ws.restTip.x) + finger);
             }
             return r;
         }
@@ -172,6 +194,13 @@ public class CreatureSpecies : ScriptableObject
             if (!(l.upperLength > 0f) || !(l.lowerLength > 0f)) return $"legs[{i}] limb lengths must be > 0";
             if (!(l.ForwardSwingLimit < 180f) || !(l.BackSwingLimit < 180f) || !(l.KneeRange < 180f) || !(l.KneeFlex < 180f))
                 return $"legs[{i}] joint-range limits must be < 180 deg";
+        }
+        for (int w = 0; w < WingCount; w++)
+        {
+            if (wings[w] == null) return $"wings[{w}] is null";
+            string e = wings[w].Validate(this);
+            if (e != null) return $"wings[{w}]: {e}";
+            for (int o = 0; o < w; o++) if (wings[o] != null && wings[o].leg == wings[w].leg) return $"wings[{w}] shares leg {wings[w].leg}";
         }
         return null;
     }

@@ -1,0 +1,417 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39d3296fcbe55a0429fe582610f52ec3, type: 3}
+  m_Name: WingedSerpent
+  m_EditorClassIdentifier: TerrainGen.Runtime::CreatureSpecies
+  scale: 1
+  spacing: 0.08
+  joints:
+  - halfWidth: 0.042
+    halfHeight: 0.0357
+    clearance: 0.1
+    bendLimitDeg: 18
+    rigid: 0
+  - halfWidth: 0.046
+    halfHeight: 0.0391
+    clearance: 0.1
+    bendLimitDeg: 18
+    rigid: 1
+  - halfWidth: 0.034
+    halfHeight: 0.0289
+    clearance: 0.1
+    bendLimitDeg: 18
+    rigid: 0
+  - halfWidth: 0.039333
+    halfHeight: 0.033433
+    clearance: 0.1
+    bendLimitDeg: 18
+    rigid: 0
+  - halfWidth: 0.044667
+    halfHeight: 0.037967
+    clearance: 0.1
+    bendLimitDeg: 18
+    rigid: 0
+  - halfWidth: 0.07
+    halfHeight: 0.0595
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.068333
+    halfHeight: 0.058083
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.066667
+    halfHeight: 0.056667
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.065
+    halfHeight: 0.05525
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.063333
+    halfHeight: 0.053833
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.061667
+    halfHeight: 0.052417
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.06
+    halfHeight: 0.051
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.058333
+    halfHeight: 0.049583
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.056667
+    halfHeight: 0.048167
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.055
+    halfHeight: 0.04675
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.050231
+    halfHeight: 0.042697
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.046697
+    halfHeight: 0.039693
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.043516
+    halfHeight: 0.036989
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.040544
+    halfHeight: 0.034462
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.037719
+    halfHeight: 0.032061
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.035005
+    halfHeight: 0.029754
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.032381
+    halfHeight: 0.027524
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.029831
+    halfHeight: 0.025356
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.027344
+    halfHeight: 0.023242
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.024912
+    halfHeight: 0.021175
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.022528
+    halfHeight: 0.019149
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.020187
+    halfHeight: 0.017159
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.017885
+    halfHeight: 0.015202
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.015618
+    halfHeight: 0.013275
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.013383
+    halfHeight: 0.011375
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.011178
+    halfHeight: 0.009501
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  - halfWidth: 0.009
+    halfHeight: 0.00765
+    clearance: 0.1
+    bendLimitDeg: 14
+    rigid: 0
+  headCapLength: 0.09
+  tailTipLength: 0.06
+  legs:
+  - attachJoint: 5
+    side: -1
+    shoulderOffset: {x: 0.06, y: 0.02, z: 0}
+    restOffset: {x: 0.85, y: 0, z: 0.25}
+    upperLength: 0.5
+    lowerLength: 0.6
+    upperRadius: 0.034
+    lowerRadius: 0.024
+    pole: {x: 0, y: 0.25, z: -1}
+    stepThreshold: 0.16
+    stepDuration: 0.2
+    stepLift: 0.06
+    overshoot: 0.06
+    gaitGroup: 0
+    footLength: 0.06
+    toeCount: 2
+    forwardSwingLimitDeg: 0
+    backSwingLimitDeg: 0
+    kneeRangeDeg: 0
+    kneeFlexDeg: 0
+    kneeBlend: 0
+  - attachJoint: 5
+    side: 1
+    shoulderOffset: {x: 0.06, y: 0.02, z: 0}
+    restOffset: {x: 0.85, y: 0, z: 0.25}
+    upperLength: 0.5
+    lowerLength: 0.6
+    upperRadius: 0.034
+    lowerRadius: 0.024
+    pole: {x: 0, y: 0.25, z: -1}
+    stepThreshold: 0.16
+    stepDuration: 0.2
+    stepLift: 0.06
+    overshoot: 0.06
+    gaitGroup: 1
+    footLength: 0.06
+    toeCount: 2
+    forwardSwingLimitDeg: 0
+    backSwingLimitDeg: 0
+    kneeRangeDeg: 0
+    kneeFlexDeg: 0
+    kneeBlend: 0
+  - attachJoint: 14
+    side: -1
+    shoulderOffset: {x: 0.04, y: -0.01, z: 0}
+    restOffset: {x: 0.15, y: 0, z: -0.02}
+    upperLength: 0.1
+    lowerLength: 0.095
+    upperRadius: 0.022
+    lowerRadius: 0.015
+    pole: {x: 0.3, y: 0.6, z: 1}
+    stepThreshold: 0.09
+    stepDuration: 0.16
+    stepLift: 0.035
+    overshoot: 0.04
+    gaitGroup: 1
+    footLength: 0.045
+    toeCount: 4
+    forwardSwingLimitDeg: 0
+    backSwingLimitDeg: 0
+    kneeRangeDeg: 0
+    kneeFlexDeg: 0
+    kneeBlend: 0
+  - attachJoint: 14
+    side: 1
+    shoulderOffset: {x: 0.04, y: -0.01, z: 0}
+    restOffset: {x: 0.15, y: 0, z: -0.02}
+    upperLength: 0.1
+    lowerLength: 0.095
+    upperRadius: 0.022
+    lowerRadius: 0.015
+    pole: {x: 0.3, y: 0.6, z: 1}
+    stepThreshold: 0.09
+    stepDuration: 0.16
+    stepLift: 0.035
+    overshoot: 0.04
+    gaitGroup: 0
+    footLength: 0.045
+    toeCount: 4
+    forwardSwingLimitDeg: 0
+    backSwingLimitDeg: 0
+    kneeRangeDeg: 0
+    kneeFlexDeg: 0
+    kneeBlend: 0
+  speed: 0.8
+  turnRateDeg: 120
+  accel: 2.5
+  turnSlowdown: 0.5
+  undulationDeg: 12
+  undulationHz: 1
+  gaitSwayDeg: 0
+  gaitRollDeg: 0
+  subSteps: 2
+  eyeJoint: 1
+  eyeOffset: {x: 0.032, y: 0.022, z: 0.02}
+  eyeRadius: 0.011
+  ringSegments: 16
+  ringsPerSegment: 3
+  look:
+    dorsal: {r: 0.3, g: 0.3, b: 0.17, a: 1}
+    flank: {r: 0.45, g: 0.38, b: 0.22, a: 1}
+    belly: {r: 0.82, g: 0.76, b: 0.58, a: 1}
+    pattern: {r: 0.2, g: 0.17, b: 0.1, a: 1}
+    patternType: 1
+    patternScale: 3
+    patternContrast: 0.6
+    patternSoftness: 0.4
+    spotScale: 0
+    smoothness: 0.35
+    rimStrength: 0.3
+    subsurface: 0.3
+    sizeJitter: 0.05
+    hueJitter: 0.02
+    valueJitter: 0.06
+    membrane: {r: 0.78, g: 0.52, b: 0.26, a: 1}
+    membraneTranslucency: 0.8
+    veinContrast: 0.35
+    membraneRim: 0.45
+  climb:
+    canClimb: 0
+    maxSurfaceAngleDeg: 0
+    maxHeightBodyLengths: 0
+    speedFactor: 0
+    descentSpeedFactor: 0
+    clearanceFactor: 0
+    strideFactor: 0
+    stepTimeFactor: 0
+    liftFactor: 0
+    upRateDeg: 0
+    upSmoothJoints: 0
+    pitchLimitDeg: 0
+    minWidthFactor: 0
+  wings:
+  - leg: 0
+    restTip: {x: 1.06, y: 0.08, z: 0.05}
+    comfortUp: 0.55
+    comfortDown: 0.55
+    strokePlaneDeg: 10
+    pronationDeg: 18
+    overshootUp: 0.08
+    upstrokeDuration: 0.22
+    upstrokeFold: 0.6
+    foldReach: 0.3
+    beatGroup: 0
+    fingerLengths:
+    - 0.75
+    - 0.65
+    - 0.55
+    fingerSpreadDeg:
+    - -12
+    - 30
+    - 78
+    fingerFoldDeg:
+    - 100
+    - 122
+    - 146
+    fingerMinGapDeg: 4
+    fingerFoldGapDeg: 10
+    fingerRadius: 0.014
+    thumbLength: 0.07
+    membraneRearJoint: 13
+    membraneFrontJoint: 5
+    trailingRib: 0.5
+    membraneInset: 0.8
+    area: 1
+    scallop: 0.12
+  - leg: 1
+    restTip: {x: 1.06, y: 0.08, z: 0.05}
+    comfortUp: 0.55
+    comfortDown: 0.55
+    strokePlaneDeg: 10
+    pronationDeg: 18
+    overshootUp: 0.08
+    upstrokeDuration: 0.22
+    upstrokeFold: 0.6
+    foldReach: 0.3
+    beatGroup: 0
+    fingerLengths:
+    - 0.75
+    - 0.65
+    - 0.55
+    fingerSpreadDeg:
+    - -12
+    - 30
+    - 78
+    fingerFoldDeg:
+    - 100
+    - 122
+    - 146
+    fingerMinGapDeg: 4
+    fingerFoldGapDeg: 10
+    fingerRadius: 0.014
+    thumbLength: 0.07
+    membraneRearJoint: 13
+    membraneFrontJoint: 5
+    trailingRib: 0.5
+    membraneInset: 0.8
+    area: 1
+    scallop: 0.12
+  flight:
+    cruiseSpeed: 5
+    minSpeed: 3
+    maxSpeed: 8
+    kGrip: 0.73333
+    vGripMin: 3
+    kLift: 0.02
+    kDrag: 0.01
+    upstrokeArea: 0.15
+    featherDeg: 8.6
+    climbGain: 0.6
+    climbDamping: 0.5
+    climbIntegral: 0.8
+    climbIntegralLimit: 0.3
+    thrustGain: 0.5
+    demandFloor: 0.25
+    descendCutoff: -0.6
+    glideDemand: 0.05
+    amplitudeMin: 0.3
+    strokeRateMin: 2
+    strokeRateMax: 8
+    glideRelax: 6
+    maxBankDeg: 35
+    bankGain: 3
+    bankDamping: 0.5
+    maxAsymmetry: 0.4
+    rollGain: 0.7
+    rollDamping: 4
+    glideAlphaDeg: 6
+    flareAlphaDeg: 45
+    launchSpeed: 3.5
+    flareDistance: 3
+    minAltitude: 1.5
+    cruiseAltitudeFrac: 0.6
+    airUndulationDeg: 14.3
+    airUndulationHz: 1.2
+    tailSag: 0.3
+    headStabilise: 0.15

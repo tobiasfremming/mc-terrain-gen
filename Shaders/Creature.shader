@@ -70,6 +70,8 @@ Shader "MarchingCubes/Creature"
         float4 _PatternParams;  // scale, contrast, softness, spotScale
         float4 _SurfaceParams;  // smoothness, rim, subsurface, 0
         float4 _BodyParams;     // body length, 1 / length, arc length where the tail begins, 0
+        float4 _MembraneColor;  // wing membrane colour (winged species)
+        float4 _MembraneParams; // translucency, vein contrast, trailing rim darkening, 0
         ENDHLSL
 
         Pass
@@ -89,6 +91,7 @@ Shader "MarchingCubes/Creature"
             #include "Creature/CreaturePattern.hlsl"
             #include "Creature/CreatureLighting.hlsl"
             #include "Creature/CreatureCloak.hlsl"
+            #include "Creature/CreatureMembrane.hlsl"
 
             struct Varyings
             {
@@ -133,6 +136,35 @@ Shader "MarchingCubes/Creature"
                 float3 n = normalize(i.normalWS.xyz);
                 float seed = i.inst.x;
 
+                CreatureLightParams lp;
+                lp.wrap = _Wrap;
+                lp.subsurfaceColor = _SubsurfaceColor.rgb;
+                lp.bellyOcclusion = _BellyOcclusion;
+                lp.groundBounce = _GroundBounce.rgb * _GroundBounceStrength;
+                lp.rimPower = _RimPower;
+                lp.ambientTint = _AmbientTint.rgb;
+                lp.ambientWarmth = _AmbientWarmth;
+                float2 screenUV = GetNormalizedScreenSpaceUV(i.positionCS);
+
+                // --- wing membrane: translucent skin with veins and a darker trailing rim (CreatureMembrane.hlsl)
+                if (part == CREATURE_PART_MEMBRANE)
+                {
+                    half vein = CreatureMembraneVeins(uv0);
+                    float edge = saturate((abs(uv1.y) - 0.1) / 0.9);   // radial fraction to the edge
+                    half rimDark = (half)(smoothstep(0.82, 1.0, edge) * _MembraneParams.z);
+                    float3 mc = _MembraneColor.rgb * (1.0 + _Mottle * (CreatureFbm(float3(uv0 * float2(6.0, 40.0), seed), 0x846CA68Bu) - 0.5) * 2.0);
+                    mc = CreatureHueShift((half3)mc, (half)i.inst.y) * (1.0 + i.inst.z);
+                    CreatureSurface ms;
+                    ms.albedo = (half3)saturate(mc * (1.0 - _MembraneParams.y * vein) * (1.0 - rimDark));
+                    ms.normalWS = n;
+                    ms.smoothness = (half)(0.5 * _SurfaceParams.x);
+                    ms.rim = (half)_SurfaceParams.y;
+                    ms.subsurface = 1.0h;
+                    ms.dorsal = 1.0h;                                   // no belly occlusion on a wing
+                    half3 mrgb = CreatureMembraneShade(ms, lp, posWS, screenUV, (half3)_MembraneColor.rgb, (half)(_MembraneParams.x * (1.0 - rimDark)), vein);
+                    return half4(MixFog(mrgb, (half)i.normalWS.w), 1.0h);
+                }
+
                 // --- base colour: belly -> flank -> back, the boundaries wobbling a little
                 float3 P = CreatureSurfacePoint(uv0, uv1, i.positionWS.w, seed);
                 // cloak: Forward only (the shadow and depth passes keep the body); a no-op at 0
@@ -176,16 +208,6 @@ Shader "MarchingCubes/Creature"
                     s.dorsal = 1.0h;
                 }
 
-                CreatureLightParams lp;
-                lp.wrap = _Wrap;
-                lp.subsurfaceColor = _SubsurfaceColor.rgb;
-                lp.bellyOcclusion = _BellyOcclusion;
-                lp.groundBounce = _GroundBounce.rgb * _GroundBounceStrength;
-                lp.rimPower = _RimPower;
-                lp.ambientTint = _AmbientTint.rgb;
-                lp.ambientWarmth = _AmbientWarmth;
-
-                float2 screenUV = GetNormalizedScreenSpaceUV(i.positionCS);
                 half3 rgb = CreatureShade(s, lp, posWS, screenUV);
                 if (glint > 0.0) rgb += (half3)(glint * 0.6 * (SampleSH(n) + 0.3));
                 rgb = MixFog(rgb, (half)i.normalWS.w);

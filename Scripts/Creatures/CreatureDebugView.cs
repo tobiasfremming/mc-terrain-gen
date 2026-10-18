@@ -109,13 +109,51 @@ public sealed class CreatureDebugView : MonoBehaviour
     {
         int n = sim.Joints.Length, legs = sim.Legs.Length;
         return 2 * (n - 1) + 2 * kEllipseSegments * n + legs * (4 + 4) + (sim.Bounds.HasValue ? 2 * kDiscSegments : 0)
-             + (sim.CanClimb ? 2 * n + 4 : 0) + 6;
+             + (sim.CanClimb ? 2 * n + 4 : 0) + 6
+             + (sim.Flight != null ? 2 * sim.Flight.Wings.Count * 8 + 2 * n + 12 : 0);
     }
 
     void Line(Vector3 a, Vector3 b, Color32 c)
     {
         verts[count] = a; colors[count++] = c;
         verts[count] = b; colors[count++] = c;
+    }
+
+    static readonly Color32 kBand = new Color32(0x9C, 0xE6, 0x5A, 0xFF), kWrist = new Color32(0xFF, 0x66, 0xCC, 0xFF);
+    static readonly Color32 kAir = new Color32(0x66, 0xD9, 0xFF, 0xFF), kLand = new Color32(0xFF, 0xE0, 0x40, 0xFF);
+
+    // A flyer (F3): each wing's comfort band (green, vertical through the rest wrist), its wrist (magenta
+    // cross), the air weight per joint (cyan, its length), the landing point and the approach's entry (yellow).
+    void AddFlight(CreatureSim sim)
+    {
+        CreatureFlight fl = sim.Flight;
+        float s = sim.SizeScale;
+        CreatureWings w = fl.Wings;
+        for (int k = 0; k < w.Count; k++)
+        {
+            WingState st = w.State[k];
+            WingSpec ws = w.Spec(k);
+            Quaternion gr = sim.Rotations[fl.Girdle];
+            Vector3 up = gr * Vector3.up;
+            Vector3 restWrist = sim.Joints[fl.Girdle] + gr * new Vector3(ws.restTip.x * w.Side(k), ws.restTip.y, ws.restTip.z) * s;
+            Line(restWrist - up * (ws.comfortDown * s), restWrist + up * (ws.comfortUp * s), kBand);
+            float c = 0.03f * s;
+            Line(restWrist - gr * Vector3.forward * c, restWrist + gr * Vector3.forward * c, kBand);
+            Line(st.wrist - up * c, st.wrist + up * c, kWrist);
+            Line(st.wrist - gr * Vector3.right * c, st.wrist + gr * Vector3.right * c, kWrist);
+            Line(st.wrist - gr * Vector3.forward * c, st.wrist + gr * Vector3.forward * c, kWrist);
+        }
+        for (int i = 0; i < sim.Joints.Length; i++)
+            if (fl.AirWeight[i] > 0f) Line(sim.Joints[i], sim.Joints[i] + (sim.Rotations[i] * Vector3.up) * (0.15f * s * fl.AirWeight[i]), kAir);
+        if (fl.Landing)
+        {
+            Vector3 p = fl.LandPoint, e = fl.EntryPoint; float c = 0.2f * s;
+            Line(p - Vector3.right * c, p + Vector3.right * c, kLand);
+            Line(p - Vector3.forward * c, p + Vector3.forward * c, kLand);
+            Line(p, p + Vector3.up * (4f * c), kLand);
+            Line(fl.Model.Position, p, kLand);
+            Line(e - Vector3.up * c, e + Vector3.up * c, kLand);
+        }
     }
 
     void AddCreature(CreatureSim sim)
@@ -125,6 +163,7 @@ public sealed class CreatureDebugView : MonoBehaviour
         Quaternion[] r = sim.Rotations;
         float s = sim.SizeScale;
         for (int i = 1; i < j.Length; i++) Line(j[i - 1], j[i], i == 1 ? kHead : kChain);
+        if (sim.Flight != null) AddFlight(sim);
 
         for (int i = 0; i < j.Length; i++)
         {

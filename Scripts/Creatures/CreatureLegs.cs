@@ -161,6 +161,27 @@ sealed class CreatureLegs
         MaxSpeed = StrideLimitedSpeed();
     }
 
+    // Puts every foot down on its rest point under the current body (a flying creature touching down:
+    // the feet were tucked, their planted points left far behind). Nothing is stepping afterwards.
+    internal void Replant()
+    {
+        for (int l = 0; l < specs.Length; l++)
+        {
+            Vector3 u = Up(l);
+            Vector3 near = joints[specs[l].attachJoint] + rotations[specs[l].attachJoint] * (Mirror(specs[l].restOffset, l) * scale);
+            Vector3 p = near - u * (sp.joints[specs[l].attachJoint].clearance * scale), n = u;
+            if (ground.Probe(near, u, kProbeWindow * scale, out Vector3 gp, out Vector3 gn)) { p = gp; n = gn; }
+            rest[l] = p; target[l] = p;
+            State[l].stepping = false; State[l].stepT = 0f;
+            State[l].footNormal = n.sqrMagnitude > 1e-12f ? n.normalized : u;
+            State[l].stepFromNormal = State[l].stepToNormal = State[l].footNormal;
+            prevSwing[l] = -1f; prevKnee[l] = -1f;
+        }
+        for (int i = 0; i < Droop.Length; i++) { Droop[i] = 0f; DroopSpread[i] = 0f; }
+        spreadNonZero = false;
+        SolveIK(0f);
+    }
+
     // Fastest steady walk the legs can keep up with: with alternating gait groups a foot gets one
     // step per (groups * stepDuration), and can only be placed within reach, so
     // speed <= usable stride / cycle. Beyond that the feet would drag.
