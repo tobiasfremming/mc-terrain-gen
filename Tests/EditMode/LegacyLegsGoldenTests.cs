@@ -17,13 +17,15 @@ namespace TerrainGen.Tests
         const int kTicks = 600;
 
 #if UNITY_EDITOR
-        // Unity 6000.2.6f2 / Mono: capture once in the Editor on the P1 commit (no legacy code changed there).
+        // Unity 6000.2.6f2 / Mono: captured on the integration merge a6337d5 (legs + octopus + winged serpent),
+        // not on f4bda2a. They guard against future changes only; that the merge itself kept the legacy legs
+        // bit-identical is shown by the offline harness constants below, which still match on a6337d5.
         static readonly Dictionary<string, (ulong bones, ulong mesh)> Golden = new Dictionary<string, (ulong, ulong)>
         {
-            { "DesertMonitor", (0UL, 0UL) },
-            { "TestHexapod", (0UL, 0UL) },
-            { "DesertSnake", (0UL, 0UL) },
-            { "Lizardish", (0UL, 0UL) },
+            { "DesertMonitor", (0x5CA3EBE4BA35469AUL, 0xE56A6E3CC28CF98AUL) },
+            { "TestHexapod", (0x74CBED3B3EEC2DE0UL, 0xC9E071DE0867056FUL) },
+            { "DesertSnake", (0xBD9F06CEDFA332D1UL, 0x5022CF597CF3F50CUL) },
+            { "Lizardish", (0xFD91F9955B3A64A2UL, 0x139A617E5D148B58UL) },
         };
 #else
         // the offline harness (.NET 8, scratchpad legs_impl), captured on f4bda2a

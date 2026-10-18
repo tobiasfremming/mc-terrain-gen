@@ -1,0 +1,96 @@
+<!--
+  Offline creature harness (design 2026-10-18-creature-kit §3d). Unity ignores this folder (the trailing ~).
+  It compiles the REAL creature sources and the REAL EditMode tests into one .NET 8 console app and runs the
+  tests with a small NUnit stand-in (MiniNUnit.cs). Drive it through
+  .claude/skills/creature-kit/scripts/creature_kit.py (parent repo), or by hand:
+
+    dotnet build -c Release                         stubbed UnityEngine (default; Stubs/UnityEngine*.cs)
+    dotnet build -c Release -p:RealUnity=true       the real 6000.2.6f2 UnityEngine.CoreModule.dll (math parity;
+                                                    native calls such as Mesh or ScriptableObject report NATIVE)
+    dotnet bin/<Release|RealUnity>/net8.0/CreatureHarness.dll test [Class[.Method] filter] | list | species
+
+  Globs: every Scripts/Creatures/**/*.cs and the creature EditMode tests, minus the exclude lists below. A
+  new source file is picked up automatically; when it needs Unity-only API, add it to UnityOnlySources with
+  the reason. Define CREATURE_HARNESS is set, so a test file may keep a harness-only branch.
+  Offline goldens are NOT Unity goldens (.NET MathF vs Mono): see LegacyLegsGoldenTests.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <!-- Unity compiles C# 9: keep the harness on the same language so it catches newer syntax -->
+    <LangVersion>9</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Optimize>true</Optimize>
+    <AssemblyName>CreatureHarness</AssemblyName>
+    <RootNamespace>CreatureHarness</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- fully optimised code from the first call: timings (kit Perf) are not skewed by tier-0 JIT -->
+    <TieredCompilation>false</TieredCompilation>
+    <!-- CS0436: harness types (Profiling.Recorder) shadow the real DLL's on purpose in RealUnity mode -->
+    <NoWarn>CS0649;CS0414;CS0169;CS8632;CS0219;CS0168;CS0162;CS0436;CS0618;CS0108;CS0067;NU1702</NoWarn>
+    <DefineConstants>$(DefineConstants);CREATURE_HARNESS</DefineConstants>
+    <RealUnity Condition="'$(RealUnity)' == ''">false</RealUnity>
+    <UnityData Condition="'$(UnityData)' == ''">C:\Program Files\Unity\Hub\Editor\6000.2.6f2\Editor\Data</UnityData>
+    <TG Condition="'$(TG)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..'))</TG>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RealUnity)' == 'true'">
+    <DefineConstants>$(DefineConstants);CREATURE_HARNESS_REAL_UNITY</DefineConstants>
+    <OutputPath>bin\RealUnity\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Runtime sources that need Unity API the harness does not stub (scene objects, physics, GPU, Editor).
+         Their few pure statics that tests reach are mirrored in Stubs/UnityOnlyMirrors.cs. -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\AssemblyInfo.cs" />          <!-- InternalsVisibleTo: one assembly here -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\CreatureWorld.cs" />         <!-- MonoBehaviour, renderers, scene -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\CreatureLab.cs" />           <!-- MonoBehaviour, scene building -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\CreatureDebugView.cs" />     <!-- MonoBehaviour, GL / Gizmos -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\CreatureEnclosure.cs" />     <!-- curb mesh GameObject -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\EnclosurePlant.cs" />        <!-- plant prototype GameObjects -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\ClimbableFlora.cs" />        <!-- MeshCollider, PlantWorld -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\CreatureSurfaceMesh.cs" />   <!-- MeshCollider -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\CreatureSurfaces.cs" />      <!-- PhysicsScene queries -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\PhysicsSurfaceProbe.cs" />   <!-- Physics raycasts -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\SurfaceMeshCache.cs" />      <!-- Mesh readback per collider -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\ClimbingBrain.cs" />         <!-- CreatureSurfaces goal search -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\Flight\AviaryDressing.cs" /> <!-- rocks/trees GameObjects -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\Octopus\OctopusLab.cs" />    <!-- MonoBehaviour lab -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\Octopus\OctopusCreature.cs" /> <!-- MonoBehaviour wrapper -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\Octopus\OctopusPreyAdapters.cs" /> <!-- CreatureWorld prey -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\Octopus\BranchHints.cs" />   <!-- PlantWorld skeletons -->
+
+    <!-- EditMode tests that need the Editor (scene objects, physics, shaders, AssetDatabase beyond species
+         assets, Perf assembly) or non-creature runtime code. Everything else matching the include globs runs. -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\ClimbTestMeshes.cs" />            <!-- GameObject + MeshCollider fixtures -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureClimbTests.cs" />         <!-- ClimbTestMeshes, physics -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureContainmentTests.cs" />   <!-- obstacles via CreatureLab -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureEnclosureTests.cs" />     <!-- curb meshes, lab GameObjects -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureGroundProbeTests.cs" />   <!-- physics + world config assets -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureOctopusPhysicsTests.cs" /><!-- physics colliders -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureOctopusWorldTests.cs" />  <!-- CreatureWorld, GameObjects -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreaturePerfTests.cs" />          <!-- Perf assembly, real terrain -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureRendererTests.cs" />      <!-- shader compile, materials, GPU buffers -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureShaderTests.cs" />        <!-- shaders, materials -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureWingedEditorTests.cs" />  <!-- CreatureLab / aviary GameObjects -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureWorldTests.cs" />         <!-- CreatureWorld MonoBehaviour -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="$(TG)\Scripts\Creatures\**\*.cs" Exclude="@(UnityOnlySources)" />
+    <Compile Include="$(TG)\Tests\EditMode\Creature*.cs;$(TG)\Tests\EditMode\Arthropod*.cs;$(TG)\Tests\EditMode\Octopus*.cs;$(TG)\Tests\EditMode\Winged*.cs;$(TG)\Tests\EditMode\LegacyLegs*.cs;$(TG)\Tests\EditMode\GcAllocs.cs;$(TG)\Tests\EditMode\TestFields.cs"
+             Exclude="@(UnityOnlyTests)" />
+    <Compile Include="MiniNUnit.cs;Program.cs;HarnessSelfTests.cs;Stubs\Harness*.cs;Stubs\UnityOnlyMirrors.cs;Stubs\TerrainGenRuntime.cs" />
+    <Compile Include="Stubs\UnityEngine*.cs" Condition="'$(RealUnity)' != 'true'" />
+    <!-- scratch experiments without touching the tree: -p:HarnessExtra=<folder> compiles <folder>/*.cs in too
+         (a class in namespace TerrainGen.Tests.* with [Test] methods runs like any test) -->
+    <Compile Include="$(HarnessExtra)\*.cs" Condition="'$(HarnessExtra)' != ''" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(RealUnity)' == 'true'">
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(UnityData)\Managed\UnityEngine\UnityEngine.CoreModule.dll</HintPath><Private>true</Private></Reference>
+  </ItemGroup>
+</Project>

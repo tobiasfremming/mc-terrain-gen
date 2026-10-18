@@ -255,7 +255,10 @@ namespace TerrainGen.Tests
 
         // Skins the species' mesh through a 5 s minimum-radius circle: no triangle may invert. Shared
         // with the monitor tests.
-        internal static void MaxBendNoInvertedTriangles(CreatureSpecies sp)
+        internal static void MaxBendNoInvertedTriangles(CreatureSpecies sp) => MaxBendNoInvertedTriangles(sp, sp.scale);
+
+        // ... at an individual's size (species scale x size jitter), not only the species' own.
+        internal static void MaxBendNoInvertedTriangles(CreatureSpecies sp, float sizeScale)
         {
             Mesh mesh = CreatureMeshBuilder.Build(sp);
             var d = new Data { v = mesh.vertices, n = mesh.normals, t = mesh.triangles };
@@ -265,9 +268,9 @@ namespace TerrainGen.Tests
             var world = new Matrix4x4[sp.BoneCount];
             var skin = new Matrix4x4[sp.BoneCount];
             var pos = new Vector3[d.v.Length];
-            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, sp.scale);
-            // at the species' size (R21): lengths x scale, the circling rate / sqrt(scale) like the gait
-            float sc = sp.scale, ts = Mathf.Sqrt(sc);
+            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, sizeScale);
+            // at the creature's size (R21): lengths x scale, the circling rate / sqrt(scale) like the gait
+            float sc = sizeScale, ts = Mathf.Sqrt(sc);
             Vector3 centre = new Vector3(0f, 0f, 0.25f) * sc;
             float maxBend = 0f; int frames = 0;
             for (int t = 0; t < (int)(300 * ts); t++) // 5 s, target circling at minimum radius
