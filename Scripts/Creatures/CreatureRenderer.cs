@@ -41,7 +41,8 @@ public sealed class CreatureRenderer : IDisposable
         kPatternType = Shader.PropertyToID("_PatternType"), kPatternParams = Shader.PropertyToID("_PatternParams"),
         kSurfaceParams = Shader.PropertyToID("_SurfaceParams"), kBodyParams = Shader.PropertyToID("_BodyParams"),
         kOctoColors0 = Shader.PropertyToID("_OctoSucker"), kOctoColors1 = Shader.PropertyToID("_OctoSubsurface"),
-        kOctoParams = Shader.PropertyToID("_OctoParams"), kOctoParams2 = Shader.PropertyToID("_OctoParams2");
+        kOctoParams = Shader.PropertyToID("_OctoParams"), kOctoParams2 = Shader.PropertyToID("_OctoParams2"),
+        kMembraneColor = Shader.PropertyToID("_MembraneColor"), kMembraneParams = Shader.PropertyToID("_MembraneParams");
 
     readonly CreatureSpecies sp;
     readonly Material material;
@@ -91,7 +92,7 @@ public sealed class CreatureRenderer : IDisposable
         {
             bonesPer = sp.BoneCount;
             bindPoses = CreatureRestPose.BindPoses(sp);
-            Mesh = CreatureMeshBuilder.Build(sp);
+            Mesh = sp.WingCount > 0 ? WingedMeshBuilder.Build(sp) : CreatureMeshBuilder.Build(sp);
 
             // Everything that sticks out past the spine joints: legs and feet sideways and down, the head
             // cap and tail tip along the body, the eyes.
@@ -233,6 +234,11 @@ public sealed class CreatureRenderer : IDisposable
             props.SetColor(kOctoColors1, ol.Subsurface);
             props.SetVector(kOctoParams, new Vector4(ol.ChromaScale, ol.Papillae, ol.SuckerSize, ol.CloudSpeed));
             props.SetVector(kOctoParams2, new Vector4(ol.Wetness, ol.RimGlint, arm.RootRadius, arm.Length));
+        }
+        else if (sp.WingCount > 0)
+        {
+            props.SetColor(kMembraneColor, look.membrane);
+            props.SetVector(kMembraneParams, new Vector4(look.membraneTranslucency, look.veinContrast, look.membraneRim, 0f));
         }
 
         rp.worldBounds = bounds;

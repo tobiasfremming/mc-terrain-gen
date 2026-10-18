@@ -8,7 +8,8 @@ public static class CreatureRestPose
     internal static CreatureSim Sim(CreatureSpecies sp) =>
         new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
 
-    public static Matrix4x4[] BoneWorld(CreatureSpecies sp) => BoneWorld(Sim(sp));
+    // A winged species' rest pose has its wings spread (WingedMeshBuilder), not walked on.
+    public static Matrix4x4[] BoneWorld(CreatureSpecies sp) => sp.WingCount > 0 ? WingedMeshBuilder.RestBoneWorld(sp, sp.wings) : BoneWorld(Sim(sp));
 
     internal static Matrix4x4[] BoneWorld(CreatureSim sim)
     {

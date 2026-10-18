@@ -1,0 +1,60 @@
+using System;
+using UnityEngine;
+
+// Flight data of a winged species (design 2026-10-17-winged-serpent-design.md, section 2). Standalone in
+// Phase A; Phase B adds `public FlightSpec flight;` to CreatureSpecies (null = cannot fly).
+//
+// Every value is authored at scale 1 and follows Froude similarity (FlightModel): lengths x scale, times
+// and speeds x sqrt(scale), accelerations unchanged. The defaults are the designer's numpy prototype
+// (wyvern_proto/proto.py: m = 6 kg, kW = 2.2, kL = 0.12, kD = 0.06), divided by the mass so the air plant
+// is mass-independent: kGrip = 2 kW / m, kLift = kL / m, kDrag = kD / m.
+[Serializable]
+public class FlightSpec
+{
+    [Header("Speed")]
+    public float cruiseSpeed = 5f;          // m/s at scale 1
+    public float minSpeed = 3f, maxSpeed = 8f;
+
+    [Header("Air plant")]
+    [Tooltip("Per-wing grip rate kappa = kGrip x area x max(|v|, vGripMin) / scale (1/s). Grip fraction per sub-step = kappa h / (1 + kappa h); 1 = a planted foot.")]
+    public float kGrip = 0.73333f;
+    public float vGripMin = 3f;             // m/s at scale 1
+    public float kLift = 0.02f;             // glide lift accel = kLift (1 - fold) v_fwd^2 / scale
+    public float kDrag = 0.01f;             // parasitic drag accel = kDrag |v| v / scale
+    public float upstrokeArea = 0.15f;      // feathered upstroke: area fraction (x (1 - fold))
+    public float featherDeg = 8.6f;         // upstroke normal tilted back by this
+
+    [Header("Controller")]
+    public float climbGain = 0.6f;          // per metre of altitude error (/ scale)
+    public float climbDamping = 0.5f;       // per m/s of vertical speed (/ sqrt(scale))
+    public float climbIntegral = 0.8f;      // per metre-second of altitude error (Froude-scaled); 0 = PD only (the prototype)
+    public float climbIntegralLimit = 0.3f; // cap on the integral's share of the climb demand
+    public float thrustGain = 0.5f;         // per m/s of speed error (/ sqrt(scale))
+    public float demandFloor = 0.25f;       // minimum stroke demand unless descending hard
+    public float descendCutoff = -0.6f;     // climb demand below this drops the floor (glide down)
+    public float glideDemand = 0.05f;       // below this the wings are held spread (glide)
+    public float amplitudeMin = 0.3f;       // stroke amplitude (fraction of the comfort band) at zero demand
+    public float strokeRateMin = 2f, strokeRateMax = 8f; // downstroke angular rate, rad/s at scale 1
+    public float glideRelax = 6f;           // 1/s: held wings return to the rest angle
+
+    [Header("Banking")]
+    public float maxBankDeg = 35f;
+    public float bankGain = 3f;           // stroke asymmetry per radian of bank error
+    public float bankDamping = 0.5f;       // stroke asymmetry per rad/s of roll rate (x sqrt(scale))
+    public float maxAsymmetry = 0.4f;       // left/right amplitude asymmetry cap
+    public float rollGain = 0.7f;          // roll accel (rad/s^2) per m/s^2 of left-right push difference (x scale)
+    public float rollDamping = 4f;          // 1/s: dihedral + aerodynamic roll damping (/ sqrt(scale))
+
+    [Header("Phase B: launch, glide, landing, altitude")]
+    public float glideAlphaDeg = 6f, flareAlphaDeg = 45f;
+    public float launchSpeed = 3.5f;
+    public float flareDistance = 3f;
+    public float minAltitude = 1.5f;
+    [Range(0f, 1f)] public float cruiseAltitudeFrac = 0.6f;
+
+    [Header("Air chain")]
+    public float airUndulationDeg = 14.3f;  // leader-direction yaw wave behind the girdle (flying snake)
+    public float airUndulationHz = 1.2f;
+    public float tailSag = 0.3f;            // m/s at the tail end (x sqrt(scale)), falls off toward the girdle
+    public float headStabilise = 0.15f;     // s: time constant of the head target's 2nd-order low-pass (x sqrt(scale))
+}

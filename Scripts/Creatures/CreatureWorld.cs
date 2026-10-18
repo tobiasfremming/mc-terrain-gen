@@ -116,7 +116,7 @@ public sealed class CreatureWorld : MonoBehaviour
         if (groundSource == GroundSource.Physics) return new PhysicsSurfaceProbe(Surfaces);
         IGroundProbe t = SimGround(g, sp, sizeScale);
         cache = t as CachedGroundProbe;
-        if (!sp.climb.canClimb) return t;
+        if (!sp.climb.canClimb && !sp.CanFly) return t; // a flyer perches on surfaces (rocks, branches)
         var surf = new PhysicsSurfaceProbe(Surfaces);
         return terrainProbe != null ? new CompositeSurfaceProbe(t, surf, terrainProbe, upAt)
                                     : new CompositeSurfaceProbe(t, surf, g is FieldGroundProbe fp ? fp.Field : null, upAt);
@@ -184,7 +184,7 @@ public sealed class CreatureWorld : MonoBehaviour
         CreatureInstance inst = Individual(sp, seed, scale > 0f ? scale : sp.scale);
         IGroundProbe simGround = GroundFor(g, sp, inst.sizeScale, out CachedGroundProbe cache);
         if (cache != null) caches.Add(cache);
-        if (sp.climb.canClimb && Application.isPlaying && GetComponent<ClimbableFlora>() == null && FindAnyObjectByType<PlantScatter>() != null)
+        if ((sp.climb.canClimb || sp.CanFly) && Application.isPlaying && GetComponent<ClimbableFlora>() == null && FindAnyObjectByType<PlantScatter>() != null)
             gameObject.AddComponent<ClimbableFlora>(); // scattered trees become climbable
         simGrounds.Add(simGround);
         var sim = new CreatureSim(sp, simGround, upAt, position, forward, inst.sizeScale, seed) { Bounds = bounds };

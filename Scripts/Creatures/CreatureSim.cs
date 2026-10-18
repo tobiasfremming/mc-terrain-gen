@@ -72,6 +72,19 @@ public sealed class CreatureSim
     internal float LegThrottle => legs.Throttle; // stats/tests: the gait's speed throttle (1 = free)
     public float Steepness(int joint) => climb != null && climb.Active ? climb.Steep[joint] : 0f;
 
+    // Flight (Flight/CreatureFlight): only for a species that CanFly. Ground mode is the walking code above,
+    // untouched; the other modes run the flight model, wings and air chain (see CreatureFlight).
+    readonly CreatureFlight flight;
+    public CreatureFlight Flight => flight;
+    public FlightMode Mode => flight != null ? flight.Mode : FlightMode.Ground;
+    // Per joint: the last grounding found ground within its window (a perched tail over a branch end does not).
+    public readonly bool[] Supported;
+    // A flyer's per-joint probed ground (the raw probe answer, before smoothing), for its drape; null otherwise.
+    internal readonly Vector3[] ProbedGround;
+    internal Vector3[] PathUp => pathUp;
+    internal CreatureLegs LegsInternal => legs;
+    internal float Commanded => commanded;
+
     public CreatureSim(CreatureSpecies sp, IGroundProbe ground, Func<Vector3, Vector3> upAt,
                        Vector3 position, Vector3 forward, float sizeScale = 1f, int seed = 0)
     {
@@ -121,6 +134,10 @@ public sealed class CreatureSim
         UpdateFrames();
         legs = new CreatureLegs(sp, ground, upAt, Joints, Rotations, sizeScale, TimeScale, climb);
         Legs = legs.State;
+        Supported = new bool[n];
+        if (sp.CanFly) ProbedGround = new Vector3[n];
+        for (int i = 0; i < n; i++) Supported[i] = true;
+        if (sp.CanFly) flight = new CreatureFlight(this, ground, upAt);
     }
 
     static int[] FindGirdles(CreatureSpecies sp)
@@ -154,6 +171,13 @@ public sealed class CreatureSim
     {
         if (!(dt > 0f)) return;
         Time += dt;
+        if (flight != null && flight.SubStep(dt, target)) return;
+        GroundSubStep(dt, target);
+    }
+
+    // The walking sub-step (every mode but the air ones; launch and touchdown blend it with the air chain).
+    internal void GroundSubStep(float dt, Vector3 target)
+    {
         var sp = Species;
         float maxSpeed = sp.speed * TimeScale;
         float window = kGroundWindow * SizeScale;
@@ -284,6 +308,8 @@ public sealed class CreatureSim
                 ? climb.ProbeJoint(i, near, u, climb.Window(i, window, clear), p, i == 0 ? heading : Norm(Path[i - 1] - p, heading), clear, out gp, out gn)
                 : climb != null ? climb.ProbeWalking(i, near, u, window, out gp, out gn) // the same terrain answer; colliders cached per slot
                 : spineGround.Probe(near, u, window, out gp, out gn);
+            Supported[i] = got;
+            if (got && ProbedGround != null) ProbedGround[i] = gp;
             if (got)
             {
                 float hProbe = (gp.x - near.x) * u.x + (gp.y - near.y) * u.y + (gp.z - near.z) * u.z;
@@ -299,6 +325,8 @@ public sealed class CreatureSim
             Path[i] = new Vector3(g.x + u.x * lift, g.y + u.y * lift, g.z + u.z * lift);
         }
         RestoreLengths(seg);
+        // a flyer perched on a branch or a rock: joints past the end of their support hang
+        if (flight != null && flight.Drape(dt, Path, pathUp, groundPoint, seg)) RestoreLengths(seg);
         // climbing, the body never folds sharply in pitch (ground -> wall, over an edge): lift the fold (only while
         // climbing: walking stays exactly the walking code - the limiter's on/off at its threshold jittered R25's holes)
         if (climbing)
@@ -308,6 +336,8 @@ public sealed class CreatureSim
 
         // 4. gait sway: the displayed body is the path bent toward the reaching legs
         ApplySway(dt);
+        // a flyer launching or touching down: the displayed body blends with the air chain
+        if (flight != null) flight.BeforeLegs(dt);
 
         // 5. legs (use the final joint positions; frames are refreshed first)
         UpdateFrames();
@@ -488,6 +518,40 @@ public sealed class CreatureSim
         return Vector3.Dot(head - a.center, a.up) >= a.maxHeight && Vector3.Dot(dir, a.up) > 0.1f;
     }
 
+    // Touchdown: the walking state restarts from the body as it is (Joints) - path, ground points and normals
+    // re-probed along gravity's up, the heading the head's, the walking speed `speed`, every foot put down.
+    internal void ResetGround(float speed, float reach = 0f)
+    {
+        // the body may still be hovering up to `reach` above the ground it settles onto
+        float window = Mathf.Max(kGroundWindow * SizeScale, reach);
+        Vector3 hu = Norm(upAt(Joints[0]), Vector3.up);
+        Vector3 f = n > 1 ? Joints[0] - Joints[1] : heading;
+        heading = Tangent(f.sqrMagnitude > 1e-12f ? f : heading, hu);
+        headUp = hu;
+        commanded = Mathf.Clamp(speed, 0f, Species.speed * TimeScale);
+        Speed = commanded;
+        for (int i = 0; i < n; i++)
+        {
+            Vector3 p = Joints[i];
+            Vector3 u = Norm(upAt(p), hu);
+            float clear = Species.joints[i].clearance * SizeScale;
+            Vector3 near = p - u * clear;
+            if (spineGround.Probe(near, u, window, out Vector3 g, out Vector3 nrm) || ground.Probe(near, u, window, out g, out nrm)) { groundPoint[i] = g; GroundNormals[i] = Norm(nrm, u); Supported[i] = true; }
+            else { groundPoint[i] = near; GroundNormals[i] = u; Supported[i] = false; }
+            pathUp[i] = u;
+            Path[i] = Joints[i];
+            swayY[i] = 0f; rollDeg[i] = 0f;
+        }
+        for (int g = 0; g < swaySignal.Length; g++) { swaySignal[g] = 0f; rollSignal[g] = 0f; }
+        if (climb != null) Array.Copy(pathUp, Up, n);
+        UpdateFrames();
+        legs.Replant();
+    }
+
+    // The air modes report the flight speed.
+    internal void SetFlightSpeed(float speed) { Speed = speed; commanded = 0f; }
+    internal void RefreshFrames() => UpdateFrames();
+
     // The leg's current ground-projected rest point (debug view).
     public Vector3 LegRestPoint(int leg) => legs.RestPoint(leg);
 
@@ -498,6 +562,7 @@ public sealed class CreatureSim
         Vector3 s = Vector3.one * SizeScale;
         for (int i = 0; i < n; i++) dst[offset + i] = Matrix4x4.TRS(Joints[i], Rotations[i], s);
         legs.WriteBones(dst, offset);
+        if (flight != null) flight.WriteBones(dst, offset); // wings; tucked or blended legs in the air
 
         Quaternion hr = Rotations[Mathf.Min(1, n - 1)];
         Quaternion er = Rotations[sp.eyeJoint];

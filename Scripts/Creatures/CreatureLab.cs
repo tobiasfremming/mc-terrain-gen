@@ -24,6 +24,13 @@ public sealed class CreatureLab : MonoBehaviour
     [Tooltip("Distance of the tree from the enclosure centre, as a fraction of the radius.")]
     public float plantOffset = 0.45f;
 
+    [Header("Aviary (flying species)")]
+    [Tooltip("A flying species gets an aviary: this radius and height (at scale 1; larger individuals scale it), trees and rock perches.")]
+    public float aviaryRadius = 14f;
+    public float aviaryHeight = 10f;
+    [Range(0, 3)] public int aviaryTrees = 2;
+    [Range(0, 6)] public int aviaryRocks = 3;
+
     const float kWaitSeconds = 10f;
     const int kCandidates = 16, kRimProbes = 8;
     const float kProbeWindow = 6f;
@@ -35,7 +42,12 @@ public sealed class CreatureLab : MonoBehaviour
     // The enclosure for a species whose largest individual has size scale maxScale: 2 body lengths of
     // radius (room to wander and turn, small enough to see the animal from the curb), at least 5 m.
     public static float EnclosureRadius(CreatureSpecies sp, float maxScale)
-        => Mathf.Max(5f, 2f * sp.BodyLength * maxScale);
+        => sp != null && sp.CanFly ? kAviaryRadius * Mathf.Max(1f, maxScale) : Mathf.Max(5f, 2f * sp.BodyLength * maxScale);
+
+    // Design decision 4: the aviary is 14 m x 10 m at scale 1 (the serpent's turn fits: FlightBrain.FitsAviary).
+    internal const float kAviaryRadius = 14f, kAviaryHeight = 10f;
+    float EnclosureRadiusFor(CreatureSpecies sp, float maxScale)
+        => sp != null && sp.CanFly ? aviaryRadius * Mathf.Max(1f, maxScale) : EnclosureRadius(sp, maxScale);
 
     // The size scale of the species' largest possible individual (CreatureWorld draws it from the seed).
     public static float MaxScale(CreatureSpecies sp) => MaxScale(sp, sp.scale);
@@ -50,6 +62,8 @@ public sealed class CreatureLab : MonoBehaviour
         public CreatureSim sim;
         public int seed;
         public EnclosurePlant plant;
+        public PerchSpot[] perches;     // flying species: rock tops and tree crowns
+        public float aviaryHeight;
     }
 
     // Climbing (2026-10-17): the shade tree is a climbable obstacle for a species that can climb, up to
@@ -68,8 +82,19 @@ public sealed class CreatureLab : MonoBehaviour
         return area;
     }
 
-    internal static ICreatureBrain BrainFor(EnclosureArea area, CreatureSpecies sp, int seed)
-        => sp.climb.canClimb && area.obstacleClimbable != null ? new ClimbingBrain(area, seed) : (ICreatureBrain)new WanderBrain(area, seed);
+    internal static ICreatureBrain BrainFor(EnclosureArea area, CreatureSpecies sp, int seed, PerchSpot[] perches = null)
+    {
+        if (sp.CanFly) return new FlightBrain(area, seed, perches);
+        return sp.climb.canClimb && area.obstacleClimbable != null ? new ClimbingBrain(area, seed) : (ICreatureBrain)new WanderBrain(area, seed);
+    }
+
+    // A flying species' area: the aviary's height on top of the usual disc (its trees and rocks are walked round).
+    static EnclosureArea AviaryArea(CreatureEnclosure enc, CreatureSpecies sp, float maxScale, float height)
+    {
+        EnclosureArea area = enc.AreaFor(sp, maxScale);
+        area.maxHeight = height;
+        return area;
+    }
 
     readonly List<Entry> entries = new List<Entry>();
     CreatureWorld placedWorld;
@@ -113,10 +138,10 @@ public sealed class CreatureLab : MonoBehaviour
             placedWorld.Despawn(e.sim);
             e.scale = scale;
             float maxScale = MaxScale(e.species, scale);
-            e.enclosure.radius = EnclosureRadius(e.species, maxScale);
+            if (!e.species.CanFly) e.enclosure.radius = EnclosureRadius(e.species, maxScale); // an aviary keeps its size
             e.enclosure.Build(ground);
-            EnclosureArea area = AreaFor(e.enclosure, e.species, maxScale, e.plant);
-            e.sim = placedWorld.Spawn(e.species, area.center, face, BrainFor(area, e.species, e.seed), area, e.seed, scale);
+            EnclosureArea area = e.species.CanFly ? AviaryArea(e.enclosure, e.species, maxScale, e.aviaryHeight) : AreaFor(e.enclosure, e.species, maxScale, e.plant);
+            e.sim = placedWorld.Spawn(e.species, area.center, face, BrainFor(area, e.species, e.seed, e.perches), area, e.seed, scale);
         }
     }
 
@@ -165,7 +190,7 @@ public sealed class CreatureLab : MonoBehaviour
         int n = species.Length;
         // big species get big enclosures: keep neighbours apart and the arc outside the player's spot
         float maxR = 0f;
-        for (int k = 0; k < n; k++) if (species[k] != null) maxR = Mathf.Max(maxR, EnclosureRadius(species[k], MaxScale(species[k], ScaleFor(k))));
+        for (int k = 0; k < n; k++) if (species[k] != null) maxR = Mathf.Max(maxR, EnclosureRadiusFor(species[k], MaxScale(species[k], ScaleFor(k))));
         float slotSpacing = Mathf.Max(spacing, 2f * maxR + kEnclosureGap);
         float slotRadius = Mathf.Max(arcRadius, maxR + kViewGap + searchRadius);
         var sb = new System.Text.StringBuilder("[CreatureLab] placed:");
@@ -179,7 +204,7 @@ public sealed class CreatureLab : MonoBehaviour
             // safe disc for the largest possible individual
             float scale = ScaleFor(k);
             float maxScale = MaxScale(sp, scale);
-            float radius = EnclosureRadius(sp, maxScale);
+            float radius = EnclosureRadiusFor(sp, maxScale);
 
             Vector3 slot = ArcSlot(origin, fwd, up, k, n, slotSpacing, slotRadius);
             Vector3 center = FlattestSpot(ground, slot, up, radius, searchRadius, placed, out float flatness);
@@ -196,10 +221,23 @@ public sealed class CreatureLab : MonoBehaviour
 
             Vector3 face = Vector3.ProjectOnPlane(origin - center, cUp);
             if (face.sqrMagnitude < 1e-6f) face = fwd;
-            EnclosurePlant plant = enclosurePlant != null ? PlacePlant(enc, ground, center, cUp, radius, face.normalized, k) : null;
-            EnclosureArea area = AreaFor(enc, sp, maxScale, plant);
-            CreatureSim sim = world.Spawn(sp, center, face.normalized, BrainFor(area, sp, seed + k), area, seed + k, scale);
-            entries.Add(new Entry { species = sp, scale = scale, enclosure = enc, sim = sim, seed = seed + k, plant = plant });
+            EnclosurePlant plant = null; PerchSpot[] perches = null; float height = 0f;
+            EnclosureArea area;
+            if (sp.CanFly)
+            {
+                height = aviaryHeight * Mathf.Max(1f, maxScale);
+                _ = world.Surfaces; // the registry first: the rocks register as they are made
+                perches = DressAviary(enc, ground, center, cUp, radius, height, face.normalized, k, out plant);
+                area = AviaryArea(enc, sp, maxScale, height);
+                if (!FlightBrain.FitsAviary(sp, area, maxScale)) Debug.LogWarning($"[CreatureLab] {sp.name} at scale {maxScale:F2} cannot turn inside a {radius:F0} m aviary");
+            }
+            else
+            {
+                plant = enclosurePlant != null ? PlacePlant(enc, ground, center, cUp, radius, face.normalized, k) : null;
+                area = AreaFor(enc, sp, maxScale, plant);
+            }
+            CreatureSim sim = world.Spawn(sp, center, face.normalized, BrainFor(area, sp, seed + k, perches), area, seed + k, scale);
+            entries.Add(new Entry { species = sp, scale = scale, enclosure = enc, sim = sim, seed = seed + k, plant = plant, perches = perches, aviaryHeight = height });
             sb.Append($" {sp.name} at {center} (r {radius:F1} m, flatness {flatness:F3})");
             float dist = Vector3.ProjectOnPlane(center - origin, up).magnitude - radius;
             if (dist < nearestDist) { nearestDist = dist; nearestCentre = center; nearestRadius = radius; }
@@ -244,6 +282,55 @@ public sealed class CreatureLab : MonoBehaviour
         if (ccOn) cc.enabled = true;
         player.SendMessage("ResetOrientation", SendMessageOptions.DontRequireReceiver); // GravityAligner
         sb.Append($"; player framed at {player.position} facing the enclosure");
+    }
+
+    // A flying species' aviary: posts to its roof, aviaryTrees trees (enclosurePlant, at plantScale) and
+    // aviaryRocks rock perches round the middle, all walked round on the ground (obstacles); their tops are the
+    // brain's perches (a tree's crown as a region the brain searches for a branch top, a rock's top likewise).
+    PerchSpot[] DressAviary(CreatureEnclosure enc, IGroundProbe ground, Vector3 center, Vector3 up, float radius, float height,
+                            Vector3 towardPlayer, int k, out EnclosurePlant firstPlant)
+    {
+        firstPlant = null;
+        var perches = new List<PerchSpot>();
+        enc.obstacles.Clear();
+        AviaryDressing.Posts(enc.transform, center, up, radius, height, 10, borderMaterial, ground);
+        int trees = enclosurePlant != null ? aviaryTrees : 0;
+        for (int t = 0; t < trees; t++)
+        {
+            Vector3 dir = Quaternion.AngleAxis(70f + 160f * t, up) * towardPlayer;
+            Vector3 at = center + dir * (0.4f * radius);
+            if (ground.Probe(at + up * 2f, up, kProbeWindow + 2f, out Vector3 g, out _)) at = g;
+            var go = new GameObject("Plant " + enclosurePlant.name);
+            go.transform.SetParent(enc.transform, true);
+            go.transform.SetPositionAndRotation(at - up * (0.1f * plantScale), Quaternion.AngleAxis(137f * (k + t), up) * Quaternion.FromToRotation(Vector3.up, up));
+            var plant = go.AddComponent<EnclosurePlant>();
+            plant.Init(enclosurePlant, seed + k + 31 * t, plantScale);
+            if (firstPlant == null) firstPlant = plant;
+            enc.obstacles.Add(new Vector4(at.x, at.y, at.z, plant.TrunkRadius));
+            perches.Add(new PerchSpot { point = at + up * (0.95f * plant.Height), radius = Mathf.Max(1f, 0.35f * plant.Height) });
+        }
+        uint h = (uint)(seed + k) * 2654435761u + 7u;
+        for (int r = 0; r < aviaryRocks; r++)
+        {
+            h ^= h << 13; h ^= h >> 17; h ^= h << 5;
+            float jitter = (h & 0xFFFF) / 65535f;
+            Vector3 dir = Quaternion.AngleAxis(-40f + 120f * r + 25f * jitter, up) * towardPlayer;
+            Vector3 at = center + dir * ((0.25f + 0.3f * jitter) * radius);
+            if (ground.Probe(at + up * 2f, up, kProbeWindow + 2f, out Vector3 g, out _)) at = g;
+            var size = new Vector3(1.6f + 0.8f * jitter, 0.9f + 0.6f * jitter, 1.4f + 0.6f * (1f - jitter));
+            GameObject rock = AviaryDressing.Rock(enc.transform, at, up, size, seed + k + r, borderMaterial, out Mesh mesh);
+            rock.AddComponent<OwnedMesh>().mesh = mesh;
+            enc.obstacles.Add(new Vector4(at.x, at.y, at.z, 0.5f * Mathf.Max(size.x, size.z)));
+            perches.Add(new PerchSpot { point = at + up * size.y, radius = 0.3f * Mathf.Min(size.x, size.z) });
+        }
+        return perches.ToArray();
+    }
+
+    // Destroys a generated mesh with its object (the aviary's rocks).
+    sealed class OwnedMesh : MonoBehaviour
+    {
+        public Mesh mesh;
+        void OnDestroy() { if (mesh != null) { if (Application.isPlaying) Destroy(mesh); else DestroyImmediate(mesh); } }
     }
 
     // The shade tree: plantOffset x radius from the centre, 70 deg round from the player's side (in view, not
