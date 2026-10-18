@@ -3,6 +3,10 @@
 //                                                   contains a filter (all when none); -v prints test output
 //   list [filter ...]                               list the tests that would run
 //   species                                         the species assets the kit sees, with unknown YAML keys
+//   catalogue [--write]                             Config/Creatures/CATALOGUE.md + catalogue.json: fresh or stale
+//                                                   (exit 1), or write them (the Unity menu writes the same bytes)
+//   kit-convert <Species> <NewName>                 write Config/Creatures/<NewName>.asset: the legacy species as
+//                                                   kit parts + modules (kitVersion 1, mirror/pattern sugar)
 // Exit code: the number of failures (0 = green). Statuses: PASS, FAIL, SKIP (Inconclusive/Ignore, or the
 // harness skip list below), NATIVE (RealUnity mode: the test reached engine code the harness cannot run),
 // XFAIL / XPASS (kKnown: a known offline divergence or a recorded finding).
@@ -32,17 +36,19 @@ public static class Program
     static readonly Dictionary<string, string> kKnown = new Dictionary<string, string>
     {
         { "CreatureMonitorTests.Monitor_TightTurn_LegsClearTheTrunk",
-          "offline: drift at wander seed 3 t=3208 of a 60 s run; fails the same on a7665f2 (before the legs merge); Unity result: T0.2 checklist" },
+          "offline: drift at wander seed 3 t=3208 of a 60 s run; fails the same on a7665f2 (before the legs merge); PASSES in Unity 2026-10-18" },
         { "CreatureMonitorTests.Monitor_MaxBend_NoInvertedTriangles",
-          "offline: one near-zero triangle (-2e-6) at t=324; fails the same on a7665f2; Unity result: T0.2 checklist" },
+          "offline: one near-zero triangle (-2e-6) at t=324; fails the same on a7665f2; PASSES in Unity 2026-10-18" },
         { "CreatureKitTests(DesertMonitor).MaxBend",
-          "offline: the same near-zero triangle as Monitor_MaxBend_NoInvertedTriangles" },
+          "offline: the same near-zero triangle as Monitor_MaxBend_NoInvertedTriangles; PASSES in Unity 2026-10-18" },
+        { "CreatureKitTests(KitMonitor).MaxBend",
+          "offline: KitMonitor is DesertMonitor in the kit format (bit-identical): the same near-zero triangle 3356 at t=324" },
         { "CreatureKitTests(WingedSerpent).Gait",
-          "finding: a hind foot at full reach (0.999) is dragged 0.5-5.5 mm while the gait throttle holds the body at 0 (weave t=7.2..13.7 s)" },
+          "finding: a hind foot at full reach (0.999) is dragged 0.5-5.5 mm while the gait throttle holds the body at 0 (weave t=7.2..13.7 s); fails in Unity 2026-10-18 too (weave t=3.60: foot 3 slid 0.574 mm)" },
         { "CreatureKitTests(WingedSerpent).Size",
-          "finding: stop-go walk (throttle 0 on ~25 % of a straight walk) makes the motion chaotic: 0.9x/1.1x distance 6 % apart" },
+          "offline: stop-go walk (throttle 0 on ~25 %) makes the motion chaotic: 0.9x/1.1x distance 6 % apart; PASSES in Unity 2026-10-18" },
         { "CreatureKitTests(TestHexapod).Size",
-          "finding: stop-go walk (throttle 0 on 27 % of a straight walk): 0.9x/1.1x distance 1.4 % apart (test fixture, Task 10)" },
+          "finding: stop-go walk (throttle 0 on 27 % of a straight walk): 0.9x/1.1x distance 1.4 % apart (test fixture, Task 10); fails in Unity 2026-10-18 too (5.1733 vs 5.3894, 4.2 % apart)" },
     };
 
     sealed class Case
@@ -68,6 +74,8 @@ public static class Program
                 foreach (Case c in Discover(filters, excludeCats)) Console.WriteLine(c.Name);
                 return 0;
             case "species": return Species();
+            case "kit-convert": return KitConvert(filters);
+            case "catalogue": return Catalogue(filters.Contains("--write"));
             case "test": return Run(Discover(filters, excludeCats), verbose);
             default:
                 Console.WriteLine("usage: CreatureHarness test [filter ...] [-v] [--exclude-category C] | list [filter ...] | species");
@@ -88,6 +96,42 @@ public static class Program
             Console.WriteLine($"{path}: {((object)sp == null ? "NOT LOADED" : sp.bodyPlan + ", " + sp.BoneCount + " bones, Validate " + (sp.Validate() ?? "ok"))}" +
                               (unknown.Count > 0 ? "; unknown keys: " + string.Join(", ", unknown) : ""));
         }
+        return 0;
+    }
+
+    // Config/Creatures/CATALOGUE.md + catalogue.json, the same bytes as the Unity menu (Editor/CreatureKitCatalogue).
+    // Without --write: report whether the checked-in files are fresh (exit 1 when stale).
+    static int Catalogue(bool write)
+    {
+        CreatureKit.CatalogueWriter.Build(TerrainGen.Tests.CreatureKitAssets.CatalogueSpecies(), out string md, out string json);
+        int stale = 0;
+        foreach (var (asset, text) in new[] { (CreatureKit.CatalogueWriter.MarkdownPath, md), (CreatureKit.CatalogueWriter.JsonPath, json) })
+        {
+            string full = HarnessPaths.Full(asset);
+            bool fresh = File.Exists(full) && File.ReadAllText(full).Replace("\r\n", "\n") == text;
+            if (!fresh && write) { File.WriteAllText(full, text); Console.WriteLine($"wrote {full} ({text.Split('\n').Length} lines)"); }
+            else Console.WriteLine($"{full}: {(fresh ? "fresh" : "STALE")}");
+            if (!fresh && !write) stale++;
+        }
+        return stale > 0 ? 1 : 0;
+    }
+
+    static int KitConvert(List<string> a)
+    {
+        if (a.Count != 2) { Console.WriteLine("usage: CreatureHarness kit-convert <Species> <NewName>"); return 2; }
+        CreatureSpecies sp = UnityEditor.AssetDatabase.LoadAssetAtPath<CreatureSpecies>("Assets/TerrainGen/Config/Creatures/" + a[0] + ".asset");
+        if ((object)sp == null) { Console.WriteLine("no species " + a[0]); return 1; }
+        if (sp.kitVersion > 0) { Console.WriteLine(a[0] + " is already a kit species"); return 1; }
+        var parts = CreatureKit.LegacySpeciesAdapter.ToParts(sp, true, out var modules);
+        var c = CreatureKit.CompiledSpecies.Compose(a[1], parts, modules);
+        if (c.Error != null) { Console.WriteLine("does not compose: " + c.Error); return 1; }
+        string guid = null;
+        foreach (string line in File.ReadLines(Path.Combine(HarnessPaths.TerrainGenRoot, "Scripts", "Creatures", "CreatureSpecies.cs.meta")))
+            if (line.StartsWith("guid:")) guid = line.Substring(5).Trim();
+        string yaml = HarnessKitYaml.Emit(a[1], sp.scale, guid, parts, modules);
+        string path = Path.Combine(HarnessPaths.TerrainGenRoot, "Config", "Creatures", a[1] + ".asset");
+        File.WriteAllText(path, yaml);
+        Console.WriteLine($"wrote {path}: {parts.Count} parts, {modules.Count} modules, {yaml.Split('\n').Length} lines (from {a[0]})");
         return 0;
     }
 

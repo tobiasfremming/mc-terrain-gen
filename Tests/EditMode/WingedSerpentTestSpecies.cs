@@ -4,11 +4,12 @@ namespace TerrainGen.Tests
 {
     // The winged serpent (design 2026-10-17-winged-serpent-design.md, section 2) as a test factory until
     // Phase B adds wings/flight to CreatureSpecies and the WingedSerpent.asset can hold them.
-    // 32 joints at 0.08 m (2.8 m at scale 1), slim snake build, girdle (wing arms) at joint 5, small hind
-    // legs at joint 14, long tail. Legs 0/1 = wing arms (wing-walk on the ground), 2/3 = hind legs.
+    // 33 joints at 0.08 m (2.9 m at scale 1), slim snake build, girdle (wing arms) at joint 6 (a 4-segment neck
+    // behind the head joint, 0.40 m; was 3 segments until the 2026-10-18 polish), small hind
+    // legs at joint 15, long tail. Legs 0/1 = wing arms (wing-walk on the ground), 2/3 = hind legs.
     public static class WingedSerpentTestSpecies
     {
-        public const int Girdle = 5, Hips = 14, Joints = 32;
+        public const int Girdle = 6, Hips = 15, Joints = 33;
 
         public sealed class Serpent
         {
@@ -55,8 +56,11 @@ namespace TerrainGen.Tests
                 membrane = new Color(0.78f, 0.52f, 0.26f), membraneTranslucency = 0.8f, veinContrast = 0.35f, membraneRim = 0.45f,
             };
 
-            var wings = new[] { new WingSpec { leg = 0 }, new WingSpec { leg = 1 } };
-            sp.wings = wings; sp.flight = new FlightSpec();
+            // the membrane attaches along the flank from the girdle to 8 joints behind it
+            var wings = new[] { Wing(0), Wing(1) };
+            // deep downstroke (comfortDown 0.95, was 0.55) and a lower grip (0.6, was the prototype's 0.733): fewer,
+            // bigger beats (~2.2 Hz, was 2.67) and a bigger body bob (user feedback 2026-10-18)
+            sp.wings = wings; sp.flight = new FlightSpec { kGrip = 0.6f };
             return new Serpent { species = sp, wings = wings, flight = sp.flight };
         }
 
@@ -70,6 +74,8 @@ namespace TerrainGen.Tests
             float t = (i - Hips) / (float)(Joints - 1 - Hips);
             return Mathf.Lerp(0.055f, 0.009f, Mathf.Pow(t, 0.8f));
         }
+
+        static WingSpec Wing(int leg) => new WingSpec { leg = leg, membraneFrontJoint = Girdle, membraneRearJoint = Girdle + 8, comfortDown = 0.95f };
 
         static LegSpec Arm(int side, int group) => new LegSpec
         {
@@ -87,7 +93,9 @@ namespace TerrainGen.Tests
             shoulderOffset = new Vector3(0.04f, -0.01f, 0f), restOffset = new Vector3(0.15f, 0f, -0.02f),
             upperLength = 0.1f, lowerLength = 0.095f, upperRadius = 0.022f, lowerRadius = 0.015f,
             pole = new Vector3(0.3f, 0.6f, 1f),
-            stepThreshold = 0.09f, stepDuration = 0.16f, stepLift = 0.035f, overshoot = 0.04f,
+            // the arms' cadence (stepDuration 0.2) and an early threshold: the hind legs step with their gait
+            // group's arm instead of lagging to full stretch (was 0.09 / 0.16: stop-go)
+            stepThreshold = 0.05f, stepDuration = 0.2f, stepLift = 0.035f, overshoot = 0.04f,
             gaitGroup = group, footLength = 0.045f, toeCount = 4,
         };
     }

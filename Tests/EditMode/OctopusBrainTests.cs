@@ -25,11 +25,12 @@ namespace TerrainGen.Tests
             public void Step(float dt) { if (!Held) Pos += Vel * dt; }
         }
 
-        internal static OctopusController Rig(AnalyticSurfaces s, Vector3 at, out OctopusBody body, out OctopusBrain brain, uint seed = 1)
+        // cloak: the cloak tests keep its code path covered (it is off by default in the species)
+        internal static OctopusController Rig(AnalyticSurfaces s, Vector3 at, out OctopusBody body, out OctopusBrain brain, uint seed = 1, bool cloak = true)
         {
             body = new OctopusBody(CephalopodSpec.Default, at, Quaternion.identity);
             var c = new OctopusController(body, s, null, seed);
-            brain = new OctopusBrain(seed);
+            brain = new OctopusBrain(seed) { CloakEnabled = cloak };
             c.Brain = brain;
             return c;
         }
@@ -109,6 +110,31 @@ namespace TerrainGen.Tests
             Assert.IsTrue(retreated, "did not retreat");
             Assert.Greater(maxFlash, 0.9f, "no deimatic flash");
             Assert.Greater(maxCloak, 0.8f, "no cloak while retreating");
+        }
+
+        // The cloak is off by default (user, 2026-10-18): the same missed strike and retreat keep Cloak at
+        // exactly 0, so the body never dithers; the flash and the retreat still happen.
+        [Test] public void Cloak_DisabledByDefault_StaysZero()
+        {
+            Assert.IsFalse(CephalopodSpec.Default.cloakEnabled, "the species default must be cloak off");
+            Assert.IsFalse(new OctopusBrain(1).CloakEnabled, "a new brain must start with the cloak off");
+            OctopusController c = Rig(Canopy(), new Vector3(0f, 2.0f, 0f), out OctopusBody body, out OctopusBrain brain, 1, false);
+            brain.CanopyRegions.Add(new Vector3(-0.3f, 2.3f, -2.5f)); brain.CanopyRegions.Add(new Vector3(0.3f, 2.3f, 2.5f));
+            c.AnchorNearby();
+            for (int f = 0; f < 120; f++) c.Tick(Dt);
+            var prey = new TestPrey { Pos = body.HeadCentre + new Vector3(0.2f, -1.2f, 0.5f) };
+            brain.Prey.Add(prey);
+            c.Events.Strike += _ => { prey.Pos += new Vector3(0f, 0f, 3f); prey.Vel = new Vector3(0f, 0f, 4f); };
+            float maxCloak = 0f; bool retreated = false;
+            for (int f = 0; f < 60 * 8; f++)
+            {
+                prey.Step(Dt);
+                c.Tick(Dt);
+                maxCloak = Mathf.Max(maxCloak, brain.Cloak);
+                if (brain.Mode == OctopusBrain.State.Retreat) retreated = true;
+            }
+            Assert.IsTrue(retreated, "did not retreat");
+            Assert.AreEqual(0f, maxCloak, "the cloak moved while disabled");
         }
 
         // A held prey that keeps moving: the holding arm's tip stays wrapped around it.

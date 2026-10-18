@@ -20,12 +20,14 @@ namespace UnityEngine
     public class Object
     {
         public string name { get; set; } = "";
+        public HideFlags hideFlags { get; set; }
         public static void DestroyImmediate(Object o) { }
         public static void Destroy(Object o) { }
         // Unity copies a ScriptableObject through serialization: a deep copy of the serialized fields.
         public static T Instantiate<T>(T original) where T : Object => (T)HarnessClone.Deep(original);
         public static implicit operator bool(Object o) => !ReferenceEquals(o, null);
     }
+    [Flags] public enum HideFlags { None = 0, HideInHierarchy = 1, HideInInspector = 2, DontSaveInEditor = 4, NotEditable = 8, DontSaveInBuild = 16, DontUnloadUnusedAsset = 32, DontSave = 52, HideAndDontSave = 61 }
     public class ScriptableObject : Object
     {
         public static T CreateInstance<T>() where T : ScriptableObject, new() => new T();

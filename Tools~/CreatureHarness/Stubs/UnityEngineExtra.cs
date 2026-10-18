@@ -3,6 +3,9 @@ using System;
 
 namespace UnityEngine
 {
+    // [SerializeReference] (creature kit parts/modules): HarnessYaml binds its rid / references.RefIds form.
+    [AttributeUsage(AttributeTargets.Field)] public class SerializeReference : Attribute { }
+
     public struct Bounds
     {
         public Vector3 center, extents;

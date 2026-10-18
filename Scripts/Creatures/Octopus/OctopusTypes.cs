@@ -14,6 +14,32 @@ public struct OctoIntent
     public IPreyTarget prey;      // Strike / Hold
     public Vector3 intercept;     // Strike: the predicted prey point at the strike's arrival
     public int strikers;          // Strike: how many arms may qualify themselves (2..4)
+    public bool swing;            // (swinging, later) the brain wants to brachiate
+    public Vector3 swingDir;      // (swinging, later) the swing's direction
+    public Vector3 routeNext;     // (swinging, later) the next hint waypoint; zero = none
+}
+
+// What an arm is for (user decision 5): the octopus (ArmCoordinator) decides, the arm executes it itself.
+//   Rest    curled at rest                  Anchor  hold on (or find a support hold); never pulls the body
+//   Grip    grip on the route and pull      Feel    explore around, grips only when allowed (support low)
+//   Hang    limp, draped down               Groom   strokes over the mantle or a neighbouring arm
+//   Tuck    curled compactly under the body Strike  may strike / hold prey
+public enum ArmRole { Rest, Anchor, Grip, Feel, Hang, Groom, Tuck, Strike }
+
+// What the arm says back about its role.
+public enum ArmReport { None, Busy, Done, Failed }
+
+// One arm's command (the coordinator writes it on the blackboard; the arm reads it every tick).
+public struct ArmCommand
+{
+    public ArmRole role;
+    public Vector3 dir;           // Grip / Feel: the direction to work in (unit; zero = the arm's own cone)
+    public Vector3 point;         // Groom: (unused yet)
+    public int groomArm;          // Groom: the neighbour to stroke, -1 = the mantle
+    public int group;             // grip group id (swinging, later), -1 = none
+    public float urgency;         // 0..1
+    public bool allowGrip;        // Feel: may it commit to a hold it touches (support is low)
+    public bool swing;            // (swinging, later)
 }
 
 // Something the octopus can grab (design 2.5). The prey's own body supplies the grab volume.

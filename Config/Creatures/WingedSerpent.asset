@@ -30,13 +30,18 @@ MonoBehaviour:
     clearance: 0.1
     bendLimitDeg: 18
     rigid: 0
-  - halfWidth: 0.039333
-    halfHeight: 0.033433
+  - halfWidth: 0.038
+    halfHeight: 0.0323
     clearance: 0.1
     bendLimitDeg: 18
     rigid: 0
-  - halfWidth: 0.044667
-    halfHeight: 0.037967
+  - halfWidth: 0.042
+    halfHeight: 0.0357
+    clearance: 0.1
+    bendLimitDeg: 18
+    rigid: 0
+  - halfWidth: 0.046
+    halfHeight: 0.0391
     clearance: 0.1
     bendLimitDeg: 18
     rigid: 0
@@ -178,7 +183,7 @@ MonoBehaviour:
   headCapLength: 0.09
   tailTipLength: 0.06
   legs:
-  - attachJoint: 5
+  - attachJoint: 6
     side: -1
     shoulderOffset: {x: 0.06, y: 0.02, z: 0}
     restOffset: {x: 0.85, y: 0, z: 0.25}
@@ -199,7 +204,7 @@ MonoBehaviour:
     kneeRangeDeg: 0
     kneeFlexDeg: 0
     kneeBlend: 0
-  - attachJoint: 5
+  - attachJoint: 6
     side: 1
     shoulderOffset: {x: 0.06, y: 0.02, z: 0}
     restOffset: {x: 0.85, y: 0, z: 0.25}
@@ -220,7 +225,7 @@ MonoBehaviour:
     kneeRangeDeg: 0
     kneeFlexDeg: 0
     kneeBlend: 0
-  - attachJoint: 14
+  - attachJoint: 15
     side: -1
     shoulderOffset: {x: 0.04, y: -0.01, z: 0}
     restOffset: {x: 0.15, y: 0, z: -0.02}
@@ -229,8 +234,8 @@ MonoBehaviour:
     upperRadius: 0.022
     lowerRadius: 0.015
     pole: {x: 0.3, y: 0.6, z: 1}
-    stepThreshold: 0.09
-    stepDuration: 0.16
+    stepThreshold: 0.05
+    stepDuration: 0.2
     stepLift: 0.035
     overshoot: 0.04
     gaitGroup: 1
@@ -241,7 +246,7 @@ MonoBehaviour:
     kneeRangeDeg: 0
     kneeFlexDeg: 0
     kneeBlend: 0
-  - attachJoint: 14
+  - attachJoint: 15
     side: 1
     shoulderOffset: {x: 0.04, y: -0.01, z: 0}
     restOffset: {x: 0.15, y: 0, z: -0.02}
@@ -250,8 +255,8 @@ MonoBehaviour:
     upperRadius: 0.022
     lowerRadius: 0.015
     pole: {x: 0.3, y: 0.6, z: 1}
-    stepThreshold: 0.09
-    stepDuration: 0.16
+    stepThreshold: 0.05
+    stepDuration: 0.2
     stepLift: 0.035
     overshoot: 0.04
     gaitGroup: 0
@@ -314,7 +319,7 @@ MonoBehaviour:
   - leg: 0
     restTip: {x: 1.06, y: 0.08, z: 0.05}
     comfortUp: 0.55
-    comfortDown: 0.55
+    comfortDown: 0.95
     strokePlaneDeg: 10
     pronationDeg: 18
     overshootUp: 0.08
@@ -338,8 +343,8 @@ MonoBehaviour:
     fingerFoldGapDeg: 10
     fingerRadius: 0.014
     thumbLength: 0.07
-    membraneRearJoint: 13
-    membraneFrontJoint: 5
+    membraneRearJoint: 14
+    membraneFrontJoint: 6
     trailingRib: 0.5
     membraneInset: 0.8
     area: 1
@@ -347,7 +352,7 @@ MonoBehaviour:
   - leg: 1
     restTip: {x: 1.06, y: 0.08, z: 0.05}
     comfortUp: 0.55
-    comfortDown: 0.55
+    comfortDown: 0.95
     strokePlaneDeg: 10
     pronationDeg: 18
     overshootUp: 0.08
@@ -371,8 +376,8 @@ MonoBehaviour:
     fingerFoldGapDeg: 10
     fingerRadius: 0.014
     thumbLength: 0.07
-    membraneRearJoint: 13
-    membraneFrontJoint: 5
+    membraneRearJoint: 14
+    membraneFrontJoint: 6
     trailingRib: 0.5
     membraneInset: 0.8
     area: 1
@@ -381,7 +386,7 @@ MonoBehaviour:
     cruiseSpeed: 5
     minSpeed: 3
     maxSpeed: 8
-    kGrip: 0.73333
+    kGrip: 0.6
     vGripMin: 3
     kLift: 0.02
     kDrag: 0.01

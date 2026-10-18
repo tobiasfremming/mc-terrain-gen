@@ -131,6 +131,25 @@ internal static class OctopusShape
         return c + (n * Mathf.Cos(phi) + Vector3.right * Mathf.Sin(phi)) * r;
     }
 
+    // Signed distance of a body-space point (scale 1) from the mantle/head shell (+ outside), and the outward
+    // direction there: the nearest of `samples` axis points, then the shell radius at that t and the point's angle.
+    // Approximate (the nearest axis point, not the nearest shell point) - good to a few mm away from the caps.
+    public static float ShellDistance(in CephalopodSpec sp, Vector3 p, out Vector3 outward, int samples = 24)
+    {
+        float best = float.MaxValue, bt = 0f;
+        for (int i = 0; i <= samples; i++)
+        {
+            float t = (float)i / samples;
+            float d = (p - Axis(sp, t)).sqrMagnitude;
+            if (d < best) { best = d; bt = t; }
+        }
+        Vector3 c = Axis(sp, bt), n = AxisFront(sp, bt), r = p - c;
+        float phi = MathF.Atan2(OctoMath.Dot(r, Vector3.right), OctoMath.Dot(r, n));
+        float rl = r.magnitude;
+        outward = rl > 1e-6f ? r * (1f / rl) : n;
+        return rl - Radius(sp, bt, phi);
+    }
+
     // The same point from a cached row (axis point c, front n, profile radius) at t.
     public static Vector3 ShellPoint(Vector3 c, Vector3 n, float profile, float t, float phi)
     {

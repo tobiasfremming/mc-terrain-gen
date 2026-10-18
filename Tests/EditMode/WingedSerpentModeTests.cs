@@ -152,6 +152,35 @@ namespace TerrainGen.Tests
             Assert.IsFalse(sim.Flight.Perched);
         }
 
+        // The wing-walk is a steady walk, not stop-go (creature-kit fixture finding 2026-10-18): the hind legs
+        // share the arms' gait groups, so they step at the arms' cadence; with their own shorter steps and a
+        // wide threshold they lagged until a hind foot reached full stretch and the gait throttle stopped the
+        // body (throttle 0 on 8 % of a straight walk; 0.9x and 1.1x individuals ended 11 % apart). Straight
+        // walk, 15 s: the throttle almost never stops it, and two sizes cover the same distance in body
+        // lengths (Froude-scaled ticks).
+        [TestCase(0.9f)]
+        [TestCase(1.1f)]
+        public void WingWalk_Straight_Steady(float scale)
+        {
+            var s = Serpent();
+            float[] dist = new float[2]; int[] stops = new int[2];
+            float[] scales = { 1f, scale };
+            for (int k = 0; k < 2; k++)
+            {
+                var sim = Sim(s.species, new FlatGroundProbe(), default, scales[k]);
+                float dt = kDt * Mathf.Sqrt(scales[k]);
+                for (int t = 0; t < 900; t++)
+                {
+                    sim.Tick(dt, new Vector3(0f, 0f, 1000f * scales[k]));
+                    if (t >= 60 && sim.LegThrottle < 0.05f) stops[k]++;
+                }
+                dist[k] = sim.Joints[0].z / scales[k];
+            }
+            TestContext.WriteLine($"scale 1: {dist[0]:F2} body-scale m, throttle-stopped {stops[0]}/840 ticks; scale {scale}: {dist[1]:F2}, {stops[1]}/840");
+            for (int k = 0; k < 2; k++) Assert.Less(stops[k], 17, $"stop-go at scale {scales[k]} (throttle ~0 on > 2 % of the walk)");
+            Assert.AreEqual(dist[0], dist[1], 0.03f * dist[0], "sizes walk the same distance in body lengths");
+        }
+
         // Size variation (species.scale x look.sizeJitter = sizeScale): a smaller and a larger individual both
         // take off, fly and land cleanly, and the flight's size-dependent quantities derive from sizeScale
         // (lengths x s, speeds x sqrt(s), rates / sqrt(s)).

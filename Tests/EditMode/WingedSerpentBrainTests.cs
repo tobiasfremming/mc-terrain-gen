@@ -100,6 +100,58 @@ namespace TerrainGen.Tests
             Assert.Less(st.worstLen, 0.01f, "segment lengths");
         }
 
+        // The lab's aviary as CreatureLab.DressAviary builds it: three rocks and two tree crowns, all given as
+        // regions. User feedback 2026-10-18 "I never saw it land, so I haven't seen its walk": started on the
+        // ground, it lands within a minute and again within a couple of minutes (rock tops too), and wing-walks
+        // on open ground between flights.
+        internal static WingedTestSurfaces LabAviary(out PerchSpot[] spots)
+        {
+            var s = new WingedTestSurfaces()
+                .AddRock(new Vector3(5f, 0f, 2f), new Vector3(2f, 1.2f, 1.6f), 11)
+                .AddRock(new Vector3(-4f, 0f, -5f), new Vector3(2.2f, 1.0f, 1.6f), 12)
+                .AddRock(new Vector3(1f, 0f, 6f), new Vector3(1.8f, 1.4f, 1.5f), 13)
+                .AddBranch(-7f, -3f, 4f, 3f, 0.2f, 21)
+                .AddBranch(3f, 7f, 4.5f, -4f, 0.2f, 22);
+            spots = new[]
+            {
+                // rocks: top, radius 0.3 x the smaller footprint; crowns: radius max(1, 0.35 x height)
+                new PerchSpot { point = new Vector3(5f, 1.2f, 2f), radius = 0.3f * 1.6f },
+                new PerchSpot { point = new Vector3(-4f, 1.0f, -5f), radius = 0.3f * 1.6f },
+                new PerchSpot { point = new Vector3(1f, 1.4f, 6f), radius = 0.3f * 1.5f },
+                new PerchSpot { point = new Vector3(-5f, 4.5f, 3f), radius = 2f },
+                new PerchSpot { point = new Vector3(5f, 5f, -4f), radius = 2f },
+            };
+            return s;
+        }
+
+        [Test] public void FlyingBrain_LabAviary_LandsSoonAndWalks()
+        {
+            var s = Serpent();
+            var surfaces = LabAviary(out PerchSpot[] spots);
+            EnclosureArea area = Aviary(s.species);
+            int rockPerches = 0;
+            foreach (int seed in new[] { 1, 2, 3, 4 })
+            {
+                var sim = new CreatureSim(s.species, surfaces, _ => Vector3.up, new Vector3(0f, 0f, -2f), Vector3.forward) { Bounds = area };
+                var brain = new FlightBrain(area, seed, spots);
+                float firstTouch = -1f, walk = 0f; bool wasAir = false;
+                const float seconds = 180f;
+                for (int t = 0; t < Mathf.RoundToInt(seconds / kDt); t++)
+                {
+                    sim.Tick(kDt, brain.Target(sim, kDt));
+                    if (sim.Flight.Airborne) wasAir = true;
+                    if (wasAir && firstTouch < 0f && sim.Mode == FlightMode.Ground) firstTouch = t * kDt;
+                    if (brain.Current == FlightBrain.State.Wander && sim.Mode == FlightMode.Ground && sim.Speed > 0.1f * s.species.speed) walk += kDt;
+                    if (sim.Mode == FlightMode.Ground && sim.Flight.Perched && brain.LastPerch.source >= 11 && brain.LastPerch.source <= 13 && t % 60 == 0) rockPerches++;
+                }
+                TestContext.WriteLine($"seed {seed}: first touchdown {firstTouch:F0} s, landings {sim.Flight.Landings} in {seconds:F0} s, perches {brain.Perches}, wing-walking {walk:F0} s");
+                Assert.That(firstTouch, Is.InRange(1f, 60f), "lands within a minute of the start");
+                Assert.GreaterOrEqual(sim.Flight.Landings, 2, "lands again within a couple of minutes");
+                Assert.Greater(walk, 10f, "wing-walks between flights");
+            }
+            Assert.Greater(rockPerches, 0, "perches on a rock top too");
+        }
+
         // A tree crown given only as a region: the brain finds the branch top itself (probe down, up-facing,
         // room along it) and perches there.
         [Test] public void FlyingBrain_FindsBranchInRegion()

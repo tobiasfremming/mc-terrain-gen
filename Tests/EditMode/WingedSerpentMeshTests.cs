@@ -78,9 +78,10 @@ namespace TerrainGen.Tests
             for (int l = 0; l < sp.legs.Length; l++)
                 for (int p = 0; p < 3; p++) Assert.AreEqual(sp.LegBone(l, p), WingBoneLayout.LegBone(sp.JointCount, l, p));
             var s = Serpent();
-            Assert.AreEqual(58, WingBoneLayout.BoneCount(s.species, 2), "design: 32 + 3x4 + 6x2 + 2");
-            Assert.AreEqual(32 + 12 + 12, WingBoneLayout.EyeBone(s.species, 2, 0));
-            Assert.AreEqual(32 + 12 + 6 + 3, WingBoneLayout.WingBone(s.species, 1, WingBoneLayout.FirstRib));
+            int nj = WingedSerpentTestSpecies.Joints;
+            Assert.AreEqual(nj + 12 + 12 + 2, WingBoneLayout.BoneCount(s.species, 2), "design: joints + 3x4 + 6x2 + 2");
+            Assert.AreEqual(nj + 12 + 12, WingBoneLayout.EyeBone(s.species, 2, 0));
+            Assert.AreEqual(nj + 12 + 6 + 3, WingBoneLayout.WingBone(s.species, 1, WingBoneLayout.FirstRib));
             foreach (var w in s.wings) Assert.IsNull(w.Validate(s.species));
         }
 
@@ -93,7 +94,7 @@ namespace TerrainGen.Tests
             Assert.IsNull(sp.Validate());
             Assert.IsTrue(sp.CanFly);
             Assert.AreEqual(2, sp.WingCount);
-            Assert.AreEqual(58, sp.BoneCount);
+            Assert.AreEqual(WingedSerpentTestSpecies.Joints + 26, sp.BoneCount);
             Assert.AreEqual(WingBoneLayout.EyeBone(sp, 2, 1), sp.EyeBone(1));
             Assert.AreEqual(WingBoneLayout.WingBone(sp, 1, 5), sp.WingBone(1, 5));
             Assert.Greater(sp.MaxLateralReach, 1.7f, "the spread wing's reach");
@@ -262,6 +263,137 @@ namespace TerrainGen.Tests
             Assert.Greater(checkedTris, 1000);
         }
 
+        // ------------------------------------------------------------------ leading edge on the arm
+
+        static float SegmentDistance(Vector3 p, Vector3 a, Vector3 b, out float t)
+        {
+            Vector3 ab = b - a;
+            t = ab.sqrMagnitude > 1e-12f ? Mathf.Clamp01(Vector3.Dot(p - a, ab) / ab.sqrMagnitude) : 0f;
+            return (a + ab * t - p).magnitude;
+        }
+
+        // The membrane's leading edge, per wing: the membrane vertices that lie on the arm in the bind pose,
+        // each with its segment (0 humerus shoulder -> elbow, 1 forearm elbow -> wrist).
+        sealed class LeadingEdge { public readonly List<int> v = new List<int>(), seg = new List<int>(); }
+
+        static LeadingEdge[] LeadingEdges(Data d, WingedSerpentTestSpecies.Serpent s, out float[] coverGap)
+        {
+            CreatureSim sim = CreatureRestPose.Sim(s.species);
+            var cw = new CreatureWings(s.species, s.wings, sim.Joints, sim.Rotations, 1f);
+            var edges = new LeadingEdge[s.wings.Length];
+            coverGap = new float[s.wings.Length];
+            for (int w = 0; w < s.wings.Length; w++)
+            {
+                WingState st = cw.State[w];
+                var e = edges[w] = new LeadingEdge();
+                var covered = new[] { new List<float>(), new List<float>() };
+                for (int i = 0; i < d.v.Length; i++)
+                {
+                    if (Part(d, i) != WingedMeshBuilder.PartMembrane) continue;
+                    if (Mathf.Sign(d.v[i].x) != Mathf.Sign(st.wrist.x)) continue; // this wing's side
+                    float du = SegmentDistance(d.v[i], st.shoulder, st.elbow, out float tu);
+                    float dl = SegmentDistance(d.v[i], st.elbow, st.wrist, out float tl);
+                    if (Mathf.Min(du, dl) > 1e-3f) continue;
+                    int seg = du <= dl ? 0 : 1;
+                    e.v.Add(i); e.seg.Add(seg);
+                    covered[seg].Add(seg == 0 ? tu : tl);
+                }
+                // coverage: the largest stretch of either segment (fraction, ends included) with no edge vertex
+                float worst = 0f;
+                for (int g = 0; g < 2; g++)
+                {
+                    var c = covered[g];
+                    c.Sort();
+                    float prev = 0f;
+                    foreach (float t in c) { worst = Mathf.Max(worst, t - prev); prev = t; }
+                    worst = Mathf.Max(worst, 1f - prev);
+                }
+                coverGap[w] = worst;
+            }
+            return edges;
+        }
+
+        // The largest distance of a skinned leading-edge vertex from its (posed) arm segment.
+        static float EdgeGap(Data d, Matrix4x4[] skin, CreatureWings wings, LeadingEdge[] edges)
+        {
+            float worst = 0f;
+            for (int w = 0; w < edges.Length; w++)
+            {
+                WingState st = wings.State[w];
+                for (int k = 0; k < edges[w].v.Count; k++)
+                {
+                    Vector3 p = SkinPos(d, skin, edges[w].v[k]);
+                    float g = edges[w].seg[k] == 0 ? SegmentDistance(p, st.shoulder, st.elbow, out _) : SegmentDistance(p, st.elbow, st.wrist, out _);
+                    worst = Mathf.Max(worst, g);
+                }
+            }
+            return worst;
+        }
+
+        // User feedback 2026-10-18: the wing membrane must follow the arm's joint. Its leading edge runs along
+        // the arm (shoulder -> elbow -> wrist) in the bind pose, covering both segments, and stays on the arm
+        // (<= 1 cm x scale) through the whole stroke x fold x twist x bank sweep and the folded wing-walk.
+        [Test] public void Mesh_Membrane_LeadingEdgeFollowsArm()
+        {
+            var s = Serpent();
+            var d = Build(s);
+            var sp = s.species;
+            var edges = LeadingEdges(d, s, out float[] coverGap);
+            var bind = WingedMeshBuilder.BindPoses(sp, s.wings);
+            var rest = WingedMeshBuilder.RestBoneWorld(sp, s.wings);
+
+            // flight: stroke x fold x twist x bank, as Mesh_WingSweep_NoInvertedTris
+            CreatureSim sim = CreatureRestPose.Sim(sp);
+            var wings = new CreatureWings(sp, s.wings, sim.Joints, sim.Rotations, 1f);
+            var world = (Matrix4x4[])rest.Clone();
+            float feather = -s.flight.featherDeg * Mathf.Deg2Rad, pron = s.wings[0].pronationDeg * Mathf.Deg2Rad;
+            Quaternion[] restRot = (Quaternion[])sim.Rotations.Clone();
+            int g = sp.legs[s.wings[0].leg].attachJoint;
+            float sweep = 0f;
+            foreach (float bank in new[] { 0f, 35f })
+            {
+                for (int i = 0; i < restRot.Length; i++)
+                    sim.Rotations[i] = i <= g + 2 ? Quaternion.AngleAxis(bank, Vector3.forward) * restRot[i] : restRot[i];
+                foreach (float fold in new[] { 0f, 0.3f, 0.6f, 0.8f, 1f })
+                    foreach (float tilt in new[] { feather, 0f, pron })
+                        for (int ia = 0; ia <= 8; ia++)
+                        {
+                            for (int w = 0; w < 2; w++)
+                                wings.SetPose(w, Mathf.Lerp(-wings.BandDownAngle(w), wings.BandUpAngle(w) * (1f + s.wings[w].overshootUp), ia / 8f), fold, tilt);
+                            wings.Pose();
+                            wings.WriteBones(world, 0);
+                            sweep = Mathf.Max(sweep, EdgeGap(d, Skin(world, bind), wings, edges));
+                        }
+            }
+
+            // folded wing-walk, as Mesh_WingWalk_FoldedNoInvertedTris
+            var walker = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
+            var ww = new CreatureWings(sp, s.wings, walker.Joints, walker.Rotations, 1f);
+            var wworld = new Matrix4x4[WingBoneLayout.BoneCount(sp, s.wings.Length)];
+            float walk = 0f;
+            const float dt = 1f / 60f;
+            for (int f = 0; f < 360; f++)
+            {
+                float t = f * dt;
+                Vector3 target = t < 3f ? new Vector3(1.2f * Mathf.Sin(1.5f * t), 0f, 1.2f * Mathf.Cos(1.5f * t) + 1.5f) : new Vector3(-2f, 0f, -1f);
+                walker.Tick(dt, target);
+                for (int w = 0; w < s.wings.Length; w++)
+                {
+                    LegState l = walker.Legs[s.wings[w].leg];
+                    ww.PoseOnArm(w, l.shoulder, l.elbow, l.foot, 1f);
+                }
+                WingedMeshBuilder.WriteBones(walker, ww, wworld);
+                if (f % 6 == 0) walk = Mathf.Max(walk, EdgeGap(d, Skin(wworld, bind), ww, edges));
+            }
+            TestContext.WriteLine($"leading edge: {edges[0].v.Count} + {edges[1].v.Count} membrane vertices on the arms, largest uncovered stretch {Mathf.Max(coverGap[0], coverGap[1]):P0} of a segment; max gap to the arm: sweep {sweep * 100f:F3} cm, wing-walk {walk * 100f:F3} cm");
+            // a chain of edge vertices from end to end of each segment (consecutive ones ride the same arm
+            // bone, so the edge between them lies on the arm too)
+            for (int w = 0; w < edges.Length; w++)
+                Assert.LessOrEqual(coverGap[w], 0.4f, $"wing {w}: the membrane's leading edge does not run along the arm (largest uncovered stretch of a segment)");
+            Assert.LessOrEqual(sweep, 0.01f, "leading edge leaves the arm in the flight sweep");
+            Assert.LessOrEqual(walk, 0.01f, "leading edge leaves the arm in the wing-walk");
+        }
+
         // The membrane reads as one smooth sheet: where two zones meet on a ray, both zones' border vertices
         // coincide and share one normal (per sheet), in the rest pose and skinned in flight and folded.
         [Test] public void Mesh_Membrane_SmoothAcrossZones()
@@ -307,7 +439,11 @@ namespace TerrainGen.Tests
 
         // Ribs stretched or shortened (the flank moving relative to the wrist; CreatureWings scales a rib
         // bone uniformly by length / rest length): every membrane normal stays as it was, and agrees with
-        // its skinned faces.
+        // its skinned faces. The arm membrane (the zone on the arm sector, the patch between it and the
+        // humerus) is not a fan of uniformly scaled rays: its faces turn when the rear flank rib alone
+        // stretches with the arm held (the real poses re-aim the sector's normal axis; WingSweep and WingWalk
+        // check those), so there the normals only have to stay within 30 deg of the faces, and those on the
+        // arm sector alone keep theirs exactly (its normal axis).
         [Test] public void Mesh_MembraneNormals_ScaledRibs()
         {
             var s = Serpent();
@@ -324,9 +460,24 @@ namespace TerrainGen.Tests
                     {
                         int b = WingBoneLayout.WingBone(n, legs, w, WingBoneLayout.FirstRib + k);
                         float sk = k == 1 ? 1f / stretch : stretch; // neighbouring ribs differently
-                        world[b] = rest[b] * Matrix4x4.TRS(Vector3.zero, Quaternion.identity, Vector3.one * sk);
+                        // the arm rib (an affine sector frame: rear flank rib, forearm, normal) stretches with
+                        // the rear flank rib along its first axis only, as CreatureWings.ArmSector does
+                        if (WingBoneLayout.FirstRib + k == WingBoneLayout.ArmRib)
+                            world[b] = rest[b] * Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(1f / stretch, 1f, 1f));
+                        else
+                            world[b] = rest[b] * Matrix4x4.TRS(Vector3.zero, Quaternion.identity, Vector3.one * sk);
                     }
                 var skin = Skin(world, bind);
+                var armBone = new bool[world.Length];
+                for (int w = 0; w < s.wings.Length; w++)
+                {
+                    armBone[WingBoneLayout.WingBone(n, legs, w, WingBoneLayout.ArmRib)] = true;
+                    for (int p = 0; p < 3; p++) armBone[WingBoneLayout.LegBone(n, s.wings[w].leg, p)] = true;
+                }
+                bool OnArm(int i) => (d.uv2[i].z > 0f && armBone[(int)d.uv2[i].x]) || (d.uv2[i].w > 0f && armBone[(int)d.uv2[i].y]);
+                var sectorBone = new bool[world.Length];
+                for (int w = 0; w < s.wings.Length; w++) sectorBone[WingBoneLayout.WingBone(n, legs, w, WingBoneLayout.ArmRib)] = true;
+                bool SectorOnly(int i) => d.uv2[i].w <= 0f && sectorBone[(int)d.uv2[i].x];
                 int count = 0;
                 for (int k = 0; k < d.t.Length; k += 3)
                 {
@@ -334,12 +485,14 @@ namespace TerrainGen.Tests
                     if (Part(d, i0) != WingedMeshBuilder.PartMembrane) continue;
                     Vector3 a = SkinPos(d, skin, i0), b = SkinPos(d, skin, i1), c = SkinPos(d, skin, i2);
                     Vector3 fn = Vector3.Cross(b - a, c - a).normalized;
+                    bool arm = OnArm(i0) || OnArm(i1) || OnArm(i2);
                     foreach (int i in new[] { i0, i1, i2 })
                     {
                         Vector3 sn = SkinNormal(d, skin, i);
                         // smooth normals lean toward the neighbouring zone by at most half the crease between zones
-                        Assert.Greater(Vector3.Dot(sn, fn), 0.99f, $"membrane triangle {k / 3}: normal vs face at stretch {stretch}");
-                        Assert.Greater(Vector3.Dot(sn, d.n[i]), 0.99999f, $"membrane vertex {i}: normal changed at stretch {stretch}");
+                        Assert.Greater(Vector3.Dot(sn, fn), arm ? 0.85f : 0.99f, $"membrane triangle {k / 3}: normal vs face at stretch {stretch}");
+                        if (!OnArm(i) || SectorOnly(i))
+                            Assert.Greater(Vector3.Dot(sn, d.n[i]), 0.99999f, $"membrane vertex {i}: normal changed at stretch {stretch}");
                     }
                     count++;
                 }

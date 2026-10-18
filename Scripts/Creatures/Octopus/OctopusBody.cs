@@ -51,6 +51,12 @@ public sealed class OctopusBody
     public const float OverloadRelease = 1.02f;
     public int OverloadReleases;   // cumulative: grips the body tore loose
 
+    // The force each arm exerted on the body over the last tick (N, averaged): the sum of its root and back
+    // constraint corrections handed to the lattice, as impulses (correction x embedded mass / h) over dt. A
+    // pure readout (tests, the lab's role box): how hard the arms pull and whether they pull together.
+    public readonly Vector3[] ArmForce;
+    readonly Vector3[] armImpulse;
+
     public OctopusBody(CephalopodSpec spec, Vector3 position, Quaternion rotation, float sizeScale = 1f)
     {
         Spec = spec;
@@ -67,6 +73,7 @@ public sealed class OctopusBody
         rootWm = new float[ArmCount]; backWm = new float[ArmCount];
         armRestRot = new Quaternion[ArmCount];
         Arms = new TentacleChain[ArmCount];
+        ArmForce = new Vector3[ArmCount]; armImpulse = new Vector3[ArmCount];
         for (int a = 0; a < ArmCount; a++)
         {
             Vector3 r = OctopusShape.ArmRoot(spec, a) * SizeScale, d = OctopusShape.ArmDir(spec, a);
@@ -193,7 +200,10 @@ public sealed class OctopusBody
             }
         }
         float h = dt / subSteps;
+        for (int a = 0; a < ArmCount; a++) armImpulse[a] = Vector3.zero;
         for (int s = 0; s < subSteps; s++) SubStep(h);
+        float idt = 1f / dt;
+        for (int a = 0; a < ArmCount; a++) ArmForce[a] = OctoMath.V(armImpulse[a].x * idt, armImpulse[a].y * idt, armImpulse[a].z * idt);
         Lattice.FitAll();
         for (int a = 0; a < ArmCount; a++) Arms[a].UpdateFrames(dt);
         UpdateSleep(dt);
@@ -355,6 +365,10 @@ public sealed class OctopusBody
                 Vector3 r1 = ch.X[0], b1 = ch.Back;
                 Distribute(a, r1.x - r0.x, r1.y - r0.y, r1.z - r0.z, rootW, rootWm[a]);
                 Distribute(a, b1.x - b0.x, b1.y - b0.y, b1.z - b0.z, backW, backWm[a]);
+                float ir = rootWm[a] > 0f ? 1f / (rootWm[a] * h) : 0f, ib = backWm[a] > 0f ? 1f / (backWm[a] * h) : 0f;
+                Vector3 J = armImpulse[a];
+                J.x += (r1.x - r0.x) * ir + (b1.x - b0.x) * ib; J.y += (r1.y - r0.y) * ir + (b1.y - b0.y) * ib; J.z += (r1.z - r0.z) * ir + (b1.z - b0.z) * ib;
+                armImpulse[a] = J;
             }
             Lattice.ShapeMatch();
         }

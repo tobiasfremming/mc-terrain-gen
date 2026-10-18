@@ -24,8 +24,12 @@ public sealed class FlightBrain : ICreatureBrain
     public enum State { Rest, Wander, Face, Patrol, Soar, Landing }
 
     const float kRestMin = 4f, kRestMax = 15f;
-    const float kWanderChance = 0.3f, kWanderMin = 4f, kWanderMax = 9f;
+    // after a landing on open ground it usually wing-walks a while before the next take-off (user feedback
+    // 2026-10-18: "I never saw it land, so I haven't seen its walk"); half the landings are on open ground
+    const float kWanderChance = 0.75f, kWanderMin = 6f, kWanderMax = 12f;
     const float kFlightMin = 20f, kFlightMax = 40f;
+    const float kFirstFlightMin = 10f, kFirstFlightMax = 18f; // the first flight is short: a landing soon after play starts
+    const float kSpotChance = 0.5f;   // a perch spot (else open ground)
     const float kWaypointMin = 4f, kWaypointMax = 8f;
     const float kSoarChance = 0.35f, kSoarMin = 6f, kSoarMax = 10f;
     const float kLandingTimeout = 45f;
@@ -149,7 +153,7 @@ public sealed class FlightBrain : ICreatureBrain
         cruiseAlt = Vector3.Dot(area.center, area.up) + Lerp(0.4f, 0.8f, Rand()) * area.maxHeight;
         if (!sim.Flight.Launch(cruiseAlt)) return;
         Flights++;
-        flightLeft = Lerp(kFlightMin, kFlightMax, Rand());
+        flightLeft = Flights == 1 ? Lerp(kFirstFlightMin, kFirstFlightMax, Rand()) : Lerp(kFlightMin, kFlightMax, Rand());
         BeginPatrol(sim);
     }
 
@@ -234,7 +238,7 @@ public sealed class FlightBrain : ICreatureBrain
         for (int attempt = 0; attempt < 6; attempt++)
         {
             Vector3 p; int src = 0; float region = 0f;
-            bool spot = count > 0 && Rand() < 0.75f;
+            bool spot = count > 0 && Rand() < kSpotChance;
             Vector3 hp = default, hn, axis = default; int hsrc = 0;
             if (spot)
             {
@@ -253,7 +257,7 @@ public sealed class FlightBrain : ICreatureBrain
                         if (area.PlanarDistance(q) > area.safeRadius - R) continue;
                         if (!fl.ProbeDown(q + area.up * (0.5f * sim.SizeScale), out hp, out hn, out hsrc)) continue;
                         found = hsrc != 0 && Vector3.Dot(hn, area.up) >= 0.7f
-                                && Vector3.Dot(hp - area.center, area.up) >= 1.5f * sim.Species.flight.minAltitude * sim.SizeScale
+                                && Vector3.Dot(hp - area.center, area.up) >= 0.5f * sim.Species.flight.minAltitude * sim.SizeScale
                                 && Room(fl, hp, sim.SizeScale, out axis);
                     }
                     if (!found) continue;

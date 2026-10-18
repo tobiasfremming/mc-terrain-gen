@@ -1,0 +1,2481 @@
+{
+  "version": 1,
+  "parts": [
+    {
+      "name": "SoftBody",
+      "kind": "Body",
+      "status": "exists",
+      "bones": "6",
+      "materialLayers": [
+        5,
+        6,
+        7
+      ],
+      "system": "OctopusBody (self-ticking ICreatureBody)",
+      "useWhen": "boneless bodies: octopus, slug, jelly",
+      "summary": "Shape-matched soft lattice (OctopusBody/SoftLattice: 14 particles, 5 clusters) driven by its Tentacle chains: mantle, head, web.",
+      "usedBy": [
+        "TreeOctopus"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "spec",
+          "type": "CephalopodSpec",
+          "unit": "Spec",
+          "size": "-",
+          "meaning": "the octopus body (CephalopodSpec: web, head, mantle, siphon, lattice); its `arm` comes from the Tentacle parts - fields: armCount, arm, bodyMass, webRadius, webDepth, headRadius, mantleRadius, mantleLength, mantleTiltDeg, eyeRadius, siphonLength, siphonRadius, beta, headStiffness, tipStiffness, breathAmp, breathHz, bodyDamping, subSteps, iterations, look",
+          "range": "",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "SpineBody",
+      "kind": "Body",
+      "status": "exists",
+      "bones": "= joints",
+      "materialLayers": [
+        0
+      ],
+      "system": "CreatureSim chain + grounding",
+      "useWhen": "anything with a backbone or a segmented trunk",
+      "summary": "Bend-limited follow-the-leader chain riding the ground or a climbed surface (CreatureSim). The body of every walker, snake and the wyvern.",
+      "usedBy": [
+        "DaddyLongLegs",
+        "DesertBeetle",
+        "DesertMonitor",
+        "DesertSnake",
+        "KitMonitor",
+        "Tarantula",
+        "TestHexapod",
+        "TestSnake",
+        "WingedSerpent"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "spacing",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "segment length (joint spacing)",
+          "range": "",
+          "example": "monitor 0.06, snake 0.03"
+        },
+        {
+          "name": "headCapLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "snout cap length in front of joint 0",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "tailTipLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "pointed tail tip behind the last joint",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "joints",
+          "type": "JointDef[]",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "the joints written out, head first; when empty they come from profile + jointCount",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "joints[].halfWidth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "cross-section half width",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "joints[].halfHeight",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "cross-section half height",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "joints[].clearance",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "joint centre above the ground; >= halfHeight for a walker",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "joints[].bendLimitDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "cone half-angle vs the previous segment",
+          "range": "",
+          "example": "monitor 20, snake 24-30"
+        },
+        {
+          "name": "joints[].rigid",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "bend limit 0 (neck stiffness)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "profile",
+          "type": "ProfileKey[]",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "profile keys (sugar): interpolated to jointCount joints; >= 2 keys, t = 0 and t = 1 included",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "profile[].t",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "place along the spine, 0 = joint 0 (head) .. 1 = last joint",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "profile[].halfWidth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "cross-section half width",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "profile[].halfHeight",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "cross-section half height",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "profile[].clearance",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "joint centre above the ground",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "profile[].bendLimitDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "cone half-angle vs the previous segment",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "jointCount",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "joints made from the profile (ignored when joints are written out)",
+          "range": "2..128",
+          "example": ""
+        },
+        {
+          "name": "rigidHead",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "profile: joints 1..rigidHead are rigid (neck stiffness)",
+          "range": "0..8",
+          "example": ""
+        },
+        {
+          "name": "ringSegments",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: vertices around each ring",
+          "range": "",
+          "example": "default 16"
+        },
+        {
+          "name": "ringsPerSegment",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: rings per spine segment",
+          "range": "",
+          "example": "default 3"
+        }
+      ]
+    },
+    {
+      "name": "ArthropodLeg",
+      "kind": "Limb",
+      "status": "exists",
+      "bones": "= segments",
+      "materialLayers": [
+        1,
+        2,
+        9
+      ],
+      "system": "CreatureLegs + ArthropodLegModel",
+      "useWhen": "insects, spiders, crabs, centipedes; anything with visible segments",
+      "summary": "3-7 rigid segments solved by synergy IK (ArthropodLegIK): high knees, tarsus at a contact angle, knee bands. Feeler role = a pedipalp.",
+      "usedBy": [
+        "DaddyLongLegs",
+        "DesertBeetle",
+        "Tarantula"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "role",
+          "type": "Walk / Feeler / WingArm / Folded",
+          "unit": "Enum",
+          "size": "-",
+          "meaning": "Walk steps in its gait group; Feeler is posed, never plants; WingArm is set by compose for a Wing's arm; Folded is planned (T5.4)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "gaitGroup",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "gait group (one group steps at a time); -1 = from the Walk module's pattern",
+          "range": "-1..31",
+          "example": ""
+        },
+        {
+          "name": "restOffset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "foot rest point in the attach frame (x mirrored by side; y ignored: projected to the ground)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "stepThreshold",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "foot travel before it steps (comfort radius)",
+          "range": "",
+          "example": "monitor 0.11"
+        },
+        {
+          "name": "stepDuration",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "step duration",
+          "range": "",
+          "example": "monitor 0.12"
+        },
+        {
+          "name": "stepLift",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "step apex height",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "overshoot",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the step lands this far ahead of the rest point",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "footLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "foot (tarsus claw) length",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "toeCount",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "toes (arthropod: tarsus claws)",
+          "range": "0..6",
+          "example": ""
+        },
+        {
+          "name": "forwardSwingLimitDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "upper bone (arthropod: coxa yaw) swing limit toward the head, 0 = 55",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "backSwingLimitDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "swing limit toward the tail, 0 = 55",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "kneeRangeDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "knee range around its rest bend, 0 = 35 (arthropod: reach synergy extension)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "kneeFlexDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "knee flexion past rest, 0 = kneeRange (arthropod: reach synergy flexion)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "segments",
+          "type": "SegmentDef[]",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "segments body outward (coxa .. tarsus), one bone each",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "segments[].length",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "segment length",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "segments[].radiusStart",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "tube radius at the start",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "segments[].radiusEnd",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "tube radius at the end",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "segments[].restBendDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "rest bend at the start joint (+ raises; segment 0: elevation)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "segments[].minBendDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "hinge lower limit",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "segments[].maxBendDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "hinge upper limit",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "segments[].flexWeight",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "share of the reach synergy; the knee is +-1",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "segments[].liftWeight",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "share of the swing's knee-lift synergy",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "segments[].axisTiltDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "hinge axis rotated about the segment (0 = planar)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "segments[].knuckle",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "joint bulb at the end: radius = knuckle x the larger adjacent radius (0 = none)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "segments[].bandStart",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "start of the band-coloured stretch (fraction of the segment)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "segments[].bandEnd",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "end of the band-coloured stretch",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "contactAngleDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "tarsus angle to the ground, 0 = 20",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "kneeLiftDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "lift synergy at mid-swing (reshapes the leg; the foot stays on its path)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "swingRetract",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "mid-swing pull of the foot toward the coxa (flexing lifts the knee)",
+          "range": "0..0.5",
+          "example": ""
+        },
+        {
+          "name": "elevMinDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "in-plane pitch lower bound (0, 0 = +-90); outside it the planted foot steps",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "elevMaxDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "in-plane pitch upper bound",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "liftDelay",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "lift-off delay per place behind the group's rearmost leg (metachronal wave)",
+          "range": "0..0.5",
+          "example": ""
+        },
+        {
+          "name": "kneeJoint",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "joint reported as the knee (debug, tests); 0 = the largest flexWeight",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "legSides",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: sides of the segment tubes, 0 = 8",
+          "range": "",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "Leg2Bone",
+      "kind": "Limb",
+      "status": "exists",
+      "bones": "3",
+      "materialLayers": [
+        1,
+        2
+      ],
+      "system": "CreatureLegs (gait groups, throttle, sway)",
+      "useWhen": "lizards, mammals, birds' legs, wing arms",
+      "summary": "Vertebrate two-bone limb: TwoBoneIK with a pole, rounded knee blend, swing/knee limits (R16), keep-out (R28). Also the wyvern's wing arm.",
+      "usedBy": [
+        "DesertMonitor",
+        "KitMonitor",
+        "TestHexapod",
+        "WingedSerpent"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "role",
+          "type": "Walk / Feeler / WingArm / Folded",
+          "unit": "Enum",
+          "size": "-",
+          "meaning": "Walk steps in its gait group; Feeler is posed, never plants; WingArm is set by compose for a Wing's arm; Folded is planned (T5.4)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "gaitGroup",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "gait group (one group steps at a time); -1 = from the Walk module's pattern",
+          "range": "-1..31",
+          "example": ""
+        },
+        {
+          "name": "restOffset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "foot rest point in the attach frame (x mirrored by side; y ignored: projected to the ground)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "stepThreshold",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "foot travel before it steps (comfort radius)",
+          "range": "",
+          "example": "monitor 0.11"
+        },
+        {
+          "name": "stepDuration",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "step duration",
+          "range": "",
+          "example": "monitor 0.12"
+        },
+        {
+          "name": "stepLift",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "step apex height",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "overshoot",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the step lands this far ahead of the rest point",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "footLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "foot (tarsus claw) length",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "toeCount",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "toes (arthropod: tarsus claws)",
+          "range": "0..6",
+          "example": ""
+        },
+        {
+          "name": "forwardSwingLimitDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "upper bone (arthropod: coxa yaw) swing limit toward the head, 0 = 55",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "backSwingLimitDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "swing limit toward the tail, 0 = 55",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "kneeRangeDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "knee range around its rest bend, 0 = 35 (arthropod: reach synergy extension)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "kneeFlexDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "knee flexion past rest, 0 = kneeRange (arthropod: reach synergy flexion)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "upperLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "upper bone length",
+          "range": "0.005..2",
+          "example": "monitor 0.145"
+        },
+        {
+          "name": "lowerLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "lower bone length",
+          "range": "0.005..2",
+          "example": "monitor 0.135"
+        },
+        {
+          "name": "upperRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "upper bone radius",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "lowerRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "lower bone radius",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "pole",
+          "type": "Vector3",
+          "unit": "Direction",
+          "size": "-",
+          "meaning": "knee direction hint in the attach frame (x mirrored); needs a clear fore/aft part (front z < 0, rear z > 0) or the skin folds",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "kneeBlend",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "share of each bone blended into the rounded knee, 0 = 0.45",
+          "range": "0..0.49",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "Wing",
+      "kind": "Wing",
+      "status": "exists",
+      "bones": "6",
+      "materialLayers": [
+        8,
+        1,
+        2
+      ],
+      "system": "CreatureFlight + CreatureWings",
+      "useWhen": "bats, pterosaurs, dragons; the Fly module makes it fly",
+      "summary": "3-finger membrane wing on an arm limb (a Leg2Bone it names); a wingbeat is a step with a vertical comfort band (CreatureWings, FlightModel).",
+      "usedBy": [
+        "WingedSerpent"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "arm",
+          "type": "string",
+          "unit": "PartRef",
+          "size": "-",
+          "meaning": "the Leg2Bone this wing rides on (its role becomes WingArm); a mirrored wing names the unmirrored id and gets .L / .R",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "spec",
+          "type": "WingSpec",
+          "unit": "Spec",
+          "size": "-",
+          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop",
+          "range": "",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "Eyes",
+      "kind": "Sense",
+      "status": "exists",
+      "bones": "2",
+      "materialLayers": [
+        3
+      ],
+      "system": "CreatureSim.WriteBoneWorld",
+      "useWhen": "always (every shipped species has two eye bones)",
+      "summary": "Two glossy eye spheres on their own bones (sp.EyeBone), placed at the socket (joint, offset x mirrored); cluster eyes ride them (spiders).",
+      "usedBy": [
+        "DaddyLongLegs",
+        "DesertBeetle",
+        "DesertMonitor",
+        "DesertSnake",
+        "KitMonitor",
+        "Tarantula",
+        "TestHexapod",
+        "TestSnake",
+        "TreeOctopus",
+        "WingedSerpent"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "radius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "eye radius (0 = no visible eyes; the bones stay)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "cluster",
+          "type": "EyeSpotDef[]",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "extra eyes rigid to the eye bones",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "cluster[].offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset from the eye centre in the eye joint's frame (x mirrored; x = 0: one eye)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "cluster[].radius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "radius",
+          "range": "",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "Tentacle",
+      "kind": "Chain",
+      "status": "exists",
+      "bones": "= spec.segments (0 = 24)",
+      "materialLayers": [
+        4
+      ],
+      "system": "TentacleChain + TentacleAgent / ArmCoordinator",
+      "useWhen": "octopus arms; grabbing arms on any body (after T5.9)",
+      "summary": "Verlet + XPBD-lite particle chain (TentacleChain) that wraps real bark (WrapMarch); driven by TentacleAgent (reach, grip, hold). Octopus arms today; socket-rooted on a spine body is T5.9.",
+      "usedBy": [
+        "TreeOctopus"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "spec",
+          "type": "TentacleSpec",
+          "unit": "Spec",
+          "size": "-",
+          "meaning": "the arm (TentacleSpec: segments, length, radii, stretch, twist, muscle, suckers) - fields: segments, length, rootRadius, tipRadius, taper, flatten, bendLimitDeg, tipCurlDeg, minStretch, maxStretch, maxTwistDeg, twistRateDeg, wrapSqueeze, bulge, muscle, damping, massPerArm, sinusAmpDeg, sinusHz, sinusWaves, wrapPitchDeg, wrapReach, reachSpeed, strikeTime, suckerRows, suckerSize",
+          "range": "",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "RigidCone",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "0 (1 with ownBone)",
+      "materialLayers": [
+        2
+      ],
+      "system": "mesh only (CreatureMeshBuilder)",
+      "useWhen": "horns, spikes, fangs, mandibles, chelicerae",
+      "summary": "Curved cone rigid to a spine joint: horn, spike, claw, chelicera with a fang (BodyAppendage). mirror emits the pair from this one part (no .L/.R: it has no bones). ownBone: the octopus siphon.",
+      "usedBy": [
+        "Tarantula",
+        "TreeOctopus"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "direction",
+          "type": "Vector3",
+          "unit": "Direction",
+          "size": "-",
+          "meaning": "direction in the joint frame (x mirrored)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "length",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "cone length",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "radiusStart",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "base radius",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "radiusEnd",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "tip radius",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "curveDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "curl downward along the cone",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "fangLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "a fang continuing from the tip (0 = none)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "ownBone",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "a bone of its own, posed by its system (the octopus siphon), instead of rigid to the joint",
+          "range": "",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "Repeat",
+      "kind": "Sugar",
+      "status": "exists",
+      "bones": "= count x template",
+      "materialLayers": [],
+      "system": "compose (CompiledSpecies)",
+      "useWhen": "centipede legs, spike rows, many fins",
+      "summary": "Authoring sugar: `count` copies of `template` across joints fromJoint..toJoint (tapered by lastScale, mirrored if the template is). Expanded by compose.",
+      "usedBy": [],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "count",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "copies",
+          "range": "1..64",
+          "example": ""
+        },
+        {
+          "name": "fromJoint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "attach joint of the first copy",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "toJoint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "attach joint of the last copy",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "lastScale",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "length factor at the last copy (1 = no taper)",
+          "range": "",
+          "example": "default 1"
+        },
+        {
+          "name": "template",
+          "type": "CreaturePart",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "the part to copy (any part type; its at.joint is replaced)",
+          "range": "",
+          "example": ""
+        }
+      ]
+    }
+  ],
+  "modules": [
+    {
+      "name": "Ambush",
+      "category": "Behaviour",
+      "status": "exists",
+      "needs": "SoftBody + Tentacle parts (spine bodies: T5.9)",
+      "summary": "Rest / explore / stalk / ambush / strike / hold / retreat (OctopusBrain + prey adapters; arm roles, grooming). Hold 1.5 s, no damage.",
+      "usedBy": [
+        "TreeOctopus"
+      ],
+      "params": []
+    },
+    {
+      "name": "ClimbExcursion",
+      "category": "Behaviour",
+      "status": "exists",
+      "needs": "Climb",
+      "summary": "Approach a climbable obstacle, climb to a goal on its real surface, rest, descend (ClimbingBrain wrapping Wander).",
+      "usedBy": [
+        "DesertMonitor",
+        "KitMonitor"
+      ],
+      "params": []
+    },
+    {
+      "name": "FlightExcursion",
+      "category": "Behaviour",
+      "status": "exists",
+      "needs": "Fly",
+      "summary": "Rest, Face, Patrol, Soar, Landing on perches; predictive wall turn-back (FlightBrain).",
+      "usedBy": [
+        "WingedSerpent"
+      ],
+      "params": []
+    },
+    {
+      "name": "Wander",
+      "category": "Behaviour",
+      "status": "exists",
+      "needs": "",
+      "summary": "Safe-disc points, walk, pause, glance (WanderBrain). Containment is structural: the head is clamped to the safe radius.",
+      "usedBy": [
+        "DaddyLongLegs",
+        "DesertBeetle",
+        "DesertMonitor",
+        "DesertSnake",
+        "KitMonitor",
+        "Tarantula",
+        "TestHexapod",
+        "TestSnake",
+        "WingedSerpent"
+      ],
+      "params": []
+    },
+    {
+      "name": "Climb",
+      "category": "Locomotion",
+      "status": "exists",
+      "needs": "Walk",
+      "summary": "Per-joint up field, real-geometry contact via ISurfaceProbe, pitch limiter (CreatureClimb, ClimbSpec). Terrain walls >= 50 deg over >= 1/2 body length (R30/R31). 0 = default for every number.",
+      "usedBy": [
+        "DesertMonitor",
+        "KitMonitor"
+      ],
+      "params": [
+        {
+          "name": "maxSurfaceAngleDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "steepest surface, from gravity's up (0 = 140)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "maxHeightBodyLengths",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "highest climb in body lengths (0 = 1.5)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "speedFactor",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "speed factor on a vertical surface, up (0 = 0.5)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "descentSpeedFactor",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "speed factor going down head-first (0 = 0.4)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "clearanceFactor",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "body clearance on a wall vs walking (0 = 0.65)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "strideFactor",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "stride on a wall (0 = 0.6)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "stepTimeFactor",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "step time on a wall (0 = 1.2)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "liftFactor",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "foot lift on a wall (0 = 0.6)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "upRateDeg",
+          "type": "float",
+          "unit": "DegPerSecond",
+          "size": "/ sqrt(s)",
+          "meaning": "fastest turn of a joint's up (0 = 270)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "upSmoothJoints",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "joints each side smoothed into the up field (0 = 3)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "pitchLimitDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "largest pitch bend between segments (0 = 25)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "minWidthFactor",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "a climb goal needs a surface this many body widths across (0 = 1.5)",
+          "range": "",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "Fly",
+      "category": "Locomotion",
+      "status": "exists",
+      "needs": "Wing parts",
+      "summary": "Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlight, FlightModel, AirChain). Froude-scaled.",
+      "usedBy": [
+        "WingedSerpent"
+      ],
+      "params": [
+        {
+          "name": "spec",
+          "type": "FlightSpec",
+          "unit": "Spec",
+          "size": "-",
+          "meaning": "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise",
+          "range": "",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "Slither",
+      "category": "Locomotion",
+      "status": "exists",
+      "needs": "Walk",
+      "summary": "Lateral head wave the drag chain carries back (undulation in the walk). Long wave: lambda = speed / Hz >= 0.7 body length (R27).",
+      "usedBy": [
+        "DesertMonitor",
+        "DesertSnake",
+        "KitMonitor",
+        "TestSnake",
+        "WingedSerpent"
+      ],
+      "params": [
+        {
+          "name": "undulationDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "head wave amplitude",
+          "range": "",
+          "example": "snake 45, monitor 6"
+        },
+        {
+          "name": "undulationHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "wave frequency",
+          "range": "",
+          "example": "snake 0.625"
+        }
+      ]
+    },
+    {
+      "name": "Walk",
+      "category": "Locomotion",
+      "status": "exists",
+      "needs": "SpineBody",
+      "summary": "Head steering in the tangent plane, chain, grounding, gait groups, girdle sway (CreatureSim.SubStep, CreatureLegs). The default locomotion of a spine body.",
+      "usedBy": [
+        "DaddyLongLegs",
+        "DesertBeetle",
+        "DesertMonitor",
+        "DesertSnake",
+        "KitMonitor",
+        "Tarantula",
+        "TestHexapod",
+        "TestSnake",
+        "WingedSerpent"
+      ],
+      "params": [
+        {
+          "name": "speed",
+          "type": "float",
+          "unit": "MetresPerSecond",
+          "size": "x sqrt(s)",
+          "meaning": "head cruise speed",
+          "range": "",
+          "example": "monitor 0.9, tarantula 0.16"
+        },
+        {
+          "name": "turnRateDeg",
+          "type": "float",
+          "unit": "DegPerSecond",
+          "size": "/ sqrt(s)",
+          "meaning": "turn rate",
+          "range": "",
+          "example": "walkers 160, snake 240"
+        },
+        {
+          "name": "accel",
+          "type": "float",
+          "unit": "Acceleration",
+          "size": "-",
+          "meaning": "acceleration",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "turnSlowdown",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "speed lost in a full-rate turn",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "gaitSwayDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "peak yaw of the trunk between girdles toward the reaching leg (0 = none)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "gaitRollDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "girdle roll over its planted feet",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "subSteps",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "fixed sub-steps per tick (cost!)",
+          "range": "1..4",
+          "example": "default 2"
+        },
+        {
+          "name": "pattern",
+          "type": "Explicit / Diagonal / Tripod / Tetrapod / Alternate / Wave",
+          "unit": "Enum",
+          "size": "-",
+          "meaning": "assigns gaitGroup to walking limbs left at -1",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "waveGroups",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "groups of a Wave pattern",
+          "range": "2..31",
+          "example": ""
+        },
+        {
+          "name": "bob",
+          "type": "GaitBobDef",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "vertical body bounce kicked by each lift-off",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "bob.amplitude",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "peak dip of the body per lift-off (0 = off)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "bob.hz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "spring frequency",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "bob.damping",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "damping ratio (0.2 bouncy .. 1 dead)",
+          "range": "0..2",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "Chitin",
+      "category": "Look",
+      "status": "exists",
+      "needs": "",
+      "summary": "Knee/segment bands (part 9) and a velvet sheen lobe: arthropod legs.",
+      "usedBy": [
+        "DaddyLongLegs",
+        "DesertBeetle",
+        "Tarantula"
+      ],
+      "params": [
+        {
+          "name": "bandColor",
+          "type": "Color",
+          "unit": "SrgbColour",
+          "size": "-",
+          "meaning": "band colour (SegmentDef.bandStart/End)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "sheen",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "velvet sheen strength (0 = none)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "sheenColor",
+          "type": "Color",
+          "unit": "SrgbColour",
+          "size": "-",
+          "meaning": "sheen colour",
+          "range": "",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "Chromatophore",
+      "category": "Look",
+      "status": "exists",
+      "needs": "SoftBody",
+      "summary": "Dynamic colour cells, flash and passing-cloud phase (octopus shader). Makes the look dynamic.",
+      "usedBy": [
+        "TreeOctopus"
+      ],
+      "params": []
+    },
+    {
+      "name": "Cloak",
+      "category": "Look",
+      "status": "exists",
+      "needs": "SoftBody (spine bodies: Phase 4)",
+      "summary": "Dissolve in Forward only: the body vanishes, shadow + SSAO stay (the user's favourite bug). Per-instance, brain-driven, with hysteresis. Octopus today.",
+      "usedBy": [
+        "TreeOctopus"
+      ],
+      "params": []
+    },
+    {
+      "name": "Membrane",
+      "category": "Look",
+      "status": "exists",
+      "needs": "",
+      "summary": "Translucent veined membrane (part 8, CreatureMembrane.hlsl): wings today, fins next (T5.1).",
+      "usedBy": [
+        "WingedSerpent"
+      ],
+      "params": [
+        {
+          "name": "colour",
+          "type": "Color",
+          "unit": "SrgbColour",
+          "size": "-",
+          "meaning": "membrane colour",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "translucency",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "how much light shines through",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "veinContrast",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "how dark the veins are",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "rim",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "how dark the trailing rim is",
+          "range": "0..1",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "Skin",
+      "category": "Look",
+      "status": "exists",
+      "needs": "",
+      "summary": "Palette dorsal/flank/belly + procedural pattern by rest arc length (CreaturePattern.hlsl); per-individual size/hue/value jitter. Layers of parts 0-2.",
+      "usedBy": [
+        "DaddyLongLegs",
+        "DesertBeetle",
+        "DesertMonitor",
+        "DesertSnake",
+        "KitMonitor",
+        "Tarantula",
+        "TestHexapod",
+        "TestSnake",
+        "TreeOctopus",
+        "WingedSerpent"
+      ],
+      "params": [
+        {
+          "name": "dorsal",
+          "type": "Color",
+          "unit": "SrgbColour",
+          "size": "-",
+          "meaning": "back colour",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "flank",
+          "type": "Color",
+          "unit": "SrgbColour",
+          "size": "-",
+          "meaning": "flank colour",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "belly",
+          "type": "Color",
+          "unit": "SrgbColour",
+          "size": "-",
+          "meaning": "belly colour",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "pattern",
+          "type": "Color",
+          "unit": "SrgbColour",
+          "size": "-",
+          "meaning": "pattern colour",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "patternType",
+          "type": "None / Bands / Spots / Stripes / BandedSpots",
+          "unit": "Enum",
+          "size": "-",
+          "meaning": "pattern",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "patternScale",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "pattern repeats per metre of rest arc",
+          "range": "",
+          "example": "monitor 9, snake 11"
+        },
+        {
+          "name": "patternContrast",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "pattern contrast",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "patternSoftness",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "pattern edge softness",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "spotScale",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "spot size",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "smoothness",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "smoothness",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "rimStrength",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "rim light strength",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "subsurface",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "subsurface",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "sizeJitter",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "per-individual size jitter (+-), sizeScale = scale x (1 +- this)",
+          "range": "0..0.2",
+          "example": ""
+        },
+        {
+          "name": "hueJitter",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "per-individual hue jitter",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "valueJitter",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "per-individual value jitter",
+          "range": "",
+          "example": ""
+        }
+      ]
+    }
+  ],
+  "species": [
+    {
+      "name": "DaddyLongLegs",
+      "kitVersion": 0,
+      "plan": "Spine",
+      "bones": 71,
+      "parts": [
+        "SpineBody:body",
+        "ArthropodLeg:leg0",
+        "ArthropodLeg:leg1",
+        "ArthropodLeg:leg2",
+        "ArthropodLeg:leg3",
+        "ArthropodLeg:leg4",
+        "ArthropodLeg:leg5",
+        "ArthropodLeg:leg6",
+        "ArthropodLeg:leg7",
+        "ArthropodLeg:leg8",
+        "ArthropodLeg:leg9",
+        "Eyes:eyes"
+      ],
+      "modules": [
+        "Walk",
+        "Wander",
+        "Skin",
+        "Chitin"
+      ]
+    },
+    {
+      "name": "DesertBeetle",
+      "kitVersion": 0,
+      "plan": "Spine",
+      "bones": 35,
+      "parts": [
+        "SpineBody:body",
+        "ArthropodLeg:leg0",
+        "ArthropodLeg:leg1",
+        "ArthropodLeg:leg2",
+        "ArthropodLeg:leg3",
+        "ArthropodLeg:leg4",
+        "ArthropodLeg:leg5",
+        "Eyes:eyes"
+      ],
+      "modules": [
+        "Walk",
+        "Wander",
+        "Skin",
+        "Chitin"
+      ]
+    },
+    {
+      "name": "DesertMonitor",
+      "kitVersion": 0,
+      "plan": "Spine",
+      "bones": 40,
+      "parts": [
+        "SpineBody:body",
+        "Leg2Bone:leg0",
+        "Leg2Bone:leg1",
+        "Leg2Bone:leg2",
+        "Leg2Bone:leg3",
+        "Eyes:eyes"
+      ],
+      "modules": [
+        "Walk",
+        "Slither",
+        "Climb",
+        "Wander",
+        "ClimbExcursion",
+        "Skin"
+      ]
+    },
+    {
+      "name": "DesertSnake",
+      "kitVersion": 0,
+      "plan": "Spine",
+      "bones": 34,
+      "parts": [
+        "SpineBody:body",
+        "Eyes:eyes"
+      ],
+      "modules": [
+        "Walk",
+        "Slither",
+        "Wander",
+        "Skin"
+      ]
+    },
+    {
+      "name": "KitMonitor",
+      "kitVersion": 1,
+      "plan": "Spine",
+      "bones": 40,
+      "parts": [
+        "SpineBody:body",
+        "Leg2Bone:leg0.L",
+        "Leg2Bone:leg0.R",
+        "Leg2Bone:leg2.L",
+        "Leg2Bone:leg2.R",
+        "Eyes:eyes"
+      ],
+      "modules": [
+        "Walk",
+        "Slither",
+        "Climb",
+        "Wander",
+        "ClimbExcursion",
+        "Skin"
+      ]
+    },
+    {
+      "name": "Tarantula",
+      "kitVersion": 0,
+      "plan": "Spine",
+      "bones": 75,
+      "parts": [
+        "SpineBody:body",
+        "ArthropodLeg:leg0",
+        "ArthropodLeg:leg1",
+        "ArthropodLeg:leg2",
+        "ArthropodLeg:leg3",
+        "ArthropodLeg:leg4",
+        "ArthropodLeg:leg5",
+        "ArthropodLeg:leg6",
+        "ArthropodLeg:leg7",
+        "ArthropodLeg:leg8",
+        "ArthropodLeg:leg9",
+        "Eyes:eyes",
+        "RigidCone:cone0"
+      ],
+      "modules": [
+        "Walk",
+        "Wander",
+        "Skin",
+        "Chitin"
+      ]
+    },
+    {
+      "name": "TestHexapod",
+      "kitVersion": 0,
+      "plan": "Spine",
+      "bones": 28,
+      "parts": [
+        "SpineBody:body",
+        "Leg2Bone:leg0",
+        "Leg2Bone:leg1",
+        "Leg2Bone:leg2",
+        "Leg2Bone:leg3",
+        "Leg2Bone:leg4",
+        "Leg2Bone:leg5",
+        "Eyes:eyes"
+      ],
+      "modules": [
+        "Walk",
+        "Wander",
+        "Skin"
+      ]
+    },
+    {
+      "name": "TestSnake",
+      "kitVersion": 0,
+      "plan": "Spine",
+      "bones": 42,
+      "parts": [
+        "SpineBody:body",
+        "Eyes:eyes"
+      ],
+      "modules": [
+        "Walk",
+        "Slither",
+        "Wander",
+        "Skin"
+      ]
+    },
+    {
+      "name": "TreeOctopus",
+      "kitVersion": 0,
+      "plan": "Soft",
+      "bones": 201,
+      "parts": [
+        "Tentacle:arm0",
+        "Tentacle:arm1",
+        "Tentacle:arm2",
+        "Tentacle:arm3",
+        "Tentacle:arm4",
+        "Tentacle:arm5",
+        "Tentacle:arm6",
+        "Tentacle:arm7",
+        "SoftBody:body",
+        "Eyes:eyes",
+        "RigidCone:siphon"
+      ],
+      "modules": [
+        "Ambush",
+        "Skin",
+        "Cloak",
+        "Chromatophore"
+      ]
+    },
+    {
+      "name": "WingedSerpent",
+      "kitVersion": 0,
+      "plan": "Spine",
+      "bones": 58,
+      "parts": [
+        "SpineBody:body",
+        "Leg2Bone:leg0",
+        "Leg2Bone:leg1",
+        "Leg2Bone:leg2",
+        "Leg2Bone:leg3",
+        "Wing:wing0",
+        "Wing:wing1",
+        "Eyes:eyes"
+      ],
+      "modules": [
+        "Walk",
+        "Slither",
+        "Fly",
+        "Wander",
+        "FlightExcursion",
+        "Skin",
+        "Membrane"
+      ]
+    }
+  ],
+  "materialLayers": [
+    {
+      "id": 0,
+      "use": "body skin"
+    },
+    {
+      "id": 1,
+      "use": "limb"
+    },
+    {
+      "id": 2,
+      "use": "foot, claw, rigid cone"
+    },
+    {
+      "id": 3,
+      "use": "eye"
+    },
+    {
+      "id": 4,
+      "use": "octopus arm"
+    },
+    {
+      "id": 5,
+      "use": "octopus web"
+    },
+    {
+      "id": 6,
+      "use": "octopus mantle"
+    },
+    {
+      "id": 7,
+      "use": "octopus siphon"
+    },
+    {
+      "id": 8,
+      "use": "membrane (wings; fins next)"
+    },
+    {
+      "id": 9,
+      "use": "arthropod band"
+    }
+  ],
+  "nextFreeMaterialLayer": 10
+}

@@ -36,6 +36,8 @@ public sealed class OctopusBrain
     public State Mode { get; private set; }
     public float StateTime { get; private set; }
     public float Cloak { get; private set; }
+    // Off: Cloak stays exactly 0 whatever the state (the species' cephalopod.cloakEnabled, default off).
+    public bool CloakEnabled;
     public float Chroma { get; private set; }
     public float Flash { get; private set; }
     public float CloudPhase { get; private set; }
@@ -237,6 +239,7 @@ public sealed class OctopusBrain
             case State.Retreat: chromaTarget = 0.2f; cloakTarget = Flash > 0.05f ? 0f : 1f; break;
             case State.CanopyRest: chromaTarget = 0.3f + 0.25f * Mathf.Sin(0.13f * StateTime); break;
         }
+        if (!CloakEnabled) cloakTarget = 0f;
         bool threat = Mode == State.Retreat;
         if (cloakTarget != cloakGoal && (threat || time - cloakGoalChanged >= CloakHoldSeconds)) { cloakGoal = cloakTarget; cloakGoalChanged = time; }
         Cloak = Mathf.MoveTowards(Cloak, cloakGoal, dt * CloakRate);

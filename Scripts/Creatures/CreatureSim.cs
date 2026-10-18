@@ -89,6 +89,7 @@ public sealed class CreatureSim
     public CreatureSim(CreatureSpecies sp, IGroundProbe ground, Func<Vector3, Vector3> upAt,
                        Vector3 position, Vector3 forward, float sizeScale = 1f, int seed = 0)
     {
+        sp = sp.Compiled.Runtime;   // creature kit: the runtime view (a legacy asset is its own)
         Species = sp; this.ground = ground; this.upAt = upAt; SizeScale = sizeScale;
         spineGround = ground is CachedGroundProbe cache ? cache.Smooth
                     : ground is CompositeSurfaceProbe comp ? comp.Smooth : ground;

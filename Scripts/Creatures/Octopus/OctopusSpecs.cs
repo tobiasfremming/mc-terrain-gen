@@ -107,6 +107,10 @@ public struct CephalopodSpec
     public int Iterations => iterations > 0 ? iterations : 3;
 
     public OctopusLook look;
+    // The cloak (dither-dissolve while stalked / retreating). Off by default (user, 2026-10-18: the dither reads
+    // as pixelated until it is reworked): the brain then keeps Cloak at 0, so the body never dithers. The code
+    // path stays; set this (or OctopusLab.cloakEnabled) to bring it back.
+    public bool cloakEnabled;
 
     public static CephalopodSpec Default => new CephalopodSpec();
 

@@ -15,10 +15,18 @@ using UnityEngine;
 //   Release  peels the pins off base -> tip, only while the remaining support meets the minimum
 //   Strike   shoots straight at the predicted intercept (stretch to max, full tone)
 //   Hold     wraps the prey's grab volume and follows it (pins re-placed every frame)
+//
+// What the arm is FOR comes from the octopus (ArmCoordinator, user decision 5): its role on the blackboard.
+// Grip feels and reaches toward the route and, anchored ahead, pulls; Anchor finds or keeps a support hold and
+// never pulls; Feel explores and grips only when allowed; Hang / Tuck / Rest / Groom hold nothing (a hold the
+// role does not need is let go, under the support rule). Every anchored run takes its length from the one
+// body motion the octopus wants (DesiredVelocity): only a Grip arm holding ahead shortens, every other hold
+// only pays out - no two arms pull the body toward different places. The arm reports Failed (a reach that
+// keeps missing, a search that finds nothing) so the coordinator can reassign it.
 public sealed class TentacleAgent
 {
     public const float RestRelaxRate = 4f;   // 1/s at scale 1: a curled arm's extra damping at rest
-    public enum State { Curl, Feel, Reach, Grip, Anchored, Release, Strike, Hold }
+    public enum State { Curl, Feel, Reach, Grip, Anchored, Release, Strike, Hold, Groom }
 
     public const int MemorySize = 4;
     public const float ExploreSeconds = 0.25f;
@@ -44,8 +52,8 @@ public sealed class TentacleAgent
     OctopusController owner;
     readonly float[] drapeUntil;
     uint rng;
-    float nextExplore, zipStart, anchoredAt, peelNext, holdUntil, idleUntil;
-    int zipDone, best = -1, exploreCount;
+    float nextExplore, zipStart, anchoredAt, peelNext, holdUntil;
+    int zipDone, best = -1, exploreCount, missesInRow;
     Vector3 reachGoal;
     bool reachGoalFresh = true;
     bool wantsRelease;
@@ -56,6 +64,7 @@ public sealed class TentacleAgent
         Index = index; Arm = arm; this.restDirLocal = restDirLocal;
         wrap = new WrapMarch(arm.N);
         drapeUntil = new float[arm.N];
+        haulWas = new bool[arm.N];
         rng = seed * 2654435761u + 0x9E3779B9u + (uint)index * 0x85EBCA6Bu;
         if (rng == 0) rng = 1;
         Mode = State.Curl;
@@ -88,7 +97,7 @@ public sealed class TentacleAgent
         float ts = c.Body.TimeScale;
 
         // strikes pre-empt everything (the arm qualifies itself)
-        if (c.Intent.mode == OctoMode.Strike && Mode != State.Strike && Mode != State.Hold && QualifiesForStrike(c)) BeginStrike(c);
+        if (c.Intent.mode == OctoMode.Strike && board.Role[Index] == ArmRole.Strike && Mode != State.Strike && Mode != State.Hold && QualifiesForStrike(c)) BeginStrike(c);
 
         switch (Mode)
         {
@@ -100,6 +109,7 @@ public sealed class TentacleAgent
             case State.Release: TickRelease(c, ts); break;
             case State.Strike: TickStrike(c, ts); break;
             case State.Hold: TickHold(c); break;
+            case State.Groom: TickGroom(c, ts); break;
         }
         UpdateBoard(board);
     }
@@ -120,28 +130,65 @@ public sealed class TentacleAgent
 
     // ------------------------------------------------------------------ states
 
+    ArmRole RoleOf(OctopusController c) => c.Board.Role[Index];
+
+    // roles that look for a hold to commit to
+    bool SeeksHold(OctopusController c)
+    {
+        ArmRole r = RoleOf(c);
+        return r == ArmRole.Grip || r == ArmRole.Anchor || r == ArmRole.Feel && c.Board.Command[Index].allowGrip;
+    }
+
+    void Report(OctopusController c, ArmReport r) => c.Board.Report[Index] = r;
+
+    public const float HangTone = 0.25f, TuckPull = 0.03f;
+
     void TickCurl(OctopusController c)
     {
-        Arm.ClearTargetShape(); Arm.SinusAmount = 0f; Arm.Tone = 1f;
+        ArmRole role = RoleOf(c);
+        bool resting = c.Intent.mode == OctoMode.Rest || c.Intent.mode == OctoMode.Hold;
+        Arm.SinusAmount = 0f;
+        switch (role)
+        {
+            case ArmRole.Hang:
+                // limp: the arm drapes down under its own weight
+                Arm.ClearTargetShape(); Arm.Tone = HangTone;
+                break;
+            case ArmRole.Tuck:
+                // curled compactly under the body: the arm coils toward a point just below the crown on its own side
+                // (the muscle shape plus a light positional pull, as a reach has)
+                {
+                    Vector3 down = -c.Up, side = OctoMath.Rotate(c.Body.Orientation, restDirLocal);
+                    Vector3 t = Arm.X[0] + down * (0.22f * Arm.Length) + side * (0.1f * Arm.Length);
+                    // re-aimed a few times a second (it follows the body; a shape set every tick never lets it sleep)
+                    if (!tuckSet || c.Time >= tuckNext) { Arm.SetTargetShape(t, 1f, false); tuckSet = true; tuckNext = c.Time + 0.3f * c.Body.TimeScale; }
+                    Arm.Tone = 1.6f; Arm.ShapePull = TuckPull;
+                }
+                break;
+            default:
+                Arm.ClearTargetShape(); Arm.Tone = 1f;
+                break;
+        }
+        if (role != ArmRole.Tuck) { if (tuckSet) Arm.ShapePull = 0f; tuckSet = false; }
         if (StateTime < 0.3f) return;
         // a curled arm at rest relaxes: its swing dies out in about a second instead of ringing on for 20 s
         // (absolute damping is safe here - a resting octopus hangs still; Froude-scaled like every rate)
-        float relax = RestRelaxRate / c.Body.TimeScale;
-        bool resting = c.Intent.mode == OctoMode.Rest || c.Intent.mode == OctoMode.Hold;
-        float want = resting ? relax : 0f;
+        float want = resting ? RestRelaxRate / c.Body.TimeScale : 0f;
         if (Arm.ExtraDamping != want) Arm.ExtraDamping = want;
-        // idle while enough others hold on and the brain only wants rest; else start feeling
-        bool rest = c.Intent.mode == OctoMode.Rest || c.Intent.mode == OctoMode.Hold;
-        // a settled rest (an arm to spare beyond the support needed) ends the search for good: the arm stays
-        // curled until the brain wants something else or the support drops (user report: an octopus that
-        // re-searched every few seconds never came to rest)
-        if (!rest || c.Board.AnchoredCount <= c.Board.MinAnchors) { if (float.IsPositiveInfinity(idleUntil)) idleUntil = 0f; }
-        if (c.Time < idleUntil && rest) return;   // pausing after a fruitless search
-        if (!rest || c.Board.AnchoredCount < c.RestAnchors) Enter(State.Feel);
+        if (role == ArmRole.Groom) { BeginGroom(c); return; }
+        if (SeeksHold(c) || role == ArmRole.Feel) Enter(State.Feel);
     }
+
+    bool tuckSet;
+    float tuckNext;
+
+    public const float RestSearchSeconds = 6f, GripSearchSeconds = 5f;   // x TimeScale: a search that finds nothing fails
 
     void TickFeel(float dt, OctopusController c)
     {
+        ArmRole role = RoleOf(c);
+        if (role != ArmRole.Grip && role != ArmRole.Anchor && role != ArmRole.Feel) { HasTarget = false; Enter(State.Curl); return; }
+        bool commit = SeeksHold(c);
         Arm.Tone = 1f; Arm.SinusAmount = 0.6f;
         Vector3 root = Arm.X[0];
         Vector3 axis = ConeAxis(c);
@@ -151,12 +198,11 @@ public sealed class TentacleAgent
         Vector3 wander = Turn(axis, 0.55f * Mathf.Sin(ph), 0.45f * Mathf.Sin(1.3f * ph + 0.7f));
         Arm.SetTargetShape(root + wander * (0.7f * L), 0.55f, false);
 
-        // touch: the tip feels what it brushes against, and grips it
+        // touch: the tip feels what it brushes against, and grips it (if its role lets it commit)
         if (TactileTouch(c, out SurfaceHit touch) && Acceptable(c, touch.point))
         {
             Remember(touch.point, touch.normal, touch.source, c.Time, false);
-            BeginGrip(c, touch);
-            return;
+            if (commit) { BeginGrip(c, touch); return; }
         }
 
         if (c.Time >= nextExplore && c.Spare(2))
@@ -167,15 +213,18 @@ public sealed class TentacleAgent
             else ExploreCast(c, root, axis, L);
         }
 
-        // at rest, a search that finds nothing pauses for a while (an octopus does not sweep forever)
+        // a search that finds nothing fails: at rest after RestSearchSeconds (an octopus does not sweep forever),
+        // a grip arm in the void after GripSearchSeconds; the coordinator reassigns it
         bool resting = c.Intent.mode == OctoMode.Rest || c.Intent.mode == OctoMode.Hold;
-        if (resting && StateTime > 6f * c.Body.TimeScale)
+        float limit = (resting ? RestSearchSeconds : GripSearchSeconds) * c.Body.TimeScale;
+        if (commit && StateTime > limit && (resting || role == ArmRole.Grip))
         {
-            idleUntil = c.Board.AnchoredCount > c.Board.MinAnchors ? float.PositiveInfinity : c.Time + (4f + 4f * Rand()) * c.Body.TimeScale;
+            Report(c, ArmReport.Failed);
             Enter(State.Curl);
             return;
         }
 
+        if (!commit) return;
         best = BestCandidate(c);
         if (best >= 0 && StateTime > 0.15f)
         {
@@ -187,6 +236,7 @@ public sealed class TentacleAgent
 
     void TickReach(OctopusController c, float ts)
     {
+        if (!SeeksHold(c)) { HasTarget = false; Enter(State.Curl); return; }
         if (best < 0 || !memory[best].valid) { HasTarget = false; Enter(State.Feel); return; }
         Candidate m = memory[best];
         float tipR = Arm.Spec.TipRadius * Arm.SizeScale;
@@ -217,7 +267,9 @@ public sealed class TentacleAgent
         {
             memory[best].valid = false; Misses++;
             HasTarget = false;
-            Enter(State.Feel);
+            // two misses running: this arm cannot do its job from here
+            if (++missesInRow >= 2) { missesInRow = 0; Report(c, ArmReport.Failed); Enter(State.Curl); }
+            else Enter(State.Feel);
         }
     }
 
@@ -242,9 +294,15 @@ public sealed class TentacleAgent
         Remember(contact.point, contact.normal, contact.source, c.Time, false);
         BeginGrip(c, contact, true);
         if (Mode != State.Grip) return false;
-        for (; zipDone < wrap.Count; zipDone++) Arm.Pin(wrap.Particle[zipDone], wrap.Point[zipDone], wrap.Normal[zipDone], wrap.Source[zipDone]);
+        for (; zipDone < wrap.Count; zipDone++)
+        {
+            if (zipDone > 0 && !PinReachable(wrap.Particle[zipDone], wrap.Point[zipDone])) break;
+            Arm.Pin(wrap.Particle[zipDone], wrap.Point[zipDone], wrap.Normal[zipDone], wrap.Source[zipDone]);
+        }
+        zipDone = wrap.Count;
         Arm.ClearTargetShape();
-        Grips++; anchoredAt = c.Time; wantsRelease = false; HasTarget = false;
+        HoldRun(c, false, true);
+        Grips++; anchoredAt = c.Time; wantsRelease = false; HasTarget = false; missesInRow = 0;
         Enter(State.Anchored);
         UpdateBoard(c.Board);   // the next arm to settle sees this hold
         return true;
@@ -270,35 +328,93 @@ public sealed class TentacleAgent
         float t = (c.Time - zipStart) / (ZipSeconds * ts);
         int due = Mathf.Min(wrap.Count, 1 + (int)(t * wrap.Count));
         for (; zipDone < due; zipDone++)
+        {
+            // the zip stops where the run from the root could not reach its next pin even at full stretch: pinned
+            // anyway, the tether would snatch the body toward the catch (a catch at the edge of reach)
+            if (zipDone > 0 && !PinReachable(wrap.Particle[zipDone], wrap.Point[zipDone])) { zipDone = wrap.Count; break; }
             Arm.Pin(wrap.Particle[zipDone], wrap.Point[zipDone], wrap.Normal[zipDone], wrap.Source[zipDone]);
+        }
+        // the run between the root and the zip front keeps the length it has (a zip toward the root at the run's
+        // target length yanked the body toward the new hold)
+        HoldRun(c, false, true);
         if (zipDone >= wrap.Count)
         {
             Arm.ClearTargetShape();
-            Grips++; anchoredAt = c.Time; wantsRelease = false;
+            HoldRun(c, false, true);   // no yank at the catch: the run keeps the length it reached with
+            Grips++; anchoredAt = c.Time; wantsRelease = false; missesInRow = 0;
             HasTarget = false;
             Enter(State.Anchored);
         }
     }
 
+    // A pin of particle k at p keeps the run from the root feasible (within its tether at full stretch, with a
+    // little room to pay out).
+    bool PinReachable(int k, Vector3 p) => (p - Arm.X[0]).magnitude <= 0.95f * TentacleChain.Taut * Arm.Spec.MaxStretch * Arm.Spacing * k;
+
+    // the run to the base pin is at (or near) its shortest: nothing left to pull with
+    public bool Spent()
+    {
+        int p = Arm.BasePin();
+        return p > 0 && (Arm.X[p] - Arm.X[0]).magnitude <= (Arm.Spec.MinStretch + 0.03f) * TentacleChain.Taut * Arm.Spacing * p;
+    }
+
+    // Hauling (a rope drawn through a hand): a grip arm ahead whose run is at its shortest slides its grip one
+    // particle toward the root - every pin moves to the next particle down the arm, at the same surface point
+    // (offset by the thicker radius there), the tip-most pin lets go - so the run to the hold is one segment
+    // shorter and can pull again. No queries: the points are the ones the wrap found. Climbing a trunk is this,
+    // over and over.
+    public const float HaulSeconds = 0.1f;     // x TimeScale: at most one step this often
+    public const int MinRun = 8;               // the run to the base pin never gets shorter than this: a shorter run cannot bend from the body to its hold within its joint cones, and fights it
+    float nextHaul;
+    readonly bool[] haulWas;
+    public int Hauls;                          // cumulative
+
+    bool Haul(OctopusController c, float ts)
+    {
+        int p = Arm.BasePin();
+        if (p <= MinRun) return false;
+        if (c.Time < nextHaul) return true;   // hauling; the next step comes
+        nextHaul = c.Time + HaulSeconds * ts;
+        for (int k = 0; k < Arm.N; k++) haulWas[k] = Arm.Pinned[k] && drapeUntil[k] <= 0f;
+        for (int k = p; k < Arm.N; k++)
+        {
+            if (!haulWas[k]) continue;
+            float dr = (Arm.Spec.RadiusAt(Arm.Spec.Spacing * (k - 1)) - Arm.Spec.RadiusAt(Arm.Spec.Spacing * k)) * Arm.SizeScale;
+            Arm.Pin(k - 1, Arm.PinPoint[k] + Arm.PinNormal[k] * dr, Arm.PinNormal[k], Arm.PinSource[k]);
+        }
+        // every run of pins moved down one: the tip-most pin of each run is free now
+        for (int k = p; k < Arm.N; k++) if (haulWas[k] && (k + 1 >= Arm.N || !haulWas[k + 1])) Arm.Unpin(k);
+        // the shorter run's length from where things are now: it holds the body where it is (no snatch), and the
+        // pull goes on from there next tick
+        HoldRun(c, false, true);
+        Hauls++;
+        return true;
+    }
+
     void TickAnchored(OctopusController c, float ts)
     {
-        Arm.SinusAmount = 0f; Arm.Tone = 1f;
+        // A held run's muscle tone is scaled down with size: the solver's muscle is a per-iteration fraction of
+        // the shape error, so its force grows with size^4 while the body's weight grows with size^3 - at 4x the
+        // muscles of the held runs bent them against their holds four times as hard, relative to the weight
+        // they carry (the arms pulled against each other more the larger the octopus)
+        Arm.SinusAmount = 0f; Arm.Tone = 1f / Mathf.Max(1f, Arm.SizeScale);
         if (PinCount() == 0) { Enter(State.Feel); return; }   // the body let this grip go (overload)
+        ArmRole role = RoleOf(c);
         OctoIntent it = c.Intent;
-        Vector3 centre = c.Body.HeadCentre, anchor = c.Board.Anchor[Index];
-        float lt = 1f;
+        Vector3 head = c.Body.HeadCentre, anchor = c.Board.Anchor[Index];
+        bool travel = ArmCoordinator.Travelling(it.mode);
+        Vector3 R = c.Coordinator.RouteDir;
+        bool arrived = !travel || (it.goal - head).magnitude < 0.15f * Arm.Length;
+        bool ahead = travel && !arrived && OctoMath.Dot(anchor - head, R) > ArmCoordinator.AheadFraction * Arm.Length;
+        // the lead grip pulls the body along the route; every other hold only pays out
+        HoldRun(c, c.Board.Pulling[Index]);
         wantsRelease = false;
-        if (it.mode == OctoMode.Travel || it.mode == OctoMode.Stalk || it.mode == OctoMode.Retreat)
-        {
-            Vector3 a = anchor - centre, g = it.goal - centre;
-            float align = Vector3.Dot(a.normalized, g.normalized);
-            float urgency = Mathf.Clamp01(it.urgency);
-            if (align > 0.25f) lt = Mathf.Lerp(1f, Arm.Spec.MinStretch, 0.5f + 0.5f * urgency);   // pull toward it
-            else if (align < -0.05f) { lt = 1.12f; wantsRelease = true; }                          // behind: let it go
-            // a goal that is already reached needs no pulling
-            if (g.magnitude < 0.15f * Arm.Length) { lt = 1f; wantsRelease = false; }
-        }
-        for (int j = 0; j < Arm.N - 1; j++) Arm.LengthTarget[j] = Arm.Pinned[j + 1] ? 1f : lt;
+        // the body passed it: let go and grip again ahead. Came so close that the run cannot shorten any more and
+        // cannot haul either: done pulling - the octopus makes it a support hold (it keeps what was gained) and
+        // sends another arm ahead
+        if (role == ArmRole.Grip && !arrived && !ahead) wantsRelease = true;   // (it stays a grip arm and reaches ahead again)
+        else if (role == ArmRole.Grip && !arrived && Spent() && !Haul(c, ts)) Report(c, ArmReport.Done);
+        else if (!ArmCoordinator.Holds(role) && role != ArmRole.Strike) wantsRelease = true;                // a hold the octopus does not need
         if (wantsRelease && c.Time - anchoredAt > 0.6f * ts && c.Board.CanRelease(Index)) BeginRelease(c);
         // a settled rest lets a spare hold go that is pulled taut (beyond the arm's rest length): holds taken
         // one by one rarely agree, and taut runs pulling against each other set the body flickering. One at a
@@ -311,6 +427,47 @@ public sealed class TentacleAgent
         }
     }
 
+    // The run from the root to the base-most pin takes its length from the body motion the octopus wants
+    // (DesiredVelocity, the same for every arm). pull (the lead grip): the run is the distance from its hold to
+    // the root's next position, so the tether draws the body there. Otherwise the run only pays out what that
+    // motion asks of it (with PayOutMargin to spare: the body never follows a plan exactly) and never shortens -
+    // a hold behind lets the body go forward, a hold beside never drags it sideways, and with no motion wanted
+    // nothing changes (no creep under the body's weight).
+    public const float PayOutMargin = 1.5f;
+
+    void HoldRun(OctopusController c, bool pull, bool atCatch = false)
+    {
+        int p = Arm.BasePin();
+        if (p <= 0) return;
+        float arc = TentacleChain.Taut * Arm.Spacing * p;
+        Vector3 next = Arm.X[0] + c.Board.DesiredVelocity * c.LastDt, pin = Arm.X[p];
+        float s;
+        if (pull) s = (next - pin).magnitude / arc;
+        else
+        {
+            float grow = (next - pin).magnitude - (Arm.X[0] - pin).magnitude;
+            s = Arm.LengthTarget[0] + Mathf.Max(0f, grow) * PayOutMargin / arc;
+            // at the catch, a run gripped longer than its target (a stretched reach) keeps the length it has: no
+            // yank. Only then: afterwards a hold that something pushes the body away from (an impact, a contact
+            // push) does not pay out after it - that would let every hold creep long and slack
+            // while the body is being moved, a hold that pays out also follows where the body really went (the
+            // pull draws it toward the grips' holds and gravity swings it, never exactly along the plan): it never
+            // holds the body back against the pull
+            bool moving = c.Board.DesiredVelocity.sqrMagnitude > 0f;
+            if (atCatch || moving) s = Mathf.Max(s, Mathf.Min((Arm.X[0] - pin).magnitude / arc, Arm.Spec.MaxStretch));
+        }
+        // and long enough that the virtual particle behind the root (its tether reaches one spacing farther)
+        // is not snatched toward the hold either: a hold off to the side of where the arm leaves the body would
+        // otherwise twist the body through that tether, and two of them on either side twisted it against each
+        // other (the tug-of-war that remained, at ~100 body weights each)
+        float back = ((Arm.Back - pin).magnitude / TentacleChain.Taut - Arm.Spacing) / (Arm.Spacing * p);
+        // (a pulling arm too: one that turned the body toward its hold through that tether twisted it against
+        // the holds paying out - at 4x, hundreds of body weights)
+        if (back > s) s = back;
+        s = Mathf.Clamp(s, Arm.Spec.MinStretch, Arm.Spec.MaxStretch);
+        for (int j = 0; j < Arm.N - 1; j++) Arm.LengthTarget[j] = j < p ? s : 1f;
+    }
+
     public const float TautHold = 0.8f;   // Overload above which a spare hold is let go in a settled rest
 
     bool TautestHold(OctopusController c)
@@ -320,11 +477,15 @@ public sealed class TentacleAgent
         return true;
     }
 
-    void BeginRelease(OctopusController c) { peelNext = c.Time; ReleasesStarted++; Enter(State.Release); }
+    ArmRole releaseRole;
+    void BeginRelease(OctopusController c) { peelNext = c.Time; ReleasesStarted++; releaseRole = RoleOf(c); Enter(State.Release); }
 
     void TickRelease(OctopusController c, float ts)
     {
-        for (int j = 0; j < Arm.N - 1; j++) Arm.LengthTarget[j] = 1f;
+        HoldRun(c, false);
+        // the octopus wants this hold kept after all (support short): stop peeling, hold on with what is left
+        // (a role changed to a holding one since the release began)
+        if (RoleOf(c) != releaseRole && ArmCoordinator.Holds(RoleOf(c)) && PinCount() > 0) { anchoredAt = c.Time; Enter(State.Anchored); return; }
         if (c.Time < peelNext) return;
         peelNext = c.Time + PeelStep * ts;
         for (int k = 1; k < Arm.N; k++)
@@ -369,6 +530,7 @@ public sealed class TentacleAgent
                 holdUntil = c.Time + c.HoldSeconds;
                 c.NotifyGrab(prey);
                 Enter(State.Hold);
+                TickHold(c);   // wrapped at once: a strike's momentum must not carry the tip off for a frame
                 return;
             }
         }
@@ -404,6 +566,91 @@ public sealed class TentacleAgent
         Enter(State.Curl);
     }
 
+    // ------------------------------------------------------------------ grooming (T6)
+
+    // Grooming: the tip strokes up and down an analytic path - over its own side of the mantle shell, or along a
+    // neighbouring arm - 2-4 strokes, then the arm reports Done and curls. The path stands a little off the
+    // surface (GroomClearance x the tip radius beyond the skin), so the stroke brushes it and never goes in. No
+    // queries.
+    public const float StrokeSeconds = 1.3f, GroomClearance = 2.5f;
+    float groomStart; int groomStrokes;
+    public int GroomStrokes;   // cumulative
+
+    void BeginGroom(OctopusController c)
+    {
+        groomStart = c.Time;
+        groomStrokes = 2 + (int)(Rand() * 3f);
+        Enter(State.Groom);
+        Arm.ShapePull = 0.02f;
+    }
+
+    // Where the grooming tip should be at stroke phase u (0..strokes).
+    public Vector3 GroomPoint(OctopusController c, float u, out int other)
+    {
+        OctopusBody b = c.Body;
+        float tri = 1f - Mathf.Abs(2f * (u - Mathf.Floor(u)) - 1f);
+        other = c.Board.Command[Index].groomArm;
+        float tipR = Arm.Spec.TipRadius * Arm.SizeScale;
+        if (other >= 0 && other < b.ArmCount && other != Index)
+        {
+            TentacleChain o = b.Arms[other];
+            float kf = Mathf.Lerp(5f, o.N - 6f, tri);
+            int k = Mathf.Clamp((int)kf, 1, o.N - 2);
+            Vector3 p = Vector3.Lerp(o.X[k], o.X[k + 1], kf - k);
+            Vector3 side = OctoMath.Norm(Arm.X[0] - o.X[0], c.Up);
+            float rk = o.Spec.RadiusAt(o.Spec.Spacing * kf) * o.SizeScale;
+            return p + side * (rk + GroomClearance * tipR);
+        }
+        Vector3 d = restDirLocal;
+        float phi = Mathf.Atan2(d.x, d.z) + 0.35f * Mathf.Sin(Mathf.PI * u);
+        float t = Mathf.Lerp(0.4f, 0.85f, tri);
+        Vector3 local = OctopusShape.ShellPoint(b.Spec, t, phi) * b.SizeScale;
+        Vector3 n = OctoMath.Norm(local - OctopusShape.Axis(b.Spec, t) * b.SizeScale, Vector3.up);
+        local += n * (GroomClearance * tipR);
+        return b.HeadCentre + OctoMath.Rotate(b.Orientation, local - b.Lattice.ClusterRestCentre[OctopusShape.ClusterHead]);
+    }
+
+    void TickGroom(OctopusController c, float ts)
+    {
+        if (RoleOf(c) != ArmRole.Groom) { Arm.ShapePull = 0f; Enter(State.Curl); return; }
+        Arm.Tone = 1f; Arm.SinusAmount = 0f;
+        float u = (c.Time - groomStart) / (StrokeSeconds * ts);
+        if (u >= groomStrokes)
+        {
+            GroomStrokes += groomStrokes;
+            Report(c, ArmReport.Done);
+            Arm.ShapePull = 0f;
+            Enter(State.Curl);
+            return;
+        }
+        // the stroke eases in over the first half stroke (no whip toward the body)
+        float w = Mathf.Clamp01(u * 2f) * 0.85f;
+        Arm.SetTargetShape(GroomPoint(c, u, out _), w, false);
+    }
+
+    // The grooming arm's last particles touch the skin and stay outside it (the octopus does not collide with
+    // itself otherwise; a stroke that reached into the mantle would read as the arm sinking into the body). The
+    // analytic shell of the rest shape, in the head's frame; a particle inside is put back on it, its velocity
+    // into it removed.
+    internal void KeepOffShell(OctopusController c)
+    {
+        if (Mode != State.Groom) return;
+        OctopusBody b = c.Body;
+        Quaternion q = b.Orientation, inv = new Quaternion(-q.x, -q.y, -q.z, q.w);
+        Vector3 rc = b.Lattice.ClusterRestCentre[OctopusShape.ClusterHead];
+        float s = b.SizeScale;
+        for (int k = Arm.N - 5; k < Arm.N; k++)
+        {
+            if (k < 1 || Arm.Pinned[k]) continue;
+            Vector3 local = (OctoMath.Rotate(inv, Arm.X[k] - b.HeadCentre) + rc) * (1f / s);
+            float rk = Arm.Spec.RadiusAt(Arm.Spec.Spacing * k) * Arm.SizeScale;
+            float d = OctopusShape.ShellDistance(b.Spec, local, out Vector3 o) * s - rk;
+            if (d >= 0f) continue;
+            Vector3 push = OctoMath.Rotate(q, o) * (-d);
+            Arm.X[k] += push; Arm.Prev[k] += push;
+        }
+    }
+
     // ------------------------------------------------------------------ perception
 
     // The arm's own reach cone: its rest direction (body-rotated), drawn toward the goal when travelling and
@@ -425,7 +672,7 @@ public sealed class TentacleAgent
             }
         }
         OctoIntent it = c.Intent;
-        if (it.mode == OctoMode.Travel || it.mode == OctoMode.Stalk || it.mode == OctoMode.Retreat)
+        if (RoleOf(c) == ArmRole.Grip && ArmCoordinator.Travelling(it.mode))
         {
             Vector3 g = it.goal - c.Body.HeadCentre;
             if (g.sqrMagnitude > 1e-6f) axis += g.normalized * (0.8f + Mathf.Clamp01(it.urgency));
@@ -467,13 +714,18 @@ public sealed class TentacleAgent
             Remember(h.point, h.normal, h.source, c.Time, true);
     }
 
+    public const float GripMinReach = 0.6f;   // x arm length: the nearest hold a grip arm on the route takes
+
     bool Acceptable(OctopusController c, Vector3 p)
     {
         if (c.Board.Crowding(Index, p, 0.12f * Arm.Length) > 0.3f) return false;   // another arm holds there
         OctoIntent it = c.Intent;
-        if (it.mode != OctoMode.Travel && it.mode != OctoMode.Retreat) return true;
+        if (RoleOf(c) != ArmRole.Grip || !ArmCoordinator.Travelling(it.mode)) return true;
+        // a grip on the route is taken far enough out to pull with (a hold near the root leaves the run nothing
+        // to shorten) and not clearly behind
+        if ((p - Arm.X[0]).magnitude < GripMinReach * Arm.Length) return false;
         Vector3 g = it.goal - c.Body.HeadCentre, a = p - c.Body.HeadCentre;
-        return Vector3.Dot(a, g) > -0.2f * a.magnitude * g.magnitude;   // not clearly behind
+        return Vector3.Dot(a, g) > -0.2f * a.magnitude * g.magnitude;
     }
 
     void Remember(Vector3 p, Vector3 n, int source, float time, bool hinted)
@@ -504,7 +756,7 @@ public sealed class TentacleAgent
         Vector3 root = Arm.X[0], centre = c.Body.HeadCentre;
         float L = Arm.Length;
         OctoIntent it = c.Intent;
-        bool travel = it.mode == OctoMode.Travel || it.mode == OctoMode.Stalk || it.mode == OctoMode.Retreat;
+        bool travel = RoleOf(c) == ArmRole.Grip && ArmCoordinator.Travelling(it.mode);
         Vector3 g = it.goal - centre;
         float gl = g.magnitude;
         for (int i = 0; i < MemorySize; i++)
@@ -515,7 +767,7 @@ public sealed class TentacleAgent
             if (age > 6f) { memory[i].valid = false; continue; }
             Vector3 d = m.point - root;
             float dist = d.magnitude / L;
-            if (dist < 0.25f || dist > 1.25f) continue;
+            if (dist < (travel ? GripMinReach : 0.25f) || dist > 1.25f) continue;
             float s = 1f - Mathf.Abs(dist - 0.65f) / 0.45f;
             if (travel && gl > 1e-3f)
             {
@@ -547,7 +799,7 @@ public sealed class TentacleAgent
         drapeUntil[k] = time + DrapeSeconds;
     }
 
-    public bool IsFreeArm => Mode == State.Curl || Mode == State.Feel || Mode == State.Reach || Mode == State.Strike;
+    public bool IsFreeArm => Mode == State.Curl || Mode == State.Feel || Mode == State.Reach || Mode == State.Strike || Mode == State.Groom;
 
     void ExpireDrapes(float time)
     {

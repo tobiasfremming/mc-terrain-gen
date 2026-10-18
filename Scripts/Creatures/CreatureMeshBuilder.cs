@@ -37,6 +37,7 @@ public static class CreatureMeshBuilder
 
     public static Mesh Build(CreatureSpecies sp)
     {
+        sp = sp.Compiled.Runtime;   // creature kit: the runtime view (a legacy asset is its own)
         var b = new Builder(sp);
         b.Body();
         for (int l = 0; l < (sp.legs != null ? sp.legs.Length : 0); l++) b.Leg(l);

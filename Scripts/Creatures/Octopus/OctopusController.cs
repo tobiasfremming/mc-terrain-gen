@@ -32,6 +32,7 @@ public sealed class OctopusController
     public ISurfaceProbe SurfaceProbe;
     public IBranchHints Hints;
     public OctopusBrain Brain;
+    public readonly ArmCoordinator Coordinator;   // decides what each arm is for (ticked after the brain)
     public OctoIntent Intent;                 // set by the brain, or by a test directly
     public Func<Vector3, Vector3> UpAt;
     public int RestAnchors = 4;               // at rest, free arms keep feeling until this many hold on
@@ -72,6 +73,7 @@ public sealed class OctopusController
         for (int a = 0; a < body.ArmCount; a++)
             Agents[a] = new TentacleAgent(a, body.Arms[a], OctopusShape.ArmDir(body.Spec, a), seed);
         Intent = new OctoIntent { mode = OctoMode.Rest, goal = body.HeadCentre };
+        Coordinator = new ArmCoordinator(body, seed);
     }
 
     public int SlotOf(int arm) => slotBase + arm;
@@ -143,6 +145,7 @@ public sealed class OctopusController
 
         gripPlanned = false;
         Brain?.Tick(dt, this);
+        Coordinator.Tick(dt, this);
         for (int a = 0; a < Agents.Length; a++) Agents[a].Tick(dt, this);
         RestRelax();
         bool wasAsleep = Body.Asleep;
@@ -160,6 +163,8 @@ public sealed class OctopusController
             CollideBody();
             if (!Far) SweepFreeArms();
             ApplyPlanes();
+            // a grooming arm's tip rests on the skin, not in it (after the solve, like the contact planes)
+            for (int a = 0; a < Agents.Length; a++) Agents[a].KeepOffShell(this);
             // fell asleep this tick: the pose to hold is the one after contact (the body's sleep snapshot is
             // taken before it; holding that one would leave a part resting on a surface where the solver had it,
             // inside the surface, and show as a jump the moment the octopus falls asleep)
@@ -180,7 +185,7 @@ public sealed class OctopusController
     public const float BendMax = 0.12f;       // x arm length: thicker surfaces keep flat contact planes
     public float NextRestRelease;              // a settled rest lets go of a taut spare hold at most this often
     public const float RestHoldTone = 0.5f;
-    public const float RestSlack = 1.06f;      // a holding arm's free run's length target in a settled rest   // a holding arm's muscle tone in a settled rest (relaxed)
+    public const float RestBodyCalm = 0.5f;     // x RestRelaxRate: the body's damping at rest before it is settled
 
     void RestRelax()
     {
@@ -194,19 +199,18 @@ public sealed class OctopusController
         Settled = settled;
         Body.Settled = settled;
         float want = settled ? TentacleAgent.RestRelaxRate / Body.TimeScale : 0f;
-        if (Body.Lattice.ExtraDamping != want) Body.Lattice.ExtraDamping = want;
+        // resting but an arm still looking for a hold: the body (only) already calms - a resting octopus holds
+        // itself still with its muscles, it does not swing on its holds for seconds while one arm searches
+        float body = settled ? want : rest && Board.AnchoredCount >= Board.MinAnchors ? RestBodyCalm * TentacleAgent.RestRelaxRate / Body.TimeScale : 0f;
+        if (Body.Lattice.ExtraDamping != body) Body.Lattice.ExtraDamping = body;
         for (int a = 0; a < Agents.Length; a++)
             if (Agents[a].Mode == TentacleAgent.State.Anchored)
             {
                 if (Body.Arms[a].ExtraDamping != want) Body.Arms[a].ExtraDamping = want;
                 if (settled) Body.Arms[a].Tone = RestHoldTone;
-                if (settled)
-                {
-                    // and lets its run go a little slack: holds taken one by one never agree exactly, and eight
-                    // taut runs pulling against each other set the solver ringing (a 2-tick flicker at the roots)
-                    TentacleChain ch = Body.Arms[a];
-                    for (int j = 0; j < ch.N - 1; j++) if (!ch.Pinned[j + 1]) ch.LengthTarget[j] = RestSlack;
-                }
+                // (a settled rest used to let every run go 6 % slack here, against holds pulling on each other; the
+                // holds now take one consistent length (TentacleAgent.HoldRun) and the slackening only dropped the
+                // body a few cm the moment it settled)
             }
     }
 
