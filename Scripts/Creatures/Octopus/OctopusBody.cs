@@ -224,7 +224,7 @@ public sealed class OctopusBody
     // Calm = every particle moved less than SleepSpeed x sizeScale between the ends of two ticks. Measured tick
     // end to tick end (before the controller's contact planes), not by the last sub-step's X - Prev: a particle
     // held between a constraint and a contact plane keeps a constant X - Prev while standing perfectly still.
-    Vector3[] tickX;
+    Vector3[] tickX, tickX2;
 
     void UpdateSleep(float dt)
     {
@@ -232,16 +232,19 @@ public sealed class OctopusBody
         int n = SoftLattice.Count;
         for (int a = 0; a < ArmCount; a++) n += Arms[a].N;
         bool first = tickX == null;
-        if (first) tickX = new Vector3[n];
-        float lim = (Settled ? SettledSleepSpeed : SleepSpeed) * SizeScale * dt;
+        if (first) { tickX = new Vector3[n]; tickX2 = new Vector3[n]; }
+        // a settled rest is judged over two ticks: a part caught between a contact and the solver can flip
+        // between two poses a few mm apart every tick for ever (going nowhere); sleeping freezes one of them
+        bool two = Settled;
+        float lim = (Settled ? 2f * SettledSleepSpeed : SleepSpeed) * SizeScale * dt;
         float maxD2 = 0f;
         int o = 0;
         Vector3[] lx = Lattice.X;
         for (int i = 0; i < SoftLattice.Count; i++, o++)
         {
-            Vector3 q = tickX[o], x = lx[i];
+            Vector3 q = two ? tickX2[o] : tickX[o], x = lx[i];
             maxD2 = Mathf.Max(maxD2, (x.x - q.x) * (x.x - q.x) + (x.y - q.y) * (x.y - q.y) + (x.z - q.z) * (x.z - q.z));
-            tickX[o] = x;
+            tickX2[o] = tickX[o]; tickX[o] = x;
         }
         bool sinus = false;
         for (int a = 0; a < ArmCount; a++)
@@ -251,9 +254,9 @@ public sealed class OctopusBody
             Vector3[] x = ch.X;
             for (int k = 0; k < ch.N; k++, o++)
             {
-                Vector3 q = tickX[o], xk = x[k];
+                Vector3 q = two ? tickX2[o] : tickX[o], xk = x[k];
                 if (k > 0) maxD2 = Mathf.Max(maxD2, (xk.x - q.x) * (xk.x - q.x) + (xk.y - q.y) * (xk.y - q.y) + (xk.z - q.z) * (xk.z - q.z));
-                tickX[o] = xk;
+                tickX2[o] = tickX[o]; tickX[o] = xk;
             }
         }
         if (first || sinus || maxD2 > lim * lim) { calmFrames = 0; return; }

@@ -264,6 +264,16 @@ public sealed class OctopusController
         int slot = -1;
         for (int i = 0; i < planeCount; i++)
             if ((planes[i].point - h.point).sqrMagnitude < s2 && OctoMath.Dot(planes[i].normal, h.normal) > 0.9f) { slot = i; break; }
+        // the same surface found again (the hit lies on the plane, same facing): only its life is extended.
+        // Re-taking it from every new hit moved the plane a little each time - and with it the parts resting
+        // on it, a periodic jolt (every few ticks, several mm) that kept a perched octopus awake
+        if (slot >= 0 && OctoMath.Dot(planes[slot].normal, h.normal) > 0.98f
+            && Mathf.Abs(OctoMath.Dot(h.point - planes[slot].point, planes[slot].normal)) < 0.25f * Skin)
+        {
+            planes[slot].until = Mathf.Max(planes[slot].until, Time + PlaneSeconds);
+            if (OctoMath.Dot(h.normal, Up) > 0.5f) groundedUntil = Time + 0.5f;
+            return;
+        }
         if (slot < 0 && planeCount < MaxPlanes) slot = planeCount++;
         if (slot < 0)
         {
