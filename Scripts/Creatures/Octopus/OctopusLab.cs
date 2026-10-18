@@ -150,6 +150,9 @@ public sealed class OctopusLab : MonoBehaviour
         Vector3 spawn = canopyRegions.Count > 0 ? canopyRegions[0] : centre + cUp * (0.5f * height);
         Octopus = world.SpawnOctopus(octopus, spawn, Quaternion.FromToRotation(Vector3.up, cUp), area, seed, ChosenScale, Hints);
         foreach (Vector3 r in canopyRegions) Octopus.Brain.CanopyRegions.Add(r);
+        // from the canopy it must see the grove floor: perception reaches the ground below the tallest canopy
+        float armL = Octopus.Body.Arms[0].Length;
+        if (armL > 1e-3f) Octopus.Brain.RangeLengths = Mathf.Max(Octopus.Brain.RangeLengths, 0.8f * tallest / armL);
         int held;
         using (PhysicsSurfaceProbe.Backfaces()) held = Octopus.AnchorNearby();
         Octopus.Viewer = Camera.main != null ? Camera.main.transform : player;

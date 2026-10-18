@@ -529,7 +529,22 @@ public sealed class CreatureSim
     // Quaternion.LookRotation(f, u) for a unit f and a unit u perpendicular to it, built from the rotation
     // matrix with columns (u x f, u, f): the frame convention's right, up and forward (cheaper than the
     // engine call, which the sim makes for every joint twice a frame).
+    // f and u are only near-orthonormal after the roll and climb slerps, so the extracted quaternion can drift
+    // from unit length by ~1e-5; Matrix4x4.TRS rejects that ("input Quaternion is invalid"). Renormalise only
+    // then, so exact frames keep their bits.
     internal static Quaternion Basis(Vector3 f, Vector3 u)
+    {
+        Quaternion q = BasisRaw(f, u);
+        float l2 = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+        if (Mathf.Abs(l2 - 1f) > 1e-6f)
+        {
+            float inv = 1f / Mathf.Sqrt(l2);
+            q = new Quaternion(q.x * inv, q.y * inv, q.z * inv, q.w * inv);
+        }
+        return q;
+    }
+
+    static Quaternion BasisRaw(Vector3 f, Vector3 u)
     {
         float rx = u.y * f.z - u.z * f.y, ry = u.z * f.x - u.x * f.z, rz = u.x * f.y - u.y * f.x;
         float m00 = rx, m01 = u.x, m02 = f.x, m10 = ry, m11 = u.y, m12 = f.y, m20 = rz, m21 = u.z, m22 = f.z;
