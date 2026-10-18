@@ -29,6 +29,12 @@ public sealed class OctopusLab : MonoBehaviour
     public int seed = 31;
     public Material borderMaterial;
     public bool logEvents = true;
+    [Tooltip("Cloak (dither-dissolve) on: off by default until the look is reworked; the species' cephalopod.cloakEnabled also turns it on.")]
+    public bool cloakEnabled = false;
+    [Tooltip("Role readout (top left): what the octopus has each arm do, its state, the force it puts on the body, and role changes per minute.")]
+    public bool showRoles = true;
+    [Tooltip("Also log every role change to the console.")]
+    public bool logRoles = false;
 
     const float kWaitSeconds = 20f, kProbeWindow = 6f, kGap = 6f, kMargin = 1.5f;
 
@@ -149,6 +155,7 @@ public sealed class OctopusLab : MonoBehaviour
         var area = new EnclosureArea { center = centre, up = cUp, radius = radius, safeRadius = groveRadius, maxHeight = tallest };
         Vector3 spawn = canopyRegions.Count > 0 ? canopyRegions[0] : centre + cUp * (0.5f * height);
         Octopus = world.SpawnOctopus(octopus, spawn, Quaternion.FromToRotation(Vector3.up, cUp), area, seed, ChosenScale, Hints);
+        if (cloakEnabled) Octopus.Brain.CloakEnabled = true;
         foreach (Vector3 r in canopyRegions) Octopus.Brain.CanopyRegions.Add(r);
         // from the canopy it must see the grove floor: perception reaches the ground below the tallest canopy
         float armL = Octopus.Body.Arms[0].Length;
@@ -182,6 +189,61 @@ public sealed class OctopusLab : MonoBehaviour
         }
         Debug.Log($"[OctopusLab] grove of {Trees.Count} trees at {centre} (r {radius:F1} m, flatness {flatness:F3}, tallest {tallest:F1} m), " +
                   $"octopus at scale {ChosenScale:F2} holding with {held} arms, prey {(Prey != null ? preySpecies.name : "player only")}, hints {Hints.TreeCount} trees");
+    }
+
+    // ------------------------------------------------------------------ role readout (plan T5)
+    // Rebuilt 4 times a second into one cached string (no per-frame allocation from it; GUI.Box itself draws the
+    // cached text). Per arm: role / state / force on the body in body weights; then the planned speed, the
+    // pullers, holds, and role changes per minute over the last minute.
+    readonly System.Text.StringBuilder roleText = new System.Text.StringBuilder(512);
+    string roleCache = "";
+    float roleNext;
+    readonly ArmRole[] lastRoles = new ArmRole[16];
+    readonly float[] changeTimes = new float[256];
+    int changeCount, changeHead;
+    bool rolesInit;
+
+    void LateUpdate()
+    {
+        if (Octopus == null || (!showRoles && !logRoles)) return;
+        OctopusController c = Octopus.Controller;
+        ArmBlackboard b = c.Board;
+        int n = Mathf.Min(b.Arms, lastRoles.Length);
+        for (int a = 0; a < n; a++)
+        {
+            if (!rolesInit) { lastRoles[a] = b.Role[a]; continue; }
+            if (b.Role[a] == lastRoles[a]) continue;
+            if (logRoles) Debug.Log($"[OctopusLab] t {c.Time:F1} arm {a}: {lastRoles[a]} -> {b.Role[a]} ({c.Agents[a].Mode})");
+            lastRoles[a] = b.Role[a];
+            changeTimes[changeHead] = c.Time; changeHead = (changeHead + 1) % changeTimes.Length;
+            if (changeCount < changeTimes.Length) changeCount++;
+        }
+        rolesInit = true;
+        if (!showRoles || Time.unscaledTime < roleNext) return;
+        roleNext = Time.unscaledTime + 0.25f;
+        int recent = 0;
+        for (int i = 0; i < changeCount; i++) if (c.Time - changeTimes[i] <= 60f) recent++;
+        float minutes = Mathf.Clamp(c.Time / 60f, 1f / 60f, 1f);
+        float weight = Octopus.Body.TotalMass * OctopusController.Gravity;
+        roleText.Length = 0;
+        roleText.Append("octopus  ").Append(Octopus.Brain.Mode).Append("  intent ").Append(c.Intent.mode)
+                .Append("  speed ").Append(c.Board.DesiredVelocity.magnitude.ToString("F2")).Append(" m/s  holds ").Append(b.AnchoredCount)
+                .Append("  role changes/min/arm ").Append((recent / (minutes * n)).ToString("F1")).Append('\n');
+        for (int a = 0; a < n; a++)
+        {
+            roleText.Append(a).Append("  ").Append(b.Role[a].ToString().PadRight(7)).Append(c.Agents[a].Mode.ToString().PadRight(9))
+                    .Append((Octopus.Body.ArmForce[a].magnitude / weight).ToString("F1")).Append(" W");
+            if (b.Pulling[a]) roleText.Append("  pulls");
+            if (b.Anchored[a]) roleText.Append("  holds");
+            roleText.Append('\n');
+        }
+        roleCache = roleText.ToString();
+    }
+
+    void OnGUI()
+    {
+        if (!showRoles || Octopus == null || roleCache.Length == 0) return;
+        GUI.Box(new Rect(10f, 10f, 430f, 22f + 16f * 9f), roleCache);
     }
 
     static string Name(IPreyTarget p) => p is PlayerPrey ? "the player" : p is CreaturePrey cp ? cp.Sim.Species.name : "prey";

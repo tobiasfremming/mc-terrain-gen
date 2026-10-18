@@ -29,7 +29,7 @@ public sealed class OctopusCreature : ICreatureBody
         Species = sp;
         var body = new OctopusBody(sp.cephalopod, position, rotation, sizeScale);
         Controller = new OctopusController(body, probe, upAt, (uint)seed);
-        Brain = new OctopusBrain((uint)seed);
+        Brain = new OctopusBrain((uint)seed) { CloakEnabled = sp.cephalopod.cloakEnabled };
         Controller.Brain = Brain;
         this.hints = hints;
         Controller.Hints = hints;

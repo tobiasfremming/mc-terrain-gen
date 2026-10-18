@@ -16,7 +16,6 @@ namespace TerrainGen.Tests
     public class CreatureKitTests
     {
         internal const float kDt = 1f / 60f;
-        const float kMeshBudgetMs = 5f;
         const float kWanderSeconds = 300f;
 
         readonly string name;
@@ -37,7 +36,7 @@ namespace TerrainGen.Tests
         [Test] public void Validate()
         {
             Applies(CreatureKitAssets.Validate);
-            Assert.IsNull(sp.Validate(), name);
+            Assert.IsNull(CreatureKitAssets.LoadAsset(name).Validate(), name);   // a kit asset: compose errors included
         }
 
         // 2. The asset's script is CreatureSpecies and every serialized key is a field (a renamed or misspelt
@@ -56,21 +55,7 @@ namespace TerrainGen.Tests
             Assert.IsNull(KitChecks.LayoutProblem(sp), name);
         }
 
-        // 4. The rest mesh builds in under 5 ms (it is built at runtime, per species).
-        [Test] public void MeshTime()
-        {
-            Applies(CreatureKitAssets.MeshTime);
-            double best = double.MaxValue;
-            for (int i = 0; i < 3; i++)
-            {
-                var sw = Stopwatch.StartNew();
-                Mesh m = CreatureKitAssets.BuildMesh(sp);
-                best = Math.Min(best, sw.Elapsed.TotalMilliseconds);
-                Object.DestroyImmediate(m);
-            }
-            TestContext.Out.WriteLine($"{name}: mesh build {best:F2} ms (best of 3)");
-            Assert.Less(best, kMeshBudgetMs, name + ": mesh build time");
-        }
+        // 4. MeshTime: timing, in CreatureKitPerfTests (TerrainGen.Tests.Perf) so routine kit runs leave it out.
 
         // 5. Skinned through a 5 s minimum-radius circle (the bend limits), no triangle inverts.
         [Test] public void MaxBend()
@@ -122,15 +107,7 @@ namespace TerrainGen.Tests
             Assert.AreEqual(0, allocs, name + ": brain/tick/bones allocated");
         }
 
-        // 11. One individual's tick + bone write within the species' budget (flat ground; run on a quiet machine).
-        [Test, Category("Perf")] public void Perf()
-        {
-            Applies(CreatureKitAssets.Perf);
-            double median = KitChecks.TickMedianMs(sp);
-            float budget = CreatureKitAssets.PerfBudgetMs(sp);
-            TestContext.Out.WriteLine($"{name}: median tick + bones {median * 1000.0:F1} us (budget {budget * 1000f:F0} us)");
-            Assert.LessOrEqual(median, budget, name + ": per-frame cost");
-        }
+        // 11. Perf: timing, in CreatureKitPerfTests (TerrainGen.Tests.Perf).
 
         // 12. The lab can house it: a habitat from its data and an enclosure (or aviary) it fits.
         [Test] public void Lab()
@@ -211,7 +188,9 @@ namespace TerrainGen.Tests
             if (guid != want) return $"m_Script guid {guid} is not CreatureSpecies.cs ({want})";
             HashSet<string> fields = CreatureKitAssets.SerializedFields(typeof(CreatureSpecies));
             var unknown = new List<string>();
-            foreach (string k in keys) if (!k.StartsWith("m_", StringComparison.Ordinal) && !fields.Contains(k)) unknown.Add(k);
+            // `references` is Unity's store of the [SerializeReference] parts and modules (checked below)
+            foreach (string k in keys) if (!k.StartsWith("m_", StringComparison.Ordinal) && k != "references" && !fields.Contains(k)) unknown.Add(k);
+            unknown.AddRange(CreatureKitAssets.KitYamlProblems(System.IO.File.ReadAllLines(CreatureKitAssets.FullPath(path))));
 #if CREATURE_HARNESS
             // offline the YAML reader also sees nested keys (legs[i].x, look.x, ...)
             foreach (string k in HarnessYaml.UnknownKeys(CreatureKitAssets.FullPath(path))) if (!unknown.Contains(k)) unknown.Add(k);

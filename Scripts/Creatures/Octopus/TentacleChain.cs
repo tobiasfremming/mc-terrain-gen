@@ -39,6 +39,7 @@ public sealed class TentacleChain
     const float kSqueezeRate = 12f;          // 1/s, squeeze low-pass
     const float kConeSlack = 1e-4f;          // rad: the strict pass leaves joints at limit - slack
     const float kTaut = 0.96f;               // tethers hold a loaded run to this fraction of its arc: muscle keeps a curve
+    public const float Taut = kTaut;
     const float kMinThin = 0.93f;            // stretched cross-sections thin to no less than this
 
     public readonly TentacleSpec Spec;
@@ -165,6 +166,13 @@ public sealed class TentacleChain
     }
 
     public void UnpinAll() { for (int k = 1; k < N; k++) Unpin(k); }
+
+    // The pinned particle nearest the root (the end of the free run that carries the body), or -1.
+    public int BasePin()
+    {
+        for (int k = 1; k < N; k++) if (Pinned[k]) return k;
+        return -1;
+    }
 
     public void SetLimp(bool limp) => Tone = limp ? 0f : 1f;
 

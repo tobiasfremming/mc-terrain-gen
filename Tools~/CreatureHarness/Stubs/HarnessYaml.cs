@@ -33,8 +33,13 @@ public static class HarnessYaml
         // the single root key: MonoBehaviour
         Map body = doc.Items[0].Value as Map ?? throw new InvalidDataException(fullPath + ": root is not a mapping");
         object target = New(type);
+        // [SerializeReference] fields hold {rid: N}; the objects live under references.RefIds (version 2)
+        refIds = new Dictionary<string, Map>();
+        if (body.Get("references") is Map refs && refs.Get("RefIds") is List<object> ids)
+            foreach (object o in ids) if (o is Map m && m.Get("rid") is string rid) refIds[rid] = m;
         foreach (var kv in body.Items)
         {
+            if (kv.Key == "references" && refIds.Count > 0) continue;
             if (kv.Key == "m_Name")
             {
                 // RealUnity mode: Object.name is engine-side; the object stays nameless (tests reading it report NATIVE)
@@ -44,7 +49,7 @@ public static class HarnessYaml
             if (kv.Key.StartsWith("m_", StringComparison.Ordinal)) continue;   // Unity bookkeeping
             FieldInfo f = Field(type, kv.Key);
             if (f == null) { report.Unknown.Add(kv.Key); continue; }
-            f.SetValue(target, Bind(f.FieldType, kv.Value, kv.Key, report, f.GetValue(target)));
+            f.SetValue(target, BindField(f, kv.Value, kv.Key, report, f.GetValue(target)));
         }
         return target;
     }
@@ -131,6 +136,55 @@ public static class HarnessYaml
         throw new InvalidDataException("expected a scalar, got " + node.GetType().Name);
     }
 
+    // ------------------------------------------------------------------ [SerializeReference]
+
+    [ThreadStatic] static Dictionary<string, Map> refIds;
+
+    // Types a RefIds entry names that do not resolve, per asset (Unity: "missing types").
+    public static readonly List<string> MissingTypes = new List<string>();
+
+    static object BindField(FieldInfo f, object node, string path, Report rep, object existing)
+        => f.IsDefined(typeof(UnityEngine.SerializeReference), false) ? BindRef(f.FieldType, node, path, rep) : Bind(f.FieldType, node, path, rep, existing);
+
+    static object BindRef(Type t, object node, string path, Report rep)
+    {
+        if (t.IsArray || (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(List<>)))
+        {
+            Type e = t.IsArray ? t.GetElementType() : t.GetGenericArguments()[0];
+            List<object> items = Seq(node, path);
+            var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(e));
+            for (int i = 0; i < items.Count; i++) list.Add(Ref(e, items[i], $"{path}[{i}]", rep));
+            if (!t.IsArray) return list;
+            Array a = Array.CreateInstance(e, list.Count);
+            list.CopyTo(a, 0);
+            return a;
+        }
+        return Ref(t, node, path, rep);
+    }
+
+    static object Ref(Type declared, object node, string path, Report rep)
+    {
+        string rid = (node as Map)?.Get("rid") as string;
+        if (rid == null || rid == "-2") return null;                      // -2: Unity's null reference
+        if (refIds == null || !refIds.TryGetValue(rid, out Map entry)) { rep.Unknown.Add(path + ": rid " + rid + " not in references.RefIds"); return null; }
+        Map type = entry.Get("type") as Map;
+        string cls = type?.Get("class") as string, ns = type?.Get("ns") as string;
+        Type t = null;
+        if (cls != null)
+            foreach (Type c in typeof(HarnessYaml).Assembly.GetTypes())
+                if (c.Name == cls && (c.Namespace ?? "") == (ns ?? "")) { t = c; break; }
+        if (t == null || !declared.IsAssignableFrom(t) || t.IsAbstract)
+        {
+            rep.Unknown.Add($"{path}: missing type {ns}.{cls}");
+            MissingTypes.Add($"{path}: {ns}.{cls}");
+            return null;
+        }
+        object o = New(t);
+        object data = entry.Get("data");
+        if (data is Map) Bind(t, data, $"{path}<{cls}>", rep, o);
+        return o;
+    }
+
     static object Bind(Type t, object node, string path, Report rep, object existing)
     {
         if (t == typeof(string)) return node is string s0 ? s0 : "";
@@ -176,7 +230,7 @@ public static class HarnessYaml
         {
             FieldInfo f = Field(t, kv.Key);
             if (f == null) { rep.Unknown.Add(path + "." + kv.Key); continue; }
-            f.SetValue(o, Bind(f.FieldType, kv.Value, path + "." + kv.Key, rep, f.FieldType.IsValueType ? null : f.GetValue(o)));
+            f.SetValue(o, BindField(f, kv.Value, path + "." + kv.Key, rep, f.FieldType.IsValueType ? null : f.GetValue(o)));
         }
         return o;
     }

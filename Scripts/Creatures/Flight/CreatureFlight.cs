@@ -200,7 +200,7 @@ public sealed class CreatureFlight
     const float kApproachSpeed = 0.85f;    // of cruise on the final
     const float kWallSlack = 0.5f;         // m at scale 1: the predicted turn keeps this far inside the safe radius
     const float kRollLead = 0.2f;          // s at scale 1: before a roll starts
-    const float kRollRate = 45f;           // deg/s at scale 1: a typical roll rate (FlightModel's stroke asymmetry)
+    const float kRollRate = 30f;           // deg/s at scale 1: a typical roll rate (FlightModel's stroke asymmetry; ~30 with the deep, slower beat, was 45)
 
     // The final's direction: of 12 directions the one closest to the current heading whose entry point lies
     // inside the enclosure's safe disc by a turn radius.

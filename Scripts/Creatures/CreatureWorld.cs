@@ -176,6 +176,7 @@ public sealed class CreatureWorld : MonoBehaviour
     public CreatureSim Spawn(CreatureSpecies sp, Vector3 position, Vector3 forward, ICreatureBrain brain, EnclosureArea? bounds, int seed, float scale = 0f)
     {
         if (sp == null) throw new ArgumentNullException(nameof(sp));
+        sp = sp.Compiled.Runtime;   // creature kit: the runtime view (a legacy asset is its own)
         string err = sp.Validate();
         if (err != null) throw new ArgumentException(sp.name + ": " + err, nameof(sp));
         IGroundProbe g = Ground;

@@ -143,13 +143,16 @@ public sealed class AirChain
         if (ca >= c) return d;
         Vector3 perp = d - a * ca;
         float m = perp.magnitude;
-        if (m < 1e-9f)
+        if (m < 1e-4f)
         {
-            // straight back: pick any perpendicular
+            // (nearly) straight back: pick any perpendicular (a nearly antiparallel d leaves perp as rounding
+            // noise, not perpendicular to a, and dividing by its length broke the segment length)
             perp = Vector3.Cross(a, Mathf.Abs(a.y) < 0.9f ? Vector3.up : Vector3.right);
             m = perp.magnitude;
         }
-        return a * c + perp * (s / m);
+        Vector3 r = a * c + perp * (s / m);
+        float rm = r.magnitude;
+        return rm > 1e-6f ? r / rm : a;
     }
 
     static Vector3 Ortho(Vector3 u, Vector3 f, Vector3 fallback)

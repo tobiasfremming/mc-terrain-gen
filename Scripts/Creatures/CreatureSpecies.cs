@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public enum CreaturePattern { None = 0, Bands = 1, Spots = 2, Stripes = 3, BandedSpots = 4 }
@@ -239,10 +240,48 @@ public class CreatureSpecies : ScriptableObject
     public EyeSpot[] eyeCluster;
     public BodyAppendage[] appendages;
 
+    // ---- creature kit (design docs/superpowers/specs/2026-10-18-creature-kit-design.md, Config/Creatures/CATALOGUE.md) ----
+    // kitVersion 0: the legacy fields above are the species. 1: the species is `parts` + `modules` (with their
+    // authoring sugar: mirror, Repeat, profile keys, gait patterns), expanded at load into Compiled; the legacy
+    // fields above stay empty and the systems read Compiled.Runtime. `scale` is used by both.
+    [Tooltip("0 = the legacy fields; 1 = creature kit parts + modules (see Config/Creatures/CATALOGUE.md).")]
+    public int kitVersion;
+    [SerializeReference] public List<CreatureKit.CreaturePart> parts = new List<CreatureKit.CreaturePart>();
+    [SerializeReference] public List<CreatureKit.CreatureModule> modules = new List<CreatureKit.CreatureModule>();
+
     // Raised when the asset is edited (Inspector, play mode included): the creature lab respawns the
     // species at its new scale.
     public static event Action<CreatureSpecies> Changed;
-    void OnValidate() { legModels = null; Changed?.Invoke(this); }
+    void OnValidate() { legModels = null; InvalidateLayout(); compiled = null; Changed?.Invoke(this); }
+
+    // The creature kit's view of this species (Kit/CompiledSpecies): parts, modules, bone layout, and Runtime -
+    // the species whose fields the systems read. Every runtime entry point (CreatureSim, the mesh builder, the
+    // renderer, CreatureWorld.Spawn) starts from sp.Compiled.Runtime. A legacy asset is its own runtime view
+    // (LegacySpeciesAdapter: the same objects, bit-identical). Built on first use, dropped by OnValidate.
+    [NonSerialized] CreatureKit.CompiledSpecies compiled;
+    public CreatureKit.CompiledSpecies Compiled => compiled ?? (compiled = kitVersion > 0 ? CompileKit() : CreatureKit.LegacySpeciesAdapter.Compile(this));
+    public void InvalidateCompiled() { compiled = null; InvalidateLayout(); }
+
+    // kitVersion 1: the runtime view is a hidden species holding the expanded legacy fields. It is reused on
+    // every recompile (OnValidate may not destroy objects), so its identity is stable for the renderer.
+    [NonSerialized] CreatureSpecies runtimeView;
+    CreatureKit.CompiledSpecies CompileKit()
+    {
+        CreatureKit.CompiledSpecies c = CreatureKit.CompiledSpecies.Compose(name, parts, modules);
+        if (c.Error != null) { c.Runtime = this; return c; }   // Validate reports it; the empty fields never run
+        if (runtimeView == null)
+        {
+            runtimeView = CreateInstance<CreatureSpecies>();
+            runtimeView.hideFlags = HideFlags.DontSave;
+        }
+        runtimeView.name = name;
+        runtimeView.scale = scale;
+        c.WriteLegacyFields(runtimeView);
+        runtimeView.legModels = null;
+        runtimeView.InvalidateCompiled();
+        c.Runtime = runtimeView;
+        return c;
+    }
 
     // The arthropod legs' solver models, built once per species leg (null for a two-bone leg) and shared by
     // every individual: the solver's scratch makes them main-thread only, like the sims.
@@ -269,12 +308,35 @@ public class CreatureSpecies : ScriptableObject
     int LegCount => legs != null ? legs.Length : 0;
     public int WingCount => wings != null ? wings.Length : 0;
     public bool CanFly => WingCount > 0 && flight != null && flight.cruiseSpeed > 0f;
-    // Bone order: spine, the leg bones (LegBoneLayout: 3 per legacy leg, one per arthropod segment), 6 per
-    // wing (WingBoneLayout), 2 eyes. Wings and wing-walking legs are legacy two-bone legs.
-    public int BoneCount => JointCount + LegBoneLayout.LegBones(legs) + WingBoneLayout.BonesPerWing * WingCount + 2;
-    public int LegBone(int leg, int part) => JointCount + LegBoneLayout.LegStart(legs, leg) + part;
-    public int WingBone(int wing, int k) => JointCount + LegBoneLayout.LegBones(legs) + WingBoneLayout.BonesPerWing * wing + k;
-    public int EyeBone(int eye) => JointCount + LegBoneLayout.LegBones(legs) + WingBoneLayout.BonesPerWing * WingCount + eye;
+    // Bone order: spine, the leg bones (3 per legacy leg, one per arthropod segment), 6 per wing, 2 eyes -
+    // the creature kit's generic registry (Kit/CreatureBoneLayout) built from these fields, cached. The cache
+    // follows the joints/legs/wings arrays (a new array or length rebuilds it) and OnValidate; code that
+    // changes a leg's segment count in place calls InvalidateLayout.
+    [NonSerialized] CreatureKit.CreatureBoneLayout layout;
+    [NonSerialized] SpineJoint[] layoutJoints;
+    [NonSerialized] LegSpec[] layoutLegs;
+    [NonSerialized] WingSpec[] layoutWings;
+    [NonSerialized] int layoutJointCount, layoutLegCount, layoutWingCount;
+    public CreatureKit.CreatureBoneLayout Layout
+    {
+        get
+        {
+            if (kitVersion > 0 && !ReferenceEquals(Compiled.Runtime, this)) return Compiled.Runtime.Layout;
+            if (layout == null || !ReferenceEquals(layoutJoints, joints) || !ReferenceEquals(layoutLegs, legs) || !ReferenceEquals(layoutWings, wings)
+                || layoutJointCount != JointCount || layoutLegCount != LegCount || layoutWingCount != WingCount)
+            {
+                layout = CreatureKit.CreatureBoneLayout.FromLegacy(this);
+                layoutJoints = joints; layoutLegs = legs; layoutWings = wings;
+                layoutJointCount = JointCount; layoutLegCount = LegCount; layoutWingCount = WingCount;
+            }
+            return layout;
+        }
+    }
+    public void InvalidateLayout() => layout = null;
+    public int BoneCount => Layout.BoneCount;
+    public int LegBone(int leg, int part) => Layout.LegBone(leg, part);
+    public int WingBone(int wing, int k) => Layout.WingBone(wing, k);
+    public int EyeBone(int eye) => Layout.EyeBone(eye);
     public float BodyLength => headCapLength + spacing * (JointCount - 1) + tailTipLength;
 
     public float MaxLateralReach
@@ -305,6 +367,7 @@ public class CreatureSpecies : ScriptableObject
     // null when valid, else the first problem found.
     public string Validate()
     {
+        if (kitVersion > 0) return Compiled.Error ?? (ReferenceEquals(Compiled.Runtime, this) ? "kit species did not compile" : Compiled.Runtime.Validate());
         if (bodyPlan == CreatureBodyPlan.Cephalopod) return cephalopod.Validate();
         int n = JointCount;
         if (n < 2) return "joints: need at least 2 spine joints";

@@ -9,7 +9,11 @@ public static class CreatureRestPose
         new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
 
     // A winged species' rest pose has its wings spread (WingedMeshBuilder), not walked on.
-    public static Matrix4x4[] BoneWorld(CreatureSpecies sp) => sp.WingCount > 0 ? WingedMeshBuilder.RestBoneWorld(sp, sp.wings) : BoneWorld(Sim(sp));
+    public static Matrix4x4[] BoneWorld(CreatureSpecies sp)
+    {
+        sp = sp.Compiled.Runtime;   // creature kit: the runtime view (a legacy asset is its own)
+        return sp.WingCount > 0 ? WingedMeshBuilder.RestBoneWorld(sp, sp.wings) : BoneWorld(Sim(sp));
+    }
 
     internal static Matrix4x4[] BoneWorld(CreatureSim sim)
     {

@@ -1,0 +1,205 @@
+// Creature kit T2.2: the module types for everything that exists today (design §2.4). Locomotion and look
+// modules carry the legacy species fields they replace (CompiledSpecies writes them back for the runtime);
+// behaviour modules name the brain parts (CreatureLab.BrainFor picks them from the same data until T3.4).
+using System;
+using UnityEngine;
+
+namespace CreatureKit
+{
+    // ------------------------------------------------------------------ locomotion
+
+    // How Walk assigns gaitGroup to walking limbs left at -1. Pair = a limb's place among the walking limbs of
+    // its side, head first (by attach joint, then part order).
+    //   Diagonal / Tripod / Tetrapod: (pair + right) % 2 - opposite corners together (the shipped quadrupeds,
+    //            beetles and spiders: one alternating rule, three names for the leg counts it suits).
+    //   Alternate: the sides alternate (left 0, right 1): a centipede's two waves, with ArthropodLeg.liftDelay.
+    //   Wave: a metachronal wave over waveGroups groups (needs the T5.8 phase scheduler - not available yet).
+    //   Explicit: every limb sets gaitGroup itself.
+    public enum GaitPattern { Explicit = 0, Diagonal = 1, Tripod = 2, Tetrapod = 3, Alternate = 4, Wave = 5 }
+
+    [Serializable]
+    public struct GaitBobDef
+    {
+        [Param(ParamUnit.Metres, "peak dip of the body per lift-off (0 = off)")] public float amplitude;
+        [Param(ParamUnit.Hz, "spring frequency")] public float hz;
+        [Param(ParamUnit.Fraction, "damping ratio (0.2 bouncy .. 1 dead)", Min = 0, Max = 2)] public float damping;
+    }
+
+    [Serializable]
+    [Module("Walk", CreatureModule.Locomotion, Summary = "Head steering in the tangent plane, chain, grounding, gait groups, girdle sway (CreatureSim.SubStep, CreatureLegs). The default locomotion of a spine body.",
+            Needs = "SpineBody")]
+    public sealed class Walk : CreatureModule
+    {
+        [Param(ParamUnit.MetresPerSecond, "head cruise speed", Example = "monitor 0.9, tarantula 0.16")] public float speed;
+        [Param(ParamUnit.DegPerSecond, "turn rate", Example = "walkers 160, snake 240")] public float turnRateDeg;
+        [Param(ParamUnit.Acceleration, "acceleration")] public float accel;
+        [Param(ParamUnit.Fraction, "speed lost in a full-rate turn")] public float turnSlowdown;
+        [Param(ParamUnit.Degrees, "peak yaw of the trunk between girdles toward the reaching leg (0 = none)")] public float gaitSwayDeg;
+        [Param(ParamUnit.Degrees, "girdle roll over its planted feet")] public float gaitRollDeg;
+        [Param(ParamUnit.Count, "fixed sub-steps per tick (cost!)", Min = 1, Max = 4, Default = "2")] public int subSteps = 2;
+        [Param(ParamUnit.Enum, "assigns gaitGroup to walking limbs left at -1")] public GaitPattern pattern = GaitPattern.Diagonal;
+        [Param(ParamUnit.Count, "groups of a Wave pattern", Min = 2, Max = 31)] public int waveGroups = 4;
+        [Param(ParamUnit.Struct, "vertical body bounce kicked by each lift-off")] public GaitBobDef bob;
+
+        public override string Validate(in SpeciesCtx c)
+        {
+            if (c.Soft) return "Walk needs a SpineBody";
+            if (pattern == GaitPattern.Wave) return "Walk.pattern Wave needs the phase gait scheduler (T5.8, not available yet)";
+            return null;
+        }
+    }
+
+    [Serializable]
+    [Module("Slither", CreatureModule.Locomotion, Summary = "Lateral head wave the drag chain carries back (undulation in the walk). Long wave: lambda = speed / Hz >= 0.7 body length (R27).",
+            Needs = "Walk")]
+    public sealed class Slither : CreatureModule
+    {
+        [Param(ParamUnit.Degrees, "head wave amplitude", Example = "snake 45, monitor 6")] public float undulationDeg;
+        [Param(ParamUnit.Hz, "wave frequency", Example = "snake 0.625")] public float undulationHz;
+        public override string Validate(in SpeciesCtx c) => c.Module<Walk>() == null ? "Slither needs Walk" : null;
+    }
+
+    [Serializable]
+    [Module("Climb", CreatureModule.Locomotion, Summary = "Per-joint up field, real-geometry contact via ISurfaceProbe, pitch limiter (CreatureClimb, ClimbSpec). Terrain walls >= 50 deg over >= 1/2 body length (R30/R31). 0 = default for every number.",
+            Needs = "Walk")]
+    public sealed class Climb : CreatureModule
+    {
+        [Param(ParamUnit.Degrees, "steepest surface, from gravity's up (0 = 140)")] public float maxSurfaceAngleDeg;
+        [Param(ParamUnit.Fraction, "highest climb in body lengths (0 = 1.5)")] public float maxHeightBodyLengths;
+        [Param(ParamUnit.Fraction, "speed factor on a vertical surface, up (0 = 0.5)")] public float speedFactor;
+        [Param(ParamUnit.Fraction, "speed factor going down head-first (0 = 0.4)")] public float descentSpeedFactor;
+        [Param(ParamUnit.Fraction, "body clearance on a wall vs walking (0 = 0.65)")] public float clearanceFactor;
+        [Param(ParamUnit.Fraction, "stride on a wall (0 = 0.6)")] public float strideFactor;
+        [Param(ParamUnit.Fraction, "step time on a wall (0 = 1.2)")] public float stepTimeFactor;
+        [Param(ParamUnit.Fraction, "foot lift on a wall (0 = 0.6)")] public float liftFactor;
+        [Param(ParamUnit.DegPerSecond, "fastest turn of a joint's up (0 = 270)")] public float upRateDeg;
+        [Param(ParamUnit.Count, "joints each side smoothed into the up field (0 = 3)")] public int upSmoothJoints;
+        [Param(ParamUnit.Degrees, "largest pitch bend between segments (0 = 25)")] public float pitchLimitDeg;
+        [Param(ParamUnit.Fraction, "a climb goal needs a surface this many body widths across (0 = 1.5)")] public float minWidthFactor;
+
+        public ClimbSpec ToRuntime() => new ClimbSpec
+        {
+            canClimb = true, maxSurfaceAngleDeg = maxSurfaceAngleDeg, maxHeightBodyLengths = maxHeightBodyLengths, speedFactor = speedFactor,
+            descentSpeedFactor = descentSpeedFactor, clearanceFactor = clearanceFactor, strideFactor = strideFactor, stepTimeFactor = stepTimeFactor,
+            liftFactor = liftFactor, upRateDeg = upRateDeg, upSmoothJoints = upSmoothJoints, pitchLimitDeg = pitchLimitDeg, minWidthFactor = minWidthFactor,
+        };
+
+        public static Climb From(in ClimbSpec c) => new Climb
+        {
+            maxSurfaceAngleDeg = c.maxSurfaceAngleDeg, maxHeightBodyLengths = c.maxHeightBodyLengths, speedFactor = c.speedFactor,
+            descentSpeedFactor = c.descentSpeedFactor, clearanceFactor = c.clearanceFactor, strideFactor = c.strideFactor, stepTimeFactor = c.stepTimeFactor,
+            liftFactor = c.liftFactor, upRateDeg = c.upRateDeg, upSmoothJoints = c.upSmoothJoints, pitchLimitDeg = c.pitchLimitDeg, minWidthFactor = c.minWidthFactor,
+        };
+
+        public override string Validate(in SpeciesCtx c) => c.Module<Walk>() == null ? "Climb needs Walk" : null;
+    }
+
+    [Serializable]
+    [Module("Fly", CreatureModule.Locomotion, Summary = "Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlight, FlightModel, AirChain). Froude-scaled.",
+            Needs = "Wing parts")]
+    public sealed class Fly : CreatureModule
+    {
+        [Param(ParamUnit.Spec, "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation)")]
+        public FlightSpec spec = new FlightSpec();
+
+        public override string Validate(in SpeciesCtx c)
+        {
+            if (spec == null) return "Fly: no spec";
+            for (int i = 0; i < c.Parts.Count; i++) if (c.Parts[i] is Wing) return null;
+            return "Fly needs Wing parts";
+        }
+    }
+
+    // ------------------------------------------------------------------ behaviour (the brain is chosen from these)
+
+    [Serializable]
+    [Module("Wander", CreatureModule.Behaviour, Summary = "Safe-disc points, walk, pause, glance (WanderBrain). Containment is structural: the head is clamped to the safe radius.")]
+    public sealed class Wander : CreatureModule { }
+
+    [Serializable]
+    [Module("ClimbExcursion", CreatureModule.Behaviour, Summary = "Approach a climbable obstacle, climb to a goal on its real surface, rest, descend (ClimbingBrain wrapping Wander).", Needs = "Climb")]
+    public sealed class ClimbExcursion : CreatureModule
+    {
+        public override string Validate(in SpeciesCtx c) => c.Module<Climb>() == null ? "ClimbExcursion needs Climb" : null;
+    }
+
+    [Serializable]
+    [Module("FlightExcursion", CreatureModule.Behaviour, Summary = "Rest, Face, Patrol, Soar, Landing on perches; predictive wall turn-back (FlightBrain).", Needs = "Fly")]
+    public sealed class FlightExcursion : CreatureModule
+    {
+        public override string Validate(in SpeciesCtx c) => c.Module<Fly>() == null ? "FlightExcursion needs Fly" : null;
+    }
+
+    [Serializable]
+    [Module("Ambush", CreatureModule.Behaviour, Summary = "Rest / explore / stalk / ambush / strike / hold / retreat (OctopusBrain + prey adapters; arm roles, grooming). Hold 1.5 s, no damage.",
+            Needs = "SoftBody + Tentacle parts (spine bodies: T5.9)")]
+    public sealed class Ambush : CreatureModule
+    {
+        public override string Validate(in SpeciesCtx c) => c.Soft ? null : "Ambush on a spine body needs the T5.9 adapter (not available yet)";
+    }
+
+    // ------------------------------------------------------------------ look layers
+
+    [Serializable]
+    [Module("Skin", CreatureModule.Look, Summary = "Palette dorsal/flank/belly + procedural pattern by rest arc length (CreaturePattern.hlsl); per-individual size/hue/value jitter. Layers of parts 0-2.")]
+    public sealed class Skin : CreatureModule
+    {
+        [Param(ParamUnit.SrgbColour, "back colour")] public Color dorsal;
+        [Param(ParamUnit.SrgbColour, "flank colour")] public Color flank;
+        [Param(ParamUnit.SrgbColour, "belly colour")] public Color belly;
+        [Param(ParamUnit.SrgbColour, "pattern colour")] public Color pattern;
+        [Param(ParamUnit.Enum, "pattern")] public CreaturePattern patternType;
+        [Param(ParamUnit.Fraction, "pattern repeats per metre of rest arc", Example = "monitor 9, snake 11")] public float patternScale;
+        [Param(ParamUnit.Fraction, "pattern contrast", Min = 0, Max = 1)] public float patternContrast;
+        [Param(ParamUnit.Fraction, "pattern edge softness", Min = 0, Max = 1)] public float patternSoftness;
+        [Param(ParamUnit.Fraction, "spot size")] public float spotScale;
+        [Param(ParamUnit.Fraction, "smoothness", Min = 0, Max = 1)] public float smoothness;
+        [Param(ParamUnit.Fraction, "rim light strength", Min = 0, Max = 1)] public float rimStrength;
+        [Param(ParamUnit.Fraction, "subsurface", Min = 0, Max = 1)] public float subsurface;
+        [Param(ParamUnit.Fraction, "per-individual size jitter (+-), sizeScale = scale x (1 +- this)", Min = 0, Max = 0.2f)] public float sizeJitter;
+        [Param(ParamUnit.Fraction, "per-individual hue jitter")] public float hueJitter;
+        [Param(ParamUnit.Fraction, "per-individual value jitter")] public float valueJitter;
+
+        public void WriteTo(ref CreatureLook l)
+        {
+            l.dorsal = dorsal; l.flank = flank; l.belly = belly; l.pattern = pattern; l.patternType = patternType; l.patternScale = patternScale;
+            l.patternContrast = patternContrast; l.patternSoftness = patternSoftness; l.spotScale = spotScale; l.smoothness = smoothness;
+            l.rimStrength = rimStrength; l.subsurface = subsurface; l.sizeJitter = sizeJitter; l.hueJitter = hueJitter; l.valueJitter = valueJitter;
+        }
+
+        public static Skin From(in CreatureLook l) => new Skin
+        {
+            dorsal = l.dorsal, flank = l.flank, belly = l.belly, pattern = l.pattern, patternType = l.patternType, patternScale = l.patternScale,
+            patternContrast = l.patternContrast, patternSoftness = l.patternSoftness, spotScale = l.spotScale, smoothness = l.smoothness,
+            rimStrength = l.rimStrength, subsurface = l.subsurface, sizeJitter = l.sizeJitter, hueJitter = l.hueJitter, valueJitter = l.valueJitter,
+        };
+    }
+
+    [Serializable]
+    [Module("Chitin", CreatureModule.Look, Summary = "Knee/segment bands (part 9) and a velvet sheen lobe: arthropod legs.")]
+    public sealed class Chitin : CreatureModule
+    {
+        [Param(ParamUnit.SrgbColour, "band colour (SegmentDef.bandStart/End)")] public Color bandColor;
+        [Param(ParamUnit.Fraction, "velvet sheen strength (0 = none)", Min = 0, Max = 1)] public float sheen;
+        [Param(ParamUnit.SrgbColour, "sheen colour")] public Color sheenColor;
+    }
+
+    [Serializable]
+    [Module("Membrane", CreatureModule.Look, Summary = "Translucent veined membrane (part 8, CreatureMembrane.hlsl): wings today, fins next (T5.1).")]
+    public sealed class Membrane : CreatureModule
+    {
+        [Param(ParamUnit.SrgbColour, "membrane colour")] public Color colour;
+        [Param(ParamUnit.Fraction, "how much light shines through", Min = 0, Max = 1)] public float translucency;
+        [Param(ParamUnit.Fraction, "how dark the veins are", Min = 0, Max = 1)] public float veinContrast;
+        [Param(ParamUnit.Fraction, "how dark the trailing rim is", Min = 0, Max = 1)] public float rim;
+    }
+
+    [Serializable]
+    [Module("Cloak", CreatureModule.Look, Summary = "Dissolve in Forward only: the body vanishes, shadow + SSAO stay (the user's favourite bug). Per-instance, brain-driven, with hysteresis. Octopus today.",
+            Needs = "SoftBody (spine bodies: Phase 4)")]
+    public sealed class Cloak : CreatureModule { }
+
+    [Serializable]
+    [Module("Chromatophore", CreatureModule.Look, Summary = "Dynamic colour cells, flash and passing-cloud phase (octopus shader). Makes the look dynamic.", Needs = "SoftBody")]
+    public sealed class Chromatophore : CreatureModule { }
+}

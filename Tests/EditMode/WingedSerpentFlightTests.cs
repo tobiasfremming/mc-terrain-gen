@@ -132,8 +132,9 @@ namespace TerrainGen.Tests
             r.model.Integrate(H, r.wings);
             Assert.AreEqual(g, r.model.VerticalSpeed, 1e-5f, "girdle speed = grip fraction x wrist speed");
             Assert.Greater(g, 0.01f); Assert.Less(g, 0.1f);
-            // prototype: cw = kW A v0 = 6.6 at m = 6: g = cw h / (m/2 + cw h)
-            float proto = 6.6f * H / (3f + 6.6f * H);
+            // prototype: cw = kW A v0 at m = 6 (kW = kGrip m / 2, v0 = vGripMin): g = cw h / (m/2 + cw h)
+            float cw = s.flight.kGrip * 3f * s.flight.vGripMin;
+            float proto = cw * H / (3f + cw * H);
             Assert.AreEqual(proto, g, 1e-4f, "matches the prototype's per-wing grip");
         }
 
@@ -167,14 +168,16 @@ namespace TerrainGen.Tests
 
         [Test] public void Flight_HoldsAltitude()
         {
+            // the deep downstroke (comfortDown 0.95, user feedback 2026-10-18) beats slower than the prototype
+            // (~2.2 Hz, was 2.67) with a bigger bob, so the window is longer (5-11 s, was 3-6 s)
             var r = MakeRig(Serpent());
-            var log = Run(r, 8f);
-            Window(log, 3f, 6f, out float mean, out float half, out float vf, out float hz, out _);
+            var log = Run(r, 12f);
+            Window(log, 5f, 11f, out float mean, out float half, out float vf, out float hz, out _);
             TestContext.WriteLine($"level: alt {mean:F3} +- {half:F3}, vf {vf:F2}, {hz:F2} beats/s (proto 4.99 +- 0.07, 4.89, 2.57-2.67)");
             Assert.AreEqual(5f, mean, 0.05f, "mean altitude (PID: no steady sag)");
-            Assert.Less(half, 0.15f, "altitude wobble");
+            Assert.Less(half, 0.2f, "altitude wobble (the bob included: 0.15 before the bigger bob)");
             Assert.AreEqual(4.9f, vf, 0.3f, "cruise speed");
-            Assert.That(hz, Is.InRange(2.2f, 3.0f), "beat frequency");
+            Assert.That(hz, Is.InRange(1.8f, 2.6f), "beat frequency");
         }
 
         [Test] public void Flight_ClimbDemand_RaisesRateAndAmplitude()
@@ -239,15 +242,15 @@ namespace TerrainGen.Tests
         {
             var r1 = MakeRig(Serpent(), 1f);
             var r4 = MakeRig(Serpent(), 4f);
-            var l1 = Run(r1, 8f);
-            var l4 = Run(r4, 16f);
-            Window(l1, 3f, 6f, out float m1, out float h1, out float v1, out float hz1, out _);
-            Window(l4, 6f, 12f, out float m4, out float h4, out float v4, out float hz4, out _);
+            var l1 = Run(r1, 12f);
+            var l4 = Run(r4, 24f);
+            Window(l1, 5f, 11f, out float m1, out float h1, out float v1, out float hz1, out _);
+            Window(l4, 10f, 22f, out float m4, out float h4, out float v4, out float hz4, out _);
             TestContext.WriteLine($"scale 1: {hz1:F2} Hz, {v1:F2} m/s, alt {m1:F2}+-{h1:F2}; scale 4: {hz4:F2} Hz, {v4:F2} m/s, alt {m4:F2}+-{h4:F2}");
             Assert.AreEqual(0.5f, hz4 / hz1, 0.08f, "beat frequency / sqrt(scale)");
             Assert.AreEqual(2f, v4 / v1, 0.1f, "speed x sqrt(scale)");
             Assert.AreEqual(20f, m4, 0.4f, "altitude held at scale 4");
-            Assert.Less(h4, 4f * 0.15f, "wobble scales with size");
+            Assert.Less(h4, 4f * 0.2f, "wobble scales with size");
         }
 
         // ------------------------------------------------------------------ wings

@@ -75,6 +75,7 @@ public sealed class CreatureRenderer : IDisposable
 
     public CreatureRenderer(CreatureSpecies sp, Material material)
     {
+        sp = sp.Compiled.Runtime;   // creature kit: the runtime view (a legacy asset is its own)
         this.sp = sp; this.material = material;
         cephalopod = sp.bodyPlan == CreatureBodyPlan.Cephalopod;
         if (cephalopod)

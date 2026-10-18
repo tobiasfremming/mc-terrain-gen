@@ -8,9 +8,14 @@ namespace TerrainGen.Tests
     // AirChain over Vector3[]: exact lengths, 3D bend cones, the shoulder bob travelling down the body,
     // a stabilised head. Prototype (measure.py, grip x1, level flight): girdle bob 0.111 m p-p, mid-body
     // 0.060 (lags ~0.18 s), tail 0.027; chain bends <= 1.9 deg; segment error ~1e-15.
+    // User feedback 2026-10-18: a deeper downstroke and a bigger bob. The bob is measured over 4-10 s with a
+    // 0.75 s high-pass (kBobWindow; was 3.5-7 s and 0.375 s, which ate part of the slower ~2.2 Hz beat):
+    // girdle ~0.16 m p-p (0.110 before the change by the same measure).
     public class WingedSerpentAirChainTests
     {
         const float H = 1f / 120f;
+        const int kBobWindow = 90;          // high-pass: samples (0.75 s)
+        const float kBobFrom = 4f, kBobTo = 10f;
         readonly List<Object> trash = new List<Object>();
 
         [TearDown]
@@ -141,17 +146,17 @@ namespace TerrainGen.Tests
             var f = Make();
             var gy = new List<float>(); var my = new List<float>(); var ty = new List<float>();
             int mid = 16, tail = f.rig.joints.Length - 1;
-            for (int k = 0; k < Mathf.RoundToInt(7f / H); k++)
+            for (int k = 0; k < Mathf.RoundToInt(kBobTo / H); k++)
             {
                 f.Step();
-                if (k * H < 3.5f) continue;
+                if (k * H < kBobFrom) continue;
                 gy.Add(f.rig.joints[WingedSerpentTestSpecies.Girdle].y); my.Add(f.rig.joints[mid].y); ty.Add(f.rig.joints[tail].y);
             }
-            var g = HighPass(gy, 45); var m = HighPass(my, 45); var t = HighPass(ty, 45);
+            var g = HighPass(gy, kBobWindow); var m = HighPass(my, kBobWindow); var t = HighPass(ty, kBobWindow);
             float pg = PeakToPeak(g), pm = PeakToPeak(m), pt = PeakToPeak(t);
             float lag = Lag(g, m, 60);
             TestContext.WriteLine($"bob p-p: girdle {pg:F3} m, mid {pm:F3}, tail {pt:F3}; mid lag {lag:F3} s (proto 0.111 / 0.060 / 0.027, 0.18 s)");
-            Assert.That(pg, Is.InRange(0.06f, 0.2f), "girdle bob (stylised, ~10 cm)");
+            Assert.That(pg, Is.InRange(0.14f, 0.22f), "girdle bob (stylised, ~16 cm: 1.4-1.6x the prototype's 0.11 m)");
             Assert.Less(pm, pg, "mid-body bobs less than the shoulders");
             Assert.Greater(pm, 0.15f * pg, "mid-body follows the bob");
             Assert.Less(pt, pm, "tail bobs least");
@@ -165,18 +170,18 @@ namespace TerrainGen.Tests
             var gy = new List<float>(); var hy = new List<float>(); var ty = new List<float>(); float miss = 0f;
             int g = WingedSerpentTestSpecies.Girdle;
             float minAhead = float.MaxValue;
-            for (int k = 0; k < Mathf.RoundToInt(7f / H); k++)
+            for (int k = 0; k < Mathf.RoundToInt(kBobTo / H); k++)
             {
                 f.Step();
-                if (k * H < 3.5f) continue;
+                if (k * H < kBobFrom) continue;
                 gy.Add(f.rig.joints[g].y); hy.Add(f.rig.joints[0].y); ty.Add(f.chain.HeadTarget.y);
                 miss = Mathf.Max(miss, (f.chain.HeadTarget - f.rig.joints[0]).magnitude);
                 float ahead = Vector3.Dot(f.rig.joints[0] - f.rig.joints[g], f.rig.model.Forward);
                 minAhead = Mathf.Min(minAhead, ahead);
             }
-            float pg = PeakToPeak(HighPass(gy, 45)), ph = PeakToPeak(HighPass(hy, 45));
+            float pg = PeakToPeak(HighPass(gy, kBobWindow)), ph = PeakToPeak(HighPass(hy, kBobWindow));
             float neck = f.chain.SegmentLength * g;
-            TestContext.WriteLine($"bob p-p: girdle {pg:F3} m, head target {PeakToPeak(HighPass(ty, 45)):F3}, head {ph:F3}; head misses its target by <= {miss:F3} m, leads by >= {minAhead:F3} of {neck:F3} m");
+            TestContext.WriteLine($"bob p-p: girdle {pg:F3} m, head target {PeakToPeak(HighPass(ty, kBobWindow)):F3}, head {ph:F3}; head misses its target by <= {miss:F3} m, leads by >= {minAhead:F3} of {neck:F3} m");
             Assert.Less(ph, 0.4f * pg, "head bob");
             Assert.Greater(minAhead, 0.85f * neck, "head leads");
             Assert.Less(miss, 0.1f * neck, "head reaches its target");

@@ -46,6 +46,12 @@ public sealed class CreatureWings
     // geometry, per wing: finger directions and tips, rib directions, ups and lengths
     public readonly Vector3[] FingerDir, FingerTip, RibDir, RibUp, RibTarget;
     public readonly float[] RibLength;     // current, metres
+    // the arm membrane, per wing: the normal of the sector between the rear flank rib and the forearm, the
+    // normal of the patch between the elbow, the shoulder and the rear flank attach, the rear flank attach
+    // (fractional joint index)
+    public readonly Vector3[] ArmRibUp, PatchUp;
+    public readonly float[] RearJoint;
+    readonly float[] armSign, patchSign;
     readonly float[] ribRestLength;        // in the rest pose at scale 1
 
     public CreatureWings(CreatureSpecies sp, WingSpec[] wings, Vector3[] joints, Quaternion[] rotations, float scale = 1f)
@@ -62,6 +68,8 @@ public sealed class CreatureWings
         RibDir = new Vector3[c * WingSpec.Ribs]; RibUp = new Vector3[c * WingSpec.Ribs];
         RibTarget = new Vector3[c * WingSpec.Ribs]; RibLength = new float[c * WingSpec.Ribs];
         ribRestLength = new float[c * WingSpec.Ribs];
+        ArmRibUp = new Vector3[c]; PatchUp = new Vector3[c]; RearJoint = new float[c];
+        armSign = new float[c]; patchSign = new float[c];
 
         for (int w = 0; w < c; w++)
         {
@@ -306,7 +314,34 @@ public sealed class CreatureWings
         // the two flank ribs close up and the membrane between them would flip; the front attach then
         // slides forward along the flank (up to kFrontSlide joints, continuously: one secant step on the
         // angle) to keep them kFlankGapDeg apart.
-        Vector3 rearT = FlankPoint(w, js, rs, sc, ws.membraneRearJoint);
+        // The rear flank rib also bounds the arm membrane (its sector reaches forward to the forearm): spread,
+        // the rear attach slides back along the flank (up to kRearSlide joints, the same secant step) to keep
+        // the rib kArmGapDeg behind the forearm in the arm's plane (the gap closing with the fold, none folded: the folded
+        // wing lies along the body); and it never comes within kArmMinGapDeg of the forearm's line.
+        float rearJ = ws.membraneRearJoint;
+        Vector3 rearT = FlankPoint(w, js, rs, sc, rearJ);
+        Vector3 fore = st.elbow - wrist;
+        Vector3 armN = Vector3.Cross(fore, st.shoulder - wrist);
+        armN = armN.sqrMagnitude > 1e-10f ? armN.normalized : r * Vector3.up;
+        float a0 = BehindArm(rearT - wrist, fore, armN);
+        float gap = kArmGapDeg * (1f - st.fold);
+        if (a0 < gap && gap > 0f) // folded (a wing-walk) it never slides: the folded wing lies along the body
+        {
+            float far = Mathf.Min(js.Length - 1, ws.membraneRearJoint + kRearSlide);
+            float a1 = BehindArm(FlankPoint(w, js, rs, sc, far) - wrist, fore, armN);
+            float f = a1 > a0 + 1e-3f ? Mathf.Clamp01((gap - a0) / (a1 - a0)) : 1f;
+            rearJ = Mathf.Lerp(ws.membraneRearJoint, far, f);
+            rearT = FlankPoint(w, js, rs, sc, rearJ);
+        }
+        // never in line with the forearm (the arm sector would collapse): turn the rib off it
+        float a3 = Vector3.Angle(rearT - wrist, fore);
+        if (a3 < kArmMinGapDeg)
+        {
+            Vector3 ax = Vector3.Cross(fore, rearT - wrist);
+            ax = ax.sqrMagnitude > 1e-10f ? ax.normalized : -armN;
+            rearT = wrist + Rotate(rearT - wrist, ax, (kArmMinGapDeg - a3) * Mathf.Deg2Rad);
+        }
+        RearJoint[w] = rearJ;
         SetRib(w * WingSpec.Ribs + 1, wrist, rearT, -hOut);
         Vector3 rearD = RibDir[w * WingSpec.Ribs + 1];
         float front = ws.membraneFrontJoint;
@@ -376,9 +411,34 @@ public sealed class CreatureWings
             if (u.sqrMagnitude < 1e-10f) u = Vector3.Cross(RibDir[i], hOut);
             RibUp[i] = u.sqrMagnitude > 1e-12f ? u.normalized : Vector3.up;
         }
+        // The arm membrane's planes: the sector (rear flank rib x forearm) and the patch (elbow, shoulder, rear
+        // flank attach), their signs fixed by the rest pose (dorsal there; continuous while the rays never
+        // line up, which the rear attach's rules above keep).
+        {
+            int i = w * WingSpec.Ribs + 1;
+            Vector3 cu = Vector3.Cross(RibDir[i], st.elbow - wrist);
+            if (armSign[w] == 0f) armSign[w] = Vector3.Dot(cu, nw) < 0f ? -1f : 1f;
+            cu *= armSign[w];
+            ArmRibUp[w] = cu.sqrMagnitude > 1e-12f ? cu.normalized : RibUp[i];
+            Vector3 pu = Vector3.Cross(st.shoulder - st.elbow, RibTarget[i] - st.elbow);
+            if (patchSign[w] == 0f) patchSign[w] = Vector3.Dot(pu, nw) < 0f ? -1f : 1f;
+            pu *= patchSign[w];
+            PatchUp[w] = pu.sqrMagnitude > 1e-12f ? pu.normalized : ArmRibUp[w];
+            // the rear flank rib itself rolls halfway into the sector: the seam between the hand's fan and the
+            // arm membrane takes the mean of the two planes (no crease where the arm membrane stands up off
+            // the fan, as it does in a wing-walk)
+            Vector3 mid = RibUp[i] + ArmRibUp[w];
+            if (mid.sqrMagnitude > 1e-8f) RibUp[i] = mid.normalized;
+        }
     }
 
     const float kFlankGapDeg = 15f, kFrontSlide = 3f;
+    const float kArmGapDeg = 14f, kArmMinGapDeg = 10f, kRearSlide = 6f;
+    const float kSectorPatchLean = 0.75f; // ArmSector's normal axis: sector normal + this x patch normal
+
+    // Angle of d behind the forearm (away from the shoulder side) in the arm's plane, degrees.
+    static float BehindArm(Vector3 d, Vector3 fore, Vector3 armN)
+        => -Mathf.Atan2(Vector3.Dot(Vector3.Cross(fore, d), armN), Vector3.Dot(fore, d)) * Mathf.Rad2Deg;
 
     // The membrane's attach point on the flank at a fractional joint index (interpolated between joints).
     Vector3 FlankPoint(int w, Vector3[] js, Quaternion[] rs, float sc, float joint)
@@ -426,11 +486,34 @@ public sealed class CreatureWings
             for (int k = 0; k < WingSpec.Ribs; k++)
             {
                 int i = w * WingSpec.Ribs + k;
+                int b = offset + sp.WingBone(w, WingBoneLayout.FirstRib + k);
+                if (WingBoneLayout.FirstRib + k == WingBoneLayout.ArmRib) { dst[b] = ArmSector(w); continue; }
                 float stretch = RibLength[i] / Mathf.Max(1e-6f, ribRestLength[i] * scale);
-                dst[offset + sp.WingBone(w, WingBoneLayout.FirstRib + k)] =
-                    Matrix4x4.TRS(st.wrist, Look(RibDir[i], RibUp[i]), Vector3.one * (scale * stretch));
+                dst[b] = Matrix4x4.TRS(st.wrist, Look(RibDir[i], RibUp[i]), Vector3.one * (scale * stretch));
             }
         }
+    }
+
+    // The arm sector bone (WingBoneLayout.ArmRib): an affine frame at the wrist on the rear flank rib (to its
+    // flank end), the forearm (to the elbow) and a normal axis (x scale). Skinned by it (world x bind), the
+    // bind pose's sector between the rib and the forearm maps exactly onto the current one, however the
+    // angle between them opens or closes and whichever way the elbow tilts the sector out of the hand's
+    // fan: the membrane stays on the forearm. Every membrane vertex on it lies in that sector, so the normal
+    // axis only turns normals: it leans toward the patch's plane (kSectorPatchLean), which
+    // meets the sector along its far edge (the crease between the two, stood up in a wing-walk, shared).
+    public Matrix4x4 ArmSector(int w)
+    {
+        ref WingState st = ref State[w];
+        int i = w * WingSpec.Ribs + 1;
+        Vector3 c0 = RibTarget[i] - st.wrist, c1 = st.elbow - st.wrist;
+        Vector3 cn = ArmRibUp[w] + kSectorPatchLean * PatchUp[w];
+        Vector3 c2 = (cn.sqrMagnitude > 1e-8f ? cn.normalized : ArmRibUp[w]) * scale;
+        Vector3 o = st.wrist;
+        var m = Matrix4x4.identity;
+        m.m00 = c0.x; m.m01 = c1.x; m.m02 = c2.x; m.m03 = o.x;
+        m.m10 = c0.y; m.m11 = c1.y; m.m12 = c2.y; m.m13 = o.y;
+        m.m20 = c0.z; m.m21 = c1.z; m.m22 = c2.z; m.m23 = o.z;
+        return m;
     }
 
     static Quaternion Look(Vector3 f, Vector3 u)
