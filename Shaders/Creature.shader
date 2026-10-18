@@ -74,6 +74,9 @@ Shader "MarchingCubes/Creature"
         float4 _MembraneParams; // translucency, vein contrast, trailing rim darkening, 0
         float4 _BandColor;      // arthropod knee bands (part 9)
         float4 _SheenColor;     // velvet sheen colour, alpha = strength (0 = none)
+        float4 _ShimmerColor;   // iridescent shimmer: colour facing, alpha = strength (0 = none)
+        float4 _ShimmerColor2;  // ... colour at grazing angles, alpha = glow
+        float4 _ShimmerParams;  // bands per rest metre, bands per second, 0, 0
         ENDHLSL
 
         Pass
@@ -221,6 +224,21 @@ Shader "MarchingCubes/Creature"
                     half graze = (half)pow(1.0 - saturate(dot(nb, V)), 3.0);
                     half wrapLit = (half)saturate(dot(nb, sun.direction) * 0.5 + 0.5);
                     rgb += (half3)_SheenColor.rgb * (half)_SheenColor.a * graze * (sun.color * (0.6h * wrapLit) + SampleSH(nb) * 0.4h);
+                }
+                // iridescent shimmer (the dragon): thin-film colour bands travelling head -> tail along the rest arc,
+                // on the back and flanks; the hue slides with the view angle, each band glows faintly
+                if (_ShimmerColor.a > 0.0 && !eye)
+                {
+                    float3 Vs = GetWorldSpaceNormalizeViewDir(posWS);
+                    half ndv = (half)saturate(dot(nb, Vs));
+                    float ph = uv0.x * _ShimmerParams.x - _Time.y * _ShimmerParams.y + seed * 0.37;
+                    half wave = (half)pow(0.5 + 0.5 * sin(6.2831853 * ph), 6.0);
+                    half3 irid = lerp((half3)_ShimmerColor.rgb, (half3)_ShimmerColor2.rgb, 0.5h + 0.5h * (half)cos(6.2831853 * ((float)ndv * 1.5 + ph * 0.25)));
+                    half onBack = (half)smoothstep(-0.35, 0.35, uv1.y);
+                    half fres = (half)pow(1.0h - ndv, 2.0h);
+                    Light sunS = GetMainLight();
+                    rgb += irid * ((half)_ShimmerColor.a * onBack * (0.3h * fres + wave * (0.3h + 0.7h * fres))) * (half3)(SampleSH(nb) * 0.6 + sunS.color * 0.4)
+                         + irid * ((half)_ShimmerColor2.a * onBack * wave);
                 }
                 rgb = MixFog(rgb, (half)i.normalWS.w);
                 return half4(rgb, 1.0h);

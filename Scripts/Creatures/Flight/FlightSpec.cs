@@ -57,4 +57,14 @@ public class FlightSpec
     public float airUndulationHz = 1.2f;
     public float tailSag = 0.3f;            // m/s at the tail end (x sqrt(scale)), falls off toward the girdle
     public float headStabilise = 0.15f;     // s: time constant of the head target's 2nd-order low-pass (x sqrt(scale))
+
+    [Header("Steering")]
+    [Tooltip("Turn rate per radian of heading error when steering to a point, / sqrt(scale) (0 = 0.9). A long, slow-rolling flyer needs more to line up a landing in its aviary.")]
+    public float pursuitGain;
+    public float PursuitGain => pursuitGain > 0f ? pursuitGain : 0.9f;
+
+    // Twisting air chain (AirTwist, Chinese-dragon flight): the body follows the head's own path through the
+    // air, which swims in 3D S-curves and corkscrews; the roll travels head to tail. Off (all zero) for every
+    // species that does not set it (the kit's Fly.twist fills it at compose): the air chain above is unchanged.
+    [NonSerialized] public AirTwistSpec twist;
 }

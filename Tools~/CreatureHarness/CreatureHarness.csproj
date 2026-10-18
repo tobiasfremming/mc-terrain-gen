@@ -77,6 +77,7 @@
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureShaderTests.cs" />        <!-- shaders, materials -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureWingedEditorTests.cs" />  <!-- CreatureLab / aviary GameObjects -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureWorldTests.cs" />         <!-- CreatureWorld MonoBehaviour -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureKitWorldTests.cs" />      <!-- CreatureWorld MonoBehaviour, ClimbTestMeshes -->
   </ItemGroup>
 
   <ItemGroup>

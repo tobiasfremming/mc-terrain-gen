@@ -19,6 +19,13 @@ namespace CreatureKit
 
         public CreatureModule Clone() => (CreatureModule)MemberwiseClone();
 
+        // A locomotion module's mode for one individual (Kit/PartRuntime.cs: ILocomotionMode), built in the sim's
+        // constructor; null = none (Walk itself, Slither and Climb are the walking sub-step).
+        public virtual ILocomotionMode CreateMode(CreatureSim sim, in ModeCtx c) => null;
+
+        // A behaviour module's behaviour for one individual's ModularBrain (Kit/Brains.cs); null = none here.
+        public virtual IBehaviour CreateBehaviour(in BehaviourCtx c) => null;
+
         static readonly Dictionary<Type, ModuleAttribute> metas = new Dictionary<Type, ModuleAttribute>();
         public static ModuleAttribute MetaOf(Type t)
         {

@@ -1,10 +1,12 @@
+using CreatureKit;
 using UnityEngine;
 
 // F3 debug overlay for every creature of the CreatureWorld on this object, in the video's colours:
 // the spine chain (grey, head segment orange #FFB347), each joint's body ellipse in its joint frame (blue
 // #5AA9E6), the feet's rest points (small crosses), shoulder-elbow-foot (green #6FBF7C) and the
 // enclosure's safe disc. Lines are built into preallocated arrays (grown only when a creature is added)
-// and drawn with GL.LINES in OnRenderObject, on top of the scene.
+// and drawn with GL.LINES in OnRenderObject, on top of the scene. The creature kit's part runtimes (eyes, antenna
+// strands, new moving parts) draw themselves through ICreatureDebugDraw (counted first, then emitted).
 [RequireComponent(typeof(CreatureWorld))]
 public sealed class CreatureDebugView : MonoBehaviour
 {
@@ -82,7 +84,7 @@ public sealed class CreatureDebugView : MonoBehaviour
         if (world == null) return 0;
         var sims = world.Sims;
         int need = 0;
-        for (int s = 0; s < sims.Count; s++) need += VerticesFor(sims[s]);
+        for (int s = 0; s < sims.Count; s++) need += VerticesFor(sims[s]) + PartVertices(sims[s]);
         CreatureSurfaces reg = world.SurfacesIfAny;
         if (reg != null) need += 24 * reg.Count;
         var bodies = world.Bodies;
@@ -95,6 +97,7 @@ public sealed class CreatureDebugView : MonoBehaviour
         for (int s = 0; s < sims.Count; s++)
         {
             AddCreature(sims[s]);
+            AddParts(sims[s]);
             if (world.BrainOf(s) is ClimbingBrain cb && cb.Mode != ClimbingBrain.State.Wander)
             {
                 float c = 0.1f * sims[s].SizeScale; Vector3 g = cb.Goal;
@@ -164,6 +167,38 @@ public sealed class CreatureDebugView : MonoBehaviour
         return 2 * (n - 1) + 2 * kEllipseSegments * n + legs * (4 + 4) + (sim.Bounds.HasValue ? 2 * kDiscSegments : 0)
              + (sim.CanClimb ? 2 * n + 4 : 0) + 6
              + (sim.Flight != null ? 2 * sim.Flight.Wings.Count * 8 + 2 * n + 12 : 0);
+    }
+
+    // The part runtimes' own lines (ICreatureDebugDraw): counted, then emitted, without allocating.
+    sealed class PartLines : ICreatureDebugDraw
+    {
+        public CreatureDebugView view;
+        public bool counting;
+        public int counted;
+        public void Line(Vector3 a, Vector3 b, Color c) { if (counting) counted += 2; else view.Line(a, b, c); }
+        public void Point(Vector3 p, float r, Color c)
+        {
+            if (counting) { counted += 6; return; }
+            view.Line(p - Vector3.right * r, p + Vector3.right * r, c);
+            view.Line(p - Vector3.up * r, p + Vector3.up * r, c);
+            view.Line(p - Vector3.forward * r, p + Vector3.forward * r, c);
+        }
+    }
+    readonly PartLines partLines = new PartLines();
+
+    int PartVertices(CreatureSim sim)
+    {
+        partLines.view = this; partLines.counting = true; partLines.counted = 0;
+        IPartRuntime[] rs = sim.PartRuntimes;
+        for (int i = 0; i < rs.Length; i++) rs[i].DrawDebug(partLines);
+        return partLines.counted;
+    }
+
+    void AddParts(CreatureSim sim)
+    {
+        partLines.view = this; partLines.counting = false;
+        IPartRuntime[] rs = sim.PartRuntimes;
+        for (int i = 0; i < rs.Length; i++) rs[i].DrawDebug(partLines);
     }
 
     void Line(Vector3 a, Vector3 b, Color32 c)

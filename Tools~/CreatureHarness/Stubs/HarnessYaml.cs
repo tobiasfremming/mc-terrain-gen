@@ -1,7 +1,8 @@
 // A reader for the subset of Unity's YAML that ScriptableObject assets use, and a binder that fills an object
 // by Unity's serialization rules (public or [SerializeField] instance fields, not [NonSerialized]; nested
 // [Serializable] classes/structs; arrays and List<T>; Vector*/Quaternion/Color as {x: .., y: ..}; bools 0/1;
-// enums as ints; object references -> null). Fields missing from the file keep their C# initialiser, as in
+// enums as ints; object references to another ScriptableObject asset of this tree (guid -> its .asset.meta) are
+// loaded through AssetDatabase, every other object reference -> null). Fields missing from the file keep their C# initialiser, as in
 // Unity. Keys with no matching field are reported (Unknown) - the asset is stale or misspelt.
 using System;
 using System.Collections;
@@ -71,6 +72,23 @@ public static class HarnessYaml
         foreach (Type t in typeof(HarnessYaml).Assembly.GetTypes()) if (t.Name == cls && t.Namespace == null) return t;
         foreach (Type t in typeof(HarnessYaml).Assembly.GetTypes()) if (t.Name == cls) return t;
         return null;
+    }
+
+    // asset GUID -> "Assets/TerrainGen/..." path, from every .asset.meta of the tree
+    static Dictionary<string, string> guidToAsset;
+    static string AssetPathOfGuid(string guid)
+    {
+        if (guidToAsset == null)
+        {
+            guidToAsset = new Dictionary<string, string>();
+            foreach (string meta in Directory.GetFiles(HarnessPaths.TerrainGenRoot, "*.asset.meta", SearchOption.AllDirectories))
+                foreach (string line in File.ReadLines(meta))
+                {
+                    Match m = Regex.Match(line, @"^guid:\s*([0-9a-f]+)");
+                    if (m.Success) { guidToAsset[m.Groups[1].Value] = HarnessPaths.AssetPath(meta.Substring(0, meta.Length - 5)); break; }
+                }
+        }
+        return guidToAsset.TryGetValue(guid, out string p) ? p : null;
     }
 
     static Dictionary<string, string> guidToClass;
@@ -199,7 +217,16 @@ public static class HarnessYaml
         if (t.IsEnum) return Enum.ToObject(t, long.Parse(Scalar(node), Inv));
         if (typeof(UnityEngine.Object).IsAssignableFrom(t))
         {
-            if (node is Map rm && rm.Get("fileID") is string id && id != "0") rep.Notes.Add(path + ": object reference not resolved offline (null)");
+            if (node is Map rm && rm.Get("fileID") is string id && id != "0")
+            {
+                // a main ScriptableObject asset of this tree (a lab roster's species): loaded like Unity resolves it
+                if (id == "11400000" && rm.Get("guid") is string g && AssetPathOfGuid(g) is string ap)
+                {
+                    object o2 = typeof(UnityEditor.AssetDatabase).GetMethod("LoadAssetAtPath").MakeGenericMethod(t).Invoke(null, new object[] { ap });
+                    if (o2 != null) return o2;
+                }
+                rep.Notes.Add(path + ": object reference not resolved offline (null)");
+            }
             return null;
         }
         if (t.IsArray)

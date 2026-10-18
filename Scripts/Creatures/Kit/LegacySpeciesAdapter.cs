@@ -99,6 +99,8 @@ namespace CreatureKit
             for (int k = 0; k < cluster.Length; k++) cluster[k] = new EyeSpotDef { offset = sp.eyeCluster[k].offset, radius = sp.eyeCluster[k].radius };
             parts.Add(new Eyes { id = "eyes", at = new PartSocket(sp.eyeJoint, 0, sp.eyeOffset), radius = sp.eyeRadius, cluster = cluster });
             if (sp.appendages != null) for (int a = 0; a < sp.appendages.Length; a++) parts.Add(RigidCone.From(sp.appendages[a], "cone" + a));
+            if (sp.fins != null) for (int f = 0; f < sp.fins.Length; f++) parts.Add(FinStrip.From(sp.fins[f], "fin" + f));
+            if (sp.antennae != null) for (int a = 0; a < sp.antennae.Length; a++) parts.Add(Antenna.From(sp.antennae[a], "antenna" + a));
 
             if (sp.WingCount > 0 && sp.flight != null) modules.Add(new Fly { spec = KitTypes.Memberwise(sp.flight) });
             modules.Add(new Wander());
@@ -121,6 +123,8 @@ namespace CreatureKit
                 modules.Add(new Membrane { colour = l.membrane, translucency = l.membraneTranslucency, veinContrast = l.veinContrast, rim = l.membraneRim });
             if (Set(l.bandColor) || l.sheen != 0f || Set(l.sheenColor))
                 modules.Add(new Chitin { bandColor = l.bandColor, sheen = l.sheen, sheenColor = l.sheenColor });
+            if (l.shimmer != 0f || Set(l.shimmerColor) || Set(l.shimmerColor2) || l.shimmerWavelength != 0f || l.shimmerPeriod != 0f || l.shimmerGlow != 0f)
+                modules.Add(new Shimmer { colour = l.shimmerColor, colour2 = l.shimmerColor2, strength = l.shimmer, wavelength = l.shimmerWavelength, period = l.shimmerPeriod, glow = l.shimmerGlow });
         }
 
         // exact (Unity's Color == is approximate)

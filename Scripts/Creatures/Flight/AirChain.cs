@@ -29,6 +29,10 @@ public sealed class AirChain
     Vector3 smoothPos, smoothVel, smoothAcc;
     public Vector3 HeadTarget { get; private set; }
 
+    // The twisting chain (FlightSpec.twist enabled: the dragon): the body follows the head's path (AirTwist)
+    // instead of trailing the girdle. Null otherwise - the pull chain below runs exactly as before.
+    public readonly AirTwist Twist;
+
     public AirChain(CreatureSpecies sp, FlightSpec flight, int girdleJoint, float sizeScale = 1f)
     {
         f = flight;
@@ -42,6 +46,7 @@ public sealed class AirChain
             cosLimit[i] = Mathf.Cos(a); sinLimit[i] = Mathf.Sin(a);
         }
         Up = new Vector3[n]; Forward = new Vector3[n];
+        if (flight.twist.Enabled) Twist = new AirTwist(flight.twist, n, seg, scale, cosLimit, sinLimit);
     }
 
     public float SegmentLength => seg;
@@ -52,6 +57,7 @@ public sealed class AirChain
     {
         smoothPos = girdlePos; smoothVel = girdleVel; smoothAcc = Vector3.zero; Time = 0f;
         HeadTarget = girdlePos;
+        Twist?.Reset();
     }
 
     public void Step(float h, Vector3[] joints, Vector3 girdlePos, Vector3 girdleVel, Vector3 bankedUp, Vector3 worldUp)
@@ -59,6 +65,7 @@ public sealed class AirChain
         if (!(h > 0f)) return;
         Time += h;
         Vector3 up = Norm(worldUp, Vector3.up);
+        if (Twist != null) { TwistStep(h, joints, girdlePos, girdleVel, bankedUp, up); return; }
         joints[girdle] = girdlePos;
 
         // ---- trunk + tail: pull chain from the girdle back
@@ -114,6 +121,25 @@ public sealed class AirChain
         }
 
         UpdateFrames(joints, bankedUp);
+    }
+
+    // The twisting chain: the same head stabiliser (the beat's bob filtered out of the girdle's motion), the head
+    // on the plain flight line a neck ahead of it, and AirTwist lays the body along the head's path.
+    void TwistStep(float h, Vector3[] joints, Vector3 girdlePos, Vector3 girdleVel, Vector3 bankedUp, Vector3 up)
+    {
+        float tau = Mathf.Max(1e-4f, f.headStabilise * timeScale);
+        float w0 = 1f / tau, hk = Mathf.Min(h, 0.5f * tau);
+        smoothAcc += (w0 * w0 * (girdleVel - smoothVel) - 2f * w0 * smoothAcc) * hk;
+        smoothVel += smoothAcc * hk;
+        smoothPos += smoothVel * h;
+        smoothPos += (girdlePos - smoothPos) * Mathf.Min(1f, kDriftRate / timeScale * h);
+        // the neck lies level ahead of the girdle (a climb shows in the head's path, not as a pitched neck: at the
+        // launch the head then starts where the grounded head is)
+        Vector3 dir = Norm(smoothVel, Norm(joints[0] - joints[Mathf.Min(1, n - 1)], Vector3.forward));
+        Vector3 level = Norm(dir - up * Vector3.Dot(dir, up), Norm(joints[0] - joints[Mathf.Min(1, n - 1)], Vector3.forward));
+        Vector3 head = smoothPos + level * (seg * girdle);
+        HeadTarget = head;
+        Twist.Step(h, joints, head, dir, up, bankedUp, smoothVel.magnitude, Forward, Up);
     }
 
     // Forward (toward the head) and up per joint; up starts as the banked up at the girdle and is carried

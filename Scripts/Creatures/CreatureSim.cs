@@ -1,9 +1,13 @@
 using System;
 using System.Runtime.CompilerServices;
+using CreatureKit;
 using UnityEngine;
 
 // Procedural creature spine: a steered head drags a bend-limited chain that rides the ground.
 // Port of the 2D LizardSim; legs live in CreatureLegs.
+// Creature kit (Kit/PartRuntime.cs): the species' locomotion modes (flight) are asked first each sub-step and
+// walking runs when none claims it; parts that move on their own (antennae) and the eyes are part runtimes,
+// stepped at their stage (AfterChain, AfterGround, AfterLimbs, Late) and writing their own bones.
 public sealed class CreatureSim
 {
     const float kMaxDt = 0.1f;
@@ -84,9 +88,14 @@ public sealed class CreatureSim
     internal float LegThrottle => legs.Throttle; // stats/tests: the gait's speed throttle (1 = free)
     public float Steepness(int joint) => climb != null && climb.Active ? climb.Steep[joint] : 0f;
 
-    // Flight (Flight/CreatureFlight): only for a species that CanFly. Ground mode is the walking code above,
-    // untouched; the other modes run the flight model, wings and air chain (see CreatureFlight).
+    // Flight (Flight/CreatureFlight): only for a species that CanFly - the Fly module's locomotion mode. Ground mode
+    // is the walking code above, untouched; the other modes run the flight model, wings and air chain (see
+    // CreatureFlight), which also hooks the walking step (drape, launch / touchdown blends, arm bones).
     readonly CreatureFlight flight;
+    // Creature kit: the locomotion modes (highest priority first) and the part runtimes, all and by stage.
+    readonly ILocomotionMode[] modes;
+    readonly IPartRuntime[] runtimes, afterChain, afterGround, afterLimbs, late;
+    public IPartRuntime[] PartRuntimes => runtimes;
     public CreatureFlight Flight => flight;
     public FlightMode Mode => flight != null ? flight.Mode : FlightMode.Ground;
     // Per joint: the last grounding found ground within its window (a perched tail over a branch end does not).
@@ -151,7 +160,33 @@ public sealed class CreatureSim
         Supported = new bool[n];
         if (sp.CanFly) ProbedGround = new Vector3[n];
         for (int i = 0; i < n; i++) Supported[i] = true;
-        if (sp.CanFly) flight = new CreatureFlight(this, ground, upAt);
+        // creature kit: modes from the species' modules (Fly -> CreatureFlight), runtimes from its parts (Eyes, the
+        // Antenna strands), in part order
+        modes = KitRuntime.Modes(this, KitView.Modules(sp), new ModeCtx(ground, upAt));
+        for (int m = 0; m < modes.Length && flight == null; m++) flight = modes[m] as CreatureFlight;
+        runtimes = KitRuntime.Create(this, KitView.Parts(sp));
+        afterChain = KitRuntime.OfStage(runtimes, PartStage.AfterChain);
+        afterGround = KitRuntime.OfStage(runtimes, PartStage.AfterGround);
+        afterLimbs = KitRuntime.OfStage(runtimes, PartStage.AfterLimbs);
+        late = KitRuntime.OfStage(runtimes, PartStage.Late);
+        for (int r = 0; r < runtimes.Length && antennae == null; r++) antennae = runtimes[r] as CreatureAntennae;
+    }
+
+    // Antennae (the kit's Antenna: whiskers, barbels): spring chains stepped after the body each sub-step (a part
+    // runtime, stage AfterLimbs); null for a species without any.
+    readonly CreatureAntennae antennae;
+    public CreatureAntennae Antennae => antennae;
+
+    void RunStage(IPartRuntime[] stage, float dt)
+    {
+        var c = new StepCtx(this);
+        for (int i = 0; i < stage.Length; i++) stage[i].Step(c, dt);
+    }
+
+    // Grows [lo, hi] by every part runtime's points (antenna strands).
+    public void EncapsulatePartBounds(ref Vector3 lo, ref Vector3 hi)
+    {
+        for (int i = 0; i < runtimes.Length; i++) runtimes[i].EncapsulateBounds(ref lo, ref hi);
     }
 
     static int[] FindGirdles(CreatureSpecies sp)
@@ -177,7 +212,11 @@ public sealed class CreatureSim
         int sub = Mathf.Max(1, Species.subSteps);
         float h = dt / sub;
         // every sub-step ends with fresh frames (the legs read them); only a zero dt needs them here
-        if (h > 0f) for (int s = 0; s < sub; s++) SubStep(h, target);
+        if (h > 0f)
+        {
+            for (int s = 0; s < sub; s++) SubStep(h, target);
+            if (late.Length != 0) RunStage(late, dt);
+        }
         else UpdateFrames();
     }
 
@@ -185,8 +224,10 @@ public sealed class CreatureSim
     {
         if (!(dt > 0f)) return;
         Time += dt;
-        if (flight != null && flight.SubStep(dt, target)) return;
-        GroundSubStep(dt, target);
+        bool claimed = false;
+        for (int m = 0; m < modes.Length && !claimed; m++) claimed = modes[m].SubStep(this, dt, target);
+        if (!claimed) GroundSubStep(dt, target);
+        if (afterLimbs.Length != 0) RunStage(afterLimbs, dt);
     }
 
     // The walking sub-step (every mode but the air ones; launch and touchdown blend it with the air chain).
@@ -274,6 +315,7 @@ public sealed class CreatureSim
                 Chain(seg, climbing);
             }
         }
+        if (afterChain.Length != 0) RunStage(afterChain, dt);
 
         // 3. ground: smooth height offset and normal; hold on probe miss. Climbing: along each joint's own up,
         // at the steepness-scaled clearance, with a wrap cast past an edge.
@@ -323,6 +365,7 @@ public sealed class CreatureSim
             for (int pass = 0; pass < kPitchPasses && CreatureClimb.LimitPitch(Path, pathUp, seg, sp.climb.PitchLimitDeg, pitchLift); pass++) RestoreLengths(seg);
         // the up field follows the new ground normals (the next sub-step's chain step and grounding use it)
         if (climbing) climb.UpdateUpField(dt, Path, GroundNormals, pathUp, upAt);
+        if (afterGround.Length != 0) RunStage(afterGround, dt);
 
         // 4. gait sway: the displayed body is the path bent toward the reaching legs
         ApplySway(dt);
@@ -331,6 +374,7 @@ public sealed class CreatureSim
 
         // 5. legs (use the final joint positions; frames are refreshed first)
         UpdateFrames();
+        if (flight != null) flight.AfterFrames(); // a twisting flyer's launch keeps its air chain's frames
         int started = legs.Update(dt, Speed);
         StepsTaken += started;
         if (sp.gaitBob.amplitude > 0f) Bob(dt, started > 0);
@@ -639,22 +683,15 @@ public sealed class CreatureSim
     public int LegPointOffset(int leg) => legs.PointOffset[leg];
     public Vector3 LegPlaneNormal(int leg) => legs.PlaneNormal[leg];
 
-    // Spine, leg and eye bones in world space, in the species bone order.
+    // Spine, leg, wing, eye and part bones in world space, in the species bone order.
     public void WriteBoneWorld(Matrix4x4[] dst, int offset)
     {
-        var sp = Species;
         Vector3 s = Vector3.one * SizeScale;
         for (int i = 0; i < n; i++) dst[offset + i] = Matrix4x4.TRS(Joints[i], Rotations[i], s);
         legs.WriteBones(dst, offset);
         if (flight != null) flight.WriteBones(dst, offset); // wings; tucked or blended legs in the air
-
-        Quaternion hr = Rotations[Mathf.Min(1, n - 1)];
-        Quaternion er = Rotations[sp.eyeJoint];
-        for (int e = 0; e < 2; e++)
-        {
-            Vector3 eo = sp.eyeOffset; eo.x *= e == 0 ? -1f : 1f; // eye 0 left (-x), 1 right
-            dst[offset + sp.EyeBone(e)] = Matrix4x4.TRS(Joints[sp.eyeJoint] + er * eo * SizeScale, hr, s);
-        }
+        // eyes, antenna strands, any part runtime with bones (in part order)
+        for (int r = 0; r < runtimes.Length; r++) runtimes[r].WriteBones(dst, offset);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -109,6 +109,7 @@
         "DesertMonitor",
         "DesertSnake",
         "KitMonitor",
+        "SkyDragon",
         "Tarantula",
         "TestHexapod",
         "TestSnake",
@@ -756,6 +757,7 @@
       "usedBy": [
         "DesertMonitor",
         "KitMonitor",
+        "SkyDragon",
         "TestHexapod",
         "WingedSerpent"
       ],
@@ -1010,6 +1012,7 @@
       "useWhen": "bats, pterosaurs, dragons; the Fly module makes it fly",
       "summary": "3-finger membrane wing on an arm limb (a Leg2Bone it names); a wingbeat is a step with a vertical comfort band (CreatureWings, FlightModel).",
       "usedBy": [
+        "SkyDragon",
         "WingedSerpent"
       ],
       "params": [
@@ -1104,7 +1107,7 @@
       "materialLayers": [
         3
       ],
-      "system": "CreatureSim.WriteBoneWorld",
+      "system": "EyesRuntime (part runtime: writes the two eye bones)",
       "useWhen": "always (every shipped species has two eye bones)",
       "summary": "Two glossy eye spheres on their own bones (sp.EyeBone), placed at the socket (joint, offset x mirrored); cluster eyes ride them (spiders).",
       "usedBy": [
@@ -1113,6 +1116,7 @@
         "DesertMonitor",
         "DesertSnake",
         "KitMonitor",
+        "SkyDragon",
         "Tarantula",
         "TestHexapod",
         "TestSnake",
@@ -1222,6 +1226,176 @@
       ]
     },
     {
+      "name": "Antenna",
+      "kind": "Chain",
+      "status": "exists",
+      "bones": "= segments",
+      "materialLayers": [
+        8
+      ],
+      "system": "CreatureAntennae (part runtime, stage AfterLimbs: every sub-step) + AntennaMesh",
+      "useWhen": "whiskers, barbels, antennae, feelers, cerci, ribbon-like streamers",
+      "summary": "Spring chain rooted on a spine joint: whiskers, barbels, feelers, cerci, streamers. Pulled to its rest curve (stiffer at the root), damped and dragged by the air: it trails a moving body and swings out of turns and rolls. Exact lengths, bend cone.",
+      "usedBy": [
+        "SkyDragon"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "direction",
+          "type": "Vector3",
+          "unit": "Direction",
+          "size": "-",
+          "meaning": "rest direction at the root in the joint frame (x mirrored by side)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "length",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "length",
+          "range": "",
+          "example": "dragon whisker 0.55"
+        },
+        {
+          "name": "segments",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "segments (one bone each)",
+          "range": "2..16",
+          "example": ""
+        },
+        {
+          "name": "radiusStart",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "tube radius at the root",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "radiusEnd",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "tube radius at the tip",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "stiffnessHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "pull toward the rest curve at the root (weaker toward the tip)",
+          "range": "",
+          "example": "dragon 1.6"
+        },
+        {
+          "name": "damping",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "damping ratio of that pull",
+          "range": "0..2",
+          "example": ""
+        },
+        {
+          "name": "airDrag",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "air drag rate (1/s): how much the strand trails a moving body",
+          "range": "",
+          "example": "dragon 0.8"
+        },
+        {
+          "name": "droopDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the rest curve bends down by this much toward the tip",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "maxBendDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "bend cone between segments (0 = 35)",
+          "range": "0..90",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "Tentacle",
       "kind": "Chain",
       "status": "exists",
@@ -1311,6 +1485,176 @@
       ]
     },
     {
+      "name": "FinStrip",
+      "kind": "Fin",
+      "status": "exists",
+      "bones": "0 (skinned to the spine)",
+      "materialLayers": [
+        8
+      ],
+      "system": "mesh only (FinStrip.EmitMesh via FinStripMesh), skinned to the spine bones",
+      "useWhen": "manes, crests, dorsal / anal fins, tail tufts, frills along a body",
+      "summary": "Double-sided membrane strip along the spine: mane, crest, dorsal or anal fin, tail tuft. Height profile, swept-back curl, scalloped tufts; its upper rows ride the spine flowJoints further back, so it trails and flows as the body bends and twists.",
+      "usedBy": [
+        "SkyDragon"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "toJoint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "last spine joint of the base (the first is at.joint)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "heightStart",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "height at the first joint",
+          "range": "",
+          "example": "dragon mane 0.075"
+        },
+        {
+          "name": "heightEnd",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "height at the last joint",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "leanDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the strip curls back by this much over its height (0 = straight up); past 40 the curl folds onto the body when it bends",
+          "range": "0..40",
+          "example": ""
+        },
+        {
+          "name": "tufts",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "scallops (tufts, flames) along the free edge, 0 = a straight edge",
+          "range": "0..200",
+          "example": ""
+        },
+        {
+          "name": "tuftDepth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "valley depth between tufts, fraction of the height",
+          "range": "0..0.9",
+          "example": ""
+        },
+        {
+          "name": "flowJoints",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "how many joints further back the top row rides (the trail; 0 = rigid on its joint)",
+          "range": "0..4",
+          "example": ""
+        },
+        {
+          "name": "inset",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "base buried this fraction of the body's radius",
+          "range": "0..0.6",
+          "example": ""
+        },
+        {
+          "name": "aroundDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "around the body: 0 = on the back, 180 = under the belly (mirror: also at minus this)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "columnsPerJoint",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh columns per spine segment (0 = 2)",
+          "range": "0..8",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "RigidCone",
       "kind": "Rigid",
       "status": "exists",
@@ -1318,10 +1662,11 @@
       "materialLayers": [
         2
       ],
-      "system": "mesh only (CreatureMeshBuilder)",
+      "system": "mesh only (RigidCone.EmitMesh: a horn on the emitter)",
       "useWhen": "horns, spikes, fangs, mandibles, chelicerae",
       "summary": "Curved cone rigid to a spine joint: horn, spike, claw, chelicera with a fang (BodyAppendage). mirror emits the pair from this one part (no .L/.R: it has no bones). ownBone: the octopus siphon.",
       "usedBy": [
+        "SkyDragon",
         "Tarantula",
         "TreeOctopus"
       ],
@@ -1607,6 +1952,7 @@
       "needs": "Fly",
       "summary": "Rest, Face, Patrol, Soar, Landing on perches; predictive wall turn-back (FlightBrain).",
       "usedBy": [
+        "SkyDragon",
         "WingedSerpent"
       ],
       "params": []
@@ -1623,6 +1969,7 @@
         "DesertMonitor",
         "DesertSnake",
         "KitMonitor",
+        "SkyDragon",
         "Tarantula",
         "TestHexapod",
         "TestSnake",
@@ -1756,8 +2103,9 @@
       "category": "Locomotion",
       "status": "exists",
       "needs": "Wing parts",
-      "summary": "Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlight, FlightModel, AirChain). Froude-scaled.",
+      "summary": "Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlight, FlightModel, AirChain). Froude-scaled. twist: the twisting Chinese-dragon air chain (AirTwist).",
       "usedBy": [
+        "SkyDragon",
         "WingedSerpent"
       ],
       "params": [
@@ -1766,7 +2114,160 @@
           "type": "FlightSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise",
+          "meaning": "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, pursuitGain",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "twist",
+          "type": "AirTwistSpec",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "twisting flight (AirTwist, Chinese dragon): the body follows the head's path; 3D swimming, corkscrews, barrel rolls, loops, slow rolls that travel head to tail. All 0 = the serpent's trailing air chain",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "twist.swimAmplitude",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "always-on swimming: the head's 3D S-curve amplitude (0 = no swimming)",
+          "range": "",
+          "example": "dragon 0.12"
+        },
+        {
+          "name": "twist.swimHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "swimming wave frequency; wavelength along the body = speed / Hz",
+          "range": "",
+          "example": "dragon 0.9"
+        },
+        {
+          "name": "twist.swimVertical",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "vertical share of the swim (0 = a flat S, 1 = as tall as wide); its own slower phase turns the S-plane",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "twist.swimRollDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "roll into each swim curve (banking with the S), travels down the body",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "twist.corkscrewAmplitude",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "corkscrew: helix radius of the head's path (0 = no corkscrews)",
+          "range": "",
+          "example": "dragon 0.3"
+        },
+        {
+          "name": "twist.corkscrewHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "corkscrew: helix turns per second",
+          "range": "",
+          "example": "dragon 0.8"
+        },
+        {
+          "name": "twist.corkscrewTurns",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "corkscrew: helix turns per manoeuvre (0 = 3)",
+          "range": "0..12",
+          "example": ""
+        },
+        {
+          "name": "twist.corkscrewRolls",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "corkscrew: full body rolls over the manoeuvre (the twist travels head to tail)",
+          "range": "0..12",
+          "example": ""
+        },
+        {
+          "name": "twist.barrelRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "barrel roll: helix radius (0 = no barrel rolls); the body rolls once, belly out",
+          "range": "",
+          "example": "dragon 0.5"
+        },
+        {
+          "name": "twist.barrelTime",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "barrel roll duration (0 = 1.6)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "twist.loopRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "loop: radius of the vertical loop (0 = no loops)",
+          "range": "",
+          "example": "dragon 0.9"
+        },
+        {
+          "name": "twist.loopSpin",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "loop: speed round the loop / flight speed (0 = 1); the head then surges to catch the flight line up again",
+          "range": "0..3",
+          "example": ""
+        },
+        {
+          "name": "twist.slowRollTime",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "slow roll: one full roll in place along the flight line (0 = no slow rolls)",
+          "range": "",
+          "example": "dragon 2.4"
+        },
+        {
+          "name": "twist.intervalMin",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "shortest pause between manoeuvres (0 = 4)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "twist.intervalMax",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "longest pause between manoeuvres (0 = 10)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "twist.uprightRateDeg",
+          "type": "float",
+          "unit": "DegPerSecond",
+          "size": "/ sqrt(s)",
+          "meaning": "how fast the body rights itself onto the banked up (0 = 120)",
           "range": "",
           "example": ""
         }
@@ -1782,6 +2283,7 @@
         "DesertMonitor",
         "DesertSnake",
         "KitMonitor",
+        "SkyDragon",
         "TestSnake",
         "WingedSerpent"
       ],
@@ -1818,6 +2320,7 @@
         "DesertMonitor",
         "DesertSnake",
         "KitMonitor",
+        "SkyDragon",
         "Tarantula",
         "TestHexapod",
         "TestSnake",
@@ -2013,6 +2516,7 @@
       "needs": "",
       "summary": "Translucent veined membrane (part 8, CreatureMembrane.hlsl): wings today, fins next (T5.1).",
       "usedBy": [
+        "SkyDragon",
         "WingedSerpent"
       ],
       "params": [
@@ -2055,6 +2559,72 @@
       ]
     },
     {
+      "name": "Shimmer",
+      "category": "Look",
+      "status": "exists",
+      "needs": "",
+      "summary": "Iridescent scale shimmer: thin-film colour bands (colour -> colour2 with the view angle) travelling head to tail along the body's back and flanks, a faint glow in each band (Creature.shader, part 0). The SkyDragon's signature; cheap (one pow, one cos per body pixel).",
+      "usedBy": [
+        "SkyDragon"
+      ],
+      "params": [
+        {
+          "name": "colour",
+          "type": "Color",
+          "unit": "SrgbColour",
+          "size": "-",
+          "meaning": "colour facing the viewer",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "colour2",
+          "type": "Color",
+          "unit": "SrgbColour",
+          "size": "-",
+          "meaning": "colour at grazing angles (the thin-film hue shift)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "strength",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "strength (0 = none)",
+          "range": "0..2",
+          "example": ""
+        },
+        {
+          "name": "wavelength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "distance between bands along the body (rest arc)",
+          "range": "",
+          "example": "dragon 0.22"
+        },
+        {
+          "name": "period",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "a band passes a point every this many seconds (x sqrt of the species scale)",
+          "range": "",
+          "example": "dragon 2.2"
+        },
+        {
+          "name": "glow",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "glow of the bands (emission, also in shadow)",
+          "range": "0..1",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "Skin",
       "category": "Look",
       "status": "exists",
@@ -2066,6 +2636,7 @@
         "DesertMonitor",
         "DesertSnake",
         "KitMonitor",
+        "SkyDragon",
         "Tarantula",
         "TestHexapod",
         "TestSnake",
@@ -2318,6 +2889,43 @@
         "Wander",
         "ClimbExcursion",
         "Skin"
+      ]
+    },
+    {
+      "name": "SkyDragon",
+      "kitVersion": 1,
+      "plan": "Spine",
+      "bones": 136,
+      "parts": [
+        "SpineBody:body",
+        "Leg2Bone:arm.L",
+        "Leg2Bone:arm.R",
+        "Leg2Bone:fore.L",
+        "Leg2Bone:fore.R",
+        "Leg2Bone:hind.L",
+        "Leg2Bone:hind.R",
+        "Wing:wing.L",
+        "Wing:wing.R",
+        "Eyes:eyes",
+        "RigidCone:antler",
+        "RigidCone:antlerTine",
+        "FinStrip:mane",
+        "FinStrip:crest",
+        "FinStrip:tailTuft",
+        "Antenna:whisker.L",
+        "Antenna:whisker.R",
+        "Antenna:barbel.L",
+        "Antenna:barbel.R"
+      ],
+      "modules": [
+        "Walk",
+        "Slither",
+        "Fly",
+        "Wander",
+        "FlightExcursion",
+        "Skin",
+        "Membrane",
+        "Shimmer"
       ]
     },
     {

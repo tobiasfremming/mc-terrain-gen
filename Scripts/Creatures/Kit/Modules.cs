@@ -1,6 +1,6 @@
 // Creature kit T2.2: the module types for everything that exists today (design §2.4). Locomotion and look
 // modules carry the legacy species fields they replace (CompiledSpecies writes them back for the runtime);
-// behaviour modules name the brain parts (CreatureLab.BrainFor picks them from the same data until T3.4).
+// behaviour modules choose the brain (Kit/Brains.cs: BrainFactory; a new behaviour joins a ModularBrain).
 using System;
 using UnityEngine;
 
@@ -95,37 +95,45 @@ namespace CreatureKit
     }
 
     [Serializable]
-    [Module("Fly", CreatureModule.Locomotion, Summary = "Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlight, FlightModel, AirChain). Froude-scaled.",
+    [Module("Fly", CreatureModule.Locomotion, Summary = "Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlight, FlightModel, AirChain). Froude-scaled. twist: the twisting Chinese-dragon air chain (AirTwist).",
             Needs = "Wing parts")]
     public sealed class Fly : CreatureModule
     {
         [Param(ParamUnit.Spec, "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation)")]
         public FlightSpec spec = new FlightSpec();
+        [Param(ParamUnit.Struct, "twisting flight (AirTwist, Chinese dragon): the body follows the head's path; 3D swimming, corkscrews, barrel rolls, loops, slow rolls that travel head to tail. All 0 = the serpent's trailing air chain")]
+        public AirTwistSpec twist;
+
+        // the flight modes (CreatureFlight) for a species that can fly (wings, a flight spec, a cruise speed)
+        public override ILocomotionMode CreateMode(CreatureSim sim, in ModeCtx c)
+            => sim.Species.CanFly ? new CreatureFlight(sim, c.Ground, c.UpAt) : null;
 
         public override string Validate(in SpeciesCtx c)
         {
             if (spec == null) return "Fly: no spec";
+            if (twist.swimAmplitude < 0f || twist.corkscrewAmplitude < 0f || twist.barrelRadius < 0f || twist.loopRadius < 0f) return "Fly.twist: amplitudes must be >= 0";
+            if (twist.CanCorkscrew && twist.corkscrewTurns < 0) return "Fly.twist: corkscrewTurns must be >= 0";
             for (int i = 0; i < c.Parts.Count; i++) if (c.Parts[i] is Wing) return null;
             return "Fly needs Wing parts";
         }
     }
 
-    // ------------------------------------------------------------------ behaviour (the brain is chosen from these)
+    // ------------------------------------------------------------------ behaviour (the brain is chosen from these: BrainFactory)
 
     [Serializable]
     [Module("Wander", CreatureModule.Behaviour, Summary = "Safe-disc points, walk, pause, glance (WanderBrain). Containment is structural: the head is clamped to the safe radius.")]
-    public sealed class Wander : CreatureModule { }
+    public sealed partial class Wander : CreatureModule { }
 
     [Serializable]
     [Module("ClimbExcursion", CreatureModule.Behaviour, Summary = "Approach a climbable obstacle, climb to a goal on its real surface, rest, descend (ClimbingBrain wrapping Wander).", Needs = "Climb")]
-    public sealed class ClimbExcursion : CreatureModule
+    public sealed partial class ClimbExcursion : CreatureModule
     {
         public override string Validate(in SpeciesCtx c) => c.Module<Climb>() == null ? "ClimbExcursion needs Climb" : null;
     }
 
     [Serializable]
     [Module("FlightExcursion", CreatureModule.Behaviour, Summary = "Rest, Face, Patrol, Soar, Landing on perches; predictive wall turn-back (FlightBrain).", Needs = "Fly")]
-    public sealed class FlightExcursion : CreatureModule
+    public sealed partial class FlightExcursion : CreatureModule
     {
         public override string Validate(in SpeciesCtx c) => c.Module<Fly>() == null ? "FlightExcursion needs Fly" : null;
     }
@@ -192,6 +200,21 @@ namespace CreatureKit
         [Param(ParamUnit.Fraction, "how much light shines through", Min = 0, Max = 1)] public float translucency;
         [Param(ParamUnit.Fraction, "how dark the veins are", Min = 0, Max = 1)] public float veinContrast;
         [Param(ParamUnit.Fraction, "how dark the trailing rim is", Min = 0, Max = 1)] public float rim;
+    }
+
+    [Serializable]
+    [Module("Shimmer", CreatureModule.Look, Summary = "Iridescent scale shimmer: thin-film colour bands (colour -> colour2 with the view angle) travelling head to tail along the body's back and flanks, a faint glow in each band (Creature.shader, part 0). The SkyDragon's signature; cheap (one pow, one cos per body pixel).")]
+    public sealed class Shimmer : CreatureModule
+    {
+        [Param(ParamUnit.SrgbColour, "colour facing the viewer")] public Color colour;
+        [Param(ParamUnit.SrgbColour, "colour at grazing angles (the thin-film hue shift)")] public Color colour2;
+        [Param(ParamUnit.Fraction, "strength (0 = none)", Min = 0, Max = 2)] public float strength;
+        [Param(ParamUnit.Metres, "distance between bands along the body (rest arc)", Example = "dragon 0.22")] public float wavelength = 0.2f;
+        [Param(ParamUnit.Seconds, "a band passes a point every this many seconds (x sqrt of the species scale)", Example = "dragon 2.2")] public float period = 2f;
+        [Param(ParamUnit.Fraction, "glow of the bands (emission, also in shadow)", Min = 0, Max = 1)] public float glow;
+
+        public override string Validate(in SpeciesCtx c)
+            => strength < 0f || !(wavelength > 0f) || !(period > 0f) ? "Shimmer: strength >= 0, wavelength and period > 0" : null;
     }
 
     [Serializable]

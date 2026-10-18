@@ -26,12 +26,12 @@ public struct CreatureInstance
 // bind poses -> skin matrices (Count x BoneCount float4x4), uploaded to _Bones; the shader blends them by
 // uv2 (+ uv3) and indexes by SV_InstanceID. Arrays and buffers grow by doubling on Add; Render never allocates.
 // The spine path is the former CreatureSim path unchanged: same bone writer, same matrix product, same
-// bounds points in the same order.
+// bounds points in the same order. Construction is one path for every plan (CreatureKit.KitRender: mesh, bind
+// poses, bones, reach, body params); the soft plan differs only in its affine skin product and shader inputs.
 public sealed class CreatureRenderer : IDisposable
 {
     const int kInitialCapacity = 4;
     const int kMatrixStride = 64;
-    const float kBoundsMargin = 0.05f;
 
     static readonly int
         kBones = Shader.PropertyToID("_Bones"), kInstances = Shader.PropertyToID("_Instances"),
@@ -43,7 +43,8 @@ public sealed class CreatureRenderer : IDisposable
         kOctoColors0 = Shader.PropertyToID("_OctoSucker"), kOctoColors1 = Shader.PropertyToID("_OctoSubsurface"),
         kOctoParams = Shader.PropertyToID("_OctoParams"), kOctoParams2 = Shader.PropertyToID("_OctoParams2"),
         kMembraneColor = Shader.PropertyToID("_MembraneColor"), kMembraneParams = Shader.PropertyToID("_MembraneParams"),
-        kBandColor = Shader.PropertyToID("_BandColor"), kSheenColor = Shader.PropertyToID("_SheenColor"); // arthropod bands, velvet sheen (alpha = strength)
+        kBandColor = Shader.PropertyToID("_BandColor"), kSheenColor = Shader.PropertyToID("_SheenColor"), // arthropod bands, velvet sheen (alpha = strength)
+        kShimmerColor = Shader.PropertyToID("_ShimmerColor"), kShimmerColor2 = Shader.PropertyToID("_ShimmerColor2"), kShimmerParams = Shader.PropertyToID("_ShimmerParams"); // iridescent shimmer
 
     readonly CreatureSpecies sp;
     readonly Material material;
@@ -77,38 +78,14 @@ public sealed class CreatureRenderer : IDisposable
     {
         sp = sp.Compiled.Runtime;   // creature kit: the runtime view (a legacy asset is its own)
         this.sp = sp; this.material = material;
-        cephalopod = sp.bodyPlan == CreatureBodyPlan.Cephalopod;
-        if (cephalopod)
-        {
-            CephalopodSpec c = sp.cephalopod;
-            bonesPer = OctopusBody.BoneCountFor(c);
-            bindPoses = OctopusRestPose.BindPoses(c);
-            Mesh = OctopusMeshBuilder.Build(c, (sp != null ? sp.name : "") + " octopus");
-            // past the simulated points: the arm radius (bulging), the head/mantle shell around its inset
-            // lattice, the eyes
-            reach = Mathf.Max(c.arm.RootRadius * c.arm.Bulge, 1.5f * Mathf.Max(c.MantleRadius, c.HeadRadius)) + c.EyeRadius + kBoundsMargin;
-            float len = c.arm.Length;
-            bodyParams = new Vector4(len, 1f / len, c.WebDepth * len, 1f);
-        }
-        else
-        {
-            bonesPer = sp.BoneCount;
-            bindPoses = CreatureRestPose.BindPoses(sp);
-            Mesh = sp.WingCount > 0 ? WingedMeshBuilder.Build(sp) : CreatureMeshBuilder.Build(sp);
-
-            // Everything that sticks out past the spine joints: legs and feet sideways and down, the head
-            // cap and tail tip along the body, the eyes.
-            float halfHeight = 0f;
-            for (int i = 0; i < sp.JointCount; i++) halfHeight = Mathf.Max(halfHeight, sp.joints[i].halfHeight);
-            reach = Mathf.Max(sp.MaxLateralReach, Mathf.Max(sp.headCapLength, sp.tailTipLength), halfHeight) + sp.eyeRadius + kBoundsMargin;
-
-            // _BodyParams = (body length, 1 / length, arc length where the tail begins (behind the hind legs), 0)
-            float len = Mathf.Max(sp.BodyLength, 1e-3f);
-            int hip = -1;
-            for (int l = 0; l < (sp.legs != null ? sp.legs.Length : 0); l++) hip = Mathf.Max(hip, sp.legs[l].attachJoint);
-            float tailStart = hip >= 0 ? sp.headCapLength + sp.spacing * hip : 0.5f * len;
-            bodyParams = new Vector4(len, 1f / len, tailStart, 0f);
-        }
+        // creature kit: mesh, bind poses, bones, reach and body params from the species' body plan (KitRender)
+        CreatureKit.KitRender rd = CreatureKit.KitRender.For(sp);
+        cephalopod = rd.AffineSkin;
+        bonesPer = rd.Bones;
+        bindPoses = rd.BindPoses;
+        Mesh = rd.Mesh;
+        reach = rd.Reach;
+        bodyParams = rd.BodyParams;
         boneScratch = new Matrix4x4[bonesPer];
 
         // Without a graphics device (batch -nographics) only the CPU side runs.
@@ -230,6 +207,13 @@ public sealed class CreatureRenderer : IDisposable
         props.SetColor(kBandColor, look.bandColor);
         Color sheen = look.sheenColor; sheen.a = look.sheen;
         props.SetColor(kSheenColor, sheen);
+        // iridescent shimmer (alpha: strength, glow; 0 = none): bands per rest metre, bands per second
+        Color sh1 = look.shimmerColor; sh1.a = look.shimmer;
+        Color sh2 = look.shimmerColor2; sh2.a = look.shimmerGlow;
+        props.SetColor(kShimmerColor, sh1);
+        props.SetColor(kShimmerColor2, sh2);
+        float shPeriod = look.shimmerPeriod * Mathf.Sqrt(Mathf.Max(1e-3f, sp.scale));
+        props.SetVector(kShimmerParams, new Vector4(look.shimmerWavelength > 0f ? 1f / look.shimmerWavelength : 0f, shPeriod > 0f ? 1f / shPeriod : 0f, 0f, 0f));
         props.SetVector(kBodyParams, bodyParams);
         if (cephalopod)
         {

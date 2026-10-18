@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using UnityEngine;
 
 // The creature lab: one enclosure per species on a gentle arc in front of the player's spawn, each with one
-// wandering individual. Placement runs once the ground answers, so it adapts to wherever the dunes are,
+// wandering individual. The animals are the roster's (CreatureLabRoster); each gets the habitat its modules ask
+// for (CreatureKit.LabHabitat: aviary, climbable or plain enclosure; the grove is OctopusLab's) and the brain its
+// behaviour modules ask for (CreatureKit.BrainFactory). Placement runs once the ground answers, so it adapts to wherever the dunes are,
 // preferring the flattest of a few nearby spots.
 // Scaling (R22): each species' own CreatureSpecies.scale, or a per-enclosure override in scaleOverrides
 // (parallel to species; 0 = the species' scale). Changing either in play mode respawns that enclosure's
@@ -11,6 +13,8 @@ using UnityEngine;
 [RequireComponent(typeof(CreatureWorld))]
 public sealed class CreatureLab : MonoBehaviour
 {
+    [Tooltip("The lab's animals (Config/Creatures/CreatureLabRoster.asset): when set, species and scaleOverrides come from it; each entry's habitat follows its species' modules (CreatureKit.LabHabitat).")]
+    public CreatureLabRoster roster;
     public CreatureSpecies[] species;
     [Tooltip("Per-species size override, parallel to species (0 = use the species' own scale).")]
     public float[] scaleOverrides;
@@ -25,33 +29,29 @@ public sealed class CreatureLab : MonoBehaviour
     public float plantOffset = 0.45f;
 
     [Header("Aviary (flying species)")]
-    [Tooltip("A flying species gets an aviary: this radius and height (at scale 1; larger individuals scale it), trees and rock perches.")]
+    [Tooltip("A flying species gets an aviary: this radius and height at scale 1 (larger individuals scale it up to 1.5x; past that, or when its flight needs more room, AviarySizing follows its turn radius, length and manoeuvres), trees and rock perches.")]
     public float aviaryRadius = 14f;
     public float aviaryHeight = 10f;
     [Range(0, 3)] public int aviaryTrees = 2;
     [Range(0, 6)] public int aviaryRocks = 3;
 
     const float kWaitSeconds = 10f;
-    const int kCandidates = 16, kRimProbes = 8;
-    const float kProbeWindow = 6f;
-    const float kGoldenAngle = 2.39996323f;
-    const float kViewGap = 4f;          // the player starts this far outside the nearest curb, facing it
-    internal const float kEnclosureGap = 4f; // free ground between neighbouring curbs
+    const float kProbeWindow = LabLayout.kProbeWindow;
+    const float kViewGap = LabLayout.kViewGap;          // the player starts this far outside the nearest curb, facing it
+    internal const float kEnclosureGap = LabLayout.kEnclosureGap; // free ground between neighbouring curbs
     const float kSunSide = 35f;         // the player stands this far round from the sun's side (modelling light)
 
     // The enclosure for a species whose largest individual has size scale maxScale: 2 body lengths of
     // radius (room to wander and turn, small enough to see the animal from the curb), at least 5 m.
-    public static float EnclosureRadius(CreatureSpecies sp, float maxScale)
-        => sp != null && sp.CanFly ? kAviaryRadius * Mathf.Max(1f, maxScale) : Mathf.Max(5f, 2f * sp.BodyLength * maxScale);
+    public static float EnclosureRadius(CreatureSpecies sp, float maxScale) => CreatureKit.LabHabitat.EnclosureRadius(sp, maxScale, kAviaryRadius);
 
     // Design decision 4: the aviary is 14 m x 10 m at scale 1 (the serpent's turn fits: FlightBrain.FitsAviary).
     internal const float kAviaryRadius = 14f, kAviaryHeight = 10f;
-    float EnclosureRadiusFor(CreatureSpecies sp, float maxScale)
-        => sp != null && sp.CanFly ? aviaryRadius * Mathf.Max(1f, maxScale) : EnclosureRadius(sp, maxScale);
+    float EnclosureRadiusFor(CreatureSpecies sp, float maxScale) => CreatureKit.LabHabitat.EnclosureRadius(sp, maxScale, aviaryRadius);
 
     // The size scale of the species' largest possible individual (CreatureWorld draws it from the seed).
     public static float MaxScale(CreatureSpecies sp) => MaxScale(sp, sp.scale);
-    public static float MaxScale(CreatureSpecies sp, float scale) => scale * (1f + Mathf.Abs(sp.look.sizeJitter));
+    public static float MaxScale(CreatureSpecies sp, float scale) => scale * (1f + Mathf.Abs(sp.Compiled.Runtime.look.sizeJitter));
 
     // One placed enclosure and its creature.
     sealed class Entry
@@ -82,11 +82,10 @@ public sealed class CreatureLab : MonoBehaviour
         return area;
     }
 
+    // The brain from the species' behaviour modules (CreatureKit.BrainFactory: the shipped species keep exactly
+    // the pre-kit choice - flyer FlightBrain, climber with a climbable tree ClimbingBrain, else WanderBrain).
     internal static ICreatureBrain BrainFor(EnclosureArea area, CreatureSpecies sp, int seed, PerchSpot[] perches = null)
-    {
-        if (sp.CanFly) return new FlightBrain(area, seed, perches);
-        return sp.climb.canClimb && area.obstacleClimbable != null ? new ClimbingBrain(area, seed) : (ICreatureBrain)new WanderBrain(area, seed);
-    }
+        => CreatureKit.BrainFactory.Create(sp, area, seed, perches);
 
     // A flying species' area: the aviary's height on top of the usual disc (its trees and rocks are walked round).
     static EnclosureArea AviaryArea(CreatureEnclosure enc, CreatureSpecies sp, float maxScale, float height)
@@ -110,6 +109,8 @@ public sealed class CreatureLab : MonoBehaviour
     internal CreatureSim SimFor(int k) => k < entries.Count && entries[k] != null ? entries[k].sim : null;
     internal CreatureEnclosure EnclosureFor(int k) => k < entries.Count && entries[k] != null ? entries[k].enclosure : null;
 
+    // the roster first: OctopusLab's Start reads the species list (it waits for these enclosures)
+    void Awake() => UseRoster();
     void OnEnable() => CreatureSpecies.Changed += OnSpeciesChanged;
     void OnDisable() => CreatureSpecies.Changed -= OnSpeciesChanged;
     void OnSpeciesChanged(CreatureSpecies sp) => scalesDirty = true;
@@ -138,9 +139,10 @@ public sealed class CreatureLab : MonoBehaviour
             placedWorld.Despawn(e.sim);
             e.scale = scale;
             float maxScale = MaxScale(e.species, scale);
-            if (!e.species.CanFly) e.enclosure.radius = EnclosureRadius(e.species, maxScale); // an aviary keeps its size
+            bool aviary = CreatureKit.LabHabitat.For(e.species) == CreatureKit.Habitat.Aviary;
+            if (!aviary) e.enclosure.radius = EnclosureRadius(e.species, maxScale); // an aviary keeps its size
             e.enclosure.Build(ground);
-            EnclosureArea area = e.species.CanFly ? AviaryArea(e.enclosure, e.species, maxScale, e.aviaryHeight) : AreaFor(e.enclosure, e.species, maxScale, e.plant);
+            EnclosureArea area = aviary ? AviaryArea(e.enclosure, e.species, maxScale, e.aviaryHeight) : AreaFor(e.enclosure, e.species, maxScale, e.plant);
             e.sim = placedWorld.Spawn(e.species, area.center, face, BrainFor(area, e.species, e.seed, e.perches), area, e.seed, scale);
         }
     }
@@ -178,6 +180,7 @@ public sealed class CreatureLab : MonoBehaviour
 
     internal void Place(CreatureWorld world, Transform player, Vector3 origin)
     {
+        UseRoster();
         if (species == null) return;
         placedWorld = world;
         entries.Clear();
@@ -188,34 +191,37 @@ public sealed class CreatureLab : MonoBehaviour
         fwd.Normalize();
 
         int n = species.Length;
-        // big species get big enclosures: keep neighbours apart and the arc outside the player's spot
-        float maxR = 0f;
-        for (int k = 0; k < n; k++) if (species[k] != null) maxR = Mathf.Max(maxR, EnclosureRadiusFor(species[k], MaxScale(species[k], ScaleFor(k))));
-        float slotSpacing = Mathf.Max(spacing, 2f * maxR + kEnclosureGap);
-        float slotRadius = Mathf.Max(arcRadius, maxR + kViewGap + searchRadius);
-        var sb = new System.Text.StringBuilder("[CreatureLab] placed:");
+        // the individual's size is drawn from its seed inside CreatureWorld: size each enclosure and its safe disc
+        // for the largest possible individual; big species get big enclosures (LabLayout keeps neighbours apart
+        // and the arc outside the player's spot). A grove species is OctopusLab's (no slot here).
+        var radius = new float[n];
+        for (int k = 0; k < n; k++)
+        {
+            CreatureSpecies sp = RuntimeOf(k);
+            if (sp == null || CreatureKit.LabHabitat.For(sp) == CreatureKit.Habitat.Grove) continue;
+            radius[k] = EnclosureRadiusFor(sp, MaxScale(sp, ScaleFor(k)));
+        }
+        var flatness = new float[n];
         var placed = new List<Vector4>(n); // centre, radius of every enclosure placed so far
+        Vector3[] centres = LabLayout.Centres(ground, origin, fwd, up, radius, spacing, arcRadius, searchRadius, flatness, placed);
+        var sb = new System.Text.StringBuilder("[CreatureLab] placed:");
         Vector3 nearestCentre = default; float nearestRadius = 0f, nearestDist = float.MaxValue;
         for (int k = 0; k < n; k++)
         {
-            CreatureSpecies sp = species[k];
-            if (sp == null) { entries.Add(null); continue; }
-            // the individual's size is drawn from its seed inside CreatureWorld: size the enclosure and its
-            // safe disc for the largest possible individual
+            CreatureSpecies sp = RuntimeOf(k);
+            if (sp == null || !(radius[k] > 0f)) { entries.Add(null); continue; }
             float scale = ScaleFor(k);
             float maxScale = MaxScale(sp, scale);
-            float radius = EnclosureRadiusFor(sp, maxScale);
-
-            Vector3 slot = ArcSlot(origin, fwd, up, k, n, slotSpacing, slotRadius);
-            Vector3 center = FlattestSpot(ground, slot, up, radius, searchRadius, placed, out float flatness);
-            placed.Add(new Vector4(center.x, center.y, center.z, radius));
+            float r = radius[k];
+            Vector3 center = centres[k];
             Vector3 cUp = PlanetGravity.UpAt(center);
+            CreatureKit.Habitat habitat = CreatureKit.LabHabitat.For(sp);
 
             var go = new GameObject("Enclosure " + sp.name);
             go.transform.SetParent(transform, false);
             go.transform.SetPositionAndRotation(center, Quaternion.FromToRotation(Vector3.up, cUp));
             var enc = go.AddComponent<CreatureEnclosure>();
-            enc.radius = radius;
+            enc.radius = r;
             enc.borderMaterial = borderMaterial;
             enc.Build(ground);
 
@@ -223,27 +229,47 @@ public sealed class CreatureLab : MonoBehaviour
             if (face.sqrMagnitude < 1e-6f) face = fwd;
             EnclosurePlant plant = null; PerchSpot[] perches = null; float height = 0f;
             EnclosureArea area;
-            if (sp.CanFly)
+            if (habitat == CreatureKit.Habitat.Aviary)
             {
-                height = aviaryHeight * Mathf.Max(1f, maxScale);
+                height = AviarySizing.Height(sp, maxScale, aviaryHeight);
                 _ = world.Surfaces; // the registry first: the rocks register as they are made
-                perches = DressAviary(enc, ground, center, cUp, radius, height, face.normalized, k, out plant);
+                perches = DressAviary(enc, ground, center, cUp, r, height, face.normalized, k, out plant);
                 area = AviaryArea(enc, sp, maxScale, height);
-                if (!FlightBrain.FitsAviary(sp, area, maxScale)) Debug.LogWarning($"[CreatureLab] {sp.name} at scale {maxScale:F2} cannot turn inside a {radius:F0} m aviary");
+                if (!FlightBrain.FitsAviary(sp, area, maxScale)) Debug.LogWarning($"[CreatureLab] {sp.name} at scale {maxScale:F2} cannot turn inside a {r:F0} m aviary");
             }
             else
             {
-                plant = enclosurePlant != null ? PlacePlant(enc, ground, center, cUp, radius, face.normalized, k) : null;
+                // Plain and Climbable: the shade tree (climbable for a climber: AreaFor)
+                plant = enclosurePlant != null ? PlacePlant(enc, ground, center, cUp, r, face.normalized, k) : null;
                 area = AreaFor(enc, sp, maxScale, plant);
             }
             CreatureSim sim = world.Spawn(sp, center, face.normalized, BrainFor(area, sp, seed + k, perches), area, seed + k, scale);
             entries.Add(new Entry { species = sp, scale = scale, enclosure = enc, sim = sim, seed = seed + k, plant = plant, perches = perches, aviaryHeight = height });
-            sb.Append($" {sp.name} at {center} (r {radius:F1} m, flatness {flatness:F3})");
-            float dist = Vector3.ProjectOnPlane(center - origin, up).magnitude - radius;
-            if (dist < nearestDist) { nearestDist = dist; nearestCentre = center; nearestRadius = radius; }
+            sb.Append($" {sp.name} ({habitat}) at {center} (r {r:F1} m, flatness {flatness[k]:F3})");
+            float dist = Vector3.ProjectOnPlane(center - origin, up).magnitude - r;
+            if (dist < nearestDist) { nearestDist = dist; nearestCentre = center; nearestRadius = r; }
         }
         if (nearestDist < float.MaxValue) FramePlayer(ground, player, origin, nearestCentre, nearestRadius, sb);
         Debug.Log(sb.ToString());
+    }
+
+    // Species k as the systems read it (a kit asset: its compiled runtime view; a legacy asset itself).
+    CreatureSpecies RuntimeOf(int k) => species[k] != null ? species[k].Compiled.Runtime : null;
+
+    // With a roster (Config/Creatures/CreatureLabRoster.asset) the lab's animals are its entries: species and
+    // scale overrides in roster order, the grove species handed to the OctopusLab on this object.
+    internal void UseRoster()
+    {
+        if (roster == null || roster.entries == null || roster.entries.Count == 0) return;
+        roster.Split(out List<CreatureLabRoster.Entry> list, out CreatureSpecies grove);
+        species = new CreatureSpecies[list.Count];
+        scaleOverrides = new float[list.Count];
+        for (int k = 0; k < list.Count; k++) { species[k] = list[k].species; scaleOverrides[k] = list[k].scaleOverride; }
+        if (grove != null)
+        {
+            OctopusLab ol = GetComponent<OctopusLab>();
+            if (ol != null && ol.octopus == null) ol.octopus = grove;
+        }
     }
 
     // Moves the player to kViewGap outside the nearest curb, facing its centre, on the sun's side (turned
@@ -351,75 +377,12 @@ public sealed class CreatureLab : MonoBehaviour
         return plant;
     }
 
-    // The k-th of n slots on an arc of radius arcRadius around origin, centred on fwd; adjacent slots are
-    // `spacing` apart (chord length).
+    // The lab's layout (LabLayout: pure geometry, also run offline); kept here for OctopusLab and the tests.
     internal static Vector3 ArcSlot(Vector3 origin, Vector3 fwd, int k, int n, float spacing, float arcRadius)
-        => ArcSlot(origin, fwd, Vector3.up, k, n, spacing, arcRadius);
-
+        => LabLayout.ArcSlot(origin, fwd, Vector3.up, k, n, spacing, arcRadius);
     internal static Vector3 ArcSlot(Vector3 origin, Vector3 fwd, Vector3 up, int k, int n, float spacing, float arcRadius)
-    {
-        float step = 2f * Mathf.Asin(Mathf.Clamp(spacing / (2f * arcRadius), -1f, 1f));
-        float angle = (k - 0.5f * (n - 1)) * step;
-        Vector3 dir = Quaternion.AngleAxis(angle * Mathf.Rad2Deg, up) * Vector3.ProjectOnPlane(fwd, up).normalized;
-        return origin + dir * arcRadius;
-    }
-
-    // The flattest of kCandidates spots (sunflower pattern) within searchRadius of slot: flatness is the
-    // lowest dot(normal, up) over kRimProbes probes on the enclosure rim. Candidates that would bring the curb
-    // within kEnclosureGap of an enclosure already placed (xyz centre, w radius) are skipped: neighbouring
-    // slots are closer than two search radii, so two enclosures drawn to the same flat patch overlapped. If
-    // every candidate is too close, the slot is pushed out of its neighbours. Returns the spot's ground point.
+        => LabLayout.ArcSlot(origin, fwd, up, k, n, spacing, arcRadius);
     internal static Vector3 FlattestSpot(IGroundProbe ground, Vector3 slot, Vector3 up, float radius, float searchRadius,
                                          List<Vector4> placed, out float best)
-    {
-        Vector3 t0 = Vector3.Cross(up, Mathf.Abs(up.y) < 0.99f ? Vector3.up : Vector3.right).normalized;
-        Vector3 t1 = Vector3.Cross(up, t0);
-        best = -2f;
-        Vector3 bestP = slot;
-        bool found = false;
-        for (int i = 0; i < kCandidates; i++)
-        {
-            float r = searchRadius * Mathf.Sqrt(i / (float)kCandidates), a = i * kGoldenAngle;
-            Vector3 c = slot + t0 * (r * Mathf.Cos(a)) + t1 * (r * Mathf.Sin(a));
-            if (Crowds(c, up, radius, placed) >= 0) continue;
-            if (!ground.Probe(c, up, kProbeWindow, out Vector3 cg, out _)) continue;
-            float flat = 2f;
-            for (int j = 0; j < kRimProbes; j++)
-            {
-                float b = j * 2f * Mathf.PI / kRimProbes;
-                Vector3 q = cg + (t0 * Mathf.Cos(b) + t1 * Mathf.Sin(b)) * radius;
-                flat = ground.Probe(q, up, kProbeWindow, out _, out Vector3 nrm) ? Mathf.Min(flat, Vector3.Dot(nrm, up)) : -1f;
-                if (flat < best) break;
-            }
-            if (flat > best) { best = flat; bestP = cg; found = true; }
-        }
-        if (found) return bestP;
-        // no free candidate answered: push the slot clear of every enclosure it crowds, then ground it
-        Vector3 p = slot;
-        for (int pass = 0; pass < 4; pass++)
-        {
-            int k = Crowds(p, up, radius, placed);
-            if (k < 0) break;
-            Vector3 c = placed[k], d = Vector3.ProjectOnPlane(p - c, up);
-            if (d.sqrMagnitude < 1e-6f) d = t0;
-            p = c + Vector3.Project(p - c, up) + d.normalized * (placed[k].w + radius + kEnclosureGap + 0.01f);
-        }
-        if (ground.Probe(p, up, kProbeWindow, out Vector3 pg, out Vector3 pn)) { p = pg; best = Vector3.Dot(pn, up); }
-        return p;
-    }
-
-    // Index of the first placed enclosure a curb of the given radius centred at c would come within
-    // kEnclosureGap of (planar), or -1.
-    static int Crowds(Vector3 c, Vector3 up, float radius, List<Vector4> placed)
-    {
-        if (placed == null) return -1;
-        for (int k = 0; k < placed.Count; k++)
-        {
-            Vector4 e = placed[k];
-            Vector3 d = Vector3.ProjectOnPlane(c - (Vector3)e, up);
-            float need = e.w + radius + kEnclosureGap;
-            if (d.sqrMagnitude < need * need) return k;
-        }
-        return -1;
-    }
+        => LabLayout.FlattestSpot(ground, slot, up, radius, searchRadius, placed, out best);
 }

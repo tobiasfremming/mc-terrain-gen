@@ -1,7 +1,7 @@
 // Creature kit (design §2.1, §2.3): a part is DATA, held polymorphically in CreatureSpecies.parts
 // ([SerializeReference] List<CreaturePart>, the YAML names the class), plus small contracts: how many bones it
-// needs, how it validates, which other parts it names. Runtime behaviour (mesh emitters, IPartRuntime) joins
-// in Phase 3; until then CompiledSpecies turns parts into the legacy runtime fields the systems read.
+// needs, how it validates, which other parts it names - and, since Phase 3, how it draws itself (EmitMesh through
+// PartMeshEmitter) and how it moves on its own (CreateRuntime -> IPartRuntime, stepped by CreatureSim).
 // A part type is a [Serializable] class in namespace CreatureKit with [Part] and a [Param] on every field.
 using System;
 using System.Collections.Generic;
@@ -59,6 +59,19 @@ namespace CreatureKit
         public virtual string Validate(in SpeciesCtx c) => null;
         // ids of other parts this one names (checked by compose: each must exist)
         public virtual void CollectReferences(List<string> into) { }
+
+        // ---- Phase 3: runtime composition ----
+        // Its piece of the species mesh in the rest pose, built from the emitter's primitives (Kit/PartMeshes.cs).
+        // A part with no geometry of its own (Repeat; a soft body's parts: OctopusMeshBuilder) emits nothing.
+        public virtual void EmitMesh(PartMeshEmitter m, in PartCtx c) { }
+        // The order class the emitter draws the part in (stable within a class, by part order). The shipped
+        // classes reproduce the pre-kit builders: body 0, limbs 1, eyes 2, cones 3, fins 4, antennae 5, wings 6;
+        // a new part type keeps 100, so it appends after every existing vertex (existing meshes stay byte-equal).
+        public virtual int MeshOrder => 100;
+        // Its own moving state for one individual (Kit/PartRuntime.cs), stepped by CreatureSim at its stage; null =
+        // none (a part the shared systems run: body, limbs, wings; or mesh only: cones, fins). Built in the sim's
+        // constructor: the only place a part may allocate.
+        public virtual IPartRuntime CreateRuntime(in PartCtx c) => null;
 
         // A copy that shares no arrays with this one (compose clones before it edits).
         public CreaturePart Clone()

@@ -226,7 +226,13 @@ namespace TerrainGen.Tests
                 next += WingBoneLayout.BonesPerWing;
             }
             if (sp.EyeBone(0) != next || sp.EyeBone(1) != next + 1) return $"eyes at bones {sp.EyeBone(0)}, {sp.EyeBone(1)}, expected {next}, {next + 1}";
-            if (sp.BoneCount != next + 2) return $"BoneCount {sp.BoneCount} != spine + legs + wings + eyes = {next + 2}";
+            next += 2;
+            for (int a = 0; a < sp.AntennaCount; a++)
+            {
+                if (sp.AntennaBone(a, 0) != next) return $"antenna {a} starts at bone {sp.AntennaBone(a, 0)}, expected {next}";
+                next += sp.antennae[a].Segments;
+            }
+            if (sp.BoneCount != next) return $"BoneCount {sp.BoneCount} != spine + legs + wings + eyes + antennae = {next}";
             int bind = CreatureRestPose.BindPoses(sp).Length;
             if (bind != sp.BoneCount) return $"{bind} bind poses for {sp.BoneCount} bones";
 
@@ -350,7 +356,7 @@ namespace TerrainGen.Tests
         {
             float big = CreatureLab.MaxScale(sp);
             EnclosureArea area = EnclosureArea.For(Vector3.zero, Vector3.up, CreatureLab.EnclosureRadius(sp, big), sp, big);
-            if (sp.CanFly) area.maxHeight = CreatureLab.kAviaryHeight * Mathf.Max(1f, big);
+            if (sp.CanFly) area.maxHeight = AviarySizing.Height(sp, big, CreatureLab.kAviaryHeight);
             return area;
         }
 
