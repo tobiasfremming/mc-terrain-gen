@@ -33,6 +33,17 @@ public class WingSpec
     public float[] fingerFoldDeg = { 100f, 122f, 146f };
     public float fingerMinGapDeg = 4f;
     public float fingerFoldGapDeg = 10f;  // folded: rays at least this far apart (no membrane sliver flips)
+    // On the ground (wing-walk, perch) the folded hand's fan is turned up about the rear flank rib until the
+    // fan's outer edge rises this far above the girdle's plane: the folded fingers sweep back and up, clear
+    // of the ground, the membrane tucked between them and the flank (user feedback 2026-10-18). 0 = flat.
+    [Range(0f, 60f)] public float groundLiftDeg = 0f;
+    // On the ground the wrist stands on its thumb claw: raised off the walked foot point until the thumb's tip
+    // (thumbLength) is on it, at most this far (m at scale 1); the arm is drawn to the raised wrist, the gait's
+    // foot point is unchanged. 0 = on the wrist.
+    public float groundWristLift = 0f;
+    // On the ground the membrane's flank attach rises this far up the flank (x the joint's halfHeight): the
+    // folded wing tucks up against the body instead of hanging below it. 0 = at mid-flank as in flight.
+    [Range(0f, 1.5f)] public float groundFlankRise = 0f;
     public float fingerRadius = 0.014f;
     public float thumbLength = 0.07f;
 

@@ -23,6 +23,15 @@ public sealed class ArmBlackboard
     // the holds behind pay out, and no two arms ask for different body positions (no tug-of-war).
     public Vector3 DesiredVelocity;
     public int Puller = -1;
+    // Swinging (ArmCoordinator): the run length (x the rest spacing, as LengthTarget) each anchored swing arm
+    // holds this tick - the pivot group's locked (and pumped) length, the catching group's slack-free follow -
+    // 0 = not swinging; the group the body hangs from, the holds' centroid and the level route.
+    public readonly float[] SwingLen;
+    public int PivotGroup = -1;
+    public Vector3 SwingPivot, SwingRoute;   // the pivot's front hold (along the route), the route direction (level)
+    public Vector3 SwingCentre;              // the centroid of the holds the body hangs from
+    public Vector3 SwingTarget;              // the route's next waypoint (the catch the arms reach for)
+    public bool HasSwingTarget;
     public readonly bool[] Pulling;                  // the one arm that pulls the body this tick (-1: none)
     public int CommittedSupport { get; private set; }   // anchored arms whose role keeps them holding (Anchor, Grip)
     public int AnchoredCount { get; private set; }
@@ -35,7 +44,7 @@ public sealed class ArmBlackboard
         Arms = arms;
         Anchored = new bool[arms]; Anchor = new Vector3[arms]; Load = new float[arms];
         Claiming = new bool[arms]; ClaimPoint = new Vector3[arms]; Striking = new bool[arms];
-        Pulling = new bool[arms];
+        Pulling = new bool[arms]; SwingLen = new float[arms];
         Command = new ArmCommand[arms]; Role = new ArmRole[arms]; Report = new ArmReport[arms]; RoleSince = new float[arms]; Group = new int[arms];
         for (int i = 0; i < arms; i++) { Group[i] = -1; Command[i].groomArm = -1; Command[i].group = -1; }
     }

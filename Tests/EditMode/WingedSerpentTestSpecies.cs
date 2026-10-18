@@ -58,9 +58,17 @@ namespace TerrainGen.Tests
 
             // the membrane attaches along the flank from the girdle to 8 joints behind it
             var wings = new[] { Wing(0), Wing(1) };
-            // deep downstroke (comfortDown 0.95, was 0.55) and a lower grip (0.6, was the prototype's 0.733): fewer,
-            // bigger beats (~2.2 Hz, was 2.67) and a bigger body bob (user feedback 2026-10-18)
-            sp.wings = wings; sp.flight = new FlightSpec { kGrip = 0.6f };
+            // deep downstroke (user feedback 2026-10-18, twice): comfortDown 0.55 -> 0.95 -> 1.03 (the band bottom
+            // 87 deg below the glide pose, the wrist nearly straight down: the arm's 1.0 m reach is the limit, 1.04
+            // reaches it and folds the elbow skin), and every beat uses most of it (amplitudeMin 0.3 -> 0.75): level
+            // flight sweeps the wrist ~0.96 m down (70 deg; 0.54 m, 33 deg before). The deeper beat lifts more: a
+            // lower grip (kGrip 0.733 -> 0.6 -> 0.5), a faster slowest stroke (strokeRateMin 2 -> 3) and more
+            // integral authority (climbIntegralLimit 0.3 -> 0.6)
+            // hold the altitude at fewer, bigger beats (~1.3-1.7 Hz, was 2.2) with a bigger body bob (0.33 m p-p);
+            // the head is held stiller (headStabilise 0.15 -> 0.35 s) and the roll authority restored (rollGain
+            // 0.7 -> 1.0: the lower grip rolled to 30 deg in 1.4 s instead of 1.1, and the wall turn came late)
+            sp.wings = wings;
+            sp.flight = new FlightSpec { kGrip = 0.5f, amplitudeMin = 0.75f, strokeRateMin = 3f, climbIntegralLimit = 0.6f, headStabilise = 0.35f, rollGain = 1f };
             return new Serpent { species = sp, wings = wings, flight = sp.flight };
         }
 
@@ -75,7 +83,11 @@ namespace TerrainGen.Tests
             return Mathf.Lerp(0.055f, 0.009f, Mathf.Pow(t, 0.8f));
         }
 
-        static WingSpec Wing(int leg) => new WingSpec { leg = leg, membraneFrontJoint = Girdle, membraneRearJoint = Girdle + 8, comfortDown = 0.95f };
+        static WingSpec Wing(int leg) => new WingSpec { leg = leg, membraneFrontJoint = Girdle, membraneRearJoint = Girdle + 8, comfortDown = 1.03f,
+            // on the ground (user feedback 2026-10-18): folded fingers swept back and 30 deg up, the wrist on a
+            // longer thumb claw (0.07 -> 0.09), the membrane tucked up the flank and its trailing rib near the flank
+            // rib (0.5 -> 0.8: the narrow zone between them no longer sags to the ground when folded)
+            groundLiftDeg = 30f, groundWristLift = 0.1f, groundFlankRise = 0.8f, thumbLength = 0.09f, trailingRib = 0.8f };
 
         static LegSpec Arm(int side, int group) => new LegSpec
         {

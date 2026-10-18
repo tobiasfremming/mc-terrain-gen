@@ -319,7 +319,7 @@ MonoBehaviour:
   - leg: 0
     restTip: {x: 1.06, y: 0.08, z: 0.05}
     comfortUp: 0.55
-    comfortDown: 0.95
+    comfortDown: 1.03
     strokePlaneDeg: 10
     pronationDeg: 18
     overshootUp: 0.08
@@ -341,18 +341,21 @@ MonoBehaviour:
     - 146
     fingerMinGapDeg: 4
     fingerFoldGapDeg: 10
+    groundLiftDeg: 30
+    groundWristLift: 0.1
+    groundFlankRise: 0.8
     fingerRadius: 0.014
-    thumbLength: 0.07
+    thumbLength: 0.09
     membraneRearJoint: 14
     membraneFrontJoint: 6
-    trailingRib: 0.5
+    trailingRib: 0.8
     membraneInset: 0.8
     area: 1
     scallop: 0.12
   - leg: 1
     restTip: {x: 1.06, y: 0.08, z: 0.05}
     comfortUp: 0.55
-    comfortDown: 0.95
+    comfortDown: 1.03
     strokePlaneDeg: 10
     pronationDeg: 18
     overshootUp: 0.08
@@ -374,11 +377,14 @@ MonoBehaviour:
     - 146
     fingerMinGapDeg: 4
     fingerFoldGapDeg: 10
+    groundLiftDeg: 30
+    groundWristLift: 0.1
+    groundFlankRise: 0.8
     fingerRadius: 0.014
-    thumbLength: 0.07
+    thumbLength: 0.09
     membraneRearJoint: 14
     membraneFrontJoint: 6
-    trailingRib: 0.5
+    trailingRib: 0.8
     membraneInset: 0.8
     area: 1
     scallop: 0.12
@@ -386,7 +392,7 @@ MonoBehaviour:
     cruiseSpeed: 5
     minSpeed: 3
     maxSpeed: 8
-    kGrip: 0.6
+    kGrip: 0.5
     vGripMin: 3
     kLift: 0.02
     kDrag: 0.01
@@ -395,20 +401,20 @@ MonoBehaviour:
     climbGain: 0.6
     climbDamping: 0.5
     climbIntegral: 0.8
-    climbIntegralLimit: 0.3
+    climbIntegralLimit: 0.6
     thrustGain: 0.5
     demandFloor: 0.25
     descendCutoff: -0.6
     glideDemand: 0.05
-    amplitudeMin: 0.3
-    strokeRateMin: 2
+    amplitudeMin: 0.75
+    strokeRateMin: 3
     strokeRateMax: 8
     glideRelax: 6
     maxBankDeg: 35
     bankGain: 3
     bankDamping: 0.5
     maxAsymmetry: 0.4
-    rollGain: 0.7
+    rollGain: 1
     rollDamping: 4
     glideAlphaDeg: 6
     flareAlphaDeg: 45
@@ -419,4 +425,4 @@ MonoBehaviour:
     airUndulationDeg: 14.3
     airUndulationHz: 1.2
     tailSag: 0.3
-    headStabilise: 0.15
+    headStabilise: 0.35

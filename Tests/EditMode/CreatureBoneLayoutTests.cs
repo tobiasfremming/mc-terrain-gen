@@ -10,7 +10,7 @@ namespace TerrainGen.Tests
     // for every species asset and every test factory, so every golden hash stays put.
     public class CreatureBoneLayoutTests
     {
-        // The legacy formulas, transcribed from CreatureSpecies / LegBoneLayout / WingBoneLayout before T1.1.
+        // The legacy formulas, transcribed from CreatureSpecies / LegBoneLayout / WingBoneLayout before T1.1 (7 bones per wing since the humerus patch bone).
         static int LegacyLegBones(CreatureSpecies sp)
         {
             int c = 0;
@@ -23,10 +23,10 @@ namespace TerrainGen.Tests
             for (int i = 0; i < leg; i++) c += sp.legs[i] != null ? sp.legs[i].SegmentCount : 3;
             return c;
         }
-        static int LegacyBoneCount(CreatureSpecies sp) => sp.JointCount + LegacyLegBones(sp) + 6 * sp.WingCount + 2;
+        static int LegacyBoneCount(CreatureSpecies sp) => sp.JointCount + LegacyLegBones(sp) + 7 * sp.WingCount + 2;
         static int LegacyLegBone(CreatureSpecies sp, int leg, int part) => sp.JointCount + LegacyLegStart(sp, leg) + part;
-        static int LegacyWingBone(CreatureSpecies sp, int w, int k) => sp.JointCount + LegacyLegBones(sp) + 6 * w + k;
-        static int LegacyEyeBone(CreatureSpecies sp, int e) => sp.JointCount + LegacyLegBones(sp) + 6 * sp.WingCount + e;
+        static int LegacyWingBone(CreatureSpecies sp, int w, int k) => sp.JointCount + LegacyLegBones(sp) + 7 * w + k;
+        static int LegacyEyeBone(CreatureSpecies sp, int e) => sp.JointCount + LegacyLegBones(sp) + 7 * sp.WingCount + e;
 
         // null when the layout reproduces every legacy index
         internal static string LegacyProblem(CreatureSpecies sp, CreatureBoneLayout layout)
@@ -97,8 +97,8 @@ namespace TerrainGen.Tests
                 Assert.AreEqual(n + 3, sp.LegBone(1, 0));
                 Assert.AreEqual(n + 6 + 4, sp.LegBone(3, 0));
                 Assert.AreEqual(n + 14, sp.WingBone(0, 0), "wings after the summed leg bones");
-                Assert.AreEqual(n + 14 + 12, sp.EyeBone(0));
-                Assert.AreEqual(n + 14 + 12 + 2, sp.BoneCount);
+                Assert.AreEqual(n + 14 + 14, sp.EyeBone(0));
+                Assert.AreEqual(n + 14 + 14 + 2, sp.BoneCount);
             }
             finally { Object.DestroyImmediate(sp); }
         }

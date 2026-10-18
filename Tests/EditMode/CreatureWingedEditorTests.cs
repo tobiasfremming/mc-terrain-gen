@@ -70,12 +70,21 @@ namespace TerrainGen.Tests
                 }
                 Assert.AreEqual(b.membraneRearJoint, a.membraneRearJoint);
                 Assert.AreEqual(b.trailingRib, a.trailingRib, 1e-6f);
+                Assert.AreEqual(b.thumbLength, a.thumbLength, 1e-6f);
+                Assert.AreEqual(b.comfortDown, a.comfortDown, 1e-6f);
+                Assert.AreEqual(b.groundLiftDeg, a.groundLiftDeg, 1e-5f, "groundLiftDeg");
+                Assert.AreEqual(b.groundWristLift, a.groundWristLift, 1e-6f, "groundWristLift");
+                Assert.AreEqual(b.groundFlankRise, a.groundFlankRise, 1e-6f, "groundFlankRise");
             }
             Assert.AreEqual(f.flight.cruiseSpeed, asset.flight.cruiseSpeed, 1e-6f);
             Assert.AreEqual(f.flight.kGrip, asset.flight.kGrip, 1e-4f);
             Assert.AreEqual(f.flight.bankGain, asset.flight.bankGain, 1e-6f);
             Assert.AreEqual(f.flight.climbIntegral, asset.flight.climbIntegral, 1e-6f);
             Assert.AreEqual(f.flight.headStabilise, asset.flight.headStabilise, 1e-6f);
+            Assert.AreEqual(f.flight.amplitudeMin, asset.flight.amplitudeMin, 1e-6f);
+            Assert.AreEqual(f.flight.strokeRateMin, asset.flight.strokeRateMin, 1e-6f);
+            Assert.AreEqual(f.flight.climbIntegralLimit, asset.flight.climbIntegralLimit, 1e-6f);
+            Assert.AreEqual(f.flight.rollGain, asset.flight.rollGain, 1e-6f);
             Assert.AreEqual(f.look.membrane.r, asset.look.membrane.r, 1e-5f);
         }
 

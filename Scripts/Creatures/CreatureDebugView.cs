@@ -85,6 +85,8 @@ public sealed class CreatureDebugView : MonoBehaviour
         for (int s = 0; s < sims.Count; s++) need += VerticesFor(sims[s]);
         CreatureSurfaces reg = world.SurfacesIfAny;
         if (reg != null) need += 24 * reg.Count;
+        var bodies = world.Bodies;
+        for (int b = 0; b < bodies.Count; b++) if (bodies[b] is OctopusCreature) need += OctopusVertices;
         if (need > verts.Length)
         {
             int cap = Mathf.Max(need, 2 * verts.Length);
@@ -101,8 +103,59 @@ public sealed class CreatureDebugView : MonoBehaviour
                 Line(g - Vector3.forward * c, g + Vector3.forward * c, kGoal);
             }
         }
+        for (int b = 0; b < bodies.Count; b++) if (bodies[b] is OctopusCreature oc) AddOctopus(oc);
         if (reg != null) for (int i = 0; i < reg.Count; i++) Box(reg[i].bounds, kAabb);
         return count;
+    }
+
+    // An octopus (F3): its intent - the goal (green cross), the planned route over the branches from the holds it
+    // hangs from (yellow; done waypoints grey), the waypoint it reaches for now (magenta cross) - and the swing:
+    // the pivot (cyan cross) with a line to the body, each hold line root -> hold (green: the group it hangs
+    // from, orange: the catching group, grey: others).
+    static readonly Color32 kRoute = new Color32(0xFF, 0xE0, 0x40, 0xFF), kRouteDone = new Color32(0x80, 0x80, 0x80, 0xC0);
+    static readonly Color32 kWaypoint = new Color32(0xFF, 0x40, 0xE0, 0xFF), kPivot = new Color32(0x40, 0xE0, 0xFF, 0xFF);
+    static readonly Color32 kCatch = new Color32(0xFF, 0x9A, 0x30, 0xFF);
+    const int OctopusVertices = 2 * (3 + 3 + 3 + 1 + BranchRoute.MaxWaypoints + 1 + 16);
+
+    void Cross(Vector3 p, float r, Color32 c)
+    {
+        Line(p - Vector3.right * r, p + Vector3.right * r, c);
+        Line(p - Vector3.up * r, p + Vector3.up * r, c);
+        Line(p - Vector3.forward * r, p + Vector3.forward * r, c);
+    }
+
+    void AddOctopus(OctopusCreature oc)
+    {
+        OctopusController c = oc.Controller;
+        float r = 0.15f * oc.SizeScale;
+        Vector3 head = c.Body.HeadCentre;
+        bool travel = ArmCoordinator.Travelling(c.Intent.mode);
+        if (travel) Cross(c.Brain != null ? c.Brain.Goal : c.Intent.goal, r, kGoal);
+        ArmBlackboard b = c.Board;
+        BranchRoute route = c.Coordinator.Route;
+        if (route.Valid)
+        {
+            Vector3 prev = b.PivotGroup >= 0 ? b.SwingCentre : head;
+            for (int i = 0; i < route.Count; i++)
+            {
+                Line(prev, route.Waypoints[i], i < route.Current ? kRouteDone : kRoute);
+                prev = route.Waypoints[i];
+            }
+            Line(prev, route.Goal, kRoute);
+            if (!route.Done) Cross(route.Next, 1.5f * r, kWaypoint);
+        }
+        if (b.PivotGroup >= 0)
+        {
+            Cross(b.SwingCentre, r, kPivot);
+            Line(b.SwingCentre, head, kPivot);
+        }
+        for (int a = 0; a < b.Arms && a < 8; a++)
+        {
+            if (!b.Anchored[a]) continue;
+            int g = c.Coordinator.GroupOf(a);
+            Color32 col = g < 0 ? kChain : g == b.PivotGroup ? kGoal : kCatch;
+            Line(c.Body.Arms[a].X[0], b.Anchor[a], col);
+        }
     }
 
     static int VerticesFor(CreatureSim sim)
@@ -115,6 +168,13 @@ public sealed class CreatureDebugView : MonoBehaviour
 
     void Line(Vector3 a, Vector3 b, Color32 c)
     {
+        // VerticesFor is an estimate (arthropod segments, wings, climb goals, surfaces grow it); never trust it to
+        // be exact - grow instead of overrunning. Debug view only, and the buffer keeps its size once grown.
+        if (count + 2 > verts.Length)
+        {
+            int cap = Mathf.Max(64, 2 * verts.Length);
+            System.Array.Resize(ref verts, cap); System.Array.Resize(ref colors, cap);
+        }
         verts[count] = a; colors[count++] = c;
         verts[count] = b; colors[count++] = c;
     }

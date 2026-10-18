@@ -86,7 +86,7 @@
           "type": "CephalopodSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "the octopus body (CephalopodSpec: web, head, mantle, siphon, lattice); its `arm` comes from the Tentacle parts - fields: armCount, arm, bodyMass, webRadius, webDepth, headRadius, mantleRadius, mantleLength, mantleTiltDeg, eyeRadius, siphonLength, siphonRadius, beta, headStiffness, tipStiffness, breathAmp, breathHz, bodyDamping, subSteps, iterations, look",
+          "meaning": "the octopus body (CephalopodSpec: web, head, mantle, siphon, lattice); its `arm` comes from the Tentacle parts - fields: armCount, arm, bodyMass, webRadius, webDepth, headRadius, mantleRadius, mantleLength, mantleTiltDeg, eyeRadius, siphonLength, siphonRadius, beta, headStiffness, tipStiffness, breathAmp, breathHz, bodyDamping, subSteps, iterations, look, cloakEnabled",
           "range": "",
           "example": ""
         }
@@ -1000,7 +1000,7 @@
       "name": "Wing",
       "kind": "Wing",
       "status": "exists",
-      "bones": "6",
+      "bones": "7",
       "materialLayers": [
         8,
         1,
@@ -1090,7 +1090,7 @@
           "type": "WingSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop",
+          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundWristLift, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop",
           "range": "",
           "example": ""
         }
@@ -2413,7 +2413,7 @@
       "name": "WingedSerpent",
       "kitVersion": 0,
       "plan": "Spine",
-      "bones": 58,
+      "bones": 61,
       "parts": [
         "SpineBody:body",
         "Leg2Bone:leg0",

@@ -41,6 +41,7 @@ public sealed class TentacleAgent
     public readonly TentacleChain Arm;
     public State Mode { get; private set; }
     public float StateTime { get; private set; }
+    public int ExploreCasts, ExploreHits;   // cumulative (swing casts)
     public int Grips, GripPlans, Releases, ReleasesStarted, Strikes, Misses;      // cumulative, for tests and stats
     public Vector3 TargetPoint { get; private set; }  // what it is reaching for (debug view)
     public bool HasTarget { get; private set; }
@@ -117,7 +118,7 @@ public sealed class TentacleAgent
     void UpdateBoard(ArmBlackboard b)
     {
         int pins = 0; Vector3 sum = Vector3.zero;
-        for (int k = 1; k < Arm.N; k++) if (Arm.Pinned[k] && drapeUntil[k] <= 0f) { pins++; sum += Arm.PinPoint[k]; }
+        for (int k = 1; k < Arm.N; k++) if (Arm.Pinned[k] && drapeUntil[k] <= 0f) { pins++; sum += Arm.PinGoal[k]; }
         // an arm that is letting go is no longer support: the next arm to decide sees one anchor fewer
         b.Anchored[Index] = pins > 0 && (Mode == State.Anchored || Mode == State.Grip);
         if (pins > 0) b.Anchor[Index] = sum / pins;
@@ -136,10 +137,19 @@ public sealed class TentacleAgent
     bool SeeksHold(OctopusController c)
     {
         ArmRole r = RoleOf(c);
+        if (Swinging(c)) return c.Board.Command[Index].allowGrip;   // the group arm seeks when the octopus says
         return r == ArmRole.Grip || r == ArmRole.Anchor || r == ArmRole.Feel && c.Board.Command[Index].allowGrip;
     }
 
     void Report(OctopusController c, ArmReport r) => c.Board.Report[Index] = r;
+
+    // a grip-group arm of a swinging traversal (ArmCoordinator): its holds' lengths and its letting go come from
+    // the octopus (the swing), the search for a hold ahead is its own
+    bool Swinging(OctopusController c) => c.Board.Command[Index].swing && RoleOf(c) == ArmRole.Grip;
+
+    // a swinging arm of the group the body hangs from, seeking a hold: support beside the pivot, not a catch ahead
+    // (a pivot arm that caught ahead spread the pivot over two branches and the body hung between them)
+    bool PivotSupport(OctopusController c) => Swinging(c) && c.Board.Command[Index].group == c.Board.PivotGroup;
 
     public const float HangTone = 0.25f, TuckPull = 0.03f;
 
@@ -151,8 +161,24 @@ public sealed class TentacleAgent
         switch (role)
         {
             case ArmRole.Hang:
+                if (c.Coordinator.Pumping)
+                {
+                    // pumping a swing: the hanging arms kick fore and aft with it (a child's legs on a swing) - the
+                    // shift of their weight seeds the swing that the holds' pumping then builds
+                    SwingPhase sw = c.Coordinator.Swing;
+                    // in phase with the swing once there is one; from stillness (or a body held off to one side) at
+                    // the swing's natural frequency, which starts one
+                    bool moving = sw.Valid && Mathf.Abs(sw.Omega) > 0.15f * sw.Natural * Mathf.Max(sw.Amplitude, 0.05f) && sw.Amplitude > 3f * Mathf.Deg2Rad;
+                    float k = moving ? Mathf.Clamp(sw.Theta / sw.Amplitude, -1f, 1f) : Mathf.Sin(sw.Natural * c.Time);
+                    Vector3 kick = OctoMath.Norm(-c.Up * 0.8f + c.Board.SwingRoute * (KickReach * k), -c.Up);
+                    Arm.SetTargetShape(Arm.X[0] + kick * (0.8f * Arm.Length), 0.7f, false);
+                    Arm.Tone = 1f;
+                    kicking = true;
+                    break;
+                }
                 // limp: the arm drapes down under its own weight
-                Arm.ClearTargetShape(); Arm.Tone = HangTone;
+                if (kicking || Arm.Tone != HangTone) { Arm.ClearTargetShape(); kicking = false; }
+                Arm.Tone = HangTone;
                 break;
             case ArmRole.Tuck:
                 // curled compactly under the body: the arm coils toward a point just below the crown on its own side
@@ -179,7 +205,8 @@ public sealed class TentacleAgent
         if (SeeksHold(c) || role == ArmRole.Feel) Enter(State.Feel);
     }
 
-    bool tuckSet;
+    bool tuckSet, kicking;
+    public const float KickReach = 1.2f;   // fore-aft reach of a pumping kick (x down)
     float tuckNext;
 
     public const float RestSearchSeconds = 6f, GripSearchSeconds = 5f;   // x TimeScale: a search that finds nothing fails
@@ -188,15 +215,27 @@ public sealed class TentacleAgent
     {
         ArmRole role = RoleOf(c);
         if (role != ArmRole.Grip && role != ArmRole.Anchor && role != ArmRole.Feel) { HasTarget = false; Enter(State.Curl); return; }
+        if (Swinging(c) && !SeeksHold(c)) { HasTarget = false; Enter(State.Curl); return; }
         bool commit = SeeksHold(c);
         Arm.Tone = 1f; Arm.SinusAmount = 0.6f;
         Vector3 root = Arm.X[0];
         Vector3 axis = ConeAxis(c);
         float L = Arm.Length;
-        // the exploratory curl path: a slowly wandering point in the cone at 0.7 L
-        float ph = c.Time * 0.6f / c.Body.TimeScale + Index * 1.7f;
-        Vector3 wander = Turn(axis, 0.55f * Mathf.Sin(ph), 0.45f * Mathf.Sin(1.3f * ph + 0.7f));
-        Arm.SetTargetShape(root + wander * (0.7f * L), 0.55f, false);
+        if (Swinging(c) && c.Board.HasSwingTarget)
+        {
+            // a swing's catch: the arm reaches out toward the route's next waypoint (purposeful, no wandering)
+            Vector3 toW = c.Board.SwingTarget - root;
+            float tw = toW.magnitude;
+            Arm.SetTargetShape(root + toW * (Mathf.Min(tw, 0.85f * L) / Mathf.Max(tw, 1e-4f)), 0.6f, false);
+            Arm.SinusAmount = 0.15f;
+        }
+        else
+        {
+            // the exploratory curl path: a slowly wandering point in the cone at 0.7 L
+            float ph = c.Time * 0.6f / c.Body.TimeScale + Index * 1.7f;
+            Vector3 wander = Turn(axis, 0.55f * Mathf.Sin(ph), 0.45f * Mathf.Sin(1.3f * ph + 0.7f));
+            Arm.SetTargetShape(root + wander * (0.7f * L), 0.55f, false);
+        }
 
         // touch: the tip feels what it brushes against, and grips it (if its role lets it commit)
         if (TactileTouch(c, out SurfaceHit touch) && Acceptable(c, touch.point))
@@ -210,6 +249,7 @@ public sealed class TentacleAgent
             nextExplore = c.Time + ExploreSeconds * c.Body.TimeScale * (0.85f + 0.3f * Rand());
             exploreCount++;
             if (c.Hints != null && (exploreCount & 1) == 0) ExploreHint(c, root, axis, L);
+            else if (Swinging(c) && (exploreCount % 3) != 0) ExploreSwing(c, root, L);
             else ExploreCast(c, root, axis, L);
         }
 
@@ -332,7 +372,10 @@ public sealed class TentacleAgent
             // the zip stops where the run from the root could not reach its next pin even at full stretch: pinned
             // anyway, the tether would snatch the body toward the catch (a catch at the edge of reach)
             if (zipDone > 0 && !PinReachable(wrap.Particle[zipDone], wrap.Point[zipDone])) { zipDone = wrap.Count; break; }
-            Arm.Pin(wrap.Particle[zipDone], wrap.Point[zipDone], wrap.Normal[zipDone], wrap.Source[zipDone]);
+            // nor nearer the root than MinRun: a run that short cannot bend from the body to its hold within its
+            // joint cones - two of them on either side fought at hundreds of body weights (a catch close to the body)
+            if (zipDone > 0 && wrap.Particle[zipDone] < (Swinging(c) ? SwingMinRun : MinRun)) { zipDone = wrap.Count; break; }
+            Arm.Pin(wrap.Particle[zipDone], wrap.Point[zipDone], wrap.Normal[zipDone], wrap.Source[zipDone], true);
         }
         // the run between the root and the zip front keeps the length it has (a zip toward the root at the run's
         // target length yanked the body toward the new hold)
@@ -364,6 +407,7 @@ public sealed class TentacleAgent
     // shorter and can pull again. No queries: the points are the ones the wrap found. Climbing a trunk is this,
     // over and over.
     public const float HaulSeconds = 0.1f;     // x TimeScale: at most one step this often
+    public const int SwingMinRun = 11;         // a swing's hold: the run the body swings on (shorter ones fight the others)
     public const int MinRun = 8;               // the run to the base pin never gets shorter than this: a shorter run cannot bend from the body to its hold within its joint cones, and fights it
     float nextHaul;
     readonly bool[] haulWas;
@@ -380,7 +424,7 @@ public sealed class TentacleAgent
         {
             if (!haulWas[k]) continue;
             float dr = (Arm.Spec.RadiusAt(Arm.Spec.Spacing * (k - 1)) - Arm.Spec.RadiusAt(Arm.Spec.Spacing * k)) * Arm.SizeScale;
-            Arm.Pin(k - 1, Arm.PinPoint[k] + Arm.PinNormal[k] * dr, Arm.PinNormal[k], Arm.PinSource[k]);
+            Arm.Pin(k - 1, Arm.PinGoal[k] + Arm.PinNormal[k] * dr, Arm.PinNormal[k], Arm.PinSource[k], true);
         }
         // every run of pins moved down one: the tip-most pin of each run is free now
         for (int k = p; k < Arm.N; k++) if (haulWas[k] && (k + 1 >= Arm.N || !haulWas[k + 1])) Arm.Unpin(k);
@@ -393,13 +437,26 @@ public sealed class TentacleAgent
 
     void TickAnchored(OctopusController c, float ts)
     {
-        // A held run's muscle tone is scaled down with size: the solver's muscle is a per-iteration fraction of
-        // the shape error, so its force grows with size^4 while the body's weight grows with size^3 - at 4x the
-        // muscles of the held runs bent them against their holds four times as hard, relative to the weight
-        // they carry (the arms pulled against each other more the larger the octopus)
-        Arm.SinusAmount = 0f; Arm.Tone = 1f / Mathf.Max(1f, Arm.SizeScale);
+        // (the muscle's size scaling - its force relative to the weight it carries - is in TentacleChain.SizeFree,
+        // for every arm and every role; a held run used to take Tone 1 / size here)
+        Arm.SinusAmount = 0f; Arm.Tone = 1f;
         if (PinCount() == 0) { Enter(State.Feel); return; }   // the body let this grip go (overload)
         ArmRole role = RoleOf(c);
+        if (Swinging(c))
+        {
+            // swinging: hold at the length the octopus gives (pivot: locked and pumped; catching: no tension); let
+            // go when the body has swung over to the other group's holds
+            SwingRun(c);
+            if (c.Board.Command[Index].letGo) { if (c.Time - anchoredAt > 0.2f * ts && c.Board.CanRelease(Index)) BeginRelease(c); return; }
+            // a hold whose run is at its shortest and still slack (caught close to the body) hauls itself in, a
+            // particle at a time, so it shares the body's weight with the other holds instead of hanging idle
+            float sl = c.Board.SwingLen[Index];
+            int bp = Arm.BasePin();
+            if (sl > 0f && sl <= Arm.Spec.MinStretch + 0.005f && bp > SwingMinRun
+                && (Arm.PinGoal[bp] - Arm.X[0]).magnitude < 0.97f * sl * TentacleChain.Taut * Arm.Spacing * bp)
+                Haul(c, ts);
+            return;
+        }
         OctoIntent it = c.Intent;
         Vector3 head = c.Body.HeadCentre, anchor = c.Board.Anchor[Index];
         bool travel = ArmCoordinator.Travelling(it.mode);
@@ -440,7 +497,9 @@ public sealed class TentacleAgent
         int p = Arm.BasePin();
         if (p <= 0) return;
         float arc = TentacleChain.Taut * Arm.Spacing * p;
-        Vector3 next = Arm.X[0] + c.Board.DesiredVelocity * c.LastDt, pin = Arm.X[p];
+        // (an easing pin - a zip or a haul sliding it onto the surface - counts where it goes: a run sized to where it
+        // is would reel the body after it)
+        Vector3 next = Arm.X[0] + c.Board.DesiredVelocity * c.LastDt, pin = Arm.PinGoal[p];
         float s;
         if (pull) s = (next - pin).magnitude / arc;
         else
@@ -468,6 +527,21 @@ public sealed class TentacleAgent
         for (int j = 0; j < Arm.N - 1; j++) Arm.LengthTarget[j] = j < p ? s : 1f;
     }
 
+    // The swing's run length (blackboard SwingLen, as LengthTarget), no shorter than the back tether needs (see
+    // HoldRun: a hold off to the side would otherwise twist the body through the virtual back particle).
+    void SwingRun(OctopusController c)
+    {
+        float s = c.Board.SwingLen[Index];
+        if (!(s > 0f)) { HoldRun(c, false); return; }
+        int p = Arm.BasePin();
+        if (p <= 0) return;
+        Vector3 pin = Arm.PinGoal[p];
+        float back = ((Arm.Back - pin).magnitude / TentacleChain.Taut - Arm.Spacing) / (Arm.Spacing * p);
+        if (back > s) s = back;
+        s = Mathf.Clamp(s, Arm.Spec.MinStretch, Arm.Spec.MaxStretch);
+        for (int j = 0; j < Arm.N - 1; j++) Arm.LengthTarget[j] = j < p ? s : 1f;
+    }
+
     public const float TautHold = 0.8f;   // Overload above which a spare hold is let go in a settled rest
 
     bool TautestHold(OctopusController c)
@@ -482,7 +556,7 @@ public sealed class TentacleAgent
 
     void TickRelease(OctopusController c, float ts)
     {
-        HoldRun(c, false);
+        if (Swinging(c)) SwingRun(c); else HoldRun(c, false);
         // the octopus wants this hold kept after all (support short): stop peeling, hold on with what is left
         // (a role changed to a holding one since the release began)
         if (RoleOf(c) != releaseRole && ArmCoordinator.Holds(RoleOf(c)) && PinCount() > 0) { anchoredAt = c.Time; Enter(State.Anchored); return; }
@@ -660,6 +734,8 @@ public sealed class TentacleAgent
         Vector3 rest = OctoMath.Rotate(c.Body.Orientation, restDirLocal);
         Vector3 up = c.Up;
         Vector3 axis = rest + up * 0.6f;
+        // a swing's catch lies ahead along the route and up (the body hangs about an arm below its holds)
+        if (Swinging(c) && c.Board.SwingRoute.sqrMagnitude > 0.5f) axis = rest * 0.4f + up * 0.8f + c.Board.SwingRoute * 1.4f;
         // near the enclosure edge the arms explore inward
         if (!float.IsInfinity(c.EnclosureRadius))
         {
@@ -698,8 +774,40 @@ public sealed class TentacleAgent
     void ExploreCast(OctopusController c, Vector3 root, Vector3 axis, float L)
     {
         Vector3 dir = Turn(axis, (Rand() * 2f - 1f) * 0.95f, (Rand() * 2f - 1f) * 0.8f);
-        if (c.Cast(root, dir, 0.95f * L, out SurfaceHit h) && h.distance > 0.3f * L)
+        // a swing's catch may take the arm's stretch (the body swings toward it as it reaches)
+        if (c.Cast(root, dir, (Swinging(c) ? 1.2f : 0.95f) * L, out SurfaceHit h) && h.distance > 0.3f * L)
             Remember(h.point, h.normal, h.source, c.Time, false);
+    }
+
+    // A swing's catch: a cast toward where the next hold would be - ahead of the pivot's front by about an arm's
+    // length, level with it, a little to either side (two of three explore casts while swinging; the third
+    // stays random in the cone, for whatever else is there)
+    void ExploreSwing(OctopusController c, Vector3 root, float L)
+    {
+        ArmBlackboard b = c.Board;
+        Vector3 R = b.SwingRoute, up = c.Up, side = OctoMath.Norm(OctoMath.Cross(up, R), Vector3.right);
+        Vector3 from = b.PivotGroup >= 0 && b.SwingPivot != Vector3.zero ? b.SwingPivot : c.Body.HeadCentre + up * (0.7f * L);
+        if (PivotSupport(c) && b.SwingCentre != Vector3.zero)
+        {
+            // support: beside the holds the body hangs from, along the branch
+            Vector3 sa = b.SwingCentre + side * (L * (0.8f * Rand() - 0.4f)) + up * (L * (0.2f * Rand() - 0.1f));
+            Vector3 sd = sa - root;
+            float sl = sd.magnitude;
+            ExploreCasts++;
+            if (sl > 1e-4f && c.Cast(root, sd, Mathf.Min(sl + 0.3f * L, 1.3f * L), out SurfaceHit sh) && sh.distance > 0.3f * L)
+            { ExploreHits++; Remember(sh.point, sh.normal, sh.source, c.Time, false); }
+            return;
+        }
+        // with a route: at its next waypoint (a hint point on a branch), a little around it
+        Vector3 aim = b.HasSwingTarget
+            ? b.SwingTarget + R * (L * (0.3f * Rand() - 0.15f)) + up * (L * (0.2f * Rand() - 0.05f)) + side * (L * (0.5f * Rand() - 0.25f))
+            : from + R * (L * (0.55f + 0.6f * Rand())) + up * (L * (0.5f * Rand() - 0.2f)) + side * (L * (0.8f * Rand() - 0.4f));
+        Vector3 d = aim - root;
+        float dl = d.magnitude;
+        if (dl < 1e-4f) return;
+        ExploreCasts++;
+        if (c.Cast(root, d, Mathf.Min(dl + 0.3f * L, 1.3f * L), out SurfaceHit h) && h.distance > 0.3f * L)
+        { ExploreHits++; Remember(h.point, h.normal, h.source, c.Time, false); }
     }
 
     void ExploreHint(OctopusController c, Vector3 root, Vector3 axis, float L)
@@ -714,12 +822,23 @@ public sealed class TentacleAgent
             Remember(h.point, h.normal, h.source, c.Time, true);
     }
 
-    public const float GripMinReach = 0.6f;   // x arm length: the nearest hold a grip arm on the route takes
+    public const float GripMinReach = 0.6f;
+    public const float SwingCatchMin = 0.3f, SwingCatchBest = 0.9f, SwingAheadWeight = 1.2f;   // x arm length, ahead of the pivot   // x arm length: the nearest hold a grip arm on the route takes
 
     bool Acceptable(OctopusController c, Vector3 p)
     {
-        if (c.Board.Crowding(Index, p, 0.12f * Arm.Length) > 0.3f) return false;   // another arm holds there
+        if (c.Board.Crowding(Index, p, (Swinging(c) ? 0.07f : 0.12f) * Arm.Length) > 0.3f) return false;   // another arm holds there (a grip group's arms hold side by side)
         OctoIntent it = c.Intent;
+        if (Swinging(c))
+        {
+            // a catch for the swing: ahead of the holds the body hangs from (or of the body, hanging from none)
+            ArmBlackboard b = c.Board;
+            Vector3 from = b.PivotGroup >= 0 && b.SwingPivot != Vector3.zero ? b.SwingPivot : c.Body.HeadCentre;
+            if ((p - Arm.X[0]).magnitude <= 0.35f * Arm.Length) return false;
+            if (PivotSupport(c)) return Mathf.Abs(OctoMath.Dot(p - b.SwingCentre, b.SwingRoute)) < 0.25f * Arm.Length;
+            if (b.HasSwingTarget) return (p - b.SwingTarget).magnitude < ArmCoordinator.CatchNear * Arm.Length;
+            return OctoMath.Dot(p - from, b.SwingRoute) > SwingCatchMin * Arm.Length;
+        }
         if (RoleOf(c) != ArmRole.Grip || !ArmCoordinator.Travelling(it.mode)) return true;
         // a grip on the route is taken far enough out to pull with (a hold near the root leaves the run nothing
         // to shorten) and not clearly behind
@@ -756,27 +875,55 @@ public sealed class TentacleAgent
         Vector3 root = Arm.X[0], centre = c.Body.HeadCentre;
         float L = Arm.Length;
         OctoIntent it = c.Intent;
-        bool travel = RoleOf(c) == ArmRole.Grip && ArmCoordinator.Travelling(it.mode);
+        bool swing = Swinging(c);
+        bool travel = !swing && RoleOf(c) == ArmRole.Grip && ArmCoordinator.Travelling(it.mode);
         Vector3 g = it.goal - centre;
         float gl = g.magnitude;
+        ArmBlackboard bb = c.Board;
+        Vector3 pivot = bb.PivotGroup >= 0 && bb.SwingPivot != Vector3.zero ? bb.SwingPivot : centre;
         for (int i = 0; i < MemorySize; i++)
         {
             if (!memory[i].valid) continue;
             Candidate m = memory[i];
             float age = c.Time - m.time;
-            if (age > 6f) { memory[i].valid = false; continue; }
+            if (age > 6f * c.Body.TimeScale) { memory[i].valid = false; continue; }
             Vector3 d = m.point - root;
             float dist = d.magnitude / L;
-            if (dist < (travel ? GripMinReach : 0.25f) || dist > 1.25f) continue;
+            if (dist < (travel ? GripMinReach : swing ? 0.35f : 0.25f) || dist > 1.25f) continue;
             float s = 1f - Mathf.Abs(dist - 0.65f) / 0.45f;
-            if (travel && gl > 1e-3f)
+            if (swing && PivotSupport(c))
+            {
+                float along = Mathf.Abs(OctoMath.Dot(m.point - bb.SwingCentre, bb.SwingRoute)) / L;
+                if (along > 0.25f) continue;
+                s = 0.5f * s + 1f - along;
+            }
+            else if (swing)
+            {
+                // the swing's catch: ahead of the pivot by about an arm's length, level with it (a catch far above
+                // or below turns the swing into a climb or a drop), and up the route
+                if (bb.HasSwingTarget)
+                {
+                    // with a route: the hold at (or nearest) its next waypoint
+                    float off = (m.point - bb.SwingTarget).magnitude / L;
+                    if (off > ArmCoordinator.CatchNear) continue;
+                    s = 0.5f * s + SwingAheadWeight * (1f - off / ArmCoordinator.CatchNear);
+                }
+                else
+                {
+                    float ahead = OctoMath.Dot(m.point - pivot, bb.SwingRoute) / L;
+                    if (ahead < SwingCatchMin) continue;
+                    float level = Mathf.Abs(OctoMath.Dot(m.point - pivot, c.Up)) / L;
+                    s = 0.5f * s + SwingAheadWeight * (1f - Mathf.Abs(ahead - SwingCatchBest) / SwingCatchBest) - 0.4f * level;
+                }
+            }
+            else if (travel && gl > 1e-3f)
             {
                 Vector3 a = m.point - centre;
                 float prog = Vector3.Dot(a, g) / (gl * Mathf.Max(a.magnitude, 1e-3f));
                 s += (0.6f + Mathf.Clamp01(it.urgency)) * prog;
             }
             else s += 0.3f * Vector3.Dot(m.point - centre, c.Up) / L;   // at rest: prefer holds above
-            s -= 1.2f * c.Board.Crowding(Index, m.point, 0.22f * L);
+            s -= 1.2f * c.Board.Crowding(Index, m.point, (swing ? 0.1f : 0.22f) * L);
             s -= 0.08f * age;
             if (m.hinted) s += 0.1f;
             if (s <= bs) continue;

@@ -202,6 +202,8 @@ public sealed class OctopusController
         // resting but an arm still looking for a hold: the body (only) already calms - a resting octopus holds
         // itself still with its muscles, it does not swing on its holds for seconds while one arm searches
         float body = settled ? want : rest && Board.AnchoredCount >= Board.MinAnchors ? RestBodyCalm * TentacleAgent.RestRelaxRate / Body.TimeScale : 0f;
+        // a swing past its comfortable amplitude is calmed (the arms brace; the energy bound of the pumping)
+        if (Coordinator.SwingDamping > body) body = Coordinator.SwingDamping;
         if (Body.Lattice.ExtraDamping != body) Body.Lattice.ExtraDamping = body;
         for (int a = 0; a < Agents.Length; a++)
             if (Agents[a].Mode == TentacleAgent.State.Anchored)
@@ -380,7 +382,7 @@ public sealed class OctopusController
                 if (!ch.Pinned[k]) continue;
                 float rk = ch.Spec.RadiusAt(ch.Spec.Spacing * k) * ch.SizeScale;
                 Vector3 n = ch.PinNormal[k];
-                AddPlane(new SurfaceHit { point = ch.PinPoint[k] - n * rk, normal = n, source = ch.PinSource[k] }, patch);
+                AddPlane(new SurfaceHit { point = ch.PinGoal[k] - n * rk, normal = n, source = ch.PinSource[k] }, patch);
                 break;
             }
         }

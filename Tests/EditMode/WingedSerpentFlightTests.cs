@@ -75,7 +75,15 @@ namespace TerrainGen.Tests
             return s;
         }
 
-        struct Sample { public float t, alt, vf, vy, amp; public int beats; public bool up; }
+        struct Sample { public float t, alt, vf, vy, amp, rate; public int beats; public bool up; }
+
+        // mean downstroke angular rate (FlightModel.StrokeRate) over [a, b)
+        static float MeanRate(List<Sample> log, float a, float b)
+        {
+            float sum = 0f; int n = 0;
+            foreach (var s in log) if (s.t >= a && s.t < b) { sum += s.rate; n++; }
+            return sum / Mathf.Max(1, n);
+        }
 
         static List<Sample> Run(Rig r, float seconds, Func<float, float> altGoal = null, Action<float> each = null)
         {
@@ -90,7 +98,7 @@ namespace TerrainGen.Tests
                 log.Add(new Sample
                 {
                     t = t, alt = r.model.Altitude, vf = r.model.ForwardSpeed, vy = r.model.VerticalSpeed,
-                    amp = r.model.Amplitude, beats = r.wings.State[0].beats, up = r.wings.State[0].upstroke,
+                    amp = r.model.Amplitude, rate = r.model.StrokeRate, beats = r.wings.State[0].beats, up = r.wings.State[0].upstroke,
                 });
             }
             return log;
@@ -143,8 +151,10 @@ namespace TerrainGen.Tests
         [Test] public void Flight_PlantedTip_LiftsShoulder()
         {
             var s = Serpent();
-            // the idealised foot: no drag, lift or gravity, and the stroke normal = up (no pronation, no feather)
-            s.flight.kDrag = 0f; s.flight.kLift = 0f; s.flight.featherDeg = 0f;
+            // the idealised foot: no drag, lift or gravity, and the stroke normal = up (no pronation, no feather);
+            // no glide either: in this gravity-free rig the planted stroke's rise trips the controller into a glide
+            // on the next step (it did once the band deepened, comfortDown 1.03), which is not what this measures
+            s.flight.kDrag = 0f; s.flight.kLift = 0f; s.flight.featherDeg = 0f; s.flight.glideDemand = -1f;
             foreach (var ws in s.wings) ws.pronationDeg = 0f;
             var r = MakeRig(s, 1f, 5f, 0f);
             r.model.GravityScale = 0f; r.model.GripScale = 1e7f;
@@ -169,15 +179,48 @@ namespace TerrainGen.Tests
         [Test] public void Flight_HoldsAltitude()
         {
             // the deep downstroke (comfortDown 0.95, user feedback 2026-10-18) beats slower than the prototype
-            // (~2.2 Hz, was 2.67) with a bigger bob, so the window is longer (5-11 s, was 3-6 s)
+            // (~2.2 Hz, was 2.67) with a bigger bob, so the window is longer (5-11 s, was 3-6 s); deeper again
+            // (comfortDown 1.03, amplitudeMin 0.75, kGrip 0.5, same day): ~1.3-1.5 Hz, a ~0.44 m p-p bob
             var r = MakeRig(Serpent());
             var log = Run(r, 12f);
             Window(log, 5f, 11f, out float mean, out float half, out float vf, out float hz, out _);
             TestContext.WriteLine($"level: alt {mean:F3} +- {half:F3}, vf {vf:F2}, {hz:F2} beats/s (proto 4.99 +- 0.07, 4.89, 2.57-2.67)");
             Assert.AreEqual(5f, mean, 0.05f, "mean altitude (PID: no steady sag)");
-            Assert.Less(half, 0.2f, "altitude wobble (the bob included: 0.15 before the bigger bob)");
+            Assert.Less(half, 0.3f, "altitude wobble (the bob included: 0.15, then 0.2 before the deeper beats)");
             Assert.AreEqual(4.9f, vf, 0.3f, "cruise speed");
-            Assert.That(hz, Is.InRange(1.8f, 2.6f), "beat frequency");
+            Assert.That(hz, Is.InRange(1.1f, 2.0f), "beat frequency (1.8-2.6 before the deeper beats)");
+        }
+
+        // User feedback 2026-10-18 (twice): "the wings should go WAY further down in the wing beats". Level
+        // flight, 5-11 s: every downstroke sweeps the wrist far below its glide-pose height (~0.96 m, the stroke
+        // angle ~70 deg below the glide pose; 0.54 m and 33 deg before the second request) - well below the belly.
+        [Test] public void Flight_DeepDownstroke()
+        {
+            var s = Serpent();
+            var r = MakeRig(s);
+            float lo = float.MaxValue, angLo = float.MaxValue, belly = float.MaxValue;
+            int beats0 = -1, deep = 0, last = -1;
+            float beatLo = float.MaxValue;
+            for (int k = 0; k < Mathf.RoundToInt(11f / H); k++)
+            {
+                r.Step(H, true);
+                if (k * H < 5f) continue;
+                ref WingState st = ref r.wings.State[0];
+                Vector3 up = r.rots[WingedSerpentTestSpecies.Girdle] * Vector3.up;
+                float hgt = Vector3.Dot(st.wrist - st.shoulder, up) - r.wings.WristHeight(0, 0f);
+                lo = Mathf.Min(lo, hgt); angLo = Mathf.Min(angLo, st.angle);
+                belly = Mathf.Min(belly, Vector3.Dot(st.wrist - r.joints[WingedSerpentTestSpecies.Girdle], up));
+                if (beats0 < 0) { beats0 = st.beats; last = st.beats; }
+                beatLo = Mathf.Min(beatLo, hgt);
+                if (st.beats != last) { if (beatLo < -0.75f) deep++; beatLo = float.MaxValue; last = st.beats; }
+            }
+            int beats = last - beats0;
+            TestContext.WriteLine($"wrist down to {-lo:F2} m below its glide height (stroke {-angLo * Mathf.Rad2Deg:F0} deg), {-belly:F2} m below the girdle; {deep} of {beats} beats deeper than 0.75 m");
+            Assert.Less(lo, -0.85f, "the wrist sweeps far down");
+            Assert.Less(angLo, -60f * Mathf.Deg2Rad, "a deep stroke angle");
+            Assert.Less(belly, -0.7f, "well below the belly");
+            Assert.GreaterOrEqual(deep, beats - 1, "every beat is deep");
+            Assert.Greater(beats, 4);
         }
 
         [Test] public void Flight_ClimbDemand_RaisesRateAndAmplitude()
@@ -187,8 +230,12 @@ namespace TerrainGen.Tests
             Window(log, 3f, 6f, out float mLevel, out _, out _, out float hzLevel, out float ampLevel);
             Window(log, 6f, 9f, out _, out _, out _, out float hzClimb, out float ampClimb);
             float alt6 = log[Mathf.RoundToInt(6f / H) - 1].alt, alt9 = log[log.Count - 1].alt;
-            TestContext.WriteLine($"level {hzLevel:F2} Hz amp {ampLevel:F2}; climb {hzClimb:F2} Hz amp {ampClimb:F2}; alt {alt6:F2} -> {alt9:F2} (proto 2.67 -> 3.0 Hz, 4.93 -> 6.92)");
-            Assert.Greater(hzClimb, hzLevel + 0.15f, "beat rate rises with the climb demand");
+            float rateLevel = MeanRate(log, 3f, 6f), rateClimb = MeanRate(log, 6f, 9f);
+            TestContext.WriteLine($"level {hzLevel:F2} Hz amp {ampLevel:F2} stroke {rateLevel:F2} rad/s; climb {hzClimb:F2} Hz amp {ampClimb:F2} stroke {rateClimb:F2} rad/s; alt {alt6:F2} -> {alt9:F2} (proto 2.67 -> 3.0 Hz, 4.93 -> 6.92)");
+            // the stroke rate rises with the demand; with the deep band (comfortDown 1.03) the beat frequency need
+            // not (the longer stroke of the larger amplitude eats the faster rate: 1.67 Hz both), so it may not fall
+            Assert.Greater(rateClimb, rateLevel * 1.1f, "stroke rate rises with the climb demand");
+            Assert.GreaterOrEqual(hzClimb, hzLevel, "beat rate does not fall with the climb demand");
             Assert.Greater(ampClimb, ampLevel + 0.1f, "amplitude rises with the climb demand");
             Assert.Greater(alt9 - alt6, 1.5f, "climbs");
         }
@@ -250,7 +297,7 @@ namespace TerrainGen.Tests
             Assert.AreEqual(0.5f, hz4 / hz1, 0.08f, "beat frequency / sqrt(scale)");
             Assert.AreEqual(2f, v4 / v1, 0.1f, "speed x sqrt(scale)");
             Assert.AreEqual(20f, m4, 0.4f, "altitude held at scale 4");
-            Assert.Less(h4, 4f * 0.2f, "wobble scales with size");
+            Assert.Less(h4, 4f * 0.3f, "wobble scales with size (as Flight_HoldsAltitude's)");
         }
 
         // ------------------------------------------------------------------ wings
@@ -276,7 +323,7 @@ namespace TerrainGen.Tests
                 else if (!st.upstroke && st.angleRate < 0f)
                     Assert.GreaterOrEqual(st.angle, st.lo - 1e-5f, "downstroke left the band");
             }
-            Assert.Greater(checks, 10);
+            Assert.Greater(checks, 6); // ~1.3-1.5 Hz deep beats over 6 s (was > 10 at 2.2-2.7 Hz)
         }
 
         // The wrist stays in the vertical comfort band along the girdle up (the upstroke may overshoot the
@@ -320,7 +367,7 @@ namespace TerrainGen.Tests
                 Assert.AreEqual(a.beats, b.beats, $"beat count at step {k}");
                 if (k * H < 5f) Assert.AreEqual(a.angle, b.angle, 1e-5f, $"symmetric at step {k}");
             }
-            Assert.Greater(r.wings.State[0].beats, 20);
+            Assert.Greater(r.wings.State[0].beats, 10); // ~1.3-1.5 Hz deep beats over 10 s (was > 20)
         }
 
         // Fingers keep their order in the wing plane (leading -> trailing, at least fingerMinGapDeg apart)

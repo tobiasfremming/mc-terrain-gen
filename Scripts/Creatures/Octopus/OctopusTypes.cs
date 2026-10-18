@@ -17,6 +17,7 @@ public struct OctoIntent
     public bool swing;            // (swinging, later) the brain wants to brachiate
     public Vector3 swingDir;      // (swinging, later) the swing's direction
     public Vector3 routeNext;     // (swinging, later) the next hint waypoint; zero = none
+    public bool climb;            // Travel / Retreat by hand-over-hand pulling (back up from the ground) instead of swinging
 }
 
 // What an arm is for (user decision 5): the octopus (ArmCoordinator) decides, the arm executes it itself.
@@ -38,8 +39,9 @@ public struct ArmCommand
     public int groomArm;          // Groom: the neighbour to stroke, -1 = the mantle
     public int group;             // grip group id (swinging, later), -1 = none
     public float urgency;         // 0..1
-    public bool allowGrip;        // Feel: may it commit to a hold it touches (support is low)
-    public bool swing;            // (swinging, later)
+    public bool allowGrip;        // Feel: may it commit to a hold it touches (support is low); swing: may it seek a hold now
+    public bool swing;            // swinging traversal: the arm works in grip group `group` (ArmCoordinator)
+    public bool letGo;            // swing: the body has swung over to the other group's holds - let this hold go
 }
 
 // Something the octopus can grab (design 2.5). The prey's own body supplies the grab volume.
