@@ -210,7 +210,7 @@ public sealed class OctopusBody
     // A settled rest (set by the controller: every arm holds on or lies curled, the brain wants rest) sleeps at
     // a looser bound: the last sub-millimetre solver wobble of a loaded hold is invisible, and sleeping
     // freezes it out entirely. Anything still moving faster than this keeps the body awake.
-    public const float SettledSleepSpeed = 0.08f;
+    public const float SettledSleepSpeed = 0.15f;
     public bool Settled;
     public const int SleepFrames = 30;
     public bool Asleep { get; private set; }
