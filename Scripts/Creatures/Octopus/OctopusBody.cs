@@ -273,6 +273,26 @@ public sealed class OctopusBody
         Asleep = true;
     }
 
+    // Re-take the sleep snapshot from the particles as they are now (the controller's contact moved some after
+    // the body fell asleep in this tick).
+    public void ResnapSleep()
+    {
+        if (!Asleep) return;
+        int o = 0;
+        for (int i = 0; i < SoftLattice.Count; i++) { sleepX[o++] = Lattice.X[i]; Lattice.Prev[i] = Lattice.X[i]; }
+        for (int a = 0; a < ArmCount; a++)
+        {
+            TentacleChain ch = Arms[a];
+            for (int k = 0; k < ch.N; k++) { sleepX[o++] = ch.X[k]; ch.Prev[k] = ch.X[k]; }
+        }
+        if (tickX != null)
+        {
+            o = 0;
+            for (int i = 0; i < SoftLattice.Count; i++) tickX[o++] = Lattice.X[i];
+            for (int a = 0; a < ArmCount; a++) for (int k = 0; k < Arms[a].N; k++) tickX[o++] = Arms[a].X[k];
+        }
+    }
+
     bool SleepStillValid()
     {
         if (!AllowSleep || !Same(gravity, sleepGravity)) return false;

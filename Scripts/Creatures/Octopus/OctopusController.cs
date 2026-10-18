@@ -143,16 +143,31 @@ public sealed class OctopusController
 
         gripPlanned = false;
         Brain?.Tick(dt, this);
+        DbgPhase?.Invoke("start");
         for (int a = 0; a < Agents.Length; a++) Agents[a].Tick(dt, this);
+        DbgPhase?.Invoke("agents");
+        bool wasAsleep = Body.Asleep;
         Body.Tick(dt);
-        if (!Body.Asleep)
+        DbgPhase?.Invoke("body");
+        if (Body.Asleep && wasAsleep)
+        {
+            // asleep: nothing moves, so contact neither changes nor ages - the planes holding the parts that
+            // rest on a surface must still be there when it wakes, or those parts drop into the bark
+            for (int i = 0; i < planeCount; i++) planes[i].until += dt;
+        }
+        else
         {
             if (!Far) MotionRays();
             HeldSurfaces();
             CollideBody();
             if (!Far) SweepFreeArms();
             ApplyPlanes();
+            // fell asleep this tick: the pose to hold is the one after contact (the body's sleep snapshot is
+            // taken before it; holding that one would leave a part resting on a surface where the solver had it,
+            // inside the surface, and show as a jump the moment the octopus falls asleep)
+            if (Body.Asleep) Body.ResnapSleep();
         }
+        DbgPhase?.Invoke("planes");
         RememberMotion();
 
         QueriesThisFrame = queries;
@@ -194,13 +209,15 @@ public sealed class OctopusController
 
     // ------------------------------------------------------------------ contact
 
-    struct Plane { public Vector3 point, normal; public float until, radius; public int owner; }
+    struct Plane { public Vector3 point, normal, axis; public float until, radius, bend; public int owner; }
     readonly Plane[] planes = new Plane[MaxPlanes];
     int planeCount;
     Vector3 prevHead;
     readonly Vector3[] prevTip = new Vector3[16];
     bool havePrev;
     readonly Vector3[] frameLattice = new Vector3[SoftLattice.Count];   // the lattice at the end of the last tick
+    Vector3[] frameArms = new Vector3[0];                               // the arms' particles at the end of the last tick
+    int frameStride;
 
     public int ContactPlanes => planeCount;
 
@@ -218,7 +235,34 @@ public sealed class OctopusController
             slot = 0;
             for (int i = 1; i < planeCount; i++) if (planes[i].until < planes[slot].until) slot = i;
         }
-        planes[slot] = new Plane { point = h.point, normal = OctoMath.Norm(h.normal, Up), until = Time + PlaneSeconds, radius = radius, owner = owner };
+        Vector3 nn = OctoMath.Norm(h.normal, Up);
+        // the surface's bend radius from the planes already around it: two planes on one branch, their points
+        // d apart across the branch (the part of d along n x n', the branch axis, removed), fit one circle. A flat plane is only true within about that radius of its
+        // point: further out it would claim the air beside and below a thin branch as solid, push an arm
+        // hanging there sideways out of it every frame, and the arm's muscles would pull it straight back.
+        float bend = float.PositiveInfinity;
+        Vector3 axis = Vector3.zero;
+        for (int i = 0; i < planeCount; i++)
+        {
+            if (i == slot) continue;
+            float c = OctoMath.Dot(planes[i].normal, nn);
+            if (c > 0.98f || c < -0.95f) continue;     // nearly parallel: no curvature to read (or two faces)
+            Vector3 d = h.point - planes[i].point, ax = Vector3.Cross(planes[i].normal, nn);
+            float al2 = ax.sqrMagnitude;
+            if (al2 < 1e-8f) continue;
+            d -= ax * (OctoMath.Dot(d, ax) / al2);
+            if (d.sqrMagnitude > 0.25f * Body.Arms[0].Length * Body.Arms[0].Length) continue;   // far apart: different surfaces
+            // on one convex circle p = centre + r n, so d = r (n - n'): r from the projection, and only when
+            // d really is that (a concave corner - ground and a trunk - or two separate surfaces are not)
+            Vector3 dn = nn - planes[i].normal;
+            float r = OctoMath.Dot(d, dn) / dn.sqrMagnitude;
+            if (!(r > 0f) || (d - dn * r).sqrMagnitude > 0.09f * r * r + 1e-4f * Body.SizeScale * Body.SizeScale) continue;
+            ax *= 1f / Mathf.Sqrt(al2);
+            if (r < bend) { bend = r; axis = ax; }
+            if ((Dbg & 1) == 0 && r < planes[i].bend) { planes[i].bend = r; planes[i].axis = ax; }
+        }
+        if ((Dbg & 1) != 0) bend = float.PositiveInfinity;
+        planes[slot] = new Plane { point = h.point, normal = nn, axis = axis, until = Time + PlaneSeconds, radius = radius, bend = bend, owner = owner };
         if (OctoMath.Dot(h.normal, Up) > 0.5f) groundedUntil = Time + 0.5f;
     }
 
@@ -299,6 +343,16 @@ public sealed class OctopusController
         prevHead = Body.HeadCentre;
         for (int i = 0; i < SoftLattice.Count; i++) frameLattice[i] = Body.Lattice.X[i];
         for (int a = 0; a < Agents.Length && a < prevTip.Length; a++) prevTip[a] = Body.Arms[a].X[Body.Arms[a].N - 1];
+        if (frameStride == 0)
+        {
+            for (int a = 0; a < Body.ArmCount; a++) frameStride = Mathf.Max(frameStride, Body.Arms[a].N);
+            frameArms = new Vector3[frameStride * Body.ArmCount];
+        }
+        for (int a = 0; a < Body.ArmCount; a++)
+        {
+            TentacleChain ch = Body.Arms[a];
+            for (int k = 0; k < ch.N; k++) frameArms[a * frameStride + k] = ch.X[k];
+        }
         havePrev = true;
     }
 
@@ -326,6 +380,7 @@ public sealed class OctopusController
         for (int i = 0; i < planeCount; i++) if (planes[i].until >= Time) planes[live++] = planes[i];
         planeCount = live;
         if (planeCount == 0) return;
+        for (int i = 0; i < planeCount; i++) planeTouched[i] = false;
         SoftLattice lat = Body.Lattice;
         float skin = Skin;
         for (int i = 0; i < SoftLattice.Count; i++)
@@ -337,9 +392,11 @@ public sealed class OctopusController
             {
                 if (ch.Pinned[k]) continue;
                 float rk = ch.Spec.RadiusAt(ch.Spec.Spacing * k) * ch.SizeScale;
-                Project(ref ch.X[k], ref ch.Prev[k], rk);
+                Project(ref ch.X[k], ref ch.Prev[k], rk, -1, a * frameStride + k);
             }
         }
+        float until = Time + PlaneSeconds;
+        for (int i = 0; i < planeCount; i++) if ((Dbg & 2) == 0 && planeTouched[i] && planes[i].until < until) planes[i].until = until;
     }
 
     // lattice: the particle's index; it is pushed out of another particle's plane only if it was in front of
@@ -347,24 +404,66 @@ public sealed class OctopusController
     // far side of a thin branch - the body hanging beneath the bar whose top the plane is - and pushing it
     // through would throw the body across the bar. Its own probe's plane (the exit of a solid it is inside)
     // always applies.
-    bool Project(ref Vector3 x, ref Vector3 prev, float clearance, int lattice = -1)
+    // arm: the arm particle's slot in frameArms (-1: none). The same crossing rule holds for arm particles: one
+    // that began the frame behind a plane is wrapped around the far side of the branch the plane was taken
+    // from (a held arm's run, a draped arm), and pushing it out of the plane would throw it through the branch
+    // every frame while its muscles pull it back. That rule is only needed where the bend is unknown: a plane
+    // of known bend radius acts as the cylinder it fits (see Project), which ignores whatever lies beside or
+    // behind the branch and does push out anything left inside it after an impact.
+    // A plane something rests against (within kTouch x its clearance) stays alive while touched: contact lasts
+    // as long as the touch does. Letting a plane in use lapse every PlaneSeconds dropped the particle on it
+    // into the bark until a probe or the sweep found the surface again, then threw it back out - a perched
+    // octopus twitched forever and never slept.
+    public static int Dbg;
+    public static Action<string> DbgPhase;
+    const float kTouch = 1.5f, kFriction = 0.1f;
+    readonly bool[] planeTouched = new bool[MaxPlanes];
+
+    bool Project(ref Vector3 x, ref Vector3 prev, float clearance, int lattice = -1, int arm = -1)
     {
         bool moved = false;
         for (int p = 0; p < planeCount; p++)
         {
             Plane pl = planes[p];
-            Vector3 rel = x - pl.point;
-            float h = OctoMath.Dot(rel, pl.normal);
-            // well clear, or far behind the plane (the other side of a branch): not this plane's business
-            if (h >= clearance || h < -4f * clearance - 0.3f * Body.SizeScale) continue;
-            if ((rel - pl.normal * h).sqrMagnitude > pl.radius * pl.radius) continue;   // outside the plane's patch
+            Vector3 n;
+            float h;
+            if (pl.bend < float.PositiveInfinity)
+            {
+                // a curved surface of known bend: the contact is the cylinder it fits (centre line through
+                // point - r normal, along the axis), not the tangent plane. A plane would claim the air beside
+                // and behind a thin branch as solid and throw an arm hanging there through or around it every
+                // frame; the cylinder pushes only what is really inside, outward from the branch's centre.
+                Vector3 cen = pl.point - pl.normal * pl.bend, rc = x - cen;
+                float along = OctoMath.Dot(rc, pl.axis);
+                if (along > pl.radius || along < -pl.radius) continue;          // beyond the patch along the branch
+                Vector3 radial = rc - pl.axis * along;
+                float dist = radial.magnitude;
+                h = dist - pl.bend;
+                if (h >= kTouch * clearance) continue;
+                if (dist > 1e-6f) n = radial * (1f / dist); else n = pl.normal;
+                if (OctoMath.Dot(n, pl.normal) < -0.2f) continue;   // the far side: only the near half was seen
+            }
+            else
+            {
+                n = pl.normal;
+                Vector3 rel = x - pl.point;
+                h = OctoMath.Dot(rel, n);
+                // well clear, or far behind the plane (the other side of a branch): not this plane's business
+                if (h >= kTouch * clearance || h < -4f * clearance - 0.3f * Body.SizeScale) continue;
+                if ((rel - n * h).sqrMagnitude > pl.radius * pl.radius) continue;   // outside the plane's patch
+                if ((Dbg & 16) == 0 && arm >= 0 && havePrev && arm < frameArms.Length && OctoMath.Dot(frameArms[arm] - pl.point, n) < -clearance) continue;
+            }
             if (lattice >= 0 && pl.owner != lattice && havePrev && OctoMath.Dot(frameLattice[lattice] - pl.point, pl.normal) < -clearance) continue;
+            planeTouched[p] = true;
+            if (h >= clearance) continue;
             float push = clearance - h;
             Vector3 v = x - prev;
-            x += pl.normal * push;
-            // remove the velocity into the plane, keep the tangential part (friction-free sliding)
-            float vn = OctoMath.Dot(v, pl.normal);
-            prev += pl.normal * (push + (vn < 0f ? vn : 0f));
+            x += n * push;
+            // remove the velocity into the surface; the tangential part is kept less kFriction of it (skin on
+            // bark grips: frictionless contact let a resting arm roll to and fro over a branch for ever)
+            float vn = OctoMath.Dot(v, n);
+            Vector3 vt = v - n * vn;
+            prev += n * (push + (vn < 0f ? vn : 0f)) + vt * ((Dbg & 4) != 0 ? 0f : kFriction);
             moved = true;
         }
         return moved;

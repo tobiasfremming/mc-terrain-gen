@@ -63,6 +63,10 @@ public sealed class TentacleChain
     public Vector3 Gravity = new Vector3(0f, -9.81f, 0f);
     public float Tone = 1f;                  // muscle tone multiplier on Spec.Muscle (0 = limp)
     public float SinusAmount;                // 0..1 travelling sinus (reaching)
+    public float ShapeRate = 6f;             // 1/s at scale 1: how fast the muscles follow BendTarget / SinusAmount
+    const float kStrikeShapeRate = 40f;      // a strike (tone > 1.5) follows at once
+    readonly Vector3[] muscleBend;           // the bend the muscles are pulling toward this sub-step
+    float sinusNow;
     // Optional free twist target: dorsal away from this axis (AxisDir zero = free particles relax to the
     // transported frame, the default and what OctopusBody uses: an axis target feeds back into the muscle
     // curl, which is defined in the twisted frame, and can keep a toned arm oscillating).
@@ -103,7 +107,7 @@ public sealed class TentacleChain
         X = new Vector3[N]; Prev = new Vector3[N]; InvMass = new float[N]; Mass = new float[N];
         Frames = new Quaternion[N]; Twist = new float[N]; Stretch = new float[N]; Squeeze = new float[N];
         LengthTarget = new float[N - 1]; restLength = new float[N - 1]; arc = new float[N];
-        BendTarget = new Vector3[N - 1]; restCurl = new Vector3[N - 1]; localTarget = new Vector3[N - 1];
+        BendTarget = new Vector3[N - 1]; restCurl = new Vector3[N - 1]; localTarget = new Vector3[N - 1]; muscleBend = new Vector3[N - 1];
         Pinned = new bool[N]; PinPoint = new Vector3[N]; PinNormal = new Vector3[N]; PinSource = new int[N];
         fab = new Vector3[N]; frameX = new Vector3[N]; rmfX = new Vector3[N]; rmfT = new Vector3[N];
 
@@ -125,7 +129,7 @@ public sealed class TentacleChain
             float f = (float)j / (N - 2);
             float a = tipCurl * f * f;
             restCurl[j] = new Vector3(0f, -Mathf.Sin(a), Mathf.Cos(a)); // toward ventral (-Y): rotation about +X
-            BendTarget[j] = restCurl[j];
+            BendTarget[j] = restCurl[j]; muscleBend[j] = restCurl[j];
             LengthTarget[j] = 1f;
         }
 
@@ -267,14 +271,23 @@ public sealed class TentacleChain
             x[k].x = xk.x + vx * h; x[k].y = xk.y + vy * h; x[k].z = xk.z + vz * h;
         }
 
-        // this sub-step's local bend targets: BendTarget + the travelling sinus (lateral, about local +Y),
-        // fading in from the root
-        float amp = SinusAmount * Spec.SinusAmpDeg * Mathf.Deg2Rad;
+        // the muscles follow a new shape over ~1/ShapeRate s instead of at once: a target switched in one step
+        // (curl -> feel, a new reach) flicked the arm at up to 14 m/s for a few frames, the visible whip
+        float follow = (OctopusController.Dbg & 8) != 0 ? 1f : 1f - MathF.Exp(-(Tone > 1.5f ? kStrikeShapeRate : ShapeRate) * h / MathF.Sqrt(SizeScale));
+        for (int j = 0; j < N - 1; j++)
+        {
+            Vector3 m = muscleBend[j], g = BendTarget[j];
+            muscleBend[j] = OctoMath.Norm(m + (g - m) * follow, g);
+        }
+        sinusNow += (SinusAmount - sinusNow) * follow;
+        // this sub-step's local bend targets: the muscles' bend + the travelling sinus (lateral, about local
+        // +Y), fading in from the root
+        float amp = sinusNow * Spec.SinusAmpDeg * Mathf.Deg2Rad;
         float w = 2f * Mathf.PI * Spec.SinusHz / MathF.Sqrt(SizeScale);
         float lo = Spec.MinStretch, hi = Spec.MaxStretch;
         for (int j = 0; j < N - 1; j++)
         {
-            Vector3 t = BendTarget[j];
+            Vector3 t = muscleBend[j];
             if (amp != 0f)
             {
                 float f = (float)j / (N - 2);

@@ -136,6 +136,62 @@ namespace TerrainGen.Tests
             Assert.Less(new Vector2(head.x - c.x, head.z - c.z).magnitude, lab.Enclosure.radius, "left the enclosure");
         }
 
+        // Perched in the lab's grove (real oak / tree bark, MeshColliders) with the brain switched off and a Rest
+        // intent: after settling, the octopus is still - no arm thrashing, no body jitter (user report: "jittering
+        // quite a lot, never resting"). Contact planes must not fight the arms' wraps.
+        [Test] public void OctopusLab_PerchedOnRealBark_IsStill()
+        {
+            var sets = new List<PlantPrototypeSet>();
+            foreach (string n in new[] { "OakPlant", "TreePlant" })
+            {
+                var s = AssetDatabase.LoadAssetAtPath<PlantPrototypeSet>("Assets/TerrainGen/Config/Flora/Prototypes/" + n + "_Prototypes.asset");
+                if (s != null) sets.Add(s);
+            }
+            if (sets.Count == 0) Assert.Ignore("the oak / tree prototype sets are not baked on this machine");
+            var lab = go.AddComponent<OctopusLab>();
+            lab.octopus = Octopus();
+            lab.groveSets = sets.ToArray();
+            lab.groveTrees = 7; lab.treeScale = 1f;
+            var player = new GameObject("player");
+            trash.Add(player);
+            player.transform.position = new Vector3(0f, 0f, -200f);
+            lab.Place(world, player.transform);
+            OctopusCreature oct = lab.Octopus;
+            oct.Viewer = null;
+            oct.Controller.Brain = null;
+            oct.Controller.Intent = new OctoIntent { mode = OctoMode.Rest, goal = oct.Body.HeadCentre };
+            for (int f = 0; f < 60 * 8; f++) world.TickAll(Dt);
+            OctopusBody b = oct.Body;
+            int A = b.ArmCount, N = b.Arms[0].N;
+            var prev = new Vector3[A * N];
+            for (int a = 0; a < A; a++) for (int k = 0; k < N; k++) prev[a * N + k] = b.Arms[a].X[k];
+            Vector3 ph = b.HeadCentre;
+            float headMax = 0f, armMax = 0f, armSum = 0f; int frames = 60 * 20, worstArm = -1, worstK = -1;
+            for (int f = 0; f < frames; f++)
+            {
+                world.TickAll(Dt);
+                headMax = Mathf.Max(headMax, (b.HeadCentre - ph).magnitude); ph = b.HeadCentre;
+                for (int a = 0; a < A; a++)
+                {
+                    float m = 0f;
+                    for (int k = 0; k < N; k++)
+                    {
+                        float d = (b.Arms[a].X[k] - prev[a * N + k]).magnitude; prev[a * N + k] = b.Arms[a].X[k];
+                        if (d > m) m = d;
+                        if (d > armMax) { armMax = d; worstArm = a; worstK = k; }
+                    }
+                    armSum += m;
+                }
+            }
+            float armAvg = armSum / (frames * A);
+            TestContext.Out.WriteLine($"scale {lab.ChosenScale:F2}, anchors {oct.Controller.Board.AnchoredCount}, head max {headMax * 1000f:F1} mm/tick, " +
+                $"arm max {armMax * 1000f:F1} mm/tick (arm {worstArm} particle {worstK}), arm avg of per-tick max {armAvg * 1000f:F2} mm, asleep {b.Asleep}, planes {oct.Controller.ContactPlanes}");
+            string stats = ($"head max {headMax * 1000f:F1} mm/tick, arm max {armMax * 1000f:F1} mm/tick (arm {worstArm} particle {worstK}), arm avg {armAvg * 1000f:F2} mm, asleep {b.Asleep}, anchors {oct.Controller.Board.AnchoredCount}, scale {lab.ChosenScale:F2}");
+            Assert.Less(headMax, 0.005f, "the perched body jitters: " + stats);
+            Assert.Less(armAvg, 0.002f, "the perched arms never settle: " + stats);
+            Assert.Less(armMax, 0.03f, "a perched arm particle jumps: " + stats);
+        }
+
         // A creature as prey: its spine is the grab capsule, it struggles while held and flees after release.
         [Test] public void CreaturePrey_StrugglesThenFlees()
         {
