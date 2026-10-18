@@ -17,6 +17,7 @@ using UnityEngine;
 //   Hold     wraps the prey's grab volume and follows it (pins re-placed every frame)
 public sealed class TentacleAgent
 {
+    public const float RestRelaxRate = 4f;   // 1/s at scale 1: a curled arm's extra damping at rest
     public enum State { Curl, Feel, Reach, Grip, Anchored, Release, Strike, Hold }
 
     public const int MemorySize = 4;
@@ -68,6 +69,7 @@ public sealed class TentacleAgent
     void Enter(State s)
     {
         Mode = s; StateTime = 0f;
+        Arm.ExtraDamping = 0f;
         // the positional pull belongs to reaching and striking only
         if (s != State.Reach && s != State.Strike) Arm.ShapePull = s == State.Feel ? 0.01f : 0f;
     }
@@ -120,8 +122,18 @@ public sealed class TentacleAgent
     {
         Arm.ClearTargetShape(); Arm.SinusAmount = 0f; Arm.Tone = 1f;
         if (StateTime < 0.3f) return;
+        // a curled arm at rest relaxes: its swing dies out in about a second instead of ringing on for 20 s
+        // (absolute damping is safe here - a resting octopus hangs still; Froude-scaled like every rate)
+        float relax = RestRelaxRate / c.Body.TimeScale;
+        bool resting = c.Intent.mode == OctoMode.Rest || c.Intent.mode == OctoMode.Hold;
+        float want = resting ? relax : 0f;
+        if (Arm.ExtraDamping != want) Arm.ExtraDamping = want;
         // idle while enough others hold on and the brain only wants rest; else start feeling
         bool rest = c.Intent.mode == OctoMode.Rest || c.Intent.mode == OctoMode.Hold;
+        // a settled rest (an arm to spare beyond the support needed) ends the search for good: the arm stays
+        // curled until the brain wants something else or the support drops (user report: an octopus that
+        // re-searched every few seconds never came to rest)
+        if (!rest || c.Board.AnchoredCount <= c.Board.MinAnchors) { if (float.IsPositiveInfinity(idleUntil)) idleUntil = 0f; }
         if (c.Time < idleUntil && rest) return;   // pausing after a fruitless search
         if (!rest || c.Board.AnchoredCount < c.RestAnchors) Enter(State.Feel);
     }
@@ -157,7 +169,7 @@ public sealed class TentacleAgent
         bool resting = c.Intent.mode == OctoMode.Rest || c.Intent.mode == OctoMode.Hold;
         if (resting && StateTime > 6f * c.Body.TimeScale)
         {
-            idleUntil = c.Time + (4f + 4f * Rand()) * c.Body.TimeScale;
+            idleUntil = c.Board.AnchoredCount > c.Board.MinAnchors ? float.PositiveInfinity : c.Time + (4f + 4f * Rand()) * c.Body.TimeScale;
             Enter(State.Curl);
             return;
         }

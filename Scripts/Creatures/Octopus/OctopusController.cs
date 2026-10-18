@@ -146,6 +146,7 @@ public sealed class OctopusController
         DbgPhase?.Invoke("start");
         for (int a = 0; a < Agents.Length; a++) Agents[a].Tick(dt, this);
         DbgPhase?.Invoke("agents");
+        RestRelax();
         bool wasAsleep = Body.Asleep;
         Body.Tick(dt);
         DbgPhase?.Invoke("body");
@@ -173,6 +174,28 @@ public sealed class OctopusController
         QueriesThisFrame = queries;
         MaxQueriesPerFrame = Mathf.Max(MaxQueriesPerFrame, queries);
         TotalQueries += queries;
+    }
+
+    // A settled rest - the brain wants rest, every arm holds on or lies curled, none is searching, reaching or
+    // letting go - relaxes the whole animal: the body and its holding arms get the same absolute damping the
+    // curled arms have (TentacleAgent.RestRelaxRate), so the last swing on the holds dies out in a second or
+    // two and the body can fall asleep. Off again the moment any arm does anything else.
+    public bool Settled { get; private set; }
+
+    void RestRelax()
+    {
+        bool rest = Intent.mode == OctoMode.Rest || Intent.mode == OctoMode.Hold;
+        bool settled = rest && Board.AnchoredCount > Board.MinAnchors;
+        for (int a = 0; a < Agents.Length && settled; a++)
+        {
+            TentacleAgent.State m = Agents[a].Mode;
+            if (m != TentacleAgent.State.Anchored && m != TentacleAgent.State.Curl && m != TentacleAgent.State.Hold) settled = false;
+        }
+        Settled = settled;
+        float want = settled ? TentacleAgent.RestRelaxRate / Body.TimeScale : 0f;
+        if (Body.Lattice.ExtraDamping != want) Body.Lattice.ExtraDamping = want;
+        for (int a = 0; a < Agents.Length; a++)
+            if (Agents[a].Mode == TentacleAgent.State.Anchored && Body.Arms[a].ExtraDamping != want) Body.Arms[a].ExtraDamping = want;
     }
 
     // Spawn / settle: every arm casts around its own cone (up and out first) and grips the nearest surface
