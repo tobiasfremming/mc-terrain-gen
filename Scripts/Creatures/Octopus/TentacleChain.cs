@@ -63,8 +63,8 @@ public sealed class TentacleChain
     public Vector3 Gravity = new Vector3(0f, -9.81f, 0f);
     public float Tone = 1f;                  // muscle tone multiplier on Spec.Muscle (0 = limp)
     public float SinusAmount;                // 0..1 travelling sinus (reaching)
-    public float ShapeRate = 6f;             // 1/s at scale 1: how fast the muscles follow BendTarget / SinusAmount
-    const float kStrikeShapeRate = 40f;      // a strike (tone > 1.5) follows at once
+    public const float DefaultShapeRate = 6f, FastShapeRate = 40f;
+    public float ShapeRate = DefaultShapeRate;   // 1/s at scale 1: how fast the muscles follow BendTarget / SinusAmount
     readonly Vector3[] muscleBend;           // the bend the muscles are pulling toward this sub-step
     float sinusNow;
     // Optional free twist target: dorsal away from this axis (AxisDir zero = free particles relax to the
@@ -273,7 +273,7 @@ public sealed class TentacleChain
 
         // the muscles follow a new shape over ~1/ShapeRate s instead of at once: a target switched in one step
         // (curl -> feel, a new reach) flicked the arm at up to 14 m/s for a few frames, the visible whip
-        float follow = (OctopusController.Dbg & 8) != 0 ? 1f : 1f - MathF.Exp(-(Tone > 1.5f ? kStrikeShapeRate : ShapeRate) * h / MathF.Sqrt(SizeScale));
+        float follow = (OctopusController.Dbg & 8) != 0 ? 1f : 1f - MathF.Exp(-ShapeRate * h / MathF.Sqrt(SizeScale));
         for (int j = 0; j < N - 1; j++)
         {
             Vector3 m = muscleBend[j], g = BendTarget[j];
