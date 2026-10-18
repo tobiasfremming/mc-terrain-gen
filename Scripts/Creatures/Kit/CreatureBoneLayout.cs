@@ -75,7 +75,7 @@ namespace CreatureKit
         // ------------------------------------------------------------ legacy fields
 
         // The layout of a CreatureSpecies' legacy fields: spine joints, each leg's bones (3 for a two-bone leg,
-        // one per arthropod segment), 6 per wing, 2 eyes. Blocks: 0 = spine, 1..legs, then wings, then eyes.
+        // one per arthropod segment), 7 per wing, 2 eyes. Blocks: 0 = spine, 1..legs, then wings, then eyes.
         public static CreatureBoneLayout FromLegacy(CreatureSpecies sp) => FromLegacy(sp, SpineOrder);
 
         // `order` exists for the RED test (a wrong block order must break the legacy equivalence).

@@ -1000,7 +1000,7 @@
       "name": "Wing",
       "kind": "Wing",
       "status": "exists",
-      "bones": "6",
+      "bones": "7",
       "materialLayers": [
         8,
         1,
@@ -2413,7 +2413,7 @@
       "name": "WingedSerpent",
       "kitVersion": 0,
       "plan": "Spine",
-      "bones": 59,
+      "bones": 61,
       "parts": [
         "SpineBody:body",
         "Leg2Bone:leg0",

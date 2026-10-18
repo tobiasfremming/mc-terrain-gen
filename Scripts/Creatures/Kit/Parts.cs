@@ -317,11 +317,11 @@ namespace CreatureKit
     // ------------------------------------------------------------------ wings, chains
 
     [Serializable]
-    [Part("Wing", PartKind.Wing, Bones = "6", Summary = "3-finger membrane wing on an arm limb (a Leg2Bone it names); a wingbeat is a step with a vertical comfort band (CreatureWings, FlightModel).",
+    [Part("Wing", PartKind.Wing, Bones = "7", Summary = "3-finger membrane wing on an arm limb (a Leg2Bone it names); a wingbeat is a step with a vertical comfort band (CreatureWings, FlightModel).",
           System = "CreatureFlight + CreatureWings", MaterialLayers = new[] { 8, 1, 2 }, UseWhen = "bats, pterosaurs, dragons; the Fly module makes it fly")]
     public sealed class Wing : CreaturePart
     {
-        public const int Bones = 6; // 3 fingers + 3 membrane ribs
+        public const int Bones = WingBoneLayout.BonesPerWing; // 3 fingers, 2 ribs, arm sector, humerus patch
         [Param(ParamUnit.PartRef, "the Leg2Bone this wing rides on (its role becomes WingArm); a mirrored wing names the unmirrored id and gets .L / .R")]
         public string arm = "";
         [Param(ParamUnit.Spec, "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm`")]
