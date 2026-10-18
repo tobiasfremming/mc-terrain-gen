@@ -114,7 +114,7 @@ namespace TerrainGen.Tests
                     int A = body.ArmCount;
                     var last = new Vector3[A][];
                     for (int a = 0; a < A; a++) last[a] = (Vector3[])body.Arms[a].X.Clone();
-                    float late = 0f; int asleepAt = -1, moving = 0, lateTicks = 0;
+                    float late = 0f; int asleepAt = -1, moving = 0, lateTicks = 0, worstArm = -1, worstK = -1;
                     for (int f = 0; f < 60 * 20; f++)
                     {
                         c.Tick(Dt);
@@ -122,15 +122,20 @@ namespace TerrainGen.Tests
                         for (int a = 0; a < A; a++)
                             for (int k = 1; k < body.Arms[a].N; k++)
                             {
-                                tick = Mathf.Max(tick, (body.Arms[a].X[k] - last[a][k]).magnitude);
+                                float d = (body.Arms[a].X[k] - last[a][k]).magnitude;
+                                if (f >= 60 * 8 && d > late) { worstArm = a; worstK = k; }
+                                tick = Mathf.Max(tick, d);
                                 last[a][k] = body.Arms[a].X[k];
                             }
                         if (f >= 60 * 8) { lateTicks++; late = Mathf.Max(late, tick); if (tick > 0.001f * s) moving++; }
                         if (asleepAt < 0 && body.Asleep) asleepAt = f;
                     }
-                    TestContext.Out.WriteLine($"scene {scene} scale {s:F1}: anchors {c.Board.AnchoredCount}, after 8 s: max per-tick motion {late * 1000f:F2} mm, ticks moving > 1 mm x scale {moving}/{lateTicks}, asleep at {(asleepAt < 0 ? "never" : (asleepAt / 60f).ToString("F1") + " s")}");
-                    Assert.Less(late, 0.03f * s, $"scene {scene} scale {s}: a perched arm jumps");
-                    Assert.LessOrEqual(moving, lateTicks / 20, $"scene {scene} scale {s}: a perched arm keeps moving");
+                    string modes = "";
+                    for (int a = 0; a < A; a++) modes += c.Agents[a].Mode.ToString().Substring(0, 3) + " ";
+                    string stats = $"scene {scene} scale {s:F1}: anchors {c.Board.AnchoredCount} ({modes}), settled {c.Settled}, after 8 s: max per-tick motion {late * 1000f:F2} mm (arm {worstArm} particle {worstK}), ticks moving > 1 mm x scale {moving}/{lateTicks}, asleep at {(asleepAt < 0 ? "never" : (asleepAt / 60f).ToString("F1") + " s")}";
+                    TestContext.Out.WriteLine(stats);
+                    Assert.Less(late, 0.03f * s, "a perched arm jumps: " + stats);
+                    Assert.LessOrEqual(moving, lateTicks / 20, "a perched arm keeps moving: " + stats);
                     if (body.Asleep) slept++;
                 }
             Assert.GreaterOrEqual(slept, 5, "the perched octopus does not fall asleep");
