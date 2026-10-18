@@ -19,8 +19,8 @@ namespace TerrainGen.Tests
 #if UNITY_EDITOR
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
-            { "WingedSerpent", 0UL },
-            { "SkyDragon", 0UL },
+            { "WingedSerpent", 0xF1C5AD8CA7563215UL },
+            { "SkyDragon", 0x29E499FA9EE623D6UL },
         };
 #else
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
@@ -92,8 +92,8 @@ namespace TerrainGen.Tests
 #if UNITY_EDITOR
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
-            { "DesertBeetle", 0UL }, { "DaddyLongLegs", 0UL }, { "Tarantula", 0UL },
-            { "WingedSerpent", 0UL }, { "SkyDragon", 0UL }, { "KitMonitor", 0UL },
+            { "DesertBeetle", 0x0D320E205C37F22BUL }, { "DaddyLongLegs", 0x546C444ADD9D7F16UL }, { "Tarantula", 0x5BDB2CBEB8CE0B7CUL },
+            { "WingedSerpent", 0x2D19B03A345A8A3AUL }, { "SkyDragon", 0x9F7240888C3A4B45UL }, { "KitMonitor", 0x5CA3EBE4BA35469AUL },
         };
 #else
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
