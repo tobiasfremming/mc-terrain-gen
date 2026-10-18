@@ -231,7 +231,7 @@ namespace TerrainGen.Tests
                     LegState st = sim.Legs[l];
                     if (st.stepping) continue;
                     LegSpec ls = sp.legs[l];
-                    float len = (ls.upperLength + ls.lowerLength) * sim.SizeScale;
+                    float len = ls.TotalLength * sim.SizeScale;
                     Vector3 right = sim.Rotations[ls.attachJoint] * Vector3.right * ls.side;
                     float side = Vector3.Dot(st.foot - st.shoulder, right) / len;
                     float lean = Vector3.Angle(st.elbow - st.foot, Vector3.up);   // lower leg from vertical
@@ -244,7 +244,7 @@ namespace TerrainGen.Tests
             }
             float maxClear = 0f, maxBody = 0f;
             foreach (var j in sp.joints) { maxClear = Mathf.Max(maxClear, j.clearance - j.halfHeight); maxBody = Mathf.Max(maxBody, j.clearance + j.halfHeight); }
-            float leg = sp.legs[0].upperLength + sp.legs[0].lowerLength;
+            float leg = sp.legs[0].TotalLength;
             TestContext.Out.WriteLine($"planted samples {samples}: foot out to the side min {minSide:F2} mean {sumSide / samples:F2} x leg; " +
                                       $"lower-leg lean from vertical min {minLean:F0} mean {sumLean / samples:F0} deg; knee above shoulder min {minKnee:F2} x leg; " +
                                       $"belly gap {maxClear / leg:F2}, back height {maxBody / leg:F2} x leg");

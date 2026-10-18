@@ -35,7 +35,11 @@ public sealed class SpineBody : ICreatureBody
         Vector3[] j = Sim.Joints;
         for (int k = 0; k < j.Length; k++) { lo = Vector3.Min(lo, j[k]); hi = Vector3.Max(hi, j[k]); }
         LegState[] legs = Sim.Legs;
-        for (int k = 0; k < legs.Length; k++) { lo = Vector3.Min(lo, legs[k].foot); hi = Vector3.Max(hi, legs[k].foot); }
+        for (int k = 0; k < legs.Length; k++)
+        {
+            lo = Vector3.Min(lo, legs[k].foot); hi = Vector3.Max(hi, legs[k].foot);
+            lo = Vector3.Min(lo, legs[k].elbow); hi = Vector3.Max(hi, legs[k].elbow); // an arthropod's knee peaks high above the body
+        }
     }
 
     public void Tick(float dt) => Sim.Tick(dt, Sim.Joints[0]);

@@ -14,6 +14,7 @@
 #define CREATURE_PART_LEG  1
 #define CREATURE_PART_FOOT 2
 #define CREATURE_PART_EYE  3
+#define CREATURE_PART_BAND 9   // arthropod knee bands (ArthropodLegMesh.PartBand; the octopus uses 4..7, the wyvern 8)
 
 // CreatureSpecies.cs enum CreaturePattern
 #define CREATURE_PATTERN_NONE         0

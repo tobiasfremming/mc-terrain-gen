@@ -80,6 +80,33 @@ namespace TerrainGen.Tests.Perf
             Assert.LessOrEqual(median, 4.0, "median sim ms for 100 creatures per frame (R23)");
         }
 
+        // Arthropod legs (design 2026-10-17-multi-segment-legs-spider-design.md): 8 legs x 7 segments solved by
+        // ArthropodLegIK, plus pedipalps. Budget: one spider <= 0.1 ms like a monitor; 20 spiders <= 2 ms.
+        static void SpiderPerf(DensityField field, string path, int n, double boundMs)
+        {
+            var sp = AssetDatabase.LoadAssetAtPath<CreatureSpecies>(path);
+            Assert.IsNotNull(sp, path);
+            var shared = new FieldGroundProbe(field);
+            var sims = CreatureDesertWorld.Spawn(shared, n, sp, out var brains, out _);
+            double median = Run(sims, brains, shared, out double mean, out double max, out float spf, out int gc);
+            TestContext.Out.WriteLine($"{n} x {sp.name} on DesertWorld: median {median:F4} ms, mean {mean:F4} ms, max {max:F4} ms; field samples/frame {spf:F1}; GC allocs {gc}");
+            GcAllocs.AssertCounterWorks();
+            Assert.AreEqual(0, gc, "managed allocations while ticking");
+            Assert.LessOrEqual(median, boundMs, "median sim ms per frame");
+        }
+
+        [Test] public void Perf_OneSpider_Under0_1ms()
+        {
+            SpiderPerf(field, "Assets/TerrainGen/Config/Creatures/DaddyLongLegs.asset", 1, 0.1);
+            SpiderPerf(field, "Assets/TerrainGen/Config/Creatures/Tarantula.asset", 1, 0.1);
+        }
+
+        [Test] public void Perf_20Spiders_Under2ms()
+        {
+            SpiderPerf(field, "Assets/TerrainGen/Config/Creatures/DaddyLongLegs.asset", 20, 2.0);
+            SpiderPerf(field, "Assets/TerrainGen/Config/Creatures/Tarantula.asset", 20, 2.0);
+        }
+
         [Test] public void Build_Time_Under5ms()
         {
             var sp = CreatureTestSpecies.Lizardish();
@@ -137,8 +164,11 @@ namespace TerrainGen.Tests
 
         // n monitors in one lab-sized enclosure, each with its own ground cache over one shared field probe.
         internal static List<CreatureSim> Spawn(FieldGroundProbe shared, int n, out List<WanderBrain> brains, out List<CachedGroundProbe> caches)
+            => Spawn(shared, n, Monitor(), out brains, out caches);
+
+        // The same lab-rule spawn for any species asset (the arthropod perf tests).
+        internal static List<CreatureSim> Spawn(FieldGroundProbe shared, int n, CreatureSpecies sp, out List<WanderBrain> brains, out List<CachedGroundProbe> caches)
         {
-            var sp = Monitor();
             Vector3 c = Ground(shared, kLabCentre);
             // the shipped monitor at its species scale (R21), in a lab-rule enclosure
             float maxScale = CreatureLab.MaxScale(sp);

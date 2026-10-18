@@ -72,6 +72,8 @@ Shader "MarchingCubes/Creature"
         float4 _BodyParams;     // body length, 1 / length, arc length where the tail begins, 0
         float4 _MembraneColor;  // wing membrane colour (winged species)
         float4 _MembraneParams; // translucency, vein contrast, trailing rim darkening, 0
+        float4 _BandColor;      // arthropod knee bands (part 9)
+        float4 _SheenColor;     // velvet sheen colour, alpha = strength (0 = none)
         ENDHLSL
 
         Pass
@@ -181,6 +183,7 @@ Shader "MarchingCubes/Creature"
                 float3 albedo = lerp(base, _PatternColor.rgb, pat.x);
                 albedo = lerp(albedo, pale, pat.y);
                 if (part == CREATURE_PART_FOOT) albedo = lerp(albedo, _PatternColor.rgb, 0.3);
+                if (part == CREATURE_PART_BAND) albedo = lerp(albedo, _BandColor.rgb, 0.9);
 
                 // --- scale grain: per-scale tint, darker grooves, a small bump, rougher grooves
                 float3 g = CreatureScaleGrain(uv0, uv1, _ScaleSize, _ScaleColumns);
@@ -210,6 +213,15 @@ Shader "MarchingCubes/Creature"
 
                 half3 rgb = CreatureShade(s, lp, posWS, screenUV);
                 if (glint > 0.0) rgb += (half3)(glint * 0.6 * (SampleSH(n) + 0.3));
+                // velvet sheen (a hairy body seen at grazing angles): a rim lobe in the light's and the sky's colour
+                if (_SheenColor.a > 0.0 && !eye)
+                {
+                    float3 V = GetWorldSpaceNormalizeViewDir(posWS);
+                    Light sun = GetMainLight();
+                    half graze = (half)pow(1.0 - saturate(dot(nb, V)), 3.0);
+                    half wrapLit = (half)saturate(dot(nb, sun.direction) * 0.5 + 0.5);
+                    rgb += (half3)_SheenColor.rgb * (half)_SheenColor.a * graze * (sun.color * (0.6h * wrapLit) + SampleSH(nb) * 0.4h);
+                }
                 rgb = MixFog(rgb, (half)i.normalWS.w);
                 return half4(rgb, 1.0h);
             }

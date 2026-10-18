@@ -409,8 +409,6 @@ public sealed class CreatureWings
     //   scale does when the wing folds)
     public void WriteBones(Matrix4x4[] dst, int offset)
     {
-        int legs = sp.legs != null ? sp.legs.Length : 0;
-        int n = sp.JointCount;
         Vector3 sc = Vector3.one * scale;
         for (int w = 0; w < specs.Length; w++)
         {
@@ -419,17 +417,17 @@ public sealed class CreatureWings
             Quaternion ar = rotations[attach[w]];
             Vector3 pole = ar * poleLocal[w];
             Quaternion upper = BoneRot(st.elbow - st.shoulder, pole, ar);
-            dst[offset + WingBoneLayout.LegBone(n, leg, 0)] = Matrix4x4.TRS(st.shoulder, upper, sc);
-            dst[offset + WingBoneLayout.LegBone(n, leg, 1)] = Matrix4x4.TRS(st.elbow, LowerRot(upper, st.wrist - st.elbow), sc);
-            dst[offset + WingBoneLayout.LegBone(n, leg, 2)] = Matrix4x4.TRS(st.wrist, Look(st.handOut, st.handNormal), sc);
+            dst[offset + sp.LegBone(leg, 0)] = Matrix4x4.TRS(st.shoulder, upper, sc);
+            dst[offset + sp.LegBone(leg, 1)] = Matrix4x4.TRS(st.elbow, LowerRot(upper, st.wrist - st.elbow), sc);
+            dst[offset + sp.LegBone(leg, 2)] = Matrix4x4.TRS(st.wrist, Look(st.handOut, st.handNormal), sc);
             for (int k = 0; k < WingSpec.Fingers; k++)
-                dst[offset + WingBoneLayout.WingBone(n, legs, w, k)] =
+                dst[offset + sp.WingBone(w, k)] =
                     Matrix4x4.TRS(st.wrist, Look(FingerDir[w * WingSpec.Fingers + k], st.handNormal), sc);
             for (int k = 0; k < WingSpec.Ribs; k++)
             {
                 int i = w * WingSpec.Ribs + k;
                 float stretch = RibLength[i] / Mathf.Max(1e-6f, ribRestLength[i] * scale);
-                dst[offset + WingBoneLayout.WingBone(n, legs, w, WingBoneLayout.FirstRib + k)] =
+                dst[offset + sp.WingBone(w, WingBoneLayout.FirstRib + k)] =
                     Matrix4x4.TRS(st.wrist, Look(RibDir[i], RibUp[i]), Vector3.one * (scale * stretch));
             }
         }

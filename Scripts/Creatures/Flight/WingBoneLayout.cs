@@ -13,9 +13,9 @@ public static class WingBoneLayout
     public static int WingBone(int joints, int legs, int wing, int k) => joints + 3 * legs + BonesPerWing * wing + k;
     public static int EyeBone(int joints, int legs, int wings, int eye) => joints + 3 * legs + BonesPerWing * wings + eye;
 
-    public static int BoneCount(CreatureSpecies sp, int wings) => BoneCount(sp.JointCount, LegCount(sp), wings);
-    public static int WingBone(CreatureSpecies sp, int wing, int k) => WingBone(sp.JointCount, LegCount(sp), wing, k);
-    public static int EyeBone(CreatureSpecies sp, int wings, int eye) => EyeBone(sp.JointCount, LegCount(sp), wings, eye);
-
-    static int LegCount(CreatureSpecies sp) => sp.legs != null ? sp.legs.Length : 0;
+    // The int overloads above assume legacy legs (3 bones each), which is what every winged species has. The
+    // species overloads count the real leg bones (LegBoneLayout: arthropod legs have one bone per segment).
+    public static int BoneCount(CreatureSpecies sp, int wings) => sp.JointCount + LegBoneLayout.LegBones(sp.legs) + BonesPerWing * wings + 2;
+    public static int WingBone(CreatureSpecies sp, int wing, int k) => sp.JointCount + LegBoneLayout.LegBones(sp.legs) + BonesPerWing * wing + k;
+    public static int EyeBone(CreatureSpecies sp, int wings, int eye) => sp.JointCount + LegBoneLayout.LegBones(sp.legs) + BonesPerWing * wings + eye;
 }

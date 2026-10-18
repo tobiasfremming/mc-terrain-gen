@@ -94,9 +94,11 @@ namespace TerrainGen.Tests
             lab.Place(world, player.transform, Vector3.zero);
             CreatureEnclosure enc = lab.EnclosureFor(0);
             CreatureSim sim = lab.SimFor(0);
-            Assert.AreEqual(14f, enc.radius, 1e-3f, "aviary radius");
+            // 14 m x 10 m at scale 1, grown for the largest individual (scale x (1 + sizeJitter))
+            float big = Mathf.Max(1f, CreatureLab.MaxScale(s.species));
+            Assert.AreEqual(14f * big, enc.radius, 1e-3f, "aviary radius");
             Assert.IsTrue(sim.Bounds.HasValue);
-            Assert.AreEqual(10f, sim.Bounds.Value.maxHeight, 1e-3f, "aviary roof");
+            Assert.AreEqual(10f * big, sim.Bounds.Value.maxHeight, 1e-3f, "aviary roof");
             Assert.IsInstanceOf<FlightBrain>(world.BrainOf(0));
             int rocks = 0;
             foreach (Transform t in enc.transform) if (t.name == "Rock perch") { rocks++; Assert.IsNotNull(t.GetComponent<CreatureSurfaceMesh>()); }

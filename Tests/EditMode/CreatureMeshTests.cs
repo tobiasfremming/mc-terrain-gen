@@ -291,7 +291,7 @@ namespace TerrainGen.Tests
                 frames++;
             }
             TestContext.Out.WriteLine($"max joint bend {maxBend:F1} deg over {frames} frames");
-            Assert.Greater(maxBend, 0.9f * 20f, "the chain never reached its bend limit: test does not bite");
+            Assert.Greater(maxBend, CreatureLegTests.BendBite(sp), "the chain never reached its bend limit: test does not bite");
         }
 
         static string Knees(CreatureSim sim)

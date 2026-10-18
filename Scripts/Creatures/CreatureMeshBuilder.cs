@@ -41,6 +41,7 @@ public static class CreatureMeshBuilder
         b.Body();
         for (int l = 0; l < (sp.legs != null ? sp.legs.Length : 0); l++) b.Leg(l);
         b.Eyes();
+        b.Appendages();
         return b.ToMesh();
     }
 
@@ -50,10 +51,11 @@ public static class CreatureMeshBuilder
         readonly CreatureSim sim;
         readonly Matrix4x4[] bones;
         readonly int n;
-        readonly List<Vector3> pos = new List<Vector3>(), nrm = new List<Vector3>();
-        readonly List<Vector2> uv0 = new List<Vector2>(), uv1 = new List<Vector2>();
-        readonly List<Vector4> uv2 = new List<Vector4>();
-        readonly List<int> tris = new List<int>();
+        readonly CreatureMeshLists ml = new CreatureMeshLists();   // shared with ArthropodLegMesh
+        readonly List<Vector3> pos, nrm;
+        readonly List<Vector2> uv0, uv1;
+        readonly List<Vector4> uv2;
+        readonly List<int> tris;
 
         public Builder(CreatureSpecies sp)
         {
@@ -61,6 +63,7 @@ public static class CreatureMeshBuilder
             sim = CreatureRestPose.Sim(sp);
             bones = CreatureRestPose.BoneWorld(sim);
             n = sp.JointCount;
+            pos = ml.pos; nrm = ml.nrm; uv0 = ml.uv0; uv1 = ml.uv1; uv2 = ml.uv2; tris = ml.tris;
         }
 
         // ---------------------------------------------------------------- primitives
@@ -294,6 +297,13 @@ public static class CreatureMeshBuilder
         public void Leg(int l)
         {
             LegSpec s = sp.legs[l];
+            if (s.IsArthropod)
+            {
+                // rigid segment capsules, knuckles, bands and claws in the rest pose the sim solved
+                ArthropodLegMesh.Build(ml, s.segments, sim.LegPoints, sim.LegPointOffset(l), sim.LegPlaneNormal(l), sp.LegBone(l, 0),
+                                       s.attachJoint, s.legSides > 0 ? s.legSides : 8, s.toeCount, s.footLength);
+                return;
+            }
             LegState st = sim.Legs[l];
             int attach = s.attachJoint, bu = sp.LegBone(l, 0), bl = sp.LegBone(l, 1), bf = sp.LegBone(l, 2);
             Vector3 S = st.shoulder, E = st.elbow, F = st.foot;
@@ -416,6 +426,49 @@ public static class CreatureMeshBuilder
             {
                 int bone = sp.EyeBone(e);
                 Ellipsoid(bones[bone], Vector3.zero, r, r, r, kEyeAround, kEyeBands, PartEye, bone);
+            }
+            // an eye cluster (spiders): more eyes on the eye joint, each rigid to the eye bone of its side
+            if (sp.eyeCluster != null)
+                foreach (EyeSpot spot in sp.eyeCluster)
+                {
+                    float rs = Mathf.Max(kMinRadius, spot.radius);
+                    for (int e = 0; e < 2; e++)
+                    {
+                        if (spot.offset.x == 0f && e == 1) break;   // on the midline: one eye
+                        Vector3 o = spot.offset; o.x *= e == 0 ? -1f : 1f;
+                        int bone = sp.EyeBone(e);
+                        Vector3 c = sim.Joints[sp.eyeJoint] + sim.Rotations[sp.eyeJoint] * o;
+                        Ellipsoid(Matrix4x4.TRS(c, bones[bone].rotation, Vector3.one), Vector3.zero, rs, rs, rs, kEyeAround, kEyeBands, PartEye, bone);
+                    }
+                }
+        }
+
+        // Rigid curved cones on spine joints (chelicerae with fangs, horns): BodyAppendage.
+        public void Appendages()
+        {
+            if (sp.appendages == null) return;
+            foreach (BodyAppendage a in sp.appendages)
+            {
+                int j = Mathf.Clamp(a.joint, 0, n - 1);
+                for (int side = 0; side < (a.mirror ? 2 : 1); side++)
+                {
+                    float mx = a.mirror && side == 0 ? -1f : 1f;
+                    Vector3 o = a.offset, d = a.direction; o.x *= mx; d.x *= mx;
+                    Quaternion r = sim.Rotations[j];
+                    Vector3 dir = r * (d.sqrMagnitude > 1e-12f ? d.normalized : Vector3.forward);
+                    Vector3 up = Vector3.ProjectOnPlane(r * Vector3.up, dir);
+                    if (up.sqrMagnitude < 1e-8f) up = Vector3.ProjectOnPlane(r * Vector3.forward, dir);
+                    Quaternion q = Quaternion.LookRotation(dir, up.normalized);
+                    Vector3 b = sim.Joints[j] + r * o;
+                    float re = a.fangLength > 0f ? Mathf.Max(a.radiusEnd, kMinRadius) : a.radiusEnd;
+                    ArthropodLegMesh.Horn(ml, b, q, a.radiusStart, re, a.length, a.curveDeg, j, PartLeg, kLegSegments, 0f, out Vector3 tip, out Vector3 tipDir);
+                    if (a.fangLength > 0f)
+                    {
+                        Vector3 fu = Vector3.ProjectOnPlane(q * Vector3.up, tipDir);
+                        if (fu.sqrMagnitude < 1e-8f) fu = q * Vector3.up;
+                        ArthropodLegMesh.Horn(ml, tip, Quaternion.LookRotation(tipDir, fu.normalized), re, 0f, a.fangLength, 70f, j, PartFoot, kLegSegments, a.length, out _, out _);
+                    }
+                }
             }
         }
 

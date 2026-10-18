@@ -243,11 +243,30 @@ namespace TerrainGen.Tests
         }
     
         // Upper-bone swing (vs its rest direction, in the attach-joint frame) and knee bend of leg l.
+        // An arthropod leg (LegSpec.segments): the leg plane's outward direction (the coxa's yaw) stands for the
+        // upper bone, and the knee is 0 - its hinges are bounded by the solver itself (ArthropodIKTests).
         static void JointRanges(CreatureSim s, int l, out Vector3 upperLocal, out float knee)
         {
             LegState st = s.Legs[l];
-            upperLocal = Quaternion.Inverse(s.Rotations[s.Species.legs[l].attachJoint]) * (st.elbow - st.shoulder).normalized;
+            LegSpec ls = s.Species.legs[l];
+            Quaternion inv = Quaternion.Inverse(s.Rotations[ls.attachJoint]);
+            if (ls.IsArthropod)
+            {
+                upperLocal = inv * Vector3.Cross(s.Up[ls.attachJoint], s.LegPlaneNormal(l)).normalized;
+                knee = 0f;
+                return;
+            }
+            upperLocal = inv * (st.elbow - st.shoulder).normalized;
             knee = Vector3.Angle(st.elbow - st.shoulder, st.foot - st.elbow);
+        }
+
+        // The spine bend a tight circle must reach for a bend test to bite: 90 % of 20 deg, or of the species'
+        // stiffest-allowed joint when its spine never bends that far (a spider's short body).
+        internal static float BendBite(CreatureSpecies sp)
+        {
+            float lim = 0f;
+            for (int i = 1; i < sp.JointCount - 1; i++) if (!sp.joints[i].rigid) lim = Mathf.Max(lim, sp.joints[i].bendLimitDeg);
+            return 0.9f * Mathf.Min(20f, lim);
         }
 
         // The same 5 s minimum-radius circle as MeshBuilder_MaxBend_NoInvertedTriangles: the joint-range
@@ -294,7 +313,7 @@ namespace TerrainGen.Tests
                 }
             }
             TestContext.Out.WriteLine($"swing max {swingMax:F0} deg, knee {kneeMin:F0}..{kneeMax:F0} deg (deviation max {kneeDevMax:F0}), spine bend max {maxBend:F1}, steps {sim.StepsTaken}");
-            Assert.Greater(maxBend, 0.9f * 20f, "the turn never reached the bend limit");
+            Assert.Greater(maxBend, BendBite(sp), "the turn never reached the bend limit");
         }
     
         // Final review Important 1: in a tight turn the inner legs must not tuck under or through the trunk.
@@ -366,7 +385,7 @@ namespace TerrainGen.Tests
             string sum = $"{sp.name}: shank/foot clearance from the trunk {trunk * 100f:F1} cm ({at}); knee half of the shank {knee * 100f:F1} cm; " +
                          $"lower limb beside its girdle {girdle * 100f:F1} cm; spine bend max {maxBend:F1}";
             TestContext.Out.WriteLine(sum);
-            Assert.Greater(maxBend, 0.9f * 20f, "the turn never reached the bend limit");
+            Assert.Greater(maxBend, BendBite(sp), "the turn never reached the bend limit");
             Assert.GreaterOrEqual(trunk, 0f, "a leg tucked under the trunk: " + sum);
             Assert.GreaterOrEqual(girdle, minGirdleFrac * sc, "a leg crossed under its girdle: " + sum);
         }

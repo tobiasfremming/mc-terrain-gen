@@ -152,6 +152,55 @@ namespace TerrainGen.Tests
             Assert.IsFalse(sim.Flight.Perched);
         }
 
+        // Size variation (species.scale x look.sizeJitter = sizeScale): a smaller and a larger individual both
+        // take off, fly and land cleanly, and the flight's size-dependent quantities derive from sizeScale
+        // (lengths x s, speeds x sqrt(s), rates / sqrt(s)).
+        [TestCase(0.9f)]
+        [TestCase(1.1f)]
+        public void Size_Jittered_FliesAndLands(float scale)
+        {
+            var s = Serpent();
+            var sim = Sim(s.species, new FlatGroundProbe(), default, scale);
+            float T = Mathf.Sqrt(scale);
+            Assert.AreEqual(scale, sim.SizeScale, 1e-6f);
+            Assert.AreEqual(T, sim.TimeScale, 1e-5f, "timing scales with sqrt(scale)");
+            FlightModel m = sim.Flight.Model;
+            Assert.AreEqual(scale, m.SizeScale, 1e-6f, "the flight model takes the individual's size");
+            Assert.AreEqual(s.species.flight.cruiseSpeed * T, m.SpeedGoal, 1e-4f, "cruise speed x sqrt(scale)");
+            Assert.AreEqual(s.species.flight.strokeRateMin / T, m.StrokeRate, 1e-4f, "stroke rate / sqrt(scale)");
+
+            for (int t = 0; t < 30; t++) sim.Tick(kDt, new Vector3(0f, 0f, 100f));
+            Vector3 landAt = new Vector3(0f, 0f, 6f * scale);
+            Assert.IsTrue(sim.Flight.Launch(landAt.y + 3f));
+            float worstAir = 0f, top = 0f;
+            for (int t = 0; t < 240; t++)
+            {
+                sim.Tick(kDt, sim.Joints[0] + sim.Rotations[0] * Vector3.forward * 5f);
+                AssertFinite(sim, $"air tick {t}");
+                worstAir = Mathf.Max(worstAir, MaxSegmentError(sim));
+                top = Mathf.Max(top, sim.Joints[sim.Flight.Girdle].y);
+            }
+            Assert.AreEqual(FlightMode.Air, sim.Mode, "flying");
+            Assert.Greater(top, 2f, "climbed toward the 3 m goal");
+            Assert.Less(worstAir, 1e-3f, "segment lengths in the air");
+
+            sim.Flight.Land(landAt, 0);
+            int ticks = 0;
+            for (; ticks < 1800 && sim.Mode != FlightMode.Ground; ticks++)
+            {
+                sim.Tick(kDt, sim.Joints[0]);
+                AssertFinite(sim, "landing tick " + ticks);
+            }
+            Assert.AreEqual(FlightMode.Ground, sim.Mode, "landed");
+            for (int t = 0; t < 60; t++) sim.Tick(kDt, sim.Joints[0]);
+            float miss = Vector3.ProjectOnPlane(sim.Joints[sim.Flight.Girdle] - landAt, Vector3.up).magnitude;
+            TestContext.WriteLine($"scale {scale}: top {top:F2} m, landed after {ticks * kDt:F1} s, {miss:F2} m from the point");
+            Assert.Less(miss, 4f * scale, "lands near the point");
+            for (int i = 0; i < sim.Joints.Length; i++)
+                Assert.AreEqual(s.species.joints[i].clearance * scale, sim.Joints[i].y, 0.03f * scale, $"joint {i} clearance x scale after landing");
+            Assert.Less(MaxSegmentError(sim), 1e-3f);
+        }
+
         // Land on top of a rock (a non-terrain surface): it stands on the rock, perched, its tail hangs over
         // the edge.
         [Test] public void Land_RockTop_Perch_Drape_TailHangs()

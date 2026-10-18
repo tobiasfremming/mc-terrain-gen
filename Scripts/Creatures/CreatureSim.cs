@@ -51,6 +51,7 @@ public sealed class CreatureSim
     Vector3 heading;
     Vector3 headUp;                  // the head's up the heading was last made tangent to (parallel transport)
     float commanded;
+    float bobY, bobV;                // gait bob (species gaitBob): the body's height offset (m, + up) and its rate
 
     // Climbing (CreatureClimb): only for a species with climb.canClimb on an ISurfaceProbe ground. Up is the up
     // each joint grounds along (gravity's while the creature walks), ClimbWeight how far it follows the
@@ -148,7 +149,7 @@ public sealed class CreatureSim
         {
             bool left = false, right = false;
             for (int l = 0; l < c; l++)
-                if (sp.legs[l].attachJoint == j) { if (sp.legs[l].side < 0) left = true; else right = true; }
+                if (sp.legs[l].attachJoint == j && !sp.legs[l].feeler) { if (sp.legs[l].side < 0) left = true; else right = true; }
             if (left && right) tmp[count++] = j;
         }
         var r = new int[count];
@@ -291,6 +292,7 @@ public sealed class CreatureSim
         // at the steepness-scaled clearance, with a wrap cast past an edge.
         float k = 1f - Mathf.Exp(-dt / (kGroundTau * TimeScale));
         float[] droop = legs.DroopSpread;
+        bool bobOn = sp.gaitBob.amplitude > 0f;
         for (int i = 0; i < n; i++)
         {
             Vector3 p = Path[i];
@@ -322,6 +324,7 @@ public sealed class CreatureSim
             groundPoint[i] = g;
             GroundNormals[i] = nrm;
             float lift = clear - droop[i];
+            if (bobOn) lift += bobY;
             Path[i] = new Vector3(g.x + u.x * lift, g.y + u.y * lift, g.z + u.z * lift);
         }
         RestoreLengths(seg);
@@ -341,8 +344,29 @@ public sealed class CreatureSim
 
         // 5. legs (use the final joint positions; frames are refreshed first)
         UpdateFrames();
-        StepsTaken += legs.Update(dt, Speed);
+        int started = legs.Update(dt, Speed);
+        StepsTaken += started;
+        if (sp.gaitBob.amplitude > 0f) Bob(dt, started > 0);
     }
+
+    // The gait bob: a damped spring on the body's height, kicked downward when legs lift off (the body sags
+    // onto the legs that stay planted, then bounces back). Frequency Froude-scaled like the gait.
+    void Bob(float dt, bool liftOff)
+    {
+        GaitBob b = Species.gaitBob;
+        float w = 2f * Mathf.PI * Mathf.Max(0.1f, b.hz) / TimeScale;
+        // a walking bounce: fades in with the speed like the sway (an idle tidy-up step does not bob)
+        float maxSpeed = Species.speed * TimeScale;
+        float fade = maxSpeed > 1e-4f ? Mathf.Clamp01(Speed / (0.3f * maxSpeed)) : 0f;
+        if (liftOff) bobV -= b.amplitude * SizeScale * w * fade;
+        bobV += (-w * w * bobY - 2f * Mathf.Clamp01(b.damping) * w * bobV) * dt;   // semi-implicit Euler
+        bobY += bobV * dt;
+        float cap = 3f * b.amplitude * SizeScale;
+        bobY = Mathf.Clamp(bobY, -cap, cap);
+    }
+
+    // The gait bob's current height offset of the body (m, + up); 0 without gaitBob.
+    public float BobOffset => bobY;
 
     void UpdateFrames()
     {
@@ -402,8 +426,8 @@ public sealed class CreatureSim
             for (int l = 0; l < specs.Length; l++)
             {
                 LegSpec s = specs[l];
-                if (s.attachJoint != j) continue;
-                float reach = Vector3.Dot(Legs[l].foot - Path[j], fwd) / ((s.upperLength + s.lowerLength) * SizeScale);
+                if (s.attachJoint != j || s.feeler) continue;
+                float reach = Vector3.Dot(Legs[l].foot - Path[j], fwd) / (sp.LegReach(l) * SizeScale);
                 if (s.side > 0) { sumR += reach; cR++; } else { sumL += reach; cL++; }
                 if (Legs[l].stepping) roll += s.side * Mathf.Sin(Mathf.PI * Legs[l].stepT);
             }
@@ -554,6 +578,12 @@ public sealed class CreatureSim
 
     // The leg's current ground-projected rest point (debug view).
     public Vector3 LegRestPoint(int leg) => legs.RestPoint(leg);
+
+    // Arthropod legs (LegSpec.segments): every joint point (coxa base .. foot) from LegPointOffset(leg), and the
+    // leg plane's normal (the segment bones' hinge reference).
+    public Vector3[] LegPoints => legs.Points;
+    public int LegPointOffset(int leg) => legs.PointOffset[leg];
+    public Vector3 LegPlaneNormal(int leg) => legs.PlaneNormal[leg];
 
     // Spine, leg and eye bones in world space, in the species bone order.
     public void WriteBoneWorld(Matrix4x4[] dst, int offset)
