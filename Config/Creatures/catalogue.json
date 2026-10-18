@@ -86,7 +86,7 @@
           "type": "CephalopodSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "the octopus body (CephalopodSpec: web, head, mantle, siphon, lattice); its `arm` comes from the Tentacle parts - fields: armCount, arm, bodyMass, webRadius, webDepth, headRadius, mantleRadius, mantleLength, mantleTiltDeg, eyeRadius, siphonLength, siphonRadius, beta, headStiffness, tipStiffness, breathAmp, breathHz, bodyDamping, subSteps, iterations, look",
+          "meaning": "the octopus body (CephalopodSpec: web, head, mantle, siphon, lattice); its `arm` comes from the Tentacle parts - fields: armCount, arm, bodyMass, webRadius, webDepth, headRadius, mantleRadius, mantleLength, mantleTiltDeg, eyeRadius, siphonLength, siphonRadius, beta, headStiffness, tipStiffness, breathAmp, breathHz, bodyDamping, subSteps, iterations, look, cloakEnabled",
           "range": "",
           "example": ""
         }
@@ -2413,7 +2413,7 @@
       "name": "WingedSerpent",
       "kitVersion": 0,
       "plan": "Spine",
-      "bones": 58,
+      "bones": 59,
       "parts": [
         "SpineBody:body",
         "Leg2Bone:leg0",

@@ -58,7 +58,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | TestHexapod | legacy | Spine | SpineBody, 6x Leg2Bone, Eyes | Walk (Tripod), Wander, Skin | 28 |
 | TestSnake | legacy | Spine | SpineBody, Eyes | Walk, Slither, Wander, Skin | 42 |
 | TreeOctopus | legacy | Soft | 8x Tentacle, SoftBody, Eyes, RigidCone | Ambush, Skin, Cloak, Chromatophore | 201 |
-| WingedSerpent | legacy | Spine | SpineBody, 4x Leg2Bone, 2x Wing, Eyes | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane | 58 |
+| WingedSerpent | legacy | Spine | SpineBody, 4x Leg2Bone, 2x Wing, Eyes | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane | 59 |
 
 ## Parameters
 
@@ -75,7 +75,7 @@ Shape-matched soft lattice (OctopusBody/SoftLattice: 14 particles, 5 clusters) d
 | `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
 | `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
 | `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
-| `spec` | CephalopodSpec | Spec | - | the octopus body (CephalopodSpec: web, head, mantle, siphon, lattice); its `arm` comes from the Tentacle parts - fields: armCount, arm, bodyMass, webRadius, webDepth, headRadius, mantleRadius, mantleLength, mantleTiltDeg, eyeRadius, siphonLength, siphonRadius, beta, headStiffness, tipStiffness, breathAmp, breathHz, bodyDamping, subSteps, iterations, look |  |  |
+| `spec` | CephalopodSpec | Spec | - | the octopus body (CephalopodSpec: web, head, mantle, siphon, lattice); its `arm` comes from the Tentacle parts - fields: armCount, arm, bodyMass, webRadius, webDepth, headRadius, mantleRadius, mantleLength, mantleTiltDeg, eyeRadius, siphonLength, siphonRadius, beta, headStiffness, tipStiffness, breathAmp, breathHz, bodyDamping, subSteps, iterations, look, cloakEnabled |  |  |
 
 ### SpineBody
 
