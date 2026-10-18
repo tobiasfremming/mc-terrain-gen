@@ -51,8 +51,8 @@ float4x4 _LocalToWorld;
 float4 _PlanetCenter;  // w = 1 when up is radial from here, 0 for world Y
 // Per-biome grass table, slot i = BiomeWorld.biomes[i] (TerrainGrass.BuildBiomeParams):
 float4 _GrassBiome[MC_MAX_BIOMES];   // x blades per m^2, y local height where grass stops (radius added), z fade metres
-float4 _GrassBase[MC_MAX_BIOMES];    // Biome.grassColorBase
-float4 _GrassTip[MC_MAX_BIOMES];     // Biome.grassColorTip
+float4 _GrassBase[MC_MAX_BIOMES];    // Biome.grassColorBase, sRGB as authored (Grass.shader decodes)
+float4 _GrassTip[MC_MAX_BIOMES];     // Biome.grassColorTip, sRGB as authored
 float _GrassUseBiomes;               // 0: no biome world (GrassLab, plain heightfields) -> slot 0 everywhere
 float _SlopeCosStart;  // cos of the slope angle where thinning starts (flat side)
 float _SlopeCosEnd;    // cos of the angle where grass is gone

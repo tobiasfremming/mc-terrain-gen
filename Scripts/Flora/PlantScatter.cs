@@ -593,6 +593,170 @@ public class PlantScatter : MonoBehaviour
         for (int i = 0; i < _evictScratch.Count; i++) _plots.Remove(_evictScratch[i]);
     }
 
+    // ---- obstacles -------------------------------------------------------------
+
+    // Trunk capsules of the plants in ALREADY-BUILT plots that may reach into
+    // `world`, appended to `result` (FloraObstacles turns them into colliders
+    // and NavMesh sources). Main thread only: `_plots` is written by
+    // DrainResults on the main thread and never touched by the workers.
+    //
+    // This never requests a build. Plots exist only around the scatter's eye,
+    // so a query far from the player returns nothing -- by design for now
+    // (distant NPCs walk through trees nobody is looking at); pulling plot
+    // building towards anchors would make placement cost follow every NPC.
+    //
+    // Instances are species-major, so species s is items[runStart[s] ..
+    // runStart[s+1]) and its PlantSpecies is _table[s].sp -- the same mapping
+    // Gather uses, and the same staleness test: a plot whose run count does
+    // not match the table was built against an older table and is skipped.
+    // Obstacle size is read live from the species rather than baked into the
+    // plot, because it is not part of placement (not in the hash) and editing
+    // it must not rebuild the forest.
+    //
+    // Allocates nothing beyond growing `result`: the dictionary enumerator is
+    // a struct and everything else is locals.
+    public void GetObstacles(Bounds world, List<(Vector3 basePos, Vector3 up, float radius, float height)> result)
+    {
+        if (result == null) return;
+        int speciesCount = _table.Length;
+        if (speciesCount == 0 || _plots.Count == 0) return;
+
+        // The largest capsule any species can stand up, so a trunk whose base
+        // is just outside `world` but whose body leans or rises into it is
+        // still returned.
+        float pad = 0f;
+        for (int si = 0; si < speciesCount; si++)
+        {
+            PlantSpecies sp = _table[si].sp;
+            if (sp == null || sp.obstacleRadius <= 0f || sp.obstacleHeight <= 0f) continue;
+            pad = Mathf.Max(pad, (sp.obstacleRadius + sp.obstacleHeight) * Mathf.Max(sp.scaleRange.x, sp.scaleRange.y));
+        }
+        if (pad <= 0f) return; // no species blocks anything
+
+        Vector3 lo = world.min, hi = world.max;
+        foreach (var kv in _plots)
+        {
+            Plot plot = kv.Value;
+            if (plot.items.Length == 0) continue;
+            int[] runs = plot.runStart;
+            if (runs.Length != speciesCount + 1) continue;
+
+            float pr = plot.reach + pad;
+            Vector3 c = plot.centre;
+            if (c.x + pr < lo.x || c.x - pr > hi.x || c.y + pr < lo.y || c.y - pr > hi.y || c.z + pr < lo.z || c.z - pr > hi.z) continue;
+
+            Instance[] items = plot.items;
+            for (int si = 0; si < speciesCount; si++)
+            {
+                int start = runs[si], end = runs[si + 1];
+                if (start == end) continue;
+                PlantSpecies sp = _table[si].sp;
+                if (sp == null || sp.obstacleRadius <= 0f || sp.obstacleHeight <= 0f) continue;
+                float spPad = (sp.obstacleRadius + sp.obstacleHeight) * Mathf.Max(sp.scaleRange.x, sp.scaleRange.y);
+
+                for (int i = start; i < end; i++)
+                {
+                    Vector3 p = items[i].pos;
+                    // Distance from the base to the box, against the tallest
+                    // capsule this species makes.
+                    float dx = p.x < lo.x ? lo.x - p.x : p.x > hi.x ? p.x - hi.x : 0f;
+                    float dy = p.y < lo.y ? lo.y - p.y : p.y > hi.y ? p.y - hi.y : 0f;
+                    float dz = p.z < lo.z ? lo.z - p.z : p.z > hi.z ? p.z - hi.z : 0f;
+                    if (dx * dx + dy * dy + dz * dz > spPad * spPad) continue;
+
+                    if (FloraObstacleMath.TryMakeObstacle(items[i].trs, PlanetGravity.UpAt(p), sp.obstacleRadius, sp.obstacleHeight, out var o))
+                        result.Add(o);
+                }
+            }
+        }
+    }
+
+    // ---- climbable plants (creature climbing) ----------------------------------
+
+    // One placed plant creatures may climb: its transform and its variant's LOD0 render mesh.
+    public struct Climbable
+    {
+        public Matrix4x4 trs;
+        public Vector3 pos;
+        public Mesh lod0;
+        public int species, variant;
+    }
+
+    // A species is climbable when it has a trunk (obstacleRadius > 0) and baked meshes.
+    static bool IsClimbable(PlantSpecies sp)
+        => sp != null && sp.obstacleRadius > 0f && sp.prototypes != null && sp.prototypes.variants != null && sp.prototypes.variants.Length > 0;
+
+    // Instances of climbable species in ALREADY-BUILT plots whose plant may reach into `world`, appended to
+    // `result` (ClimbableFlora gives each a MeshCollider of its own bark). The same rules as GetObstacles: main
+    // thread only, never requests a build (plots exist only around the eye), allocates nothing beyond growing
+    // `result`. A plant reaches as far as its prototype set's tallest variant at the species' largest scale.
+    public void GetClimbables(Bounds world, List<Climbable> result)
+    {
+        if (result == null) return;
+        int speciesCount = _table.Length;
+        if (speciesCount == 0 || _plots.Count == 0) return;
+        float pad = 0f;
+        for (int si = 0; si < speciesCount; si++)
+        {
+            PlantSpecies sp = _table[si].sp;
+            if (!IsClimbable(sp)) continue;
+            pad = Mathf.Max(pad, Mathf.Max(sp.prototypes.maxHeight, sp.obstacleRadius) * Mathf.Max(sp.scaleRange.x, sp.scaleRange.y));
+        }
+        if (pad <= 0f) return;
+
+        Vector3 lo = world.min, hi = world.max;
+        foreach (var kv in _plots)
+        {
+            Plot plot = kv.Value;
+            if (plot.items.Length == 0) continue;
+            int[] runs = plot.runStart;
+            if (runs.Length != speciesCount + 1) continue;
+            float pr = plot.reach + pad;
+            Vector3 c = plot.centre;
+            if (c.x + pr < lo.x || c.x - pr > hi.x || c.y + pr < lo.y || c.y - pr > hi.y || c.z + pr < lo.z || c.z - pr > hi.z) continue;
+
+            Instance[] items = plot.items;
+            for (int si = 0; si < speciesCount; si++)
+            {
+                int start = runs[si], end = runs[si + 1];
+                if (start == end) continue;
+                PlantSpecies sp = _table[si].sp;
+                if (!IsClimbable(sp)) continue;
+                float spPad = Mathf.Max(sp.prototypes.maxHeight, sp.obstacleRadius) * Mathf.Max(sp.scaleRange.x, sp.scaleRange.y);
+                for (int i = start; i < end; i++)
+                {
+                    Vector3 p = items[i].pos;
+                    float dx = p.x < lo.x ? lo.x - p.x : p.x > hi.x ? p.x - hi.x : 0f;
+                    float dy = p.y < lo.y ? lo.y - p.y : p.y > hi.y ? p.y - hi.y : 0f;
+                    float dz = p.z < lo.z ? lo.z - p.z : p.z > hi.z ? p.z - hi.z : 0f;
+                    if (dx * dx + dy * dy + dz * dz > spPad * spPad) continue;
+                    PlantVariant pv = sp.prototypes.Variant(items[i].variant);
+                    Mesh m = pv != null ? pv.Lod(0) : null;
+                    if (m == null) continue;
+                    result.Add(new Climbable { trs = items[i].trs, pos = p, lod0 = m, species = si, variant = items[i].variant });
+                }
+            }
+        }
+    }
+
+    // The skeleton of a scattered plant (species index and variant as GetClimbables reports them), plant-local
+    // (apply the instance's trs). Perception and planning only - never a contact surface. Null when the
+    // species' prototype set has no source grammar. Append-only API (tree octopus branch hints).
+    public LSkeleton GetSkeleton(int species, int variant)
+    {
+        if (species < 0 || species >= _table.Length) return null;
+        PlantSpecies sp = _table[species].sp;
+        return sp != null ? PlantSkeletons.For(sp.prototypes, variant) : null;
+    }
+
+    // The profile a scattered species was baked from (null if unknown). Append-only API.
+    public PlantProfile ProfileOf(int species)
+    {
+        if (species < 0 || species >= _table.Length) return null;
+        PlantSpecies sp = _table[species].sp;
+        return sp != null && sp.prototypes != null ? sp.prototypes.source : null;
+    }
+
     // ---- background building ------------------------------------------------
 
     void EnsureWorkers()

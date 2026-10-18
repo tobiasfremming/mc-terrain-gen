@@ -1,0 +1,6 @@
+<Project>
+  <!-- RealUnity builds restore and compile into their own obj folder so the two modes never mix -->
+  <PropertyGroup Condition="'$(RealUnity)' == 'true'">
+    <BaseIntermediateOutputPath>obj\RealUnity\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

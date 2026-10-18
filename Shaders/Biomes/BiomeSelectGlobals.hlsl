@@ -18,8 +18,8 @@ float4 _BiomeSelBias1;    // biases of biome slots 4..7
 
 // Per-biome shading table, one entry per slot (Biome asset at that index):
 float4 _BiomeShadeA[MC_MAX_BIOMES];      // x Biome.SurfaceStyle, y Biome.blendSharpness, z Biome.hardness
-float4 _BiomeShadeFlat[MC_MAX_BIOMES];   // Biome.colorFlat
-float4 _BiomeShadeSteep[MC_MAX_BIOMES];  // Biome.colorSteep
+float4 _BiomeShadeFlat[MC_MAX_BIOMES];   // Biome.colorFlat, LINEAR (converted at upload by MCChunkManager.ShadingColor)
+float4 _BiomeShadeSteep[MC_MAX_BIOMES];  // Biome.colorSteep, LINEAR
 float4 _BiomeShadeLines[MC_MAX_BIOMES];  // style-specific height lines, planet radius already added:
                                          //   Dolomite:       x rock line, y rock line blend
                                          //   Mountain:       x snow line, y snow blend, z grass line, w grass blend

@@ -13,11 +13,13 @@ public static class PlayerBootstrap
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void EnsurePlayer()
     {
-        if (Object.FindFirstObjectByType<SimplePlayerController>() != null) return;
-        if (Object.FindFirstObjectByType<TerrainTarget>() != null) return;
-
         var manager = Object.FindFirstObjectByType<MCChunkManager>();
         if (manager == null) return; // not a terrain scene
+
+        if (manager.worldConfig != null && !manager.worldConfig.demoBootstrap) return;
+
+        if (Object.FindFirstObjectByType<SimplePlayerController>() != null) return;
+        if (Object.FindFirstObjectByType<TerrainTarget>() != null) return;
 
         DensityField density =
             manager.worldConfig && manager.worldConfig.EffectiveDensity ? manager.worldConfig.EffectiveDensity :

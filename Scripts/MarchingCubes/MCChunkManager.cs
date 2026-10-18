@@ -267,6 +267,30 @@ public class MCChunkManager : MonoBehaviour
     // an affectsPhysics flag per edit).
     public TerrainModificationSystem Modifications { get { EnsureField(); return _modSystem; } }
 
+    public static MCChunkManager Instance { get; private set; }
+
+    // The field colliders are meshed from: base terrain + physical edits only.
+    public DensityField PhysicsField { get { EnsureField(); return _physicsField; } }
+
+    public float Level0ChunkSize => LevelChunkSize(0);
+    public Vector3Int Level0Coord(Vector3 worldPos) => FloorCoord(worldPos, LevelChunkSize(0));
+
+    public event Action Level0BoxChanged;
+
+    public bool IsInLevel0Box(Vector3Int coord)
+    {
+        if (!_boxesValid || _boxMin == null || _boxMin.Length == 0) return false;
+        Vector3Int d = coord - _boxMin[0];
+        int E = Extent;
+        return d.x >= 0 && d.y >= 0 && d.z >= 0 && d.x < E && d.y < E && d.z < E;
+    }
+
+    public bool IsLevel0ColliderReady(Vector3Int coord)
+    {
+        var key = new ChunkKey { level = 0, coord = coord };
+        return IsReady(key) && _chunks.TryGetValue(key, out var ch) && ch != null && !ch.ColliderBakePending;
+    }
+
     // Surface hardness at a world position (0 soft .. 1 hard rock); blends
     // across biome transitions. Used by footprints/tools.
     public float HardnessAt(Vector3 worldPos)
@@ -299,6 +323,7 @@ public class MCChunkManager : MonoBehaviour
 
     void OnEnable()
     {
+        Instance = this;
         TerrainTuning.Changed += OnTerrainTuningChanged;
         // An editor domain reload destroys _runtimeMaterial (it is DontSave)
         // while the chunks referencing it survive -- they would render with a
@@ -310,6 +335,7 @@ public class MCChunkManager : MonoBehaviour
     void OnDisable()
     {
         TerrainTuning.Changed -= OnTerrainTuningChanged;
+        if (Instance == this) Instance = null;
     }
 
     // Inspector tweaks to any Biome / density-field asset hot-reload the world.
@@ -468,6 +494,15 @@ public class MCChunkManager : MonoBehaviour
     // for field; keep the two in lockstep. Height lines are ABSOLUTE local
     // heights, which in globe mode means distance from the planet centre --
     // hence the radius added here, once, rather than in every shader.
+    //
+    // Colours: Biome.colorFlat/colorSteep are Inspector colours, authored in
+    // sRGB. SetGlobalVectorArray copies floats verbatim (unlike SetColor, which
+    // converts in a Linear project), so they are converted here, once, with
+    // ShadingColor -- the shaders use _BiomeShadeFlat/Steep as linear albedo
+    // next to material colours (_MtnSnowColor, _DoloScreeColor, ...) that Unity
+    // has already converted. Here rather than in SandTerrain.shader: the values
+    // are full floats (no banding to avoid) and the shader would otherwise pay
+    // a pow per biome per pixel.
     public static void PublishBiomeShadingGlobals(BiomeDensityField world, PlanetField planet)
     {
         int max = BiomeDensityField.MaxBiomes;
@@ -494,8 +529,8 @@ public class MCChunkManager : MonoBehaviour
             bias[i] = b != null ? b.bias : -10f; // same "unassigned" bias the CPU softmax uses
             if (b == null) { a[i] = new Vector4(0f, 1f, 0f, 0f); continue; }
             a[i] = new Vector4((float)b.surfaceStyle, Mathf.Max(0.01f, b.blendSharpness), b.hardness, 0f);
-            flat[i] = b.colorFlat;
-            steep[i] = b.colorSteep;
+            flat[i] = ShadingColor(b.colorFlat);
+            steep[i] = ShadingColor(b.colorSteep);
             switch (b.surfaceStyle)
             {
                 case Biome.SurfaceStyle.Dolomite:
@@ -538,6 +573,14 @@ public class MCChunkManager : MonoBehaviour
         Shader.SetGlobalVectorArray("_BiomeShadeFlat", flat);
         Shader.SetGlobalVectorArray("_BiomeShadeSteep", steep);
         Shader.SetGlobalVectorArray("_BiomeShadeLines", lines);
+    }
+
+    // An sRGB-authored Color as the linear value a shader should shade with,
+    // exactly what Material.SetColor uploads: converted in a Linear project,
+    // passed through in a Gamma one. For colours sent with SetVector(Array).
+    public static Vector4 ShadingColor(Color srgb)
+    {
+        return QualitySettings.activeColorSpace == ColorSpace.Linear ? (Vector4)srgb.linear : (Vector4)srgb;
     }
 
     // Lets a BiomeWorld asset pick which material (and therefore shader) the
@@ -696,7 +739,10 @@ public class MCChunkManager : MonoBehaviour
         if (_pendingRefresh) ApplyPendingRefresh();
 
         if (BoxesChanged())
+        {
             RecomputeTargets(); // only when the player crosses a clipmap boundary
+            Level0BoxChanged?.Invoke();
+        }
 
         ApplyCompletedBuilds();
         PumpColliderBakes();
@@ -2047,6 +2093,7 @@ public class MCChunkManager : MonoBehaviour
         // Only full-detail chunks need physics; the player can't reach coarser
         // rings before their region is re-generated at level 0.
         chunk.generateCollider = key.level == 0;
+        chunk.gameObject.layer = worldConfig ? worldConfig.terrainLayer : 0;
     }
 
     MarchingChunk CreateChunk(ChunkKey key)

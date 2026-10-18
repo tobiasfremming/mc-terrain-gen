@@ -52,6 +52,28 @@ public float lodUpdateInterval = 0.5f; // How often to recalculate LOD
     [Header("Defaults")]
     public DensityField defaultDensity;
 
+    [Header("Game Integration")]
+    [Tooltip("On: PlayerBootstrap spawns the demo capsule player and DesertAtmosphere sets fog/far plane at play start. Turn OFF in the game, which brings its own player, camera and lighting.")]
+    public bool demoBootstrap = true;
+    [Tooltip("Layer every terrain chunk and collision tile is put on. The terrain package cannot add layers to the game's TagManager: create a 'Terrain' layer in the game and select its index here. NavMesh, ground probes and Rigidbody guards all use this.")]
+    [Range(0, 31)] public int terrainLayer = 0;
+
+    public int TerrainLayerMask => 1 << terrainLayer;
+
+    [Tooltip("Collision tiles (collider-only LOD0 meshes around TerrainAnchors outside the player's LOD0 ring) started per frame.")]
+    [Range(1, 16)] public int maxTileBuildsPerFrame = 2;
+    [Tooltip("Hard cap on live collision tiles; the nearest-to-an-anchor win when exceeded.")]
+    public int maxCollisionTiles = 512;
+
+    [Tooltip("NavMesh agent type ids (Navigation window > Agents) to bake for. 0 = Humanoid.")]
+    public int[] navAgentTypeIds = { 0 };
+    [Tooltip("Minimum seconds between NavMesh updates while terrain collision keeps changing.")]
+    public float navUpdateInterval = 0.5f;
+    [Tooltip("Bake a height mesh so agents' feet follow bumpy marching-cubes ground instead of the simplified nav polygons.")]
+    public bool navBuildHeightMesh = true;
+    [Tooltip("Game layers whose physics colliders (buildings, props) are included in the terrain NavMesh. Skipped: colliders attached to a Rigidbody (players, crates, anything that moves), colliders with a NavMeshAgent or CharacterController on themselves or a parent, and the terrain's own colliders. NavMeshModifier components are NOT honoured -- every remaining collider bakes as walkable area 0.")]
+    public LayerMask navGameLayers = 0;
+
     [Header("Planet Mode")]
     [Tooltip("Render the world as a sphere instead of a flat plane.")]
     public bool useGlobe = false;

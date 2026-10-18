@@ -46,6 +46,12 @@ public class PlantSpecies
     [Tooltip("Sink the base into the ground so it never floats on a slope.")]
     public float sink = 0.15f;
 
+    [Header("Obstacle")]
+    [Tooltip("Metres at scale 1 (multiplied by each instance's scale). Radius of the trunk capsule that FloraObstacles turns into a physics collider near TerrainAnchors and a Not Walkable area in the runtime NavMesh. 0 = nothing blocks: ground cover, shrubs and anything a body should pass through. Not part of placement, so changing it never rebuilds the forest.")]
+    public float obstacleRadius = 0f;
+    [Tooltip("Metres at scale 1. Height of the trunk capsule from the plant's base along local up; tall enough to stop a body or carve an agent's clearance, it need not reach the crown. 0 = nothing blocks.")]
+    public float obstacleHeight = 0f;
+
     [Header("Draw distance")]
     [Tooltip("Off means this species always draws LOD0, whatever the distance. Costs triangles, but nothing ever swaps mesh in front of you -- keepFraction removes whole branches, so a swap is a silhouette change, not a subtle one. Culling and the fade band still apply.")]
     public bool useLod = true;
@@ -73,6 +79,8 @@ public class PlantSpecies
         if (symbol != null && symbol.Length > 1) symbol = symbol.Substring(0, 1);
         if (symbol == "F" || symbol == "G" || symbol == "f" || symbol == "g") symbol = "";
         minSpacing = Mathf.Max(0f, minSpacing);
+        obstacleRadius = Mathf.Max(0f, obstacleRadius);
+        obstacleHeight = Mathf.Max(0f, obstacleHeight);
         cullDistance = Mathf.Max(0f, cullDistance);
         impostorDistance = Mathf.Clamp(impostorDistance, 0f, cullDistance);
         lod2Distance = Mathf.Min(lod2Distance, cullDistance);
