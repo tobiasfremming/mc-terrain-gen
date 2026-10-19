@@ -12,7 +12,8 @@ namespace TerrainGen.Tests
     //   Shader_Layers_LegacyIdsUnchanged  every shipped spine species drawn at rest from three views with the frozen
     //                                     pre-table shader (Tests/EditMode/Shaders/CreatureLegacyReference.shader)
     //                                     and with MarchingCubes/Creature - same mesh, bones and property block (the
-    //                                     renderer's own, table included): every pixel within 1/255
+    //                                     renderer's own, its layer table replaced by the legacy rows): every pixel
+    //                                     within 1/255
     //   CreatureShader_EditorRuntimeCompile_NoErrors lives in CreatureRendererTests (the on-demand variant compile)
     public class CreatureShaderLayerTests
     {
@@ -70,6 +71,13 @@ namespace TerrainGen.Tests
                     var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
                     r.Add(sim, new CreatureInstance { seed = 3.7f, sizeScale = sp.scale });
                     r.Render();   // fills the property block (bones, instances, palette, the layer table)
+                    // the legacy ids' rows, not the species' own: a species may restyle any row with the Layers look
+                    // module (the crocodile, komodo, crabs, centipedes, hexadrake do), which the pre-table shader cannot
+                    // show, and kit ids 10+ shade as body skin there. So this pins the shader's legacy branches on every
+                    // species' mesh (Unity 2026-10-20: those seven differed by up to 75/255 with their own
+                    // tables, 0/255 with this one); that each species' table is the registry plus its Layers rows
+                    // is CreaturePartLayerTests.PartLayers_LegacyMapping_Identity.
+                    r.PropsForTest.SetVectorArray(CreatureKit.PartLayers.ShaderProperty, LegacyTable());
                     Bounds b = r.LastBounds;
                     float dist = b.extents.magnitude * 2.6f + 0.05f;
                     Vector3[] views = { new Vector3(1f, 0.6f, 0.4f), new Vector3(0.1f, 1f, -0.2f), new Vector3(-0.6f, -0.35f, 0.7f) };
@@ -193,6 +201,16 @@ namespace TerrainGen.Tests
             tex.Apply();
             RenderTexture.active = null;
             return tex.GetPixels();
+        }
+
+        // The table as the pre-table shader shades: ids 0..9 their legacy rows, every later id body skin.
+        static Vector4[] LegacyTable()
+        {
+            var rows = new CreatureKit.PartLayer[CreatureKit.PartLayers.MaxParts];
+            for (int i = 0; i < rows.Length; i++) rows[i] = CreatureKit.PartLayers.LegacyRow(i < CreatureKit.PartLayers.LegacyIds ? i : 0);
+            var t = new Vector4[CreatureKit.PartLayers.Length];
+            CreatureKit.PartLayers.Encode(rows, t, QualitySettings.activeColorSpace == ColorSpace.Linear);
+            return t;
         }
 
         // One Forward-pass draw of the renderer's single instance into rt, read back.

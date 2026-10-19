@@ -19,7 +19,15 @@ public struct OctoIntent
     public Vector3 routeNext;     // (swinging, later) the next hint waypoint; zero = none
     public bool climb;            // Travel / Retreat by hand-over-hand pulling (back up from the ground) instead of swinging
     public bool feed;             // Hold: the mouth tentacles (MouthFeeder) take `prey` when it is within their reach
+    // Play (a planned body - the swinger - only; OctopusBrain.State.Play): a move for the joy of it. Rest + a move in
+    // place (BigSwing, HighSwing, Circle, Drop), or Travel + Run (a chained run, swung higher than it needs).
+    public PlayMove play;
+    public float playAmplitude;   // rad: BigSwing / HighSwing / Run - the swing's amplitude; Circle - the cone's half angle
+    public int playId;            // a new move (even of the same kind) has a new id
 }
+
+// The swinger's play moves (OctopusBrain picks them, SwingSequencer swings them).
+public enum PlayMove { None, BigSwing, HighSwing, Circle, Drop, Run, Pause }
 
 // What an arm is for (user decision 5): the octopus (ArmCoordinator) decides, the arm executes it itself.
 //   Rest    curled at rest                  Anchor  hold on (or find a support hold); never pulls the body

@@ -341,6 +341,22 @@ public sealed class OctopusLab : MonoBehaviour
             if (q.Mode == SwingSequencer.Step.Pump || q.Mode == SwingSequencer.Step.Reach) roleText.Append("  apex in ").Append(q.PredictedApexTime.ToString("F2")).Append(" s");
             roleText.Append('\n').Append("transfers ").Append(q.Transfers).Append("  catches ").Append(q.Catches).Append('/').Append(q.CatchAttempts)
                     .Append("  hauls ").Append(q.Hauls).Append("  falls ").Append(q.Falls).Append("  sleeps ").Append(q.Sleeps).Append(Octopus.Body.Asleep ? "  ASLEEP" : "").Append('\n');
+            // the hunt (target, reachable or why not, the last give-up) and play (the move, its amplitude, the tally)
+            OctopusBrain br = Octopus.Brain;
+            roleText.Append("hunt ");
+            if (br.Target != null && (br.Mode == OctopusBrain.State.Stalk || br.Mode == OctopusBrain.State.Feed || br.Mode == OctopusBrain.State.Eat))
+            {
+                roleText.Append(br.Target.Position.ToString("F1"));
+                if (br.TargetReachable) roleText.Append("  reachable"); else roleText.Append("  out of reach: ").Append(br.Unreachable);
+            }
+            else roleText.Append('-');
+            roleText.Append("  given up ").Append(br.GiveUps).Append(" skipped ").Append(br.HuntsSkipped);
+            if (br.GiveUps > 0) roleText.Append("  last: ").Append(br.LastGiveUp).Append(' ').Append((c.Time - br.LastGiveUpTime).ToString("F0")).Append(" s ago");
+            roleText.Append('\n').Append("play ").Append(q.Play);
+            if (q.Play == PlayMove.BigSwing || q.Play == PlayMove.HighSwing || q.Play == PlayMove.Circle || q.Play == PlayMove.Run)
+                roleText.Append(' ').Append((br.MoveAmplitude * Mathf.Rad2Deg).ToString("F0")).Append(" deg");
+            roleText.Append("  sessions ").Append(br.PlaySessions).Append(" moves ").Append(br.PlayMoves).Append("  drops ").Append(q.Drops)
+                    .Append(" (no lower branch ").Append(q.DropFailures).Append(")\n");
             for (int a = 0; a < n; a++) roleText.Append(a).Append("  ").Append(q.Use[a]).Append('\n');
         }
         else

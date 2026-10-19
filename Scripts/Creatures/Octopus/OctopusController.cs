@@ -157,6 +157,7 @@ public sealed class OctopusController
             Brain?.Tick(dt, this);
             Sequencer.Tick(dt, this);
             Feeder?.Tick(dt, this);
+            Body.MouthCurl = Feeder == null || !Feeder.Feeding;   // idle mouths ride the body curled (no splay, no solve)
             Body.Tick(dt);
             if (!Body.Asleep)
             {

@@ -213,6 +213,43 @@ namespace TerrainGen.Tests
             Assert.Greater(checkedCount, 2000);
         }
 
+        // The same check over a sweep of weaves (amplitude 40..59 deg, period 40..59 ticks). Which weave puts a coxa
+        // onto its planted foot while that foot waits for the other tripod group is down to float rounding: Unity/Mono
+        // failed the 50/50 weave above (leg 0, t=5.73) where .NET passed it, and offline 12 of these 400 failed the
+        // same way before the near-reach brake (CreatureLegs.NearThrottle). So the guarantee is tested on many paths.
+        [Test] public void DesertBeetle_FeetPlanted_DoNotMove_WeaveSweep()
+        {
+            var sp = Load(kBeetlePath);
+            var failures = new System.Collections.Generic.List<string>();
+            int checkedCount = 0;
+            for (int v = 0; v < 400; v++)
+            {
+                float amp = 40f + (v % 20), period = 40f + (v / 20);
+                var sim = Flat(sp);
+                int n = sim.Legs.Length;
+                var prev = new Vector3[n]; var prevStep = new bool[n];
+                for (int l = 0; l < n; l++) { prev[l] = sim.Legs[l].foot; prevStep[l] = sim.Legs[l].stepping; }
+                bool failed = false;
+                for (int t = 0; t < 900; t++)
+                {
+                    Vector3 fwd = sim.Rotations[0] * Vector3.forward;
+                    sim.Tick(kDt, sim.Joints[0] + Quaternion.AngleAxis(amp * Mathf.Sin(t / period), Vector3.up) * fwd * (2f * sp.scale));
+                    for (int l = 0; l < n; l++)
+                    {
+                        if (!prevStep[l] && !sim.Legs[l].stepping)
+                        {
+                            float d = (sim.Legs[l].foot - prev[l]).magnitude;
+                            if (!failed && d >= 1e-5f * sp.scale) { failed = true; failures.Add($"weave {amp}/{period}: leg {l} t={sim.Time:F3} slid {d * 1000f:F3} mm"); }
+                            checkedCount++;
+                        }
+                        prev[l] = sim.Legs[l].foot; prevStep[l] = sim.Legs[l].stepping;
+                    }
+                }
+            }
+            Assert.IsEmpty(failures, failures.Count + " of 400 weaves slid a planted foot:\n" + string.Join("\n", failures));
+            Assert.Greater(checkedCount, 400 * 2000);
+        }
+
         // The Task 10 hexapod read as a box on stilts: body high, lower legs near vertical. The beetle sprawls:
         // through a cruise every planted foot stays well out to the side of its shoulder, the knee rides above
         // the shoulder, the lower leg leans out, and the belly is carried low.

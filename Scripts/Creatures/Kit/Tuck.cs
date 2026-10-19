@@ -1,6 +1,8 @@
 // Creature kit: Tuck - a posture part. When the creature is scared it tucks: the walking stops (CreatureSim.Halt),
 // the body crouches to the ground (CreatureSim.Crouch), its arthropod legs fold into the pose its LegFold rows give
-// (each segment's pitch in a fold plane beside the body - under or into the shell), its EyeStalks swing to their
+// (each segment's pitch in a vertical fold plane beside the body - one plane per limb, or one per segment with
+// segmentYawDeg, so a leg can fold flat: the merus out under the shell's margin, the rest swept back along the body on
+// the ground; the rock crab's legs and claws fold onto the shell's surface, not into it), its EyeStalks swing to their
 // tuckDirection (stalks first), and once tucked the whole sim sleeps (CreatureSim.Asleep: no sub-steps, exactly zero
 // motion). After the hold (longer for a stronger scare) it peeks - the stalks rise first, the body stays down - then
 // unfolds and walks on. Another scare at any point tucks it again (from wherever it is).
@@ -30,6 +32,7 @@ namespace CreatureKit
         [Param(ParamUnit.Degrees, "the fold plane: 0 = straight out sideways, + swept toward the tail, - toward the head (mirrored by side)", Min = -90, Max = 90)] public float yawDeg;
         [Param(ParamUnit.Degrees, "each segment's pitch in the fold plane (body out): 0 = out level, 90 = up, 180 = back in level, -90 = down; one per segment")] public float[] pitchDeg;
         [Param(ParamUnit.Fraction, "starts folding this fraction of the curl later (and unfolds that much earlier)", Min = 0, Max = 0.6f)] public float lag;
+        [Param(ParamUnit.Degrees, "optional: a fold plane per segment (its yaw, as yawDeg; one per segment), so a limb can fold flat - the merus out, the rest swept back along the body's side; empty = every segment in yawDeg's plane")] public float[] segmentYawDeg;
     }
 
     [Serializable]
@@ -51,7 +54,7 @@ namespace CreatureKit
         protected override void CopyArrays()
         {
             legs = (LegFold[])legs?.Clone();
-            if (legs != null) for (int i = 0; i < legs.Length; i++) legs[i].pitchDeg = (float[])legs[i].pitchDeg?.Clone();
+            if (legs != null) for (int i = 0; i < legs.Length; i++) { legs[i].pitchDeg = (float[])legs[i].pitchDeg?.Clone(); legs[i].segmentYawDeg = (float[])legs[i].segmentYawDeg?.Clone(); }
         }
 
         // The limb a fold row names: its own id, or a mirrored limb's base id.
@@ -76,6 +79,7 @@ namespace CreatureKit
                     if (!(p is ArthropodLeg a)) return $"{id}: fold '{f.leg}' names {p.id}, not an ArthropodLeg";
                     int n = a.segments != null ? a.segments.Length : 0;
                     if (f.pitchDeg == null || f.pitchDeg.Length != n) return $"{id}: fold '{f.leg}' needs {n} pitches (one per segment of {p.id})";
+                    if (f.segmentYawDeg != null && f.segmentYawDeg.Length != 0 && f.segmentYawDeg.Length != n) return $"{id}: fold '{f.leg}': segmentYawDeg needs none or {n} yaws (one per segment of {p.id})";
                     found++;
                 }
                 if (found == 0) return $"{id}: fold '{f.leg}' names no limb";
@@ -101,7 +105,8 @@ namespace CreatureKit
         readonly int[] legIndex, legRow, legSide, legBone;
         readonly float[][] legLength;
         readonly float[][] pitchCos, pitchSin;
-        readonly float[] yawCos, yawSin;
+        readonly float[][] yawCos, yawSin;   // per segment (all equal without segmentYawDeg)
+        readonly float[] baseCos, baseSin;   // the limb's own fold plane (yawDeg): signs the plane normals
         // stalks: their runtime's bone, root offset (joint frame, mirrored), joint, fold (joint frame), eye bone (-1 none)
         readonly int[] stalkBone, stalkJoint, stalkEye;
         readonly Vector3[] stalkOffset;
@@ -142,7 +147,7 @@ namespace CreatureKit
             legIndex = li.ToArray(); legRow = lr.ToArray(); legSide = ls.ToArray();
             int n = legIndex.Length;
             legBone = new int[n]; legLength = new float[n][]; pitchCos = new float[n][]; pitchSin = new float[n][];
-            yawCos = new float[n]; yawSin = new float[n];
+            yawCos = new float[n][]; yawSin = new float[n][]; baseCos = new float[n]; baseSin = new float[n];
             for (int k = 0; k < n; k++)
             {
                 LegSpec spec = sp.legs[legIndex[k]];
@@ -150,13 +155,17 @@ namespace CreatureKit
                 int segs = spec.segments.Length;
                 legBone[k] = sp.LegBone(legIndex[k], 0);
                 legLength[k] = new float[segs]; pitchCos[k] = new float[segs]; pitchSin[k] = new float[segs];
+                yawCos[k] = new float[segs]; yawSin[k] = new float[segs];
+                bool perSegment = f.segmentYawDeg != null && f.segmentYawDeg.Length == segs;
+                baseCos[k] = Mathf.Cos(f.yawDeg * Mathf.Deg2Rad); baseSin[k] = Mathf.Sin(f.yawDeg * Mathf.Deg2Rad);
                 for (int s = 0; s < segs; s++)
                 {
                     legLength[k][s] = spec.segments[s].length * L;
                     float p = f.pitchDeg[s] * Mathf.Deg2Rad;
                     pitchCos[k][s] = Mathf.Cos(p); pitchSin[k][s] = Mathf.Sin(p);
+                    float y = (perSegment ? f.segmentYawDeg[s] : f.yawDeg) * Mathf.Deg2Rad;
+                    yawCos[k][s] = Mathf.Cos(y); yawSin[k][s] = Mathf.Sin(y);
                 }
-                yawCos[k] = Mathf.Cos(f.yawDeg * Mathf.Deg2Rad); yawSin[k] = Mathf.Sin(f.yawDeg * Mathf.Deg2Rad);
             }
             stalkBone = sb.ToArray(); stalkJoint = sj.ToArray(); stalkEye = se.ToArray(); stalkOffset = so.ToArray(); stalkFold = sf.ToArray();
             nextRandom = RandomInterval();
@@ -284,15 +293,19 @@ namespace CreatureKit
                 Vector3 nIK = sim.LegPlaneNormal(l);
                 Quaternion R = sim.Rotations[sp.legs[l].attachJoint];
                 Vector3 up = R * Vector3.up;
-                Vector3 outDir = R * new Vector3(legSide[k] * yawCos[k], 0f, -yawSin[k]);
-                Vector3 nT = Vector3.Cross(outDir, up);
-                if (Vector3.Dot(nT, nIK) < 0f) nT = -nT;
+                Vector3 baseOut = R * new Vector3(legSide[k] * baseCos[k], 0f, -baseSin[k]);
+                float sign = Vector3.Dot(Vector3.Cross(baseOut, up), nIK) < 0f ? -1f : 1f;
                 Vector3 p = pts[o];
                 float[] len = legLength[k];
                 for (int s = 0; s < len.Length; s++)
                 {
+                    Vector3 outDir = R * new Vector3(legSide[k] * yawCos[k][s], 0f, -yawSin[k][s]);
                     Quaternion qIK = ArthropodLegIK.SegmentRotation(pts[o + s], pts[o + s + 1], nIK);
                     Vector3 d = outDir * pitchCos[k][s] + up * pitchSin[k][s];
+                    // the fold plane's normal, one sign for the whole limb (the limb plane's, against the IK plane's), so
+                    // segments folded into planes swept far round (segmentYawDeg) never flip about their own axis: a
+                    // claw stays the right way up and a fringe of hairs stays underneath
+                    Vector3 nT = Vector3.Cross(outDir, up) * sign;
                     Quaternion qT = ArthropodLegIK.SegmentRotation(Vector3.zero, d, nT);
                     Quaternion q = Quaternion.Slerp(qIK, qT, w);
                     dst[offset + legBone[k] + s] = Matrix4x4.TRS(p, q, scv);

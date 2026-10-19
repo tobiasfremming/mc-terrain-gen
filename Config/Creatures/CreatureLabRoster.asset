@@ -49,3 +49,5 @@ MonoBehaviour:
     scaleOverride: 0
   - species: {fileID: 11400000, guid: a2da506e597a46aea6710568860e5809, type: 2}
     scaleOverride: 0
+  - species: {fileID: 11400000, guid: 11326a07b8af4742aae3cd509699ab0b, type: 2}
+    scaleOverride: 0

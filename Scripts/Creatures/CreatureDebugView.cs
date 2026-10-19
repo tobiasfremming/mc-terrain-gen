@@ -119,7 +119,7 @@ public sealed class CreatureDebugView : MonoBehaviour
     static readonly Color32 kWaypoint = new Color32(0xFF, 0x40, 0xE0, 0xFF), kPivot = new Color32(0x40, 0xE0, 0xFF, 0xFF);
     static readonly Color32 kCatch = new Color32(0xFF, 0x9A, 0x30, 0xFF);
     static readonly Color32 kArc = new Color32(0xF0, 0xF0, 0xF0, 0xFF);
-    const int OctopusVertices = 2 * (3 + 3 + 3 + 1 + BranchRoute.MaxWaypoints + 1 + 16 + 4);
+    const int OctopusVertices = 2 * (3 + 3 + 3 + 1 + BranchRoute.MaxWaypoints + 1 + 16 + 4 + 7);
 
     void Cross(Vector3 p, float r, Color32 c)
     {
@@ -163,6 +163,19 @@ public sealed class CreatureDebugView : MonoBehaviour
                 if (q.ArcCount > 0) Cross(q.PredictedApex, r, kArc);
             }
             if (q.Transfers > 0) { Cross(q.LastRelease, 0.6f * r, kRouteDone); Cross(q.LastCatch, 0.6f * r, kCatch); }
+            // the hunt: the head -> the spider it hunts (green: reachable, orange: its last check found it out of reach),
+            // and where the last spider it gave up was when it gave up (grey cross; the lab readout says why)
+            OctopusBrain br = c.Brain;
+            if (br != null)
+            {
+                if (br.Target != null && (br.Mode == OctopusBrain.State.Stalk || br.Mode == OctopusBrain.State.Feed || br.Mode == OctopusBrain.State.Eat))
+                {
+                    Vector3 t = br.Target.Position;
+                    Line(head, t, br.TargetReachable ? kGoal : kCatch);
+                    Cross(t, 0.7f * r, br.TargetReachable ? kGoal : kCatch);
+                }
+                if (br.GiveUps > 0) Cross(br.LastGiveUpAt, 0.7f * r, kRouteDone);
+            }
         }
         else if (b.PivotGroup >= 0)
         {
@@ -189,7 +202,8 @@ public sealed class CreatureDebugView : MonoBehaviour
     static int VerticesFor(CreatureSim sim)
     {
         int n = sim.Joints.Length, legs = sim.Legs.Length;
-        return 2 * (n - 1) + 2 * kEllipseSegments * n + legs * (4 + 4) + (sim.Bounds.HasValue ? 2 * kDiscSegments : 0)
+        // per leg: shoulder-knee-ankle-foot (3 lines; the ankle since the leg look) and the rest cross (2)
+        return 2 * (n - 1) + 2 * kEllipseSegments * n + legs * (6 + 4) + (sim.Bounds.HasValue ? 2 * kDiscSegments : 0)
              + (sim.CanClimb ? 2 * n + 4 : 0) + 6
              + (sim.Flight != null ? 2 * sim.Flight.Wings.Count * 8 + 2 * n + 12 : 0);
     }

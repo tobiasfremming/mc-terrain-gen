@@ -34,6 +34,11 @@ sealed class CreatureLegs
     // steps; a little further the body slows and stops.
     const float kJointGainDeg = 2f;                 // a joint-triggered step must improve the angle by this much
     const float kJointSlowDeg = 2f, kJointStopDeg = 10f; // throttle ramp, degrees past the limit
+    // arthropod: the planted ankle's coxa distance, x ReachShort, where the body starts to slow and stops. The solver
+    // clamps a foot nearer than ReachShort (the leg cannot fold further) and the clamp then drags the planted foot;
+    // the clamp triggers a step, but the tripod may hold that step back a few ticks (the other group's turn), so
+    // the body must not run the coxa onto the foot meanwhile (DesertBeetle_FeetPlanted_DoNotMove_WeaveSweep)
+    const float kNearSlow = 1.3f, kNearStop = 1.04f;
     // The throttle acts on the angle predicted this far ahead from its current rate: in a tight coil the
     // body can swing a planted limb by ~5 deg per frame, faster than the accel-limited speed can brake.
     const float kJointLeadSec = 0.04f;
@@ -1067,8 +1072,9 @@ sealed class CreatureLegs
 
     // JointThrottle for an arthropod leg: the coxa's yaw from its rest direction against the forward/back swing
     // limits (blended by the forward share of the move, as JointAngles), predicted kJointLeadSec ahead. The
-    // reach synergy's range is enforced by the solver (a foot past it is clamped, which triggers a step); a
-    // pitch past elevMin/Max triggers a step too.
+    // reach synergy's range is enforced by the solver (a foot past it is clamped, which triggers a step); the
+    // body is braked before the near end of it (NearThrottle; the far end: UpdateThrottle's reach), since that
+    // step may wait for the other group; a pitch past elevMin/Max triggers a step too.
     float ArthropodJointThrottle(int l, float dt)
     {
         LegSpec s = specs[l];
@@ -1088,13 +1094,25 @@ sealed class CreatureLegs
         float swingP = swing + Mathf.Max(0f, swing - ps) * lead;
         bool movesAway = (rest[l] - target[l]).sqrMagnitude > kStepGain * kStepGain * scale * scale;
         if (poses[l].elevLimited && movesAway) jointLimited[l] = true;
-        if (swingP <= swingLim) return 1f;
+        float near = NearThrottle(l);
+        if (swingP <= swingLim) return near;
         Vector3 hr = rest[l] - State[l].shoulder;
         hr -= u * Vector3.Dot(hr, u);
         float swingR = hr.sqrMagnitude > 1e-12f ? Vector3.Angle(rh, hr) : 0f;
         if (swing > swingLim && swingR < swing - kJointGainDeg) jointLimited[l] = true;
         float excess = swingR < swingP - kJointGainDeg ? swingP - Mathf.Max(swingLim, swingR) : 0f;
-        return Mathf.Clamp01((kJointStopDeg - excess) / (kJointStopDeg - kJointSlowDeg));
+        return Mathf.Min(near, Mathf.Clamp01((kJointStopDeg - excess) / (kJointStopDeg - kJointSlowDeg)));
+    }
+
+    // The arthropod's near-reach brake (kNearSlow / kNearStop): 1 while the planted ankle is well out from the
+    // coxa, ramping to 0 as it closes on ReachShort - unless stepping to the rest point would not move the foot
+    // out (a fold no step can cure must not stop the body for good, as the far-reach throttle).
+    float NearThrottle(int l)
+    {
+        float rs = models[l].ReachShort, d = poses[l].reach;
+        if (d >= kNearSlow * rs) return 1f;
+        if ((rest[l] - State[l].shoulder).magnitude <= (target[l] - State[l].shoulder).magnitude + kStepGain * scale) return 1f;
+        return Mathf.Clamp01((d - kNearStop * rs) / ((kNearSlow - kNearStop) * rs));
     }
 
     // The upper bone of a two-bone limb: its rest rotation in the attach frame swung onto the current direction

@@ -170,6 +170,8 @@ public struct ArthropodLegPose
 {
     public float s, beta, yawDeg, pitchDeg; // yaw: Vector3.SignedAngle(rest direction, leg direction, up)
     public bool clamped;                    // the foot was out of reach (the foot point moved)
+    public float reach;                     // coxa -> target ankle distance the solve was asked for (scale 1): the
+                                            // throttle's margin to ReachShort / ReachLong before a clamp
     public bool elevLimited, tarsusLimited; // pitch or the tarsus joint past its range (step triggers)
     public Vector3 planeNormal;             // the leg plane's normal (world): bones' hinge reference
 }
@@ -222,6 +224,7 @@ public static class ArthropodLegIK
         Vector3 v = (ankle - coxa) / scale;
         Vector3 t = new Vector3(Vector3.Dot(v, X), Vector3.Dot(v, U), Vector3.Dot(v, Z));
         float d = t.magnitude;
+        pose.reach = d;
 
         float lo, hi, rLo, rHi;
         if (beta == 0f) { lo = m.SLo; hi = m.SHi; rLo = m.ReachLong; rHi = m.ReachShort; }

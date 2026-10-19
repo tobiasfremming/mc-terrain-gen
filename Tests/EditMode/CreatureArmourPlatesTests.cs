@@ -22,7 +22,13 @@ namespace TerrainGen.Tests
 
         static ArmourPlates Plates(CreatureSpecies sp)
         {
-            foreach (CreaturePart p in sp.Compiled.Parts) if (p is ArmourPlates a) return a;
+            foreach (CreaturePart p in sp.Compiled.Parts) if (p is ArmourPlates a && !a.ventral) return a;
+            return null;
+        }
+
+        static ArmourPlates Sternites(CreatureSpecies sp)
+        {
+            foreach (CreaturePart p in sp.Compiled.Parts) if (p is ArmourPlates a && a.ventral) return a;
             return null;
         }
 
@@ -87,6 +93,53 @@ namespace TerrainGen.Tests
                     Assert.Greater(a.TopY(p, u, 0.5f), body + 0.1f * p.hh, $"plate {k} above the body's back at u {u:F2}");
                 }
             }
+        }
+
+        // ventral: the same row mirrored top to bottom (every vertex), its dome facing the ground
+        [Test] public void Plates_Ventral_MirrorsTheRow()
+        {
+            var up = new ArmourPlates { id = "t", toJoint = 4, keel = 0.2f, cornerSpike = 0.3f };
+            var down = (ArmourPlates)up.Clone(); down.ventral = true;
+            ArmourPlates.Plate p = up.PlateAt(0, 0.0055f, 0.01f, 0.006f);
+            for (float s = 0f; s <= 1f; s += 0.25f)
+                for (float u = -1f; u <= 1f; u += 0.25f)
+                {
+                    Vector3 a = up.Top(p, u, s), b = down.Top(p, u, s), c = up.Bottom(p, u, s), d = down.Bottom(p, u, s);
+                    Assert.AreEqual(new Vector3(a.x, -a.y, a.z), b, $"top mirrored at u {u} s {s}");
+                    Assert.AreEqual(new Vector3(c.x, -c.y, c.z), d, $"underside mirrored at u {u} s {s}");
+                }
+        }
+
+        // The Scolopendra's sternites: one under every tergite, narrower than the body (between the coxae) and proud of
+        // its belly, and the mesh draws them facing the ground.
+        [Test] public void Sternites_UnderTheBelly()
+        {
+            CreatureSpecies sp = Scolo();
+            ArmourPlates t = Plates(sp), v = Sternites(sp);
+            Assert.IsNotNull(v, "the Scolopendra has sternites");
+            Assert.AreEqual(t.PlateCount, v.PlateCount, "a sternite under every tergite");
+            for (int k = 0; k < v.PlateCount; k++)
+            {
+                int j = v.PlateJoint(k);
+                ArmourPlates.Plate p = v.PlateAt(k, sp.spacing, sp.joints[j].halfWidth, sp.joints[j].halfHeight);
+                Assert.Less(p.w, 0.8f * p.hw, $"sternite {k} lies between the coxae");
+                for (float u = -0.9f; u <= 0.9f; u += 0.1f)
+                {
+                    Vector3 q = v.Top(p, u, 0.5f);
+                    float belly = -p.hh * Mathf.Sqrt(Mathf.Max(0f, 1f - q.x * q.x / (p.hw * p.hw)));
+                    Assert.Less(q.y, belly - 0.02f * p.hh, $"sternite {k} below the belly at u {u:F1}");
+                    Assert.Greater(q.y, -sp.joints[j].clearance, $"sternite {k} clears the ground at u {u:F1}");
+                }
+            }
+            Mesh mesh = CreatureKitAssets.BuildMesh(sp);
+            var uv1 = new List<Vector2>(); mesh.GetUVs(1, uv1);
+            var nn = mesh.normals;
+            int down = 0, n = 0;
+            for (int i = 0; i < uv1.Count; i++)
+                if ((int)uv1[i].x == v.layer) { n++; if (nn[i].y < -0.5f) down++; }
+            Assert.Greater(n, v.PlateCount * 50, "the sternites are drawn");
+            Assert.Greater(down, n / 4, "their outer faces look at the ground");
+            Object.DestroyImmediate(mesh);
         }
 
         // ------------------------------------------------------------ shingling
