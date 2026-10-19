@@ -8,13 +8,13 @@ namespace TerrainGen.Tests
     // The wave gait (creature kit T5.8): Walk.pattern Wave lays the legs out in waveGroups groups by pair (left pair p
     // in group p % G, right pair half a wave later) and CreatureLegs.StartWave steps the groups strictly in turn, so
     // the lift-offs run down the body as a metachronal wave (head to tail: a centipede's retrograde wave). Proven on
-    // the GiantCentipede: the lift-off order, the duty factor, the support (never two neighbouring feet of one side in
-    // the air), and the size rule. RED: the same legs with the event-driven gait do not keep the order.
+    // the GiantCentipede and the Scolopendra: the lift-off order, the duty factor, the support (never two neighbouring
+    // feet of one side in the air), and the size rule. RED: the same legs with the event-driven gait do not keep the order.
     public class CreatureWaveGaitTests
     {
         const float kDt = 1f / 60f;
 
-        static CreatureSpecies Centipede() => CreatureKitAssets.Load("GiantCentipede").Compiled.Runtime;
+        static CreatureSpecies Centipede(string name = "GiantCentipede") => CreatureKitAssets.Load(name).Compiled.Runtime;
 
         static CreatureSim Walker(CreatureSpecies sp, float s) =>
             new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, s, 1);
@@ -86,9 +86,10 @@ namespace TerrainGen.Tests
             return transitions > 0 ? ok / (float)transitions : 0f;
         }
 
-        [Test] public void Wave_LiftOffs_RunHeadToTail_InOrder()
+        [TestCase("GiantCentipede")] [TestCase("Scolopendra")]
+        public void Wave_LiftOffs_RunHeadToTail_InOrder(string species)
         {
-            CreatureSpecies sp = Centipede();
+            CreatureSpecies sp = Centipede(species);
             Assert.IsTrue(sp.waveGait, "the centipede walks with the wave gait");
             float f = InOrder(sp, sp.scale, out int n);
             TestContext.Out.WriteLine($"{n} group lift-offs, {f:P1} in wave order");
@@ -110,10 +111,11 @@ namespace TerrainGen.Tests
         }
 
         // Each foot is in the air about 1/G of the time at a steady walk (duty factor 1 - 1/G), and every foot steps.
-        [TestCase(0.9f)] [TestCase(1f)] [TestCase(1.1f)]
-        public void Wave_DutyFactor_Holds(float k)
+        [TestCase("GiantCentipede", 0.9f)] [TestCase("GiantCentipede", 1f)] [TestCase("GiantCentipede", 1.1f)]
+        [TestCase("Scolopendra", 0.9f)] [TestCase("Scolopendra", 1f)] [TestCase("Scolopendra", 1.1f)]
+        public void Wave_DutyFactor_Holds(string species, float k)
         {
-            CreatureSpecies sp = Centipede();
+            CreatureSpecies sp = Centipede(species);
             int g = Groups(sp), n = sp.legs.Length;
             float s = sp.scale * k;
             var sim = Walker(sp, s);
@@ -135,9 +137,10 @@ namespace TerrainGen.Tests
 
         // The support: never two neighbouring feet of one side in the air at once, and at most one foot in G of each
         // side - walking straight and weaving.
-        [Test] public void Wave_SupportPolygon_NeverEmpty()
+        [TestCase("GiantCentipede")] [TestCase("Scolopendra")]
+        public void Wave_SupportPolygon_NeverEmpty(string species)
         {
-            CreatureSpecies sp = Centipede();
+            CreatureSpecies sp = Centipede(species);
             int g = Groups(sp), n = sp.legs.Length;
             foreach (bool weave in new[] { false, true })
             {

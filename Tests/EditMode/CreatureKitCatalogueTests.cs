@@ -63,7 +63,7 @@ namespace TerrainGen.Tests
             StringAssert.Contains("| `upperLength` | float | Metres | x s |", md);
             StringAssert.Contains("| `stepDuration` | float | Seconds | x sqrt(s) |", md);
             StringAssert.Contains("| `segments[].length` | float | Metres | x s |", md);
-            StringAssert.Contains("next free: 10", md);
+            StringAssert.Contains("next free: " + PartLayers.NextFree, md);   // grows as parts take ids (12-14: the big lizards)
             StringAssert.Contains("| KitMonitor | kit | Spine |", md);
         }
 

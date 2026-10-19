@@ -93,6 +93,7 @@ namespace TerrainGen.Tests
             for (int id = 0; id < PartLayers.MaxParts; id++)
             {
                 if (id >= 4 && id <= 7) continue;   // octopus ids: their own shader family (in the spine shader: body skin)
+                if (PartLayers.IsKitId(id)) { Assert.IsTrue(PartLayers.LegacyRow(id).Equals(PartLayers.Registry[id].Row), $"kit id {id}"); continue; }   // a kit part's own row
                 Assert.IsNull(Diff(Old(id), FromRow(PartLayers.LegacyRow(id))), $"part {id}");
             }
             for (int id = 4; id <= 7; id++) Assert.IsTrue(PartLayers.Registry[id].Octopus && PartLayers.LegacyRow(id).Equals(PartLayers.LegacyRow(0)), $"octopus id {id}");
@@ -134,7 +135,8 @@ namespace TerrainGen.Tests
                 Assert.AreEqual((float)(int)r.model, t[2 * id].x, $"model {id}");
                 Assert.AreEqual((float)(int)r.flags, t[2 * id].y, $"flags {id}");
                 Assert.AreEqual(r.tintAmount, t[2 * id].z, $"tint {id}");
-                Assert.AreEqual(1f, t[2 * id].w, $"smoothness {id}");
+                float smooth = r.model == ShadingModel.Chitin ? PartLayers.ChitinSmoothness : r.model == ShadingModel.Claw ? PartLayers.ClawSmoothness : 1f;
+                Assert.AreEqual(smooth, t[2 * id].w, $"smoothness {id}");
                 Assert.AreEqual((float)(int)r.tintSource, t[2 * id + 1].w, $"source {id}");
                 // the palette tints come from the shader's SetColor values: the table carries no colour for them
                 Assert.AreEqual(Vector3.zero, new Vector3(t[2 * id + 1].x, t[2 * id + 1].y, t[2 * id + 1].z), $"colour {id}");
@@ -208,6 +210,7 @@ namespace TerrainGen.Tests
                     {
                         if (part >= 4 && part <= 7) continue;   // octopus ids never reach this shader
                         if (restyled.Contains(part)) continue;   // a deliberate new look (Layers module), not the legacy one
+                        if (PartLayers.IsKitId(part)) continue;   // a kit part's own row (no legacy look; no legacy mesh emits it)
                         for (int k = 0; k < 24; k++)
                         {
                             CreatureShadeReference.Fragment f = RandomFragment(rnd, part, p.bodyParams.x);

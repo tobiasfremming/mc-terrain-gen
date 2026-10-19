@@ -39,6 +39,9 @@ namespace CreatureKit
         [Param(ParamUnit.Count, "shading: 0 = skin (the body's), 2 = claw / horn", Min = 0, Max = 2)] public int shade;
         [Param(ParamUnit.Count, "mesh: vertices around each section (0 = 16)", Min = 0, Max = 48)] public int around;
         [Param(ParamUnit.Count, "mesh: sections along the length (0 = 12)", Min = 0, Max = 64)] public int rings;
+        [Param(ParamUnit.Metres, "lumps: the surface pushed in and out by up to this much (smooth noise; 0 = smooth). A boulder, a knobbly shell", Example = "rock crab 0.012")] public float lumpHeight;
+        [Param(ParamUnit.Metres, "lumps: their size (noise feature size)", Example = "rock crab 0.06")] public float lumpSize;
+        [Param(ParamUnit.Count, "lumps: noise seed (another seed, other lumps)")] public int lumpSeed;
 
         public override int BoneCount(in SpeciesCtx c) => 0;
         protected override void CopyArrays() { keys = (LoftKey[])keys?.Clone(); }
@@ -156,6 +159,41 @@ namespace CreatureKit
 
         public Vector3 Tip => Surface(1f, 0f);
 
+        // The mesh's surface point: Point plus the lumps (lumpHeight > 0), pushed along the section's radial
+        // direction, faded where the section is small (the rounded ends) and halved on the underside.
+        public Vector3 Lumped(in Section q, float phi)
+        {
+            Vector3 p = Point(q, phi);
+            if (!(lumpHeight > 0f) || !(lumpSize > 0f)) return p;
+            Vector3 radial = p - q.c;
+            float rl = radial.magnitude;
+            if (rl < 1e-6f) return p;
+            float env = Mathf.Clamp01(Mathf.Min(q.a, q.b) / (3f * lumpHeight));
+            float below = Mathf.Sin(phi) < 0f ? 0.5f + 0.5f * (1f + Mathf.Sin(phi)) : 1f;
+            Vector3 x = p / lumpSize;
+            float n = Noise(x, lumpSeed) + 0.45f * Noise(x * 2.13f + new Vector3(5.2f, 1.3f, 7.7f), lumpSeed + 101);
+            return p + radial * (lumpHeight * env * below * n / 1.45f / rl);
+        }
+
+        // Smooth value noise in -1..1 (trilinear over hashed lattice values, smoothstep weights).
+        static float Noise(Vector3 x, int seed)
+        {
+            int ix = Mathf.FloorToInt(x.x), iy = Mathf.FloorToInt(x.y), iz = Mathf.FloorToInt(x.z);
+            float fx = x.x - ix, fy = x.y - iy, fz = x.z - iz;
+            fx = fx * fx * (3f - 2f * fx); fy = fy * fy * (3f - 2f * fy); fz = fz * fz * (3f - 2f * fz);
+            float Lerp(float a, float b, float t) => a + (b - a) * t;
+            float c000 = Lattice(ix, iy, iz, seed), c100 = Lattice(ix + 1, iy, iz, seed), c010 = Lattice(ix, iy + 1, iz, seed), c110 = Lattice(ix + 1, iy + 1, iz, seed);
+            float c001 = Lattice(ix, iy, iz + 1, seed), c101 = Lattice(ix + 1, iy, iz + 1, seed), c011 = Lattice(ix, iy + 1, iz + 1, seed), c111 = Lattice(ix + 1, iy + 1, iz + 1, seed);
+            return Lerp(Lerp(Lerp(c000, c100, fx), Lerp(c010, c110, fx), fy), Lerp(Lerp(c001, c101, fx), Lerp(c011, c111, fx), fy), fz);
+        }
+
+        static float Lattice(int x, int y, int z, int seed)
+        {
+            uint h = (uint)x * 0x8DA6B343u ^ (uint)y * 0xD8163841u ^ (uint)z * 0xCB1AB31Fu ^ (uint)seed * 0x9E3779B1u;
+            h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12; h *= 0x297A2D39u; h ^= h >> 15;
+            return (h & 0xFFFFFF) / 8388608f - 1f;
+        }
+
         // ---------------------------------------------------------------- the mesh
 
         public override int MeshOrder => 100;
@@ -200,9 +238,9 @@ namespace CreatureKit
                 for (int k = 0; k <= na; k++)
                 {
                     float phi = -0.5f * Mathf.PI + 2f * Mathf.PI * (k == na ? 0 : k) / na;
-                    Vector3 p = Point(q, phi);
-                    Vector3 dPhi = Point(q, phi + e) - Point(q, phi - e);
-                    Vector3 dT = Point(qB, phi) - Point(qA, phi);
+                    Vector3 p = Lumped(q, phi);
+                    Vector3 dPhi = Lumped(q, phi + e) - Lumped(q, phi - e);
+                    Vector3 dT = Lumped(qB, phi) - Lumped(qA, phi);
                     Vector3 nl = Vector3.Cross(dPhi, dT);
                     if (nl.sqrMagnitude < 1e-14f) nl = p - cc;
                     if (Vector3.Dot(nl, p - cc) < 0f) nl = -nl;

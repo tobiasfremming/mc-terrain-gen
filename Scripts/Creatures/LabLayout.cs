@@ -32,16 +32,51 @@ public static class LabLayout
     {
         int n = radius.Length;
         Arc(radius, spacing, arcRadius, searchRadius, out float slotSpacing, out float slotRadius);
+        float[] ring = Wraps(n, slotSpacing, slotRadius) ? RingAngles(radius, spacing, slotRadius, out slotRadius) : null;
         var c = new Vector3[n];
         for (int k = 0; k < n; k++)
         {
             if (!(radius[k] > 0f)) continue;
-            Vector3 slot = ArcSlot(origin, fwd, up, k, n, slotSpacing, slotRadius);
+            Vector3 slot = ring == null ? ArcSlot(origin, fwd, up, k, n, slotSpacing, slotRadius)
+                : origin + Quaternion.AngleAxis(ring[k] * Mathf.Rad2Deg, up) * Vector3.ProjectOnPlane(fwd, up).normalized * slotRadius;
             c[k] = FlattestSpot(ground, slot, up, radius[k], searchRadius, placed, out float flat);
             if (flatness != null) flatness[k] = flat;
             placed?.Add(new Vector4(c[k].x, c[k].y, c[k].z, radius[k]));
         }
         return c;
+    }
+
+    // A full roster with a few big enclosures (aviaries, the big lizards) spaces every slot by two of the LARGEST
+    // radii, and the evenly spaced arc then wraps past a full turn: later slots land on earlier ones and the pushes
+    // can leave an enclosure on the player's spot (2026-10-19, the crocodile at the end of 12 enclosures: 772 deg).
+    // Such a roster is laid on a ring instead: each pair of neighbours spaced by their OWN radii (plus the gap, the
+    // lab's spacing at least), the ring's radius grown until the whole roster fits in kMaxSweepDeg. A roster whose
+    // arc does not wrap keeps the arc exactly.
+    public const float kMaxSweepDeg = 300f;
+
+    public static bool Wraps(int n, float slotSpacing, float slotRadius)
+    {
+        float step = 2f * Mathf.Asin(Mathf.Clamp(slotSpacing / (2f * slotRadius), -1f, 1f));
+        return (n - 1) * step > kMaxSweepDeg * Mathf.Deg2Rad;
+    }
+
+    // Each enclosure's angle (radians, centred on fwd) on the ring and the ring's radius (>= minRadius).
+    public static float[] RingAngles(float[] radius, float spacing, float minRadius, out float ringRadius)
+    {
+        int n = radius.Length;
+        var arc = new float[n];
+        float s = 0f; int prev = -1;
+        for (int k = 0; k < n; k++)
+        {
+            if (!(radius[k] > 0f)) continue;
+            // a chord is a little shorter than its arc: 6 % spare keeps the curbs kEnclosureGap apart at any radius
+            if (prev >= 0) s += 1.06f * Mathf.Max(spacing, radius[prev] + radius[k] + kEnclosureGap);
+            arc[k] = s; prev = k;
+        }
+        ringRadius = Mathf.Max(minRadius, s / (kMaxSweepDeg * Mathf.Deg2Rad));
+        var angle = new float[n];
+        for (int k = 0; k < n; k++) angle[k] = (arc[k] - 0.5f * s) / ringRadius;
+        return angle;
     }
 
     // The k-th of n slots on an arc of radius arcRadius around origin, centred on fwd; adjacent slots are

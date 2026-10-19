@@ -18,6 +18,10 @@ public sealed class CreatureLab : MonoBehaviour
     public CreatureSpecies[] species;
     [Tooltip("Per-species size override, parallel to species (0 = use the species' own scale).")]
     public float[] scaleOverrides;
+    [Tooltip("Individuals per enclosure, parallel to species (0 or 1 = one; from the roster's count).")]
+    public int[] counts;
+    [Tooltip("Boulders per enclosure, parallel to species (0 = none; from the roster's rocks). Material: borderMaterial (the aviary rocks' sandstone).")]
+    public int[] rockCounts;
     public float spacing = 25f, arcRadius = 30f;
     public int seed = 7;
     public float searchRadius = 15f;   // flat-spot search around each arc slot
@@ -53,13 +57,14 @@ public sealed class CreatureLab : MonoBehaviour
     public static float MaxScale(CreatureSpecies sp) => MaxScale(sp, sp.scale);
     public static float MaxScale(CreatureSpecies sp, float scale) => scale * (1f + Mathf.Abs(sp.Compiled.Runtime.look.sizeJitter));
 
-    // One placed enclosure and its creature.
+    // One placed enclosure and its creatures (one, or a group: CreatureLabRoster.Entry.count).
     sealed class Entry
     {
         public CreatureSpecies species;
         public float scale;                // the effective scale it was spawned at
         public CreatureEnclosure enclosure;
-        public CreatureSim sim;
+        public CreatureSim sim;            // the first individual
+        public CreatureSim[] sims;         // every individual
         public int seed;
         public EnclosurePlant plant;
         public PerchSpot[] perches;     // flying species: rock tops and tree crowns
@@ -107,6 +112,41 @@ public sealed class CreatureLab : MonoBehaviour
     }
 
     internal CreatureSim SimFor(int k) => k < entries.Count && entries[k] != null ? entries[k].sim : null;
+    internal CreatureSim[] SimsFor(int k) => k < entries.Count && entries[k] != null ? entries[k].sims : null;
+
+    // Individuals in enclosure k (the roster's count; 1 without one).
+    public int CountFor(int k) => counts != null && k < counts.Length && counts[k] > 1 ? counts[k] : 1;
+    int RocksFor(int k) => rockCounts != null && k < rockCounts.Length ? Mathf.Max(0, rockCounts[k]) : 0;
+
+    // Individual i's seed in enclosure k: a lone animal keeps seed + k (as before groups); a group's are consecutive,
+    // seed + k + 1000 + i (part runtimes stagger on consecutive seeds: TuckRuntime's first random scare).
+    internal int SeedFor(int k, int i) => CountFor(k) > 1 ? seed + k + 1000 + i : seed + k;
+
+    // Where individual i of n starts: the centre for a lone animal; a group spread round a ring at 0.4 x the safe
+    // radius, each facing a little off the tangent.
+    static void Start(Vector3 center, Vector3 up, Vector3 face, float safeRadius, int i, int n, out Vector3 at, out Vector3 dir)
+    {
+        if (n <= 1) { at = center; dir = face; return; }
+        Quaternion q = Quaternion.AngleAxis(360f * i / n + 17f, up);
+        Vector3 radial = q * face;
+        at = center + radial * (0.4f * safeRadius);
+        dir = Quaternion.AngleAxis(70f + 40f * ((i * 0.618034f) % 1f), up) * radial;
+    }
+
+    // Spawns enclosure k's individuals; the entry's sims.
+    CreatureSim[] SpawnGroup(CreatureWorld world, int k, CreatureSpecies sp, EnclosureArea area, Vector3 face, float scale, PerchSpot[] perches)
+    {
+        int n = CountFor(k);
+        var sims = new CreatureSim[n];
+        for (int i = 0; i < n; i++)
+        {
+            Start(area.center, area.up.sqrMagnitude > 0.5f ? area.up : Vector3.up, face, area.safeRadius, i, n, out Vector3 at, out Vector3 dir);
+            int s = SeedFor(k, i);
+            sims[i] = world.Spawn(sp, at, dir, BrainFor(area, sp, s, perches), area, s, scale);
+        }
+        return sims;
+    }
+
     internal CreatureEnclosure EnclosureFor(int k) => k < entries.Count && entries[k] != null ? entries[k].enclosure : null;
 
     // the roster first: OctopusLab's Start reads the species list (it waits for these enclosures)
@@ -136,14 +176,15 @@ public sealed class CreatureLab : MonoBehaviour
             float scale = ScaleFor(k);
             if (Mathf.Approximately(scale, e.scale)) continue;
             Vector3 face = e.sim != null ? e.sim.Rotations[0] * Vector3.forward : e.enclosure.transform.forward;
-            placedWorld.Despawn(e.sim);
+            if (e.sims != null) foreach (CreatureSim old in e.sims) placedWorld.Despawn(old);
             e.scale = scale;
             float maxScale = MaxScale(e.species, scale);
             bool aviary = CreatureKit.LabHabitat.For(e.species) == CreatureKit.Habitat.Aviary;
             if (!aviary) e.enclosure.radius = EnclosureRadius(e.species, maxScale); // an aviary keeps its size
             e.enclosure.Build(ground);
             EnclosureArea area = aviary ? AviaryArea(e.enclosure, e.species, maxScale, e.aviaryHeight) : AreaFor(e.enclosure, e.species, maxScale, e.plant);
-            e.sim = placedWorld.Spawn(e.species, area.center, face, BrainFor(area, e.species, e.seed, e.perches), area, e.seed, scale);
+            e.sims = SpawnGroup(placedWorld, k, e.species, area, face, scale, e.perches);
+            e.sim = e.sims[0];
         }
     }
 
@@ -241,10 +282,12 @@ public sealed class CreatureLab : MonoBehaviour
             {
                 // Plain and Climbable: the shade tree (climbable for a climber: AreaFor)
                 plant = enclosurePlant != null ? PlacePlant(enc, ground, center, cUp, r, face.normalized, k) : null;
+                int rocks = RocksFor(k);
+                if (rocks > 0) { _ = world.Surfaces; PlaceRocks(enc, ground, center, cUp, r, face.normalized, k, rocks, maxScale); }
                 area = AreaFor(enc, sp, maxScale, plant);
             }
-            CreatureSim sim = world.Spawn(sp, center, face.normalized, BrainFor(area, sp, seed + k, perches), area, seed + k, scale);
-            entries.Add(new Entry { species = sp, scale = scale, enclosure = enc, sim = sim, seed = seed + k, plant = plant, perches = perches, aviaryHeight = height });
+            CreatureSim[] sims = SpawnGroup(world, k, sp, area, face.normalized, scale, perches);
+            entries.Add(new Entry { species = sp, scale = scale, enclosure = enc, sim = sims[0], sims = sims, seed = seed + k, plant = plant, perches = perches, aviaryHeight = height });
             sb.Append($" {sp.name} ({habitat}) at {center} (r {r:F1} m, flatness {flatness[k]:F3})");
             float dist = Vector3.ProjectOnPlane(center - origin, up).magnitude - r;
             if (dist < nearestDist) { nearestDist = dist; nearestCentre = center; nearestRadius = r; }
@@ -264,7 +307,13 @@ public sealed class CreatureLab : MonoBehaviour
         roster.SplitGroves(out List<CreatureLabRoster.Entry> list, out List<CreatureSpecies> groves);
         species = new CreatureSpecies[list.Count];
         scaleOverrides = new float[list.Count];
-        for (int k = 0; k < list.Count; k++) { species[k] = list[k].species; scaleOverrides[k] = list[k].scaleOverride; }
+        counts = new int[list.Count];
+        rockCounts = new int[list.Count];
+        for (int k = 0; k < list.Count; k++)
+        {
+            species[k] = list[k].species; scaleOverrides[k] = list[k].scaleOverride;
+            counts[k] = list[k].Count; rockCounts[k] = list[k].rocks;
+        }
         // every grove species to an OctopusLab of its own, in roster order (the scene builder makes one per grove
         // with its trees and prey; a grove added to the roster since then borrows the first one's trees, no prey)
         OctopusLab[] labs = GetComponents<OctopusLab>();
@@ -389,6 +438,41 @@ public sealed class CreatureLab : MonoBehaviour
         enc.obstacles.Clear();
         enc.obstacles.Add(new Vector4(at.x, at.y, at.z, plant.TrunkRadius));
         return plant;
+    }
+
+    // Boulders (AviaryDressing's rock meshes in the border material's sandstone) scattered round the enclosure: the
+    // first half about the size of the largest individual, the rest up to twice it; never on the shade tree, each
+    // other or the curb; walked round (obstacles). Seeded by the lab seed and the slot: the same rocks every run.
+    void PlaceRocks(CreatureEnclosure enc, IGroundProbe ground, Vector3 center, Vector3 up, float radius, Vector3 towardPlayer, int k, int count, float maxScale)
+    {
+        uint h = (uint)(seed + k) * 2246822519u + 101u;
+        float Next() { h ^= h << 13; h ^= h >> 17; h ^= h << 5; return (h & 0xFFFFFF) / 16777216f; }
+        var placedRocks = new List<Vector4>();
+        for (int r = 0; r < count; r++)
+        {
+            float big = r < (count + 1) / 2 ? 0.9f + 0.4f * Next() : 1.4f + 0.9f * Next();
+            float sx = 0.38f * big * maxScale, sz = (0.32f + 0.12f * Next()) * big * maxScale, sy = (0.17f + 0.08f * Next()) * big * maxScale;
+            Vector3 at = center;
+            bool ok = false;
+            for (int tryNo = 0; tryNo < 24 && !ok; tryNo++)
+            {
+                Vector3 dir = Quaternion.AngleAxis(360f * Next(), up) * towardPlayer;
+                at = center + dir * ((0.18f + 0.6f * Next()) * radius);
+                ok = true;
+                foreach (Vector4 o in enc.obstacles)
+                    if (Vector3.ProjectOnPlane(at - (Vector3)o, up).magnitude < o.w + 0.6f * Mathf.Max(sx, sz) + 0.3f * maxScale) { ok = false; break; }
+                foreach (Vector4 o in placedRocks)
+                    if (ok && Vector3.ProjectOnPlane(at - (Vector3)o, up).magnitude < o.w + 0.6f * Mathf.Max(sx, sz) + 0.25f * maxScale) ok = false;
+            }
+            if (!ok) continue;
+            if (ground.Probe(at + up * 2f, up, kProbeWindow + 2f, out Vector3 g, out _)) at = g;
+            GameObject rock = AviaryDressing.Rock(enc.transform, at, up, new Vector3(sx, sy, sz), seed + k * 31 + r, borderMaterial, out Mesh mesh);
+            rock.name = "Rock";
+            rock.AddComponent<OwnedMesh>().mesh = mesh;
+            var o4 = new Vector4(at.x, at.y, at.z, 0.5f * Mathf.Max(sx, sz));
+            enc.obstacles.Add(o4);
+            placedRocks.Add(o4);
+        }
     }
 
     // The lab's layout (LabLayout: pure geometry, also run offline); kept here for OctopusLab and the tests.

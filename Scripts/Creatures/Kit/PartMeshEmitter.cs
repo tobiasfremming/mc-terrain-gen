@@ -40,7 +40,8 @@ namespace CreatureKit
     public sealed class PartMeshEmitter
     {
         // Part ids (the shader's registry, creature-module rule 9): 4-7 belong to the octopus.
-        public const int PartBody = 0, PartLeg = 1, PartFoot = 2, PartEye = 3, PartMembrane = 8, PartBand = 9;
+        public const int PartBody = 0, PartLeg = 1, PartFoot = 2, PartEye = 3, PartMembrane = 8, PartBand = 9,
+            PartPlate = 10, PartPincer = 11;   // kit: ArmourPlates, Pincer
         public const float MinRadius = 1e-4f;
         public const float DiffStep = 1e-4f;
 
