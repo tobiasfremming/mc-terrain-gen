@@ -232,7 +232,15 @@ namespace TerrainGen.Tests
                 if (sp.AntennaBone(a, 0) != next) return $"antenna {a} starts at bone {sp.AntennaBone(a, 0)}, expected {next}";
                 next += sp.antennae[a].Segments;
             }
-            if (sp.BoneCount != next) return $"BoneCount {sp.BoneCount} != spine + legs + wings + eyes + antennae = {next}";
+            // kit-only parts with bones (no legacy field: Flapper, ...) follow, contiguous, in layout order
+            int legacyEnd = next;
+            foreach (CreatureKit.BoneRange r in sp.Layout.Ranges)
+            {
+                if (r.Start < legacyEnd) continue;
+                if (r.Start != next) return $"part {r.Id} starts at bone {r.Start}, expected {next} (contiguous after the legacy blocks)";
+                next += r.Count;
+            }
+            if (sp.BoneCount != next) return $"BoneCount {sp.BoneCount} != spine + legs + wings + eyes + antennae + kit parts = {next}";
             int bind = CreatureRestPose.BindPoses(sp).Length;
             if (bind != sp.BoneCount) return $"{bind} bind poses for {sp.BoneCount} bones";
 
@@ -246,6 +254,8 @@ namespace TerrainGen.Tests
             for (int w = 0; w < sp.WingCount; w++)
                 for (int k = 0; k < WingBoneLayout.BonesPerWing; k++) if (!used[sp.WingBone(w, k)]) bare.Add($"wing {w} bone {k}");
             if (sp.eyeRadius > 0f) for (int e = 0; e < 2; e++) if (!used[sp.EyeBone(e)]) bare.Add("eye " + e);
+            foreach (CreatureKit.BoneRange r in sp.Layout.Ranges)
+                if (r.Start >= legacyEnd) for (int k = 0; k < r.Count; k++) if (!used[r.Start + k]) bare.Add($"{r.Id} bone {k}");
             return bare.Count > 0 ? "bones with no skinned vertex: " + string.Join(", ", bare) : null;
         }
 

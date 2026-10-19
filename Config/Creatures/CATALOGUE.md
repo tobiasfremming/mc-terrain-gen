@@ -18,14 +18,15 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | part | kind | status | bones | material layers | use when | used by |
 |---|---|---|---|---|---|---|
 | **SoftBody** | Body | exists | 6 | 5, 6, 7 | boneless bodies: octopus, slug, jelly | TreeOctopus |
-| **SpineBody** | Body | exists | = joints | 0 | anything with a backbone or a segmented trunk | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, WingedSerpent |
+| **SpineBody** | Body | exists | = joints | 0 | anything with a backbone or a segmented trunk | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, WingedSerpent |
 | **ArthropodLeg** | Limb | exists | = segments | 1, 2, 9 | insects, spiders, crabs, centipedes; anything with visible segments | DaddyLongLegs, DesertBeetle, Tarantula |
 | **Leg2Bone** | Limb | exists | 3 | 1, 2 | lizards, mammals, birds' legs, wing arms | DesertMonitor, KitMonitor, SkyDragon, TestHexapod, WingedSerpent |
 | **Wing** | Wing | exists | 7 | 8, 1, 2 | bats, pterosaurs, dragons; the Fly module makes it fly | SkyDragon, WingedSerpent |
-| **Eyes** | Sense | exists | 2 | 3 | always (every shipped species has two eye bones) | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, TreeOctopus, WingedSerpent |
+| **Eyes** | Sense | exists | 2 | 3 | always (every shipped species has two eye bones) | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, TreeOctopus, WingedSerpent |
 | **Antenna** | Chain | exists | = segments | 8 | whiskers, barbels, antennae, feelers, cerci, ribbon-like streamers | SkyDragon |
 | **Tentacle** | Chain | exists | = spec.segments (0 = 24) | 4 | octopus arms; grabbing arms on any body (after T5.9) | TreeOctopus |
-| **FinStrip** | Fin | exists | 0 (skinned to the spine) | 8 | manes, crests, dorsal / anal fins, tail tufts, frills along a body | SkyDragon |
+| **FinStrip** | Fin | exists | 0 (skinned to the spine) | 8 | manes, crests, dorsal / anal fins, tail tufts, frills along a body | FinnedSandEel, SkyDragon |
+| **Flapper** | Fin | exists | = segments (1-3) | 8 | pectoral fins, ear flaps, frills, small paddles that beat or flutter (not wings that fly: Wing) | FinnedSandEel |
 | **RigidCone** | Rigid | exists | 0 (1 with ownBone) | 2 | horns, spikes, fangs, mandibles, chelicerae | SkyDragon, Tarantula, TreeOctopus |
 | **Repeat** | Sugar | exists | = count x template |  | centipede legs, spike rows, many fins | - |
 
@@ -35,18 +36,20 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 |---|---|---|---|---|---|
 | **Ambush** | Behaviour | exists | SoftBody + Tentacle parts (spine bodies: T5.9) | TreeOctopus | Rest / explore / stalk / ambush / strike / hold / retreat (OctopusBrain + prey adapters; arm roles, grooming). Hold 1.5 s, no damage. |
 | **ClimbExcursion** | Behaviour | exists | Climb | DesertMonitor, KitMonitor | Approach a climbable obstacle, climb to a goal on its real surface, rest, descend (ClimbingBrain wrapping Wander). |
+| **Flee** | Behaviour | exists | Walk | FinnedSandEel | Runs straight away from the nearest threat (CreatureThreats: the viewer in play mode) once it comes within the alarm radius, sliding along the enclosure wall when cornered; calms down after it leaves. Gives the species a ModularBrain (with Wander as the idle default). |
 | **FlightExcursion** | Behaviour | exists | Fly | SkyDragon, WingedSerpent | Rest, Face, Patrol, Soar, Landing on perches; predictive wall turn-back (FlightBrain). |
-| **Wander** | Behaviour | exists |  | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, WingedSerpent | Safe-disc points, walk, pause, glance (WanderBrain). Containment is structural: the head is clamped to the safe radius. |
+| **Wander** | Behaviour | exists |  | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, WingedSerpent | Safe-disc points, walk, pause, glance (WanderBrain). Containment is structural: the head is clamped to the safe radius. |
 | **Climb** | Locomotion | exists | Walk | DesertMonitor, KitMonitor | Per-joint up field, real-geometry contact via ISurfaceProbe, pitch limiter (CreatureClimb, ClimbSpec). Terrain walls >= 50 deg over >= 1/2 body length (R30/R31). 0 = default for every number. |
 | **Fly** | Locomotion | exists | Wing parts | SkyDragon, WingedSerpent | Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlight, FlightModel, AirChain). Froude-scaled. twist: the twisting Chinese-dragon air chain (AirTwist). |
-| **Slither** | Locomotion | exists | Walk | DesertMonitor, DesertSnake, KitMonitor, SkyDragon, TestSnake, WingedSerpent | Lateral head wave the drag chain carries back (undulation in the walk). Long wave: lambda = speed / Hz >= 0.7 body length (R27). |
-| **Walk** | Locomotion | exists | SpineBody | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, WingedSerpent | Head steering in the tangent plane, chain, grounding, gait groups, girdle sway (CreatureSim.SubStep, CreatureLegs). The default locomotion of a spine body. |
+| **Slither** | Locomotion | exists | Walk | DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, TestSnake, WingedSerpent | Lateral head wave the drag chain carries back (undulation in the walk). Long wave: lambda = speed / Hz >= 0.7 body length (R27). |
+| **Walk** | Locomotion | exists | SpineBody | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, WingedSerpent | Head steering in the tangent plane, chain, grounding, gait groups, girdle sway (CreatureSim.SubStep, CreatureLegs). The default locomotion of a spine body. |
 | **Chitin** | Look | exists |  | DaddyLongLegs, DesertBeetle, Tarantula | Knee/segment bands (part 9) and a velvet sheen lobe: arthropod legs. |
 | **Chromatophore** | Look | exists | SoftBody | TreeOctopus | Dynamic colour cells, flash and passing-cloud phase (octopus shader). Makes the look dynamic. |
 | **Cloak** | Look | exists | SoftBody (spine bodies: Phase 4) | TreeOctopus | Dissolve in Forward only: the body vanishes, shadow + SSAO stay (the user's favourite bug). Per-instance, brain-driven, with hysteresis. Octopus today. |
-| **Membrane** | Look | exists |  | SkyDragon, WingedSerpent | Translucent veined membrane (part 8, CreatureMembrane.hlsl): wings today, fins next (T5.1). |
+| **Layers** | Look | exists |  | - | Restyles part ids (material layers) for this species: shading model (Skin, Chitin, Membrane, Eye, Claw), tint, smoothness, and which layers (pattern, scale grain, sheen, shimmer) each has. Rows not listed keep the registry's (Kit/PartLayers.cs). A new part needs a row, never a shader edit. |
+| **Membrane** | Look | exists |  | FinnedSandEel, SkyDragon, WingedSerpent | Translucent veined membrane (part 8, the Membrane shading model, CreatureMembrane.hlsl): wings, FinStrip fins, antennae - any part whose layer row is Membrane. |
 | **Shimmer** | Look | exists |  | SkyDragon | Iridescent scale shimmer: thin-film colour bands (colour -> colour2 with the view angle) travelling head to tail along the body's back and flanks, a faint glow in each band (Creature.shader, part 0). The SkyDragon's signature; cheap (one pow, one cos per body pixel). |
-| **Skin** | Look | exists |  | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, TreeOctopus, WingedSerpent | Palette dorsal/flank/belly + procedural pattern by rest arc length (CreaturePattern.hlsl); per-individual size/hue/value jitter. Layers of parts 0-2. |
+| **Skin** | Look | exists |  | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, TreeOctopus, WingedSerpent | Palette dorsal/flank/belly + procedural pattern by rest arc length (CreaturePattern.hlsl); per-individual size/hue/value jitter. Layers of parts 0-2. |
 
 ## Species (examples to copy)
 
@@ -56,6 +59,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | DesertBeetle | legacy | Spine | SpineBody, 6x ArthropodLeg, Eyes | Walk (Tripod), Wander, Skin, Chitin | 35 |
 | DesertMonitor | legacy | Spine | SpineBody, 4x Leg2Bone, Eyes | Walk (Diagonal), Slither, Climb, Wander, ClimbExcursion, Skin | 40 |
 | DesertSnake | legacy | Spine | SpineBody, Eyes | Walk, Slither, Wander, Skin | 34 |
+| FinnedSandEel | kit | Spine | SpineBody, Eyes, 2x FinStrip, 2x Flapper | Walk (Diagonal), Slither, Wander, Flee, Skin, Membrane | 54 |
 | KitMonitor | kit | Spine | SpineBody, 4x Leg2Bone, Eyes | Walk (Diagonal), Slither, Climb, Wander, ClimbExcursion, Skin | 40 |
 | SkyDragon | kit | Spine | SpineBody, 6x Leg2Bone, 2x Wing, Eyes, 2x RigidCone, 3x FinStrip, 4x Antenna | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane, Shimmer | 136 |
 | Tarantula | legacy | Spine | SpineBody, 10x ArthropodLeg, Eyes, RigidCone | Walk (Tetrapod), Wander, Skin, Chitin | 75 |
@@ -292,6 +296,33 @@ Double-sided membrane strip along the spine: mane, crest, dorsal or anal fin, ta
 | `aroundDeg` | float | Degrees | - | around the body: 0 = on the back, 180 = under the belly (mirror: also at minus this) |  |  |
 | `columnsPerJoint` | int | Count | - | mesh columns per spine segment (0 = 2) | 0..8 |  |
 
+### Flapper
+
+A fin or flap on 1-3 bones that beats with the body wave: frequency = the undulation x beatsPerWave (idleHz without Slither), phase locked to the head's wave (a pair beats in phase), a root-to-tip ripple (waveLag), amplitude fading with speed to idleAmplitude. Double-sided veined membrane paddle. System: FlapperRuntime (part runtime, stage Late) + Flapper.EmitMesh.
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `length` | float | Metres | x s | span, root to tip |  | sand eel pectoral 0.045 |
+| `rootChord` | float | Metres | x s | chord (fore-aft width) at the root |  |  |
+| `tipChord` | float | Metres | x s | chord at the tip (the tip itself is rounded) |  |  |
+| `segments` | int | Count | - | bones along the span | 1..3 | default 2 |
+| `sweepDeg` | float | Degrees | - | swept back from straight out sideways | 0..80 |  |
+| `droopDeg` | float | Degrees | - | rest droop below the joint's horizontal (negative: raised) | -45..60 |  |
+| `beatDeg` | float | Degrees | - | beat amplitude at the tip (shared over the bones) | 0..80 | sand eel 28 |
+| `beatsPerWave` | float | Fraction | - | beats per undulation cycle (the beat follows the body wave) | 0.25..8 | default 1 |
+| `idleHz` | float | Hz | / sqrt(s) | beat frequency when the species does not undulate (no Slither) |  | 1.5 |
+| `idleAmplitude` | float | Fraction | - | amplitude at a standstill, fraction of beatDeg (the idle flutter) | 0..1 |  |
+| `waveLag` | float | Fraction | - | phase lag root -> tip in cycles over the span (the ripple) | 0..0.5 |  |
+| `phaseDeg` | float | Degrees | - | phase of the beat against the head's wave |  |  |
+| `rays` | int | Count | - | fin rays (main veins) across the chord | 1..12 | default 5 |
+
 ### RigidCone
 
 Curved cone rigid to a spine joint: horn, spike, claw, chelicera with a fang (BodyAppendage). mirror emits the pair from this one part (no .L/.R: it has no bones). ownBone: the octopus siphon. System: mesh only (RigidCone.EmitMesh: a horn on the emitter).
@@ -343,6 +374,17 @@ No parameters.
 Approach a climbable obstacle, climb to a goal on its real surface, rest, descend (ClimbingBrain wrapping Wander).
 
 No parameters.
+
+### Flee
+
+Runs straight away from the nearest threat (CreatureThreats: the viewer in play mode) once it comes within the alarm radius, sliding along the enclosure wall when cornered; calms down after it leaves. Gives the species a ModularBrain (with Wander as the idle default).
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `radius` | float | Metres | x s | alarm radius: a threat closer than this (planar) starts the flight |  | sand eel 1.2 |
+| `runDistance` | float | Metres | x s | how far ahead of the head the escape target lies |  |  |
+| `calmSeconds` | float | Seconds | x sqrt(s) | keeps fleeing this long after the threat left the radius |  |  |
+| `utility` | float | Fraction | - | utility with the threat at the head (Wander idles at 0.1) | 0.2..2 |  |
 
 ### FlightExcursion
 
@@ -451,9 +493,29 @@ Dissolve in Forward only: the body vanishes, shadow + SSAO stay (the user's favo
 
 No parameters.
 
+### Layers
+
+Restyles part ids (material layers) for this species: shading model (Skin, Chitin, Membrane, Eye, Claw), tint, smoothness, and which layers (pattern, scale grain, sheen, shimmer) each has. Rows not listed keep the registry's (Kit/PartLayers.cs). A new part needs a row, never a shader edit.
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `rows` | LayerDef[] | Struct | - | rows, one per restyled part id |  |  |
+| `rows[].partId` | int | Count | - | the part id (material layer) this row styles: 0 body, 1 limb, 2 foot/claw/cone, 3 eye, 8 membrane, 9 band, 10+ new parts (CATALOGUE.md registry) | 0..15 |  |
+| `rows[].model` | Skin / Chitin / Membrane / Eye / Claw | Enum | - | shading model: Skin, Chitin (no grain, glossy), Membrane, Eye, Claw (keratin: the tint, glossy) |  |  |
+| `rows[].noPattern` | bool | Flag | - | no pattern on this part |  |  |
+| `rows[].limbPattern` | bool | Flag | - | the limb pattern (mottle / spots) instead of the body's |  |  |
+| `rows[].noGrain` | bool | Flag | - | no scale grain |  |  |
+| `rows[].fineGrain` | bool | Flag | - | the limbs' smaller scales |  |  |
+| `rows[].noSheen` | bool | Flag | - | without the velvet sheen (Chitin module) |  |  |
+| `rows[].noShimmer` | bool | Flag | - | without the iridescent shimmer (Shimmer module) |  |  |
+| `rows[].tintSource` | Own / Pattern / Band / Dorsal / Belly / Membrane | Enum | - | tint colour: Own (tint below) or a palette colour |  |  |
+| `rows[].tint` | Color | SrgbColour | - | the row's own tint (tintSource Own) |  |  |
+| `rows[].tintAmount` | float | Fraction | - | albedo -> tint after the pattern (Claw: how much of the tint) | 0..1 |  |
+| `rows[].smoothnessScale` | float | Fraction | - | Chitin / Claw: x the species smoothness (0 = model default: Chitin 1.6, Claw 1.9) | 0..3 |  |
+
 ### Membrane
 
-Translucent veined membrane (part 8, CreatureMembrane.hlsl): wings today, fins next (T5.1).
+Translucent veined membrane (part 8, the Membrane shading model, CreatureMembrane.hlsl): wings, FinStrip fins, antennae - any part whose layer row is Membrane.
 
 | field | type | unit | size | meaning | range | example |
 |---|---|---|---|---|---|---|
@@ -499,15 +561,17 @@ Palette dorsal/flank/belly + procedural pattern by rest arc length (CreaturePatt
 
 ## Material layers (mesh part ids; next free: 10)
 
-- 0: body skin
-- 1: limb
-- 2: foot, claw, rigid cone
-- 3: eye
-- 4: octopus arm
-- 5: octopus web
-- 6: octopus mantle
-- 7: octopus siphon
-- 8: membrane (wings; fins next)
-- 9: arthropod band
+Creature.shader shades a part id by its row of the species' look-layer table (Kit/PartLayers.cs): a shading model (Skin, Chitin, Membrane, Eye, Claw) plus layers (pattern, scale grain, sheen, shimmer) and a tint. A new part takes the next free id and adds its row to PartLayers.Registry - no shader edit; a species restyles rows with the Layers module. Never reuse an id. A new shading MODEL is a shader edit: add it to CreatureLayers.hlsl + ShadingModel, with a CPU proof and the Unity pixel guard (CreaturePartLayerTests, CreatureShaderLayerTests).
 
-A new shading needs the next free id (and a pixel guard test); never reuse one.
+| id | use | row (model, layers, tint) |
+|---|---|---|
+| 0 | body skin | Skin (Sheen, Shimmer) |
+| 1 | limb | Skin (LimbPattern, FineGrain, Sheen, Shimmer) |
+| 2 | foot, claw, rigid cone | Skin (NoPattern, FineGrain, Sheen, Shimmer, tint Pattern 0.3) |
+| 3 | eye | Eye (NoPattern, NoGrain) |
+| 4 | octopus arm | octopus shader family (CreatureOctopus.shader) |
+| 5 | octopus web | octopus shader family (CreatureOctopus.shader) |
+| 6 | octopus mantle | octopus shader family (CreatureOctopus.shader) |
+| 7 | octopus siphon | octopus shader family (CreatureOctopus.shader) |
+| 8 | membrane (wings, fins, antennae) | Membrane (NoPattern, NoGrain) |
+| 9 | arthropod band | Skin (Sheen, Shimmer, tint Band 0.9) |

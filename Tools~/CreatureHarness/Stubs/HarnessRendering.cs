@@ -27,7 +27,11 @@ namespace UnityEngine
         public void SetColor(int id, Color v) { }
         public void SetVector(int id, Vector4 v) { }
         public void SetMatrix(int id, Matrix4x4 v) { }
+        public void SetVectorArray(int id, Vector4[] v) { }
     }
+    // the renderer decodes its look-layer colours like SetColor would (a linear-space project)
+    public enum ColorSpace { Uninitialized = -1, Gamma = 0, Linear = 1 }
+    public static class QualitySettings { public static ColorSpace activeColorSpace => ColorSpace.Linear; }
     public sealed class GraphicsBuffer : IDisposable
     {
         public enum Target { Structured = 16 }

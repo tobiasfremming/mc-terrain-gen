@@ -1,0 +1,212 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39d3296fcbe55a0429fe582610f52ec3, type: 3}
+  m_Name: FinnedSandEel
+  m_EditorClassIdentifier: TerrainGen.Runtime::CreatureSpecies
+  scale: 1.6
+  kitVersion: 1
+  parts:
+  - rid: 1000
+  - rid: 1001
+  - rid: 1002
+  - rid: 1003
+  - rid: 1004
+  modules:
+  - rid: 1005
+  - rid: 1006
+  - rid: 1007
+  - rid: 1008
+  - rid: 1009
+  - rid: 1010
+  references:
+    version: 2
+    RefIds:
+    - rid: 1000
+      type: {class: SpineBody, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: body
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 0
+        spacing: 0.02
+        headCapLength: 0.03
+        tailTipLength: 0.04
+        joints: []
+        profile:
+        - t: 0
+          halfWidth: 0.011
+          halfHeight: 0.01
+          clearance: 0.01
+          bendLimitDeg: 22
+        - t: 0.03
+          halfWidth: 0.016
+          halfHeight: 0.014
+          clearance: 0.014
+          bendLimitDeg: 22
+        - t: 0.12
+          halfWidth: 0.017
+          halfHeight: 0.016
+          clearance: 0.016
+          bendLimitDeg: 20
+        - t: 0.55
+          halfWidth: 0.0155
+          halfHeight: 0.015
+          clearance: 0.015
+          bendLimitDeg: 20
+        - t: 0.82
+          halfWidth: 0.01
+          halfHeight: 0.0095
+          clearance: 0.0095
+          bendLimitDeg: 24
+        - t: 1
+          halfWidth: 0.003
+          halfHeight: 0.003
+          clearance: 0.003
+          bendLimitDeg: 28
+        jointCount: 48
+        rigidHead: 1
+        ringSegments: 16
+        ringsPerSegment: 2
+    - rid: 1001
+      type: {class: Eyes, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: eyes
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0.0105, y: 0.0055, z: 0.006}
+          slot: 0
+        mirror: 0
+        radius: 0.0034
+        cluster: []
+    - rid: 1002
+      type: {class: FinStrip, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: dorsal
+        at:
+          joint: 8
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 0
+        toJoint: 44
+        heightStart: 0.011
+        heightEnd: 0.015
+        leanDeg: 25
+        tufts: 0
+        tuftDepth: 0
+        flowJoints: 1
+        inset: 0.2
+        aroundDeg: 0
+        columnsPerJoint: 2
+    - rid: 1003
+      type: {class: FinStrip, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: anal
+        at:
+          joint: 26
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 1
+        toJoint: 44
+        heightStart: 0.006
+        heightEnd: 0.008
+        leanDeg: 30
+        tufts: 0
+        tuftDepth: 0
+        flowJoints: 1
+        inset: 0.2
+        aroundDeg: 120
+        columnsPerJoint: 2
+    - rid: 1004
+      type: {class: Flapper, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: pectoral
+        at:
+          joint: 3
+          side: 0
+          offset: {x: 0.013, y: -0.003, z: 0}
+          slot: 0
+        mirror: 1
+        length: 0.03
+        rootChord: 0.016
+        tipChord: 0.01
+        segments: 2
+        sweepDeg: 40
+        droopDeg: -5
+        beatDeg: 28
+        beatsPerWave: 2
+        idleHz: 1.5
+        idleAmplitude: 0.3
+        waveLag: 0.15
+        phaseDeg: 0
+        rays: 5
+    - rid: 1005
+      type: {class: Walk, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        speed: 0.45
+        turnRateDeg: 240
+        accel: 1.5
+        turnSlowdown: 0.3
+        gaitSwayDeg: 0
+        gaitRollDeg: 0
+        subSteps: 1
+        pattern: 1
+        waveGroups: 4
+        bob:
+          amplitude: 0
+          hz: 0
+          damping: 0
+    - rid: 1006
+      type: {class: Slither, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        undulationDeg: 40
+        undulationHz: 0.6
+    - rid: 1007
+      type: {class: Wander, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+    - rid: 1008
+      type: {class: Flee, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        radius: 1
+        runDistance: 0.6
+        calmSeconds: 1.5
+        utility: 0.8
+    - rid: 1009
+      type: {class: Skin, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        dorsal: {r: 0.5, g: 0.56, b: 0.5, a: 1}
+        flank: {r: 0.76, g: 0.78, b: 0.72, a: 1}
+        belly: {r: 0.95, g: 0.94, b: 0.9, a: 1}
+        pattern: {r: 0.24, g: 0.29, b: 0.27, a: 1}
+        patternType: 3
+        patternScale: 6
+        patternContrast: 0.4
+        patternSoftness: 0.4
+        spotScale: 0
+        smoothness: 0.6
+        rimStrength: 0.5
+        subsurface: 0.25
+        sizeJitter: 0.08
+        hueJitter: 0.012
+        valueJitter: 0.05
+    - rid: 1010
+      type: {class: Membrane, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        colour: {r: 0.86, g: 0.82, b: 0.64, a: 1}
+        translucency: 0.75
+        veinContrast: 0.3
+        rim: 0.3

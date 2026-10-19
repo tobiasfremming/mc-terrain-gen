@@ -33,13 +33,23 @@ namespace UnityEngine
         public static T CreateInstance<T>() where T : ScriptableObject, new() => new T();
     }
 
-    public struct Color { public float r, g, b, a; public Color(float r, float g, float b, float a = 1f) { this.r = r; this.g = g; this.b = b; this.a = a; } }
+    public struct Color
+    {
+        public float r, g, b, a;
+        public Color(float r, float g, float b, float a = 1f) { this.r = r; this.g = g; this.b = b; this.a = a; }
+        public static Color black => new Color(0f, 0f, 0f, 1f);
+        public static Color white => new Color(1f, 1f, 1f, 1f);
+        // sRGB -> linear per channel, alpha kept (Unity's Color.linear)
+        public Color linear => new Color(Mathf.GammaToLinearSpace(r), Mathf.GammaToLinearSpace(g), Mathf.GammaToLinearSpace(b), a);
+    }
 
     public static class Mathf
     {
         public const float PI = 3.14159274f, Deg2Rad = PI / 180f, Rad2Deg = 180f / PI, Infinity = float.PositiveInfinity;
         public const float Epsilon = 1.17549435E-38f;
         public static float Abs(float f) => Math.Abs(f);
+        // the sRGB transfer function (IEC 61966-2-1), as Unity's
+        public static float GammaToLinearSpace(float c) => c <= 0.04045f ? c / 12.92f : MathF.Pow((c + 0.055f) / 1.055f, 2.4f);
         public static int Abs(int f) => Math.Abs(f);
         public static float Acos(float f) => MathF.Acos(f);
         public static float Asin(float f) => MathF.Asin(f);

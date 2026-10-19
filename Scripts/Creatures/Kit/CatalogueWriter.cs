@@ -16,14 +16,18 @@ namespace CreatureKit
     {
         public const string MarkdownPath = "Assets/TerrainGen/Config/Creatures/CATALOGUE.md";
         public const string JsonPath = "Assets/TerrainGen/Config/Creatures/catalogue.json";
-        public const int NextFreeMaterialLayer = 10;
+        // the part-id registry (mesh part ids = material layers, creature-module rule 9): Kit/PartLayers.cs (T4.1)
+        public static int NextFreeMaterialLayer => PartLayers.NextFree;
 
-        // the part-id registry (mesh part ids = material layers), creature-module rule 9
-        static readonly string[] Layers =
+        static string LayerCell(PartLayers.Entry e)
         {
-            "body skin", "limb", "foot, claw, rigid cone", "eye", "octopus arm", "octopus web", "octopus mantle", "octopus siphon",
-            "membrane (wings; fins next)", "arthropod band",
-        };
+            if (e.Octopus) return "octopus shader family (CreatureOctopus.shader)";
+            PartLayer r = e.Row;
+            var bits = new List<string>();
+            foreach (LayerFlags f in Enum.GetValues(typeof(LayerFlags))) if (f != LayerFlags.None && (r.flags & f) != 0) bits.Add(f.ToString());
+            string tint = r.tintAmount > 0f ? $", tint {r.tintSource} {r.tintAmount.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}" : "";
+            return $"{r.model} ({string.Join(", ", bits)}{tint})";
+        }
 
         public sealed class Param
         {
@@ -143,8 +147,12 @@ namespace CreatureKit
             }
 
             md.Append($"\n## Material layers (mesh part ids; next free: {NextFreeMaterialLayer})\n\n");
-            for (int i = 0; i < Layers.Length; i++) md.Append($"- {i}: {Layers[i]}\n");
-            md.Append("\nA new shading needs the next free id (and a pixel guard test); never reuse one.\n");
+            md.Append("Creature.shader shades a part id by its row of the species' look-layer table (Kit/PartLayers.cs): a shading model ");
+            md.Append("(" + string.Join(", ", Enum.GetNames(typeof(ShadingModel))) + ") plus layers (pattern, scale grain, sheen, shimmer) and a tint. ");
+            md.Append("A new part takes the next free id and adds its row to PartLayers.Registry - no shader edit; a species restyles rows with the Layers module. ");
+            md.Append("Never reuse an id. A new shading MODEL is a shader edit: add it to CreatureLayers.hlsl + ShadingModel, with a CPU proof and the Unity pixel guard (CreaturePartLayerTests, CreatureShaderLayerTests).\n\n");
+            md.Append("| id | use | row (model, layers, tint) |\n|---|---|---|\n");
+            foreach (PartLayers.Entry e in PartLayers.Registry) md.Append($"| {e.Id} | {Cell(e.Use)} | {Cell(LayerCell(e))} |\n");
             markdown = md.ToString();
 
             // ------------------------------------------------------------ json
@@ -189,7 +197,10 @@ namespace CreatureKit
             }
             j.Close(']');
             j.Key("materialLayers").Open('[');
-            for (int i = 0; i < Layers.Length; i++) { j.Open('{'); j.Key("id").Num(i).Key("use").Str(Layers[i]); j.Close('}'); }
+            foreach (PartLayers.Entry e in PartLayers.Registry)
+            {
+                j.Open('{'); j.Key("id").Num(e.Id).Key("use").Str(e.Use).Key("model").Str(e.Octopus ? "Octopus" : e.Row.model.ToString()).Key("layers").Str(LayerCell(e)); j.Close('}');
+            }
             j.Close(']');
             j.Key("nextFreeMaterialLayer").Num(NextFreeMaterialLayer);
             j.Close('}');
