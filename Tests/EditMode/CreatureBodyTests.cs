@@ -115,6 +115,7 @@ namespace TerrainGen.Tests
             body.Body.Arms[0].Pin(23, body.Body.Arms[0].X[23], Vector3.up);
             r.Add(body, new CreatureInstance { sizeScale = 1.3f });
             OctopusMeshBuilder.Data d = OctopusMeshBuilder.BuildData(sp.cephalopod);
+            Matrix4x4[] bind = OctopusRestPose.BindPoses(sp.cephalopod);
             for (int f = 0; f < 300; f++)
             {
                 body.Tick(1f / 60f);
@@ -124,7 +125,7 @@ namespace TerrainGen.Tests
                 Matrix4x4[] skin = r.SkinForTest;
                 for (int i = 0; i < d.pos.Count; i++)
                 {
-                    Vector3 p = OctopusMeshTests.Skin(d, skin, i);
+                    Vector3 p = OctopusMeshTests.Skin(d, skin, i, false, bind);
                     Assert.IsTrue(b.Contains(p), $"frame {f}: vertex {i} (part {d.uv1[i].x}) at {p} outside {b}");
                 }
             }

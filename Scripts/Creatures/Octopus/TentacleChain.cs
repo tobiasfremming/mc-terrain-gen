@@ -132,6 +132,17 @@ public sealed class TentacleChain
         BendTarget = new Vector3[N - 1]; restCurl = new Vector3[N - 1]; localTarget = new Vector3[N - 1]; muscleBend = new Vector3[N - 1];
         Pinned = new bool[N]; PinPoint = new Vector3[N]; PinNormal = new Vector3[N]; PinSource = new int[N]; PinGoal = new Vector3[N];
         fab = new Vector3[N]; frameX = new Vector3[N]; rmfX = new Vector3[N]; rmfT = new Vector3[N];
+        DisplayX = new Vector3[N]; DisplayFrames = new Quaternion[N]; DisplayStretch = new float[N];
+        // the drawn joint at particle k turns at most so far that the arc it is drawn as (CreatureSkin's arm curve,
+        // radius = segment / (2 tan(angle / 2))) keeps 1.2 x the tube's radius at its shortest, thickest segment
+        displayCos = new float[N]; displaySin = new float[N];
+        for (int k = 0; k < N; k++)
+        {
+            float rk = spec.RadiusAt(spec.Spacing * k) * MathF.Max(1f, 1f / MathF.Sqrt(spec.MinStretch)), seg = spec.MinStretch * spec.Spacing;
+            float lim = MathF.Min(DisplayConeDeg * Mathf.Deg2Rad, 2f * MathF.Atan(seg / (2f * 1.2f * rk)));
+            if (k == 1) lim = MathF.Min(lim, RootDisplayConeDeg * Mathf.Deg2Rad);
+            displayCos[k] = MathF.Cos(lim); displaySin[k] = MathF.Sin(lim);
+        }
 
         cosLimit = Mathf.Cos(spec.BendLimitDeg * Mathf.Deg2Rad);
         fabCos = Mathf.Cos(0.9f * spec.BendLimitDeg * Mathf.Deg2Rad); fabSin = Mathf.Sin(0.9f * spec.BendLimitDeg * Mathf.Deg2Rad);
@@ -318,6 +329,8 @@ public sealed class TentacleChain
             p[k] = xk;
             x[k].x = xk.x + vx * h; x[k].y = xk.y + vy * h; x[k].z = xk.z + vz * h;
         }
+
+        KeepPinRunsLegal();
 
         // the muscles follow a new shape over ~1/ShapeRate s instead of at once: a target switched in one step
         // (curl -> feel, a new reach) flicked the arm at up to 14 m/s for a few frames, the visible whip
@@ -513,6 +526,51 @@ public sealed class TentacleChain
         }
     }
 
+    const float kPinRunCos = 0.2588f;   // cos 75 deg
+    // Pins still easing to their goals keep the arm's lengths, and a joint no sharper than 75 deg, between
+    // neighbours: each slides straight to its own goal at its own pace, and neighbours crossed or bunched on the
+    // way (0.06 spacings, folds to 176 deg). Only an easing pin yields; one that has arrived stays on its goal.
+    bool EasingRigid(int k) => Pinned[k] && PinEasing(k);
+    void KeepPinRunsLegal()
+    {
+        float mn = minLen, mx = maxLen, cl = kPinRunCos;
+        bool any = false;
+        for (int k = 1; k < N; k++) if (EasingRigid(k)) { any = true; break; }
+        if (!any) return;
+        for (int pass = 0; pass < 2; pass++)
+            for (int k = 1; k < N - 1; k++)
+            {
+                if (!Pinned[k] || !Pinned[k + 1]) continue;
+                float wa = EasingRigid(k) ? 1f : 0f, wb = EasingRigid(k + 1) ? 1f : 0f, w = wa + wb;
+                if (w == 0f) continue;
+                Vector3 e = PinPoint[k + 1] - PinPoint[k];
+                float len = e.magnitude, glen = (PinGoal[k + 1] - PinGoal[k]).magnitude;
+                float lo = mn < glen ? mn : glen, hi = mx > glen ? mx : glen;
+                if (len > 1e-9f && (len < lo || len > hi))
+                {
+                    float lambda = ((len < lo ? lo : hi) - len) / (w * len);
+                    PinPoint[k] -= e * (lambda * wa); PinPoint[k + 1] += e * (lambda * wb);
+                }
+                if (!Pinned[k - 1]) continue;
+                float wA = k - 1 > 0 && EasingRigid(k - 1) ? 1f : 0f, wac = wA + wb;
+                if (wac == 0f) continue;
+                // never sharper than the goals themselves are (a wrap round a thin branch is legitimately tight)
+                Vector3 gu = PinGoal[k] - PinGoal[k - 1], gv = PinGoal[k + 1] - PinGoal[k];
+                float gl = gu.magnitude * gv.magnitude, ccl = cl;
+                if (gl > 1e-12f) { float gc = Vector3.Dot(gu, gv) / gl - 0.1f; if (gc < ccl) ccl = gc; }
+                Vector3 A = PinPoint[k - 1], B = PinPoint[k], C = PinPoint[k + 1];
+                Vector3 u = B - A, v = C - B, ex = C - A;
+                float la2 = u.sqrMagnitude, lc2 = v.sqrMagnitude;
+                float dmin2 = la2 + lc2 + 2f * MathF.Sqrt(la2 * lc2) * ccl, d2 = ex.sqrMagnitude;
+                if (d2 < dmin2 && d2 > 1e-14f)
+                {
+                    float d = MathF.Sqrt(d2), s = (d - MathF.Sqrt(dmin2)) / (d * wac);
+                    PinPoint[k - 1] += ex * (s * wA); PinPoint[k + 1] -= ex * (s * wb);
+                }
+            }
+        for (int k = 1; k < N; k++) if (Pinned[k]) { X[k] = PinPoint[k]; Prev[k] = PinPoint[k]; }
+    }
+
     // Ends a sub-step: the strict tail pass. Frames are updated once per frame (UpdateFrames).
     public void EndSubStep(float h)
     {
@@ -676,18 +734,138 @@ public sealed class TentacleChain
         }
     }
 
+    // ------------------------------------------------------------------ the drawn arm
+    // The bones are taken from a display copy of the particles that keeps a drawable arm: every free segment
+    // within the arm's length limits ([MinStretch, MaxStretch] x spacing) and its joints within DisplayConeDeg
+    // (the first one within RootDisplayConeDeg of the body's own direction at the root, where the tube blends into
+    // the web); a pin is moved only past wide limits
+    // (PinDisplayMin/Max x spacing, PinDisplayConeDeg: a held run laid at odd spacing or folded sharper than a
+    // tube can be drawn - a few millimetres off the bark). The solve leaves a segment torn or folded now and then
+    // (a contact pushed one particle after the solve, a tether, a swing it has not converged on yet, eased pins
+    // bunched on their way: 0.1-3.9 x spacing, joints to 179 deg), and such a joint drew a tube whose rings
+    // crossed - nearly all the inverted arm triangles (2026-10-19). Drawn only: nothing in the simulation reads it;
+    // it is taken when the bones are written (once per drawn frame), not per tick.
+    public readonly Vector3[] DisplayX;
+    public readonly Quaternion[] DisplayFrames;
+    public readonly float[] DisplayStretch;
+    readonly float[] displayCos, displaySin;   // per joint (the particle the joint is at)
+    public const float DisplayConeDeg = 60f, RootDisplayConeDeg = 30f, PinDisplayConeDeg = 80f, PinDisplayMin = 0.7f, PinDisplayMax = 1.4f;
+    static readonly float cosRootDisplay = MathF.Cos(RootDisplayConeDeg * Mathf.Deg2Rad), sinRootDisplay = MathF.Sin(RootDisplayConeDeg * Mathf.Deg2Rad);
+    static readonly float cosPinDisplay = MathF.Cos(PinDisplayConeDeg * Mathf.Deg2Rad), sinPinDisplay = MathF.Sin(PinDisplayConeDeg * Mathf.Deg2Rad);
+
+    void UpdateDisplay()
+    {
+        Vector3[] d = DisplayX;
+        for (int k = 0; k < N; k++) d[k] = X[k];
+        float mn = minLen, mx = maxLen, pmn = PinDisplayMin * Spacing, pmx = PinDisplayMax * Spacing;
+        int last = -1;
+        for (int k = N - 1; k > 0; k--) if (Pinned[k]) { last = k; break; }
+        Vector3 back = d[0] - OctoMath.Rotate(RootFrame, 0f, 0f, 1f) * Spacing;   // the body's own direction at the root
+        int first = N;   // the first particle the display moved
+        for (int pass = 0; pass < 3; pass++)
+        {
+            bool moved = false;
+            // outward from the root, then back from the last pin
+            for (int j = 0; j < N - 1; j++)
+            {
+                bool pin = Pinned[j + 1];
+                float cc = pin ? cosPinDisplay : j == 0 ? cosRootDisplay : displayCos[j], ss = pin ? sinPinDisplay : j == 0 ? sinRootDisplay : displaySin[j];
+                if (DisplayLimit(d, j + 1, j, true, j > 0 ? d[j - 1] : back, pin ? pmn : mn, pin ? pmx : mx, cc, ss)) { moved = true; if (j + 1 < first) first = j + 1; }
+            }
+            for (int j = last - 1; j >= 1; j--)
+            {
+                bool pin = Pinned[j];
+                if (DisplayLimit(d, j, j + 1, j + 2 < N, j + 2 < N ? d[j + 2] : default, pin ? pmn : mn, pin ? pmx : mx, pin ? cosPinDisplay : displayCos[j + 1], pin ? sinPinDisplay : displaySin[j + 1])) { moved = true; if (j < first) first = j; }
+            }
+            if (!moved) break;
+        }
+        // frames: the simulation's where the display did not move (the common case: all of them), else
+        // rotation-minimising along the display chain from there on, with the simulation's twist
+        int k0 = first <= 1 ? 0 : first - 1;
+        for (int k = 0; k < k0 && k < N; k++) { DisplayFrames[k] = Frames[k]; DisplayStretch[k] = Stretch[k]; }
+        if (k0 >= N) return;
+        Vector3 px, pt;
+        if (k0 == 0) { px = OctoMath.Rotate(RootFrame, 1f, 0f, 0f); pt = OctoMath.Rotate(RootFrame, 0f, 0f, 1f); }
+        else
+        {
+            // the untwisted transported frame of k0 - 1: its frame turned back by its twist
+            Quaternion f = Frames[k0 - 1];
+            Vector3 fx = OctoMath.Rotate(f, 1f, 0f, 0f), fy = OctoMath.Rotate(f, 0f, 1f, 0f);
+            float c0 = MathF.Cos(Twist[k0 - 1]), s0 = MathF.Sin(Twist[k0 - 1]);
+            px = fx * c0 - fy * s0; pt = OctoMath.Rotate(f, 0f, 0f, 1f);
+        }
+        float invSp = 1f / Spacing;
+        for (int k = k0; k < N; k++)
+        {
+            int i0 = k < N - 1 ? k : N - 2;
+            Vector3 tv = d[i0 + 1] - d[i0];
+            float len = tv.magnitude;
+            Vector3 tn = len > 1e-9f ? tv / len : pt;
+            float cc = Vector3.Dot(pt, tn);
+            Vector3 x;
+            if (cc > -0.99f)
+            {
+                Vector3 kx = Vector3.Cross(pt, tn);
+                x = px * cc + Vector3.Cross(kx, px) + kx * (Vector3.Dot(kx, px) / (1f + cc));
+            }
+            else x = px;
+            x -= tn * Vector3.Dot(x, tn);
+            float xl = x.magnitude;
+            x = xl > 1e-6f ? x / xl : OctoMath.Norm(Vector3.Cross(Vector3.up, tn), Vector3.right);
+            px = x; pt = tn;
+            Vector3 y = Vector3.Cross(tn, x);
+            float c = MathF.Cos(Twist[k]), s = MathF.Sin(Twist[k]);
+            Vector3 x2 = x * c + y * s, y2 = y * c - x * s;
+            DisplayFrames[k] = OctoMath.FromBasis(x2.x, x2.y, x2.z, y2.x, y2.y, y2.z, tn.x, tn.y, tn.z);
+            DisplayStretch[k] = len * invSp;
+        }
+    }
+
+    // Moves d[m] (d[a] fixed) so the segment a-m has its length within [mn, mx] and, given the point before a (bp),
+    // the joint at a is within the cone (cos c, sin s).
+    static bool DisplayLimit(Vector3[] d, int m, int a, bool hasB, Vector3 bp, float mn, float mx, float c, float s)
+    {
+        Vector3 e = d[m] - d[a];
+        float len = e.magnitude;
+        if (len < 1e-9f) return false;
+        Vector3 dir = e / len;
+        bool fix = false;
+        if (hasB && s > 0f)
+        {
+            Vector3 pdir = d[a] - bp;
+            float pl = pdir.magnitude;
+            if (pl > 1e-9f)
+            {
+                pdir /= pl;
+                float cs = Vector3.Dot(dir, pdir);
+                if (cs < c - 1e-4f)   // (a joint at the limit to float precision is left as it is)
+                {
+                    Vector3 q = dir - pdir * cs;
+                    float ql = q.magnitude;
+                    q = ql > 1e-6f ? q / ql : OctoMath.Norm(Vector3.Cross(pdir, Vector3.up), Vector3.right);
+                    dir = pdir * c + q * s;
+                    fix = true;
+                }
+            }
+        }
+        if (len < 0.999f * mn) { len = mn; fix = true; } else if (len > 1.001f * mx) { len = mx; fix = true; }
+        if (fix) d[m] = d[a] + dir * len;
+        return fix;
+    }
+
     // ------------------------------------------------------------------ output
 
     // N bone-world matrices (see the class comment) into dst[offset..offset+N).
     public void WriteBones(Matrix4x4[] dst, int offset)
     {
+        UpdateDisplay();
         for (int k = 0; k < N; k++)
         {
-            float s = Stretch[k] > 1e-3f ? Stretch[k] : 1e-3f;
+            float s = DisplayStretch[k] > 1e-3f ? DisplayStretch[k] : 1e-3f;
             // volume-preserving thinning, capped: a muscular arm under load does not neck down to a spike
             float inv = 1f / MathF.Sqrt(s);
             float sigma = Squeeze[k] * (inv < kMinThin ? kMinThin : inv);
-            dst[offset + k] = OctoMath.TRS(X[k], Frames[k], sigma * SizeScale, sigma * SizeScale, s * SizeScale);
+            dst[offset + k] = OctoMath.TRS(DisplayX[k], DisplayFrames[k], sigma * SizeScale, sigma * SizeScale, s * SizeScale);
         }
     }
 
