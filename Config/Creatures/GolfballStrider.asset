@@ -1,0 +1,739 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39d3296fcbe55a0429fe582610f52ec3, type: 3}
+  m_Name: GolfballStrider
+  m_EditorClassIdentifier: TerrainGen.Runtime::CreatureSpecies
+  scale: 1
+  kitVersion: 1
+  parts:
+  - rid: 1000
+  - rid: 1001
+  - rid: 1002
+  - rid: 1003
+  - rid: 1004
+  - rid: 1005
+  - rid: 1006
+  - rid: 1007
+  - rid: 1008
+  - rid: 1009
+  - rid: 1010
+  - rid: 1011
+  - rid: 1012
+  - rid: 1013
+  - rid: 1014
+  modules:
+  - rid: 1015
+  - rid: 1016
+  - rid: 1017
+  - rid: 1018
+  - rid: 1019
+  references:
+    version: 2
+    RefIds:
+    - rid: 1000
+      type: {class: SpineBody, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: body
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 0
+        spacing: 0.06
+        headCapLength: 0.03
+        tailTipLength: 0.02
+        joints:
+        - halfWidth: 0.035
+          halfHeight: 0.03
+          clearance: 0.62
+          bendLimitDeg: 6
+          rigid: 1
+        - halfWidth: 0.04
+          halfHeight: 0.034
+          clearance: 0.62
+          bendLimitDeg: 6
+          rigid: 1
+        - halfWidth: 0.03
+          halfHeight: 0.028
+          clearance: 0.62
+          bendLimitDeg: 6
+          rigid: 1
+        profile: []
+        jointCount: 0
+        rigidHead: 0
+        rigidHeadJoints: 2
+        ringSegments: 12
+        ringsPerSegment: 2
+    - rid: 1001
+      type: {class: Eyes, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: eyes
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0, z: 0.02}
+          slot: 0
+        mirror: 0
+        radius: 0
+        cluster: []
+    - rid: 1002
+      type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: L1
+        at:
+          joint: 0
+          side: -1
+          offset: {x: 0.03, y: -0.02, z: 0.02}
+          slot: 0
+        mirror: 0
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 0.570411, y: 0, z: 0.814631}
+        stepThreshold: 0.15
+        stepDuration: 0.36
+        stepLift: 0.11
+        overshoot: 0.075
+        footLength: 0
+        toeCount: 0
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segmentCount: 7
+        length: 1.55
+        tarsusShare: 0.08
+        lengthJitter: 0.35
+        riseDeg: 34
+        archDeg: 98
+        kneeAt: 0.27
+        kneeSpread: 0.16
+        kinkDeg: 12
+        seed: 11
+        rangeDeg: 60
+        contactAngleDeg: 70
+        swingLiftDeg: 20
+        swingRetract: 0.1
+        rootRadius: 0.0058
+        tipRadius: 0.0014
+        smooth: 0.55
+        beads: 0
+        around: 8
+        wobbleHz: 3.2
+        wobbleDamping: 0.28
+        inertia: 0.7
+        sag: 0.012
+        whip: 0.55
+        coupling: 0.6
+        maxDeflect: 0.07
+    - rid: 1003
+      type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: L2
+        at:
+          joint: 0
+          side: -1
+          offset: {x: 0.036, y: -0.02, z: 0}
+          slot: 0
+        mirror: 0
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 1.040996, y: 0, z: 0.378891}
+        stepThreshold: 0.16
+        stepDuration: 0.4
+        stepLift: 0.12
+        overshoot: 0.08
+        footLength: 0
+        toeCount: 0
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segmentCount: 7
+        length: 1.62
+        tarsusShare: 0.08
+        lengthJitter: 0.4
+        riseDeg: 28
+        archDeg: 92
+        kneeAt: 0.3
+        kneeSpread: 0.3
+        kinkDeg: 16
+        seed: 23
+        rangeDeg: 60
+        contactAngleDeg: 70
+        swingLiftDeg: 20
+        swingRetract: 0.1
+        rootRadius: 0.0058
+        tipRadius: 0.0014
+        smooth: 0.55
+        beads: 0
+        around: 8
+        wobbleHz: 2.72
+        wobbleDamping: 0.25
+        inertia: 0.7
+        sag: 0.012
+        whip: 0.6
+        coupling: 0.6
+        maxDeflect: 0.07
+    - rid: 1004
+      type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: L3
+        at:
+          joint: 1
+          side: -1
+          offset: {x: 0.034, y: -0.02, z: 0.01}
+          slot: 0
+        mirror: 0
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 0.671665, y: 0, z: -0.27137}
+        stepThreshold: 0.14
+        stepDuration: 0.32
+        stepLift: 0.1
+        overshoot: 0.07
+        footLength: 0
+        toeCount: 0
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segmentCount: 5
+        length: 1.3
+        tarsusShare: 0.08
+        lengthJitter: 0.25
+        riseDeg: 38
+        archDeg: 104
+        kneeAt: 0.25
+        kneeSpread: 0.12
+        kinkDeg: 9
+        seed: 37
+        rangeDeg: 60
+        contactAngleDeg: 70
+        swingLiftDeg: 20
+        swingRetract: 0.1
+        rootRadius: 0.0058
+        tipRadius: 0.0014
+        smooth: 0.55
+        beads: 0
+        around: 8
+        wobbleHz: 4.16
+        wobbleDamping: 0.32
+        inertia: 0.7
+        sag: 0.012
+        whip: 0.45
+        coupling: 0.6
+        maxDeflect: 0.07
+    - rid: 1005
+      type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: L4
+        at:
+          joint: 1
+          side: -1
+          offset: {x: 0.028, y: -0.02, z: -0.01}
+          slot: 0
+        mirror: 0
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 0.452795, y: 0, z: -0.784264}
+        stepThreshold: 0.15
+        stepDuration: 0.38
+        stepLift: 0.1
+        overshoot: 0.075
+        footLength: 0
+        toeCount: 0
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segmentCount: 6
+        length: 1.42
+        tarsusShare: 0.08
+        lengthJitter: 0.45
+        riseDeg: 30
+        archDeg: 96
+        kneeAt: 0.33
+        kneeSpread: 0.4
+        kinkDeg: 18
+        seed: 41
+        rangeDeg: 60
+        contactAngleDeg: 70
+        swingLiftDeg: 20
+        swingRetract: 0.1
+        rootRadius: 0.0058
+        tipRadius: 0.0014
+        smooth: 0.55
+        beads: 0
+        around: 8
+        wobbleHz: 3.52
+        wobbleDamping: 0.3
+        inertia: 0.7
+        sag: 0.012
+        whip: 0.5
+        coupling: 0.6
+        maxDeflect: 0.07
+    - rid: 1006
+      type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: R1
+        at:
+          joint: 0
+          side: 1
+          offset: {x: 0.03, y: -0.02, z: 0.02}
+          slot: 0
+        mirror: 0
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 0.598985, y: 0, z: 0.66524}
+        stepThreshold: 0.15
+        stepDuration: 0.34
+        stepLift: 0.1
+        overshoot: 0.075
+        footLength: 0
+        toeCount: 0
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segmentCount: 6
+        length: 1.48
+        tarsusShare: 0.08
+        lengthJitter: 0.4
+        riseDeg: 36
+        archDeg: 100
+        kneeAt: 0.28
+        kneeSpread: 0.2
+        kinkDeg: 14
+        seed: 53
+        rangeDeg: 60
+        contactAngleDeg: 70
+        swingLiftDeg: 20
+        swingRetract: 0.1
+        rootRadius: 0.0058
+        tipRadius: 0.0014
+        smooth: 0.55
+        beads: 0
+        around: 8
+        wobbleHz: 3.68
+        wobbleDamping: 0.28
+        inertia: 0.7
+        sag: 0.012
+        whip: 0.55
+        coupling: 0.6
+        maxDeflect: 0.07
+    - rid: 1007
+      type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: R2
+        at:
+          joint: 0
+          side: 1
+          offset: {x: 0.036, y: -0.02, z: 0}
+          slot: 0
+        mirror: 0
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 1.066875, y: 0, z: 0.285868}
+        stepThreshold: 0.17
+        stepDuration: 0.42
+        stepLift: 0.12
+        overshoot: 0.085
+        footLength: 0
+        toeCount: 0
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segmentCount: 7
+        length: 1.68
+        tarsusShare: 0.08
+        lengthJitter: 0.3
+        riseDeg: 26
+        archDeg: 90
+        kneeAt: 0.32
+        kneeSpread: 0.14
+        kinkDeg: 11
+        seed: 67
+        rangeDeg: 60
+        contactAngleDeg: 70
+        swingLiftDeg: 20
+        swingRetract: 0.1
+        rootRadius: 0.0058
+        tipRadius: 0.0014
+        smooth: 0.55
+        beads: 0
+        around: 8
+        wobbleHz: 2.56
+        wobbleDamping: 0.26
+        inertia: 0.7
+        sag: 0.012
+        whip: 0.6
+        coupling: 0.6
+        maxDeflect: 0.07
+    - rid: 1008
+      type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: R3
+        at:
+          joint: 1
+          side: 1
+          offset: {x: 0.034, y: -0.02, z: 0.01}
+          slot: 0
+        mirror: 0
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 0.789163, y: 0, z: -0.256415}
+        stepThreshold: 0.14
+        stepDuration: 0.35
+        stepLift: 0.11
+        overshoot: 0.07
+        footLength: 0
+        toeCount: 0
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segmentCount: 6
+        length: 1.36
+        tarsusShare: 0.08
+        lengthJitter: 0.35
+        riseDeg: 33
+        archDeg: 102
+        kneeAt: 0.26
+        kneeSpread: 0.35
+        kinkDeg: 20
+        seed: 71
+        rangeDeg: 60
+        contactAngleDeg: 70
+        swingLiftDeg: 20
+        swingRetract: 0.1
+        rootRadius: 0.0058
+        tipRadius: 0.0014
+        smooth: 0.55
+        beads: 0
+        around: 8
+        wobbleHz: 3.2
+        wobbleDamping: 0.27
+        inertia: 0.7
+        sag: 0.012
+        whip: 0.5
+        coupling: 0.6
+        maxDeflect: 0.07
+    - rid: 1009
+      type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: R4
+        at:
+          joint: 1
+          side: 1
+          offset: {x: 0.028, y: -0.02, z: -0.01}
+          slot: 0
+        mirror: 0
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 0.314695, y: 0, z: -0.64522}
+        stepThreshold: 0.13
+        stepDuration: 0.31
+        stepLift: 0.09
+        overshoot: 0.065
+        footLength: 0
+        toeCount: 0
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segmentCount: 5
+        length: 1.25
+        tarsusShare: 0.08
+        lengthJitter: 0.3
+        riseDeg: 40
+        archDeg: 106
+        kneeAt: 0.24
+        kneeSpread: 0.18
+        kinkDeg: 8
+        seed: 89
+        rangeDeg: 60
+        contactAngleDeg: 70
+        swingLiftDeg: 20
+        swingRetract: 0.1
+        rootRadius: 0.0058
+        tipRadius: 0.0014
+        smooth: 0.55
+        beads: 0
+        around: 8
+        wobbleHz: 4.48
+        wobbleDamping: 0.34
+        inertia: 0.7
+        sag: 0.012
+        whip: 0.45
+        coupling: 0.6
+        maxDeflect: 0.07
+    - rid: 1010
+      type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: palp.L
+        at:
+          joint: 0
+          side: -1
+          offset: {x: 0.016, y: -0.028, z: 0.045}
+          slot: 0
+        mirror: 0
+        role: 1
+        gaitGroup: -1
+        restOffset: {x: 0.03, y: -0.1, z: 0.075}
+        stepThreshold: 0.05
+        stepDuration: 0.3
+        stepLift: 0.02
+        overshoot: 0.025
+        footLength: 0
+        toeCount: 0
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segmentCount: 4
+        length: 0.12
+        tarsusShare: 0.25
+        lengthJitter: 0.2
+        riseDeg: -10
+        archDeg: 45
+        kneeAt: 0.4
+        kneeSpread: 0.8
+        kinkDeg: 8
+        seed: 7
+        rangeDeg: 60
+        contactAngleDeg: 75
+        swingLiftDeg: 20
+        swingRetract: 0.1
+        rootRadius: 0.0045
+        tipRadius: 0.0015
+        smooth: 0.7
+        beads: 0
+        around: 8
+        wobbleHz: 3.5
+        wobbleDamping: 0.25
+        inertia: 0.7
+        sag: 0.012
+        whip: 0.3
+        coupling: 0.6
+        maxDeflect: 0.07
+    - rid: 1011
+      type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: palp.R
+        at:
+          joint: 0
+          side: 1
+          offset: {x: 0.016, y: -0.028, z: 0.045}
+          slot: 0
+        mirror: 0
+        role: 1
+        gaitGroup: -1
+        restOffset: {x: 0.03, y: -0.1, z: 0.075}
+        stepThreshold: 0.05
+        stepDuration: 0.3
+        stepLift: 0.02
+        overshoot: 0.025
+        footLength: 0
+        toeCount: 0
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segmentCount: 4
+        length: 0.12
+        tarsusShare: 0.25
+        lengthJitter: 0.2
+        riseDeg: -10
+        archDeg: 45
+        kneeAt: 0.4
+        kneeSpread: 0.8
+        kinkDeg: 8
+        seed: 8
+        rangeDeg: 60
+        contactAngleDeg: 75
+        swingLiftDeg: 20
+        swingRetract: 0.1
+        rootRadius: 0.0045
+        tipRadius: 0.0015
+        smooth: 0.7
+        beads: 0
+        around: 8
+        wobbleHz: 3.5
+        wobbleDamping: 0.25
+        inertia: 0.7
+        sag: 0.012
+        whip: 0.3
+        coupling: 0.6
+        maxDeflect: 0.07
+    - rid: 1012
+      type: {class: DimpledOrb, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: orb
+        at:
+          joint: 1
+          side: 0
+          offset: {x: 0, y: 0.1, z: -0.05}
+          slot: 0
+        mirror: 0
+        radius: 0.16
+        squash: 0.96
+        stretch: 1.04
+        pitCount: 650
+        pitRadius: 0.41
+        pitDepth: 0.0045
+        pitShade: 0.6
+        detail: 5
+        pivot: {x: 0, y: 0, z: 0.04}
+        rockHz: 1.8
+        rockDamping: 0.22
+        rockGain: 1
+        maxRockDeg: 10
+        layer: 0
+    - rid: 1013
+      type: {class: SpiderFace, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: face
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0.022, z: 0.035}
+          slot: 0
+        mirror: 0
+        on: 
+        direction: {x: 0, y: -0.55, z: 1}
+        width: 0.09
+        height: 0.068
+        depth: 0.045
+        eyeCount: 6
+        eyeRadius: 0.0105
+        fangLength: 0.038
+        fangRadius: 0.0065
+        fangCurveDeg: 40
+        fangSpread: 0.34
+        layer: 1
+    - rid: 1014
+      type: {class: Stumble, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: stumble
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 0
+        every: 7
+        seconds: 0.8
+        depth: 0.08
+        lurch: 0.6
+        haltShare: 0.45
+    - rid: 1015
+      type: {class: Walk, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        speed: 0.42
+        turnRateDeg: 80
+        accel: 1.4
+        turnSlowdown: 0.5
+        gaitSwayDeg: 0
+        gaitRollDeg: 4
+        subSteps: 1
+        pattern: 3
+        waveGroups: 4
+        waveTailToHead: 0
+        bob:
+          amplitude: 0.035
+          hz: 1.8
+          damping: 0.22
+        burst:
+          factor: 0
+          every: 0
+          seconds: 0
+    - rid: 1016
+      type: {class: Wander, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+    - rid: 1017
+      type: {class: Skin, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        dorsal: {r: 0.95, g: 0.95, b: 0.94, a: 1}
+        flank: {r: 0.86, g: 0.87, b: 0.88, a: 1}
+        belly: {r: 0.55, g: 0.57, b: 0.62, a: 1}
+        pattern: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+        patternType: 0
+        patternScale: 1
+        patternContrast: 0
+        patternSoftness: 0.5
+        spotScale: 0.4
+        smoothness: 0.22
+        rimStrength: 0.35
+        subsurface: 0.2
+        sizeJitter: 0.1
+        hueJitter: 0
+        valueJitter: 0.04
+    - rid: 1018
+      type: {class: Chitin, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        bandColor: {r: 0.14, g: 0.09, b: 0.08, a: 1}
+        sheen: 0.55
+        sheenColor: {r: 0.92, g: 0.95, b: 1, a: 1}
+    - rid: 1019
+      type: {class: Layers, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        rows:
+        - partId: 0
+          model: 0
+          noPattern: 1
+          limbPattern: 0
+          noGrain: 1
+          fineGrain: 0
+          noSheen: 0
+          noShimmer: 1
+          tintSource: 0
+          tint: {r: 0, g: 0, b: 0, a: 1}
+          tintAmount: 0
+          smoothnessScale: 0
+        - partId: 1
+          model: 1
+          noPattern: 1
+          limbPattern: 0
+          noGrain: 1
+          fineGrain: 0
+          noSheen: 1
+          noShimmer: 1
+          tintSource: 0
+          tint: {r: 0.055, g: 0.05, b: 0.05, a: 1}
+          tintAmount: 0.96
+          smoothnessScale: 1.3
+        - partId: 2
+          model: 4
+          noPattern: 1
+          limbPattern: 0
+          noGrain: 1
+          fineGrain: 0
+          noSheen: 1
+          noShimmer: 1
+          tintSource: 0
+          tint: {r: 0.03, g: 0.025, b: 0.025, a: 1}
+          tintAmount: 0.95
+          smoothnessScale: 1.1
+        - partId: 9
+          model: 1
+          noPattern: 1
+          limbPattern: 0
+          noGrain: 1
+          fineGrain: 0
+          noSheen: 1
+          noShimmer: 1
+          tintSource: 0
+          tint: {r: 0.16, g: 0.1, b: 0.08, a: 1}
+          tintAmount: 0.9
+          smoothnessScale: 1

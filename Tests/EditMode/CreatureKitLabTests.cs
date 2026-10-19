@@ -57,7 +57,7 @@ namespace TerrainGen.Tests
                 { "WingedSerpent", Habitat.Aviary }, { "SkyDragon", Habitat.Aviary }, { "TreeOctopus", Habitat.Grove },
                 { "FinnedSandEel", Habitat.Plain }, { "GiantCentipede", Habitat.Plain }, { "Hexadrake", Habitat.Aviary },
                 { "TentacleCrab", Habitat.Plain }, { "RockCrab", Habitat.Plain }, { "Scolopendra", Habitat.Plain },
-                { "Crocodile", Habitat.Plain }, { "KomodoDragon", Habitat.Plain },
+                { "Crocodile", Habitat.Plain }, { "KomodoDragon", Habitat.Plain }, { "GolfballStrider", Habitat.Plain },
             };
             foreach (string n in CreatureKitAssets.Species())
             {

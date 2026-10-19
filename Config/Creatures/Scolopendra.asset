@@ -24,13 +24,14 @@ MonoBehaviour:
   - rid: 1006
   - rid: 1007
   - rid: 1008
-  modules:
   - rid: 1009
+  modules:
   - rid: 1010
   - rid: 1011
   - rid: 1012
   - rid: 1013
   - rid: 1014
+  - rid: 1015
   references:
     version: 2
     RefIds:
@@ -59,218 +60,218 @@ MonoBehaviour:
           bendLimitDeg: 10
           rigid: 0
         - halfWidth: 0.0072
-          halfHeight: 0.0021
-          clearance: 0.0037
+          halfHeight: 0.004
+          clearance: 0.006
           bendLimitDeg: 13
           rigid: 0
         - halfWidth: 0.0092
-          halfHeight: 0.002852
-          clearance: 0.004452
+          halfHeight: 0.005704
+          clearance: 0.007704
           bendLimitDeg: 13
           rigid: 0
         - halfWidth: 0.00828
-          halfHeight: 0.002484
-          clearance: 0.004084
+          halfHeight: 0.004968
+          clearance: 0.007704
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009358
-          halfHeight: 0.002901
-          clearance: 0.004501
+        - halfWidth: 0.009323
+          halfHeight: 0.00578
+          clearance: 0.00778
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.008422
-          halfHeight: 0.002527
-          clearance: 0.004127
+        - halfWidth: 0.008391
+          halfHeight: 0.005034
+          clearance: 0.00778
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009516
-          halfHeight: 0.00295
-          clearance: 0.00455
+        - halfWidth: 0.009446
+          halfHeight: 0.005856
+          clearance: 0.007856
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.008564
-          halfHeight: 0.002569
-          clearance: 0.004169
+        - halfWidth: 0.008501
+          halfHeight: 0.005101
+          clearance: 0.007856
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009674
-          halfHeight: 0.002999
-          clearance: 0.004599
+        - halfWidth: 0.009568
+          halfHeight: 0.005932
+          clearance: 0.007932
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.008706
-          halfHeight: 0.002612
-          clearance: 0.004212
+        - halfWidth: 0.008612
+          halfHeight: 0.005167
+          clearance: 0.007932
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009832
-          halfHeight: 0.003048
-          clearance: 0.004648
+        - halfWidth: 0.009691
+          halfHeight: 0.006009
+          clearance: 0.008009
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.008848
-          halfHeight: 0.002655
-          clearance: 0.004255
+        - halfWidth: 0.008722
+          halfHeight: 0.005233
+          clearance: 0.008009
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009989
-          halfHeight: 0.003097
-          clearance: 0.004697
+        - halfWidth: 0.009814
+          halfHeight: 0.006085
+          clearance: 0.008085
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.008991
-          halfHeight: 0.002697
-          clearance: 0.004297
+        - halfWidth: 0.008833
+          halfHeight: 0.0053
+          clearance: 0.008085
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.010147
-          halfHeight: 0.003146
-          clearance: 0.004746
+        - halfWidth: 0.009937
+          halfHeight: 0.006161
+          clearance: 0.008161
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009133
-          halfHeight: 0.00274
-          clearance: 0.00434
+        - halfWidth: 0.008943
+          halfHeight: 0.005366
+          clearance: 0.008161
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.01006
+          halfHeight: 0.006237
+          clearance: 0.008237
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.009054
+          halfHeight: 0.005432
+          clearance: 0.008237
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.010182
+          halfHeight: 0.006313
+          clearance: 0.008313
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.009164
+          halfHeight: 0.005499
+          clearance: 0.008313
           bendLimitDeg: 13
           rigid: 0
         - halfWidth: 0.010305
-          halfHeight: 0.003195
-          clearance: 0.004795
+          halfHeight: 0.006389
+          clearance: 0.008389
           bendLimitDeg: 13
           rigid: 0
         - halfWidth: 0.009275
-          halfHeight: 0.002782
-          clearance: 0.004382
+          halfHeight: 0.005565
+          clearance: 0.008389
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.010463
-          halfHeight: 0.003244
-          clearance: 0.004844
+        - halfWidth: 0.010428
+          halfHeight: 0.006465
+          clearance: 0.008465
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009417
-          halfHeight: 0.002825
-          clearance: 0.004425
+        - halfWidth: 0.009385
+          halfHeight: 0.005631
+          clearance: 0.008465
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.010621
-          halfHeight: 0.003293
-          clearance: 0.004893
+        - halfWidth: 0.010551
+          halfHeight: 0.006542
+          clearance: 0.008542
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009559
-          halfHeight: 0.002868
-          clearance: 0.004468
+        - halfWidth: 0.009496
+          halfHeight: 0.005697
+          clearance: 0.008542
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.010779
-          halfHeight: 0.003341
-          clearance: 0.004941
+        - halfWidth: 0.010521
+          halfHeight: 0.006523
+          clearance: 0.008523
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009701
-          halfHeight: 0.00291
-          clearance: 0.00451
+        - halfWidth: 0.009469
+          halfHeight: 0.005681
+          clearance: 0.008523
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.010937
-          halfHeight: 0.00339
-          clearance: 0.00499
+        - halfWidth: 0.010389
+          halfHeight: 0.006441
+          clearance: 0.008441
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009843
-          halfHeight: 0.002953
-          clearance: 0.004553
+        - halfWidth: 0.009351
+          halfHeight: 0.00561
+          clearance: 0.008441
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.010905
-          halfHeight: 0.003381
-          clearance: 0.004981
+        - halfWidth: 0.010258
+          halfHeight: 0.00636
+          clearance: 0.00836
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009815
-          halfHeight: 0.002944
-          clearance: 0.004544
+        - halfWidth: 0.009232
+          halfHeight: 0.005539
+          clearance: 0.00836
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.010747
-          halfHeight: 0.003332
-          clearance: 0.004932
+        - halfWidth: 0.010126
+          halfHeight: 0.006278
+          clearance: 0.008278
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009673
-          halfHeight: 0.002902
-          clearance: 0.004502
+        - halfWidth: 0.009114
+          halfHeight: 0.005468
+          clearance: 0.008278
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.010589
-          halfHeight: 0.003283
-          clearance: 0.004883
+        - halfWidth: 0.009995
+          halfHeight: 0.006197
+          clearance: 0.008197
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009531
-          halfHeight: 0.002859
-          clearance: 0.004459
+        - halfWidth: 0.008995
+          halfHeight: 0.005397
+          clearance: 0.008197
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.010432
-          halfHeight: 0.003234
-          clearance: 0.004834
+        - halfWidth: 0.009863
+          halfHeight: 0.006115
+          clearance: 0.008115
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009388
-          halfHeight: 0.002817
-          clearance: 0.004417
+        - halfWidth: 0.008877
+          halfHeight: 0.005326
+          clearance: 0.008115
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.010274
-          halfHeight: 0.003185
-          clearance: 0.004785
+        - halfWidth: 0.009732
+          halfHeight: 0.006034
+          clearance: 0.008034
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009246
-          halfHeight: 0.002774
-          clearance: 0.004374
+        - halfWidth: 0.008758
+          halfHeight: 0.005255
+          clearance: 0.008034
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.010116
-          halfHeight: 0.003136
-          clearance: 0.004736
+        - halfWidth: 0.0096
+          halfHeight: 0.005952
+          clearance: 0.007952
           bendLimitDeg: 13
           rigid: 0
-        - halfWidth: 0.009104
-          halfHeight: 0.002731
-          clearance: 0.004331
-          bendLimitDeg: 13
-          rigid: 0
-        - halfWidth: 0.009958
-          halfHeight: 0.003087
-          clearance: 0.004687
-          bendLimitDeg: 13
-          rigid: 0
-        - halfWidth: 0.008962
-          halfHeight: 0.002689
-          clearance: 0.004289
-          bendLimitDeg: 13
-          rigid: 0
-        - halfWidth: 0.0098
-          halfHeight: 0.003038
-          clearance: 0.004638
-          bendLimitDeg: 13
-          rigid: 0
-        - halfWidth: 0.00882
-          halfHeight: 0.002646
-          clearance: 0.004246
+        - halfWidth: 0.00864
+          halfHeight: 0.005184
+          clearance: 0.007952
           bendLimitDeg: 13
           rigid: 0
         - halfWidth: 0.0086
-          halfHeight: 0.002666
-          clearance: 0.004266
+          halfHeight: 0.005332
+          clearance: 0.007332
           bendLimitDeg: 13
           rigid: 0
         - halfWidth: 0.0052
-          halfHeight: 0.0018
-          clearance: 0.0034
+          halfHeight: 0.00312
+          clearance: 0.00512
           bendLimitDeg: 16
           rigid: 0
         profile: []
@@ -397,24 +398,54 @@ MonoBehaviour:
         mirror: 0
         toJoint: 43
         step: 2
-        width: 1.18
-        edgeHeight: 0
-        crown: 1
-        flatness: 2.8
-        slope: 0.18
+        width: 1.04
+        edgeHeight: 0.05
+        crown: 1.1
+        flatness: 2.2
+        slope: 0.4
         overlap: 0.16
-        rim: 0.14
+        rim: 0.1
         grooves: 1
-        grooveDepth: 0.08
-        thickness: 0.15
-        cornerRound: 0.4
-        keel: 0.3
+        grooveDepth: 0.05
+        thickness: 0.1
+        cornerRound: 0.25
+        keel: 0.16
         cornerSpike: 0.35
         firstReach: 0.85
         layer: 10
         across: 16
-        along: 10
+        along: 8
     - rid: 1006
+      type: {class: ArmourPlates, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: sternites
+        at:
+          joint: 3
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 0
+        toJoint: 43
+        step: 2
+        ventral: 1
+        width: 0.64
+        edgeHeight: 0.8
+        crown: 0.22
+        flatness: 3.2
+        slope: 0.1
+        overlap: 0.08
+        rim: 0.06
+        grooves: 0
+        grooveDepth: 0
+        thickness: 0.06
+        cornerRound: 0.45
+        keel: 0
+        cornerSpike: 0
+        firstReach: 0
+        layer: 12
+        across: 8
+        along: 4
+    - rid: 1007
       type: {class: Pincer, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: forcipule
@@ -447,14 +478,14 @@ MonoBehaviour:
         spineSegments: 1
         layer: 11
         sides: 12
-    - rid: 1007
+    - rid: 1008
       type: {class: Pincer, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: ultimate
         at:
           joint: 43
           side: 0
-          offset: {x: 0.006, y: -0.0004, z: -0.0026}
+          offset: {x: 0.0066, y: -0.0016, z: -0.0026}
           slot: 0
         mirror: 1
         direction: {x: 0.44, y: 0.32, z: -0.876}
@@ -480,7 +511,7 @@ MonoBehaviour:
         spineSegments: 3
         layer: 1
         sides: 10
-    - rid: 1008
+    - rid: 1009
       type: {class: ThreatDisplay, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: threat
@@ -495,7 +526,7 @@ MonoBehaviour:
         dropSeconds: 0.15
         headLift: 0.01
         liftJoints: 9
-    - rid: 1009
+    - rid: 1010
       type: {class: Walk, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         speed: 0.11
@@ -516,23 +547,23 @@ MonoBehaviour:
           factor: 1.8
           every: 3.5
           seconds: 1.1
-    - rid: 1010
+    - rid: 1011
       type: {class: Slither, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         undulationDeg: 12
         undulationHz: 0.38
-    - rid: 1011
+    - rid: 1012
       type: {class: Wander, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         arriveRadius: 0.12
         pauseMin: 0.6
         pauseMax: 1.4
-    - rid: 1012
+    - rid: 1013
       type: {class: Skin, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         dorsal: {r: 0.025, g: 0.026, b: 0.03, a: 1}
-        flank: {r: 0.06, g: 0.05, b: 0.04, a: 1}
-        belly: {r: 0.36, g: 0.22, b: 0.08, a: 1}
+        flank: {r: 0.3, g: 0.27, b: 0.19, a: 1}
+        belly: {r: 0.22, g: 0.14, b: 0.06, a: 1}
         pattern: {r: 0.02, g: 0.02, b: 0.02, a: 1}
         patternType: 0
         patternScale: 0
@@ -545,13 +576,13 @@ MonoBehaviour:
         sizeJitter: 0.06
         hueJitter: 0.01
         valueJitter: 0.04
-    - rid: 1013
+    - rid: 1014
       type: {class: Chitin, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         bandColor: {r: 0.012, g: 0.01, b: 0.01, a: 1}
         sheen: 0.3
         sheenColor: {r: 0.08, g: 0.26, b: 0.3, a: 1}
-    - rid: 1014
+    - rid: 1015
       type: {class: Layers, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         rows:
@@ -639,6 +670,18 @@ MonoBehaviour:
           tint: {r: 0.2, g: 0.035, b: 0.02, a: 1}
           tintAmount: 1
           smoothnessScale: 1.9
+        - partId: 12
+          model: 1
+          noPattern: 1
+          limbPattern: 0
+          noGrain: 1
+          fineGrain: 0
+          noSheen: 1
+          noShimmer: 1
+          tintSource: 0
+          tint: {r: 0.3, g: 0.16, b: 0.05, a: 1}
+          tintAmount: 1
+          smoothnessScale: 1.7
     - rid: 2000
       type: {class: ArthropodLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
@@ -646,7 +689,7 @@ MonoBehaviour:
         at:
           joint: 0
           side: 0
-          offset: {x: 0.008, y: -0.0012, z: 0}
+          offset: {x: 0.008, y: -0.003, z: 0}
           slot: 0
         mirror: 1
         role: 0

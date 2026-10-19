@@ -18,12 +18,13 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | part | kind | status | bones | material layers | use when | used by |
 |---|---|---|---|---|---|---|
 | **SoftBody** | Body | exists | 6 + mouthCount x mouth.segments | 5, 6, 7 | boneless bodies: octopus, slug, jelly | Swinger, TreeOctopus |
-| **SpineBody** | Body | exists | = joints | 0 | anything with a backbone or a segmented trunk | Crocodile, DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, Hexadrake, KitMonitor, KomodoDragon, RockCrab, Scolopendra, SkyDragon, Tarantula, TentacleCrab, TestHexapod, TestSnake, TreeSpider, WingedSerpent |
+| **SpineBody** | Body | exists | = joints | 0 | anything with a backbone or a segmented trunk | Crocodile, DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, GolfballStrider, Hexadrake, KitMonitor, KomodoDragon, RockCrab, Scolopendra, SkyDragon, Tarantula, TentacleCrab, TestHexapod, TestSnake, TreeSpider, WingedSerpent |
 | **ArthropodLeg** | Limb | exists | = segments | 1, 2, 9 | insects, spiders, crabs, centipedes; anything with visible segments | DaddyLongLegs, DesertBeetle, GiantCentipede, RockCrab, Scolopendra, Tarantula, TentacleCrab, TreeSpider |
+| **BendyLeg** | Limb | exists | = segmentCount | 1 | harvestmen, stilt-legged and wobbly animals, any limb that should look flexible: non-uniform, kinked, bouncing legs | GolfballStrider |
 | **Leg2Bone** | Limb | exists | 3 | 1, 2 | lizards, mammals, birds' legs, wing arms | DesertMonitor, Hexadrake, KitMonitor, SkyDragon, TestHexapod, WingedSerpent |
 | **SprawlLeg** | Limb | exists | 3 | 1, 2 | crocodilians, monitors, tegus, salamanders, any heavy-bodied sprawling or semi-erect walker | Crocodile, KomodoDragon |
 | **Wing** | Wing | exists | 6 + max(1, spec.flankPatches), +1 with spec.groundTallStance | 8, 1, 2 | bats, pterosaurs, dragons; the Fly module makes it fly | Hexadrake, SkyDragon, WingedSerpent |
-| **Eyes** | Sense | exists | 2 | 3 | always (every shipped species has two eye bones) | Crocodile, DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, Hexadrake, KitMonitor, KomodoDragon, RockCrab, Scolopendra, SkyDragon, Swinger, Tarantula, TentacleCrab, TestHexapod, TestSnake, TreeOctopus, TreeSpider, WingedSerpent |
+| **Eyes** | Sense | exists | 2 | 3 | always (every shipped species has two eye bones) | Crocodile, DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, GolfballStrider, Hexadrake, KitMonitor, KomodoDragon, RockCrab, Scolopendra, SkyDragon, Swinger, Tarantula, TentacleCrab, TestHexapod, TestSnake, TreeOctopus, TreeSpider, WingedSerpent |
 | **Antenna** | Chain | exists | = segments | 8 | whiskers, barbels, antennae, feelers, cerci, ribbon-like streamers | GiantCentipede, Scolopendra, SkyDragon |
 | **Tendril** | Chain | exists | = segments | 1, 9 | tentacles, feeding arms, feelers that touch the ground; on a spine body (soft bodies: Tentacle) | TentacleCrab |
 | **Tentacle** | Chain | exists | = spec.segments (0 = 24) | 4 | octopus arms; grabbing arms on any body (after T5.9) | Swinger, TreeOctopus |
@@ -31,8 +32,9 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | **FinStrip** | Fin | exists | 0 (skinned to the spine) | 8 | manes, crests, dorsal / anal fins, tail tufts, frills along a body | FinnedSandEel, Hexadrake, SkyDragon |
 | **Flapper** | Fin | exists | = segments (1-3) | 8 | pectoral fins, ear flaps, frills, small paddles that beat or flutter (not wings that fly: Wing) | FinnedSandEel |
 | **LegFin** | Fin | exists | 2 (thigh wing, shin wing) | 1, 8 | winged or finned legs: Microraptor hind wings, Caraxes-like leg membranes, any ribbed flap that rides a limb and spreads in flight | SkyDragon |
-| **ArmourPlates** | Rigid | exists | 0 (each plate rigid to its joint) | 10 | segmented armour: centipede / millipede tergites, woodlice, trilobites, armadillo bands, ankylosaur back plates | Scolopendra |
+| **ArmourPlates** | Rigid | exists | 0 (each plate rigid to its joint) | 10 | segmented armour: centipede / millipede tergites, woodlice, trilobites, armadillo bands, ankylosaur back plates; ventral = true: sternites, belly plates | Scolopendra |
 | **Chela** | Rigid | exists | 0 (rigid to its ArthropodLeg's last bone) | 1, 2 | crab and lobster claws (crusher and cutter), scorpion pincers: any heavy chela on an arthropod limb | RockCrab, TentacleCrab |
+| **DimpledOrb** | Rigid | exists | 1 | 0 | a round abdomen (spiders, ticks), puffballs, seed heads, golf-ball or pitted shells; any heavy round mass that should wobble on its body | GolfballStrider |
 | **EyeStalk** | Rigid | exists | 1 | 1, 2, 9 | crab and snail eye stalks, periscopes, anything on a stalk that folds away | RockCrab |
 | **Jaw** | Rigid | exists | 1 | 0, 2, 13 | a mouth that opens: a crocodile basking agape (opensUp), a yawn, a threat gape, a snapping beak | Crocodile |
 | **LimbSpines** | Rigid | exists | 0 (rigid to the leg's segment bones) | 1, 2, 9 | spiny legs (king crab), leg bristles and setae fringes (stone crab, tarantula), raptorial spines | RockCrab, TentacleCrab |
@@ -42,7 +44,9 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | **Sculpt** | Rigid | exists | 0 (rigid to its joint, or rides a Jaw's bone) | 0, 2, 13 | realistic heads and skulls: brows over recessed eye sockets, jowls, lip lines, nostrils, skull tables, a lower jaw on a Jaw; any rigid organic solid a loft cannot express | Crocodile, KomodoDragon |
 | **ScuteRow** | Rigid | exists | 0 (skinned to the spine) | 12, 0 | crocodile and alligator armour, a tail's double crest, a stegosaur-like row of plates, spiny lizard backs | Crocodile |
 | **SkinFolds** | Rigid | exists | 0 (skinned to the spine) | 0 | neck and throat folds of monitor lizards, a dewlap, wrinkled elbows of skin, the gular folds of iguanas | KomodoDragon |
+| **SpiderFace** | Rigid | exists | 0 (rigid to its joint, or rides `on`'s bone) | 1, 3, 2 | spiders, harvestmen, mites, any small-headed arthropod whose face sits low on a round body | GolfballStrider |
 | **SpineField** | Rigid | exists | 0 (rigid to its loft's joint) | 0, 2 | a spiny carapace (king crab), marginal teeth (stone crab), bosses, a horned crown: anything studding a shell or a head | RockCrab, TentacleCrab |
+| **Stumble** | Rigid | exists | 0 (posture: the sim's JointLift and Halt) |  | goofy, top-heavy or stilt-legged walkers, a tired or injured animal, anything that should look uncoordinated | GolfballStrider |
 | **Swell** | Rigid | exists | 0 (skinned to the spine) | 0 | a deep chest with flight muscles at the wing roots, shoulders, haunches, a belly - any bulk the body's elliptical profile cannot give | KomodoDragon, SkyDragon |
 | **ThreatDisplay** | Rigid | exists | 0 (sets the sim's posture inputs) |  | a predator that threatens when it stops: centipedes, scorpions, mantises, cobras rearing, a crab raising its claws | Scolopendra |
 | **Tuck** | Rigid | exists | 0 (poses the others' bones) |  | a creature that hides by folding up: rock crabs, box crabs, armadillos, pill bugs, tortoises | RockCrab |
@@ -56,18 +60,18 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | **ClimbExcursion** | Behaviour | exists | Climb | DesertMonitor, KitMonitor, TreeSpider | Approach a climbable obstacle, climb to a goal on its real surface, rest, descend (ClimbingBrain wrapping Wander). |
 | **Flee** | Behaviour | exists | Walk | FinnedSandEel | Runs straight away from the nearest threat (CreatureThreats: the viewer in play mode) once it comes within the alarm radius, sliding along the enclosure wall when cornered; calms down after it leaves. Gives the species a ModularBrain (with Wander as the idle default). |
 | **FlightExcursion** | Behaviour | exists | Fly | Hexadrake, SkyDragon, WingedSerpent | Rest, Face, Patrol, Soar, Landing on perches; predictive wall turn-back (FlightBrain). |
-| **Wander** | Behaviour | exists |  | Crocodile, DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, Hexadrake, KitMonitor, KomodoDragon, RockCrab, Scolopendra, SkyDragon, Tarantula, TentacleCrab, TestHexapod, TestSnake, TreeSpider, WingedSerpent | Safe-disc points, walk, pause, glance (WanderBrain). Containment is structural: the head is clamped to the safe radius. |
+| **Wander** | Behaviour | exists |  | Crocodile, DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, GolfballStrider, Hexadrake, KitMonitor, KomodoDragon, RockCrab, Scolopendra, SkyDragon, Tarantula, TentacleCrab, TestHexapod, TestSnake, TreeSpider, WingedSerpent | Safe-disc points, walk, pause, glance (WanderBrain). Containment is structural: the head is clamped to the safe radius. |
 | **Climb** | Locomotion | exists | Walk | DesertMonitor, KitMonitor, TreeSpider | Per-joint up field, real-geometry contact via ISurfaceProbe, pitch limiter (CreatureClimb, ClimbSpec). Terrain walls >= 50 deg over >= 1/2 body length (R30/R31). 0 = default for every number. |
 | **Fly** | Locomotion | exists | Wing parts | Hexadrake, SkyDragon, WingedSerpent | Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlight, FlightModel, AirChain). Froude-scaled. twist: the twisting Chinese-dragon air chain (AirTwist). |
 | **Slither** | Locomotion | exists | Walk | Crocodile, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, Hexadrake, KitMonitor, KomodoDragon, Scolopendra, SkyDragon, TestSnake, WingedSerpent | Lateral head wave the drag chain carries back (undulation in the walk). Long wave: lambda = speed / Hz >= 0.7 body length (R27). |
-| **Walk** | Locomotion | exists | SpineBody | Crocodile, DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, Hexadrake, KitMonitor, KomodoDragon, RockCrab, Scolopendra, SkyDragon, Tarantula, TentacleCrab, TestHexapod, TestSnake, TreeSpider, WingedSerpent | Head steering in the tangent plane, chain, grounding, gait groups, girdle sway (CreatureSim.SubStep, CreatureLegs). The default locomotion of a spine body. |
-| **Chitin** | Look | exists |  | DaddyLongLegs, DesertBeetle, GiantCentipede, RockCrab, Scolopendra, Tarantula, TentacleCrab, TreeSpider | Knee/segment bands (part 9) and a velvet sheen lobe: arthropod legs. |
+| **Walk** | Locomotion | exists | SpineBody | Crocodile, DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, GolfballStrider, Hexadrake, KitMonitor, KomodoDragon, RockCrab, Scolopendra, SkyDragon, Tarantula, TentacleCrab, TestHexapod, TestSnake, TreeSpider, WingedSerpent | Head steering in the tangent plane, chain, grounding, gait groups, girdle sway (CreatureSim.SubStep, CreatureLegs). The default locomotion of a spine body. |
+| **Chitin** | Look | exists |  | DaddyLongLegs, DesertBeetle, GiantCentipede, GolfballStrider, RockCrab, Scolopendra, Tarantula, TentacleCrab, TreeSpider | Knee/segment bands (part 9) and a velvet sheen lobe: arthropod legs. |
 | **Chromatophore** | Look | exists | SoftBody | Swinger, TreeOctopus | Dynamic colour cells, flash and passing-cloud phase (octopus shader). Makes the look dynamic. |
 | **Cloak** | Look | exists | SoftBody (spine bodies: Phase 4) | Swinger, TreeOctopus | Dissolve in Forward only: the body vanishes, shadow + SSAO stay (the user's favourite bug). Per-instance, brain-driven, with hysteresis. Octopus today. |
-| **Layers** | Look | exists |  | Crocodile, GiantCentipede, Hexadrake, KomodoDragon, RockCrab, Scolopendra, TentacleCrab | Restyles part ids (material layers) for this species: shading model (Skin, Chitin, Membrane, Eye, Claw), tint, smoothness, and which layers (pattern, scale grain, sheen, shimmer) each has. Rows not listed keep the registry's (Kit/PartLayers.cs). A new part needs a row, never a shader edit. |
+| **Layers** | Look | exists |  | Crocodile, GiantCentipede, GolfballStrider, Hexadrake, KomodoDragon, RockCrab, Scolopendra, TentacleCrab | Restyles part ids (material layers) for this species: shading model (Skin, Chitin, Membrane, Eye, Claw), tint, smoothness, and which layers (pattern, scale grain, sheen, shimmer) each has. Rows not listed keep the registry's (Kit/PartLayers.cs). A new part needs a row, never a shader edit. |
 | **Membrane** | Look | exists |  | FinnedSandEel, Hexadrake, SkyDragon, WingedSerpent | Translucent veined membrane (part 8, the Membrane shading model, CreatureMembrane.hlsl): wings, FinStrip fins, antennae - any part whose layer row is Membrane. |
 | **Shimmer** | Look | exists |  | SkyDragon | Iridescent scale shimmer: thin-film colour bands (colour -> colour2 with the view angle) travelling head to tail along the body's back and flanks, a faint glow in each band (Creature.shader, part 0). The SkyDragon's signature; cheap (one pow, one cos per body pixel). |
-| **Skin** | Look | exists |  | Crocodile, DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, Hexadrake, KitMonitor, KomodoDragon, RockCrab, Scolopendra, SkyDragon, Swinger, Tarantula, TentacleCrab, TestHexapod, TestSnake, TreeOctopus, TreeSpider, WingedSerpent | Palette dorsal/flank/belly + procedural pattern by rest arc length (CreaturePattern.hlsl); per-individual size/hue/value jitter. Layers of parts 0-2. |
+| **Skin** | Look | exists |  | Crocodile, DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, GolfballStrider, Hexadrake, KitMonitor, KomodoDragon, RockCrab, Scolopendra, SkyDragon, Swinger, Tarantula, TentacleCrab, TestHexapod, TestSnake, TreeOctopus, TreeSpider, WingedSerpent | Palette dorsal/flank/belly + procedural pattern by rest arc length (CreaturePattern.hlsl); per-individual size/hue/value jitter. Layers of parts 0-2. |
 
 ## Species (examples to copy)
 
@@ -80,11 +84,12 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | DesertSnake | legacy | Spine | SpineBody, Eyes | Walk, Slither, Wander, Skin | 34 |
 | FinnedSandEel | kit | Spine | SpineBody, Eyes, 2x FinStrip, 2x Flapper | Walk (Diagonal), Slither, Wander, Flee, Skin, Membrane | 54 |
 | GiantCentipede | kit | Spine | SpineBody, Eyes, RigidLoft, RigidCone, 4x Antenna, 42x ArthropodLeg | Walk (Wave), Slither, Wander, Skin, Chitin, Layers | 252 |
+| GolfballStrider | kit | Spine | SpineBody, Eyes, 10x BendyLeg, DimpledOrb, SpiderFace, Stumble | Walk (Tetrapod), Wander, Skin, Chitin, Layers | 63 |
 | Hexadrake | kit | Spine | SpineBody, 6x Leg2Bone, 2x Wing, Eyes, 5x RigidLoft, 3x RigidCone, 2x FinStrip | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane, Layers | 78 |
 | KitMonitor | kit | Spine | SpineBody, 4x Leg2Bone, Eyes | Walk (Diagonal), Slither, Climb, Wander, ClimbExcursion, Skin | 40 |
 | KomodoDragon | kit | Spine | SpineBody, 4x SprawlLeg, Eyes, 2x Sculpt, Tongue, 3x SkinFolds, 3x Swell | Walk (Diagonal), Slither, Wander, Skin, Layers | 53 |
 | RockCrab | kit | Spine | SpineBody, Eyes, 10x ArthropodLeg, RigidLoft, 6x SpineField, 2x EyeStalk, 2x Chela, 8x LimbSpines, Tuck | Walk (Tetrapod), Wander, Skin, Chitin, Layers | 57 |
-| Scolopendra | kit | Spine | SpineBody, Eyes, RigidLoft, 2x Antenna, 40x ArthropodLeg, ArmourPlates, 4x Pincer, ThreatDisplay | Walk (Wave), Slither, Wander, Skin, Chitin, Layers | 245 |
+| Scolopendra | kit | Spine | SpineBody, Eyes, RigidLoft, 2x Antenna, 40x ArthropodLeg, 2x ArmourPlates, 4x Pincer, ThreatDisplay | Walk (Wave), Slither, Wander, Skin, Chitin, Layers | 245 |
 | SkyDragon | kit | Spine | SpineBody, 4x Leg2Bone, 2x LegFin, 2x Wing, Eyes, 4x RigidCone, 5x FinStrip, 4x Antenna, Swell, 7x RigidLoft | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane, Shimmer | 148 |
 | Swinger | legacy | Soft | 2x Tentacle, SoftBody, Eyes, RigidCone | Ambush, Skin, Cloak, Chromatophore | 97 |
 | Tarantula | legacy | Spine | SpineBody, 10x ArthropodLeg, Eyes, RigidCone | Walk (Tetrapod), Wander, Skin, Chitin | 75 |
@@ -194,6 +199,59 @@ Bend-limited follow-the-leader chain riding the ground or a climbed surface (Cre
 | `liftDelay` | float | Fraction | - | lift-off delay per place behind the group's rearmost leg (metachronal wave) | 0..0.5 |  |
 | `kneeJoint` | int | Count | - | joint reported as the knee (debug, tests); 0 = the largest flexWeight |  |  |
 | `legSides` | int | Count | - | mesh: sides of the segment tubes, 0 = 8 |  |  |
+
+### BendyLeg
+
+Long thin springy limb generated from a few numbers (length, segment count, rise, arch, knee spread, seeded kinks and length jitter): walks as an arthropod leg (synergy IK), drawn as one continuous tapered tube blended through its joints, and flexes on its own - every joint lags the IK pose on a damped spring (inertia), sags, the lifted tip whips; a planted tip stays exactly on its foot. System: CreatureLegs (arthropod synergy IK, gait groups) + BendyLegSystem (part runtime, stage AfterLimbs: re-poses the leg's bones) + BendyLeg.EmitMesh.
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `role` | Walk / Feeler / WingArm / Folded | Enum | - | Walk steps in its gait group; Feeler is posed, never plants; WingArm is set by compose for a Wing's arm; Folded: a Wing's arm held folded on the ground (wrist at restOffset, never plants), flown by the Wing in the air |  |  |
+| `gaitGroup` | int | Count | - | gait group (one group steps at a time); -1 = from the Walk module's pattern | -1..31 |  |
+| `restOffset` | Vector3 | Metres | x s | foot rest point in the attach frame (x mirrored by side; y ignored: projected to the ground) |  |  |
+| `stepThreshold` | float | Metres | x s | foot travel before it steps (comfort radius) |  | monitor 0.11 |
+| `stepDuration` | float | Seconds | x sqrt(s) | step duration |  | monitor 0.12 |
+| `stepLift` | float | Metres | x s | step apex height |  |  |
+| `overshoot` | float | Metres | x s | the step lands this far ahead of the rest point |  |  |
+| `footLength` | float | Metres | x s | foot (tarsus claw) length |  |  |
+| `toeCount` | int | Count | - | toes (arthropod: tarsus claws) | 0..6 |  |
+| `forwardSwingLimitDeg` | float | Degrees | - | upper bone (arthropod: coxa yaw) swing limit toward the head, 0 = 55 |  |  |
+| `backSwingLimitDeg` | float | Degrees | - | swing limit toward the tail, 0 = 55 |  |  |
+| `kneeRangeDeg` | float | Degrees | - | knee range around its rest bend, 0 = 35 (arthropod: reach synergy extension) |  |  |
+| `kneeFlexDeg` | float | Degrees | - | knee flexion past rest, 0 = kneeRange (arthropod: reach synergy flexion) |  |  |
+| `segmentCount` | int | Count | - | segments, coxa to tarsus (one bone each; 3..7 like an ArthropodLeg) | 3..7 | default 7 |
+| `length` | float | Metres | x s | whole leg length, root to tip | 0.01..5 | golfball strider 1.1 .. 1.6 |
+| `tarsusShare` | float | Fraction | - | the tarsus (last segment, laid toward the ground) as a share of the length | 0.03..0.5 | default 0.14 |
+| `lengthJitter` | float | Fraction | - | uneven segment lengths: each solved segment x (1 +- this), seeded | 0..0.6 |  |
+| `riseDeg` | float | Degrees | - | elevation of the first segment above the horizontal | -30..89 | default 60 |
+| `archDeg` | float | Degrees | - | total downward turn of the solved segments (the knee arch) | 0..200 | default 120 |
+| `kneeAt` | float | Fraction | - | where along the solved leg the turn is concentrated (0 root .. 1 ankle) | 0..1 | default 0.35 |
+| `kneeSpread` | float | Fraction | - | how widely the turn spreads (1 = an even curve, small = one sharp knee) | 0..1 | default 0.3 |
+| `kinkDeg` | float | Degrees | - | irregular extra bend at each joint (+-, seeded, zero-sum) | 0..45 |  |
+| `seed` | int | Count | - | seed of the kinks and the length jitter |  |  |
+| `rangeDeg` | float | Degrees | - | hinge range around each rest bend | 5..120 | default 60 |
+| `contactAngleDeg` | float | Degrees | - | tarsus angle to the ground, 0 = 20 |  |  |
+| `swingLiftDeg` | float | Degrees | - | lift synergy at mid-swing: the root half curls, the distal half opens |  | default 20 |
+| `swingRetract` | float | Fraction | - | mid-swing pull of the foot toward the coxa | 0..0.5 | default 0.1 |
+| `rootRadius` | float | Metres | x s | radius at the root |  | golfball strider 0.007 |
+| `tipRadius` | float | Metres | x s | radius at the tip |  | golfball strider 0.0018 |
+| `smooth` | float | Fraction | - | rounding of each joint: the blend zone's half width as a share of the shorter neighbouring segment (0 = rigid segments meeting at the joint) | 0..0.9 | default 0.5 |
+| `beads` | float | Fraction | - | bead at each joint, x the leg's radius there (0 = none) | 0..3 |  |
+| `around` | int | Count | - | mesh: vertices round the tube, 0 = 8 | 0..16 |  |
+| `wobbleHz` | float | Hz | / sqrt(s) | wobble frequency at mid-leg (the root is stiffer, the tip floppier) | 0.2..20 | default 2.2 |
+| `wobbleDamping` | float | Fraction | - | wobble damping ratio (0.1 springy .. 1 dead) | 0..2 | default 0.2 |
+| `inertia` | float | Fraction | - | how much the joints follow their own acceleration (inertia; 0 = a rigid leg) | 0..3 | default 1 |
+| `sag` | float | Metres | x s | sag of mid-leg under its own weight |  | default 0.01 |
+| `whip` | float | Fraction | - | lifted tip whip: how loosely the swinging tip follows its foot (0 = exactly) | 0..1 | default 0.5 |
+| `coupling` | float | Fraction | - | neighbour coupling of the wobble (a continuous rod), x the spring | 0..2 | default 0.6 |
+| `maxDeflect` | float | Fraction | - | largest deflection of any joint, x the leg length | 0..0.5 | default 0.12 |
 
 ### Leg2Bone
 
@@ -551,6 +609,7 @@ A row of hard shingled dorsal plates over a spine body, one every `step` joints:
 | `keel` | float | Fraction | - | a sharp ridge along each plate's midline, x half height (0 = none) | 0..1 |  |
 | `cornerSpike` | float | Fraction | - | the back corners drawn out sideways (x the plate's half width) and backward into upturned points (0 = none) | 0..0.6 |  |
 | `firstReach` | float | Fraction | - | front plate: x the plate pitch it reaches forward (a head shield's collar); 0 = like the others | 0..2 |  |
+| `ventral` | bool | Flag | - | under the body instead of over it (sternites, belly plates): the row mirrored top to bottom, every height measured downward, the dome facing the ground |  |  |
 | `layer` | int | Count | - | material layer (part id): 10 = armour plate; 0 body, 2 claw | 0..15 | default 10 |
 | `across` | int | Count | - | mesh: vertices across a plate | 6..40 | default 18 |
 | `along` | int | Count | - | mesh: rows along a plate | 3..24 | default 8 |
@@ -595,6 +654,34 @@ A heavy crab claw on an ArthropodLeg's last segment: bulbous flattened palm, fix
 | `tipLayer` | int | Count | - | material layer of the finger tips and teeth (2 = the claw row) | 0..15 | default 2 |
 | `spineLayer` | int | Count | - | material layer of the palm spines | 0..15 | default 1 |
 | `around` | int | Count | - | mesh: vertices around each section (0 = 14) | 0..32 |  |
+
+### DimpledOrb
+
+A big round body on a bone of its own covered in golf-ball pits (spherical Fibonacci lattice, analytic pit normals, pits darkened through the dorsal channel); it rocks on a damped spring about a pivot when the body accelerates (bobs, starts, stops, turns). System: DimpledOrbRuntime (part runtime, stage AfterLimbs: its bone) + DimpledOrb.EmitMesh.
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `radius` | float | Metres | x s | radius | 0.005..3 | golfball strider 0.16 |
+| `squash` | float | Fraction | - | height x the radius (1 = round) | 0.3..2 | default 1 |
+| `stretch` | float | Fraction | - | length x the radius (1 = round) | 0.3..2.5 | default 1 |
+| `pitCount` | int | Count | - | pits over the whole surface (0 = smooth) | 0..3000 | golf ball 336 |
+| `pitRadius` | float | Fraction | - | pit radius x the lattice spacing (0.5 = pits touching) | 0.1..0.6 | default 0.42 |
+| `pitDepth` | float | Metres | x s | pit depth |  | golfball strider 0.005 |
+| `pitShade` | float | Fraction | - | how much darker a pit's floor is (dorsal channel drop) | 0..1 | default 0.5 |
+| `detail` | int | Count | - | mesh: icosphere subdivisions (4 = 2562 vertices, 5 = 10242) | 2..6 | default 5 |
+| `pivot` | Vector3 | Metres | x s | the point it rocks about, in the joint's frame (where it sits on the body) |  |  |
+| `rockHz` | float | Hz | / sqrt(s) | rocking spring frequency | 0.2..20 | default 2 |
+| `rockDamping` | float | Fraction | - | rocking damping ratio | 0..2 | default 0.3 |
+| `rockGain` | float | Fraction | - | how strongly the pivot's acceleration rocks it (1 = a free pendulum's) | 0..3 | default 1 |
+| `maxRockDeg` | float | Degrees | - | largest rock | 0..45 | default 12 |
+| `layer` | int | Count | - | material layer (part id) | 0..15 | default 0 |
 
 ### EyeStalk
 
@@ -879,6 +966,32 @@ Loose skin over a stretch of the spine: transverse folds round the body on an an
 | `ringsPerJoint` | int | Count | - | mesh: rings per spine segment (0 = 8) | 0..16 |  |
 | `around` | int | Count | - | mesh: vertices round each ring (0 = 32) | 0..64 |  |
 
+### SpiderFace
+
+A small spider face set on a body: a rounded cap, a cluster of glossy eyes (a big pair, then smaller pairs further out and up), and two chelicera fangs hanging from its lower front, curling back. Rigid to its joint or riding a DimpledOrb's bone. System: mesh only (SpiderFace.EmitMesh).
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `on` | string | PartRef | - | a DimpledOrb whose bone the face rides (empty = rigid to its joint) |  |  |
+| `direction` | Vector3 | Direction | - | where the face looks, in the joint frame (+z forward, -y down) |  |  |
+| `width` | float | Metres | x s | cap width |  | golfball strider 0.075 |
+| `height` | float | Metres | x s | cap height |  |  |
+| `depth` | float | Metres | x s | cap depth (how far it bulges along the facing direction) |  |  |
+| `eyeCount` | int | Count | - | eyes (pairs from the middle out; an odd count puts one on top) | 0..8 | default 6 |
+| `eyeRadius` | float | Metres | x s | radius of the big front pair (the others are smaller) |  |  |
+| `fangLength` | float | Metres | x s | fang length (0 = none) |  |  |
+| `fangRadius` | float | Metres | x s | fang radius at its root |  |  |
+| `fangCurveDeg` | float | Degrees | - | fang curl back toward the body over its length |  | default 45 |
+| `fangSpread` | float | Fraction | - | fangs apart, x the cap width | 0..1 | default 0.32 |
+| `layer` | int | Count | - | material layer of the cap (part id) | 0..15 | default 1 |
+
 ### SpineField
 
 Spines, knobs or teeth on a RigidLoft's surface: scattered over a patch (t along, phi round; min spacing) or an even row (marginal teeth); curved cones along the surface normal raked back, sizes graded along the loft. Deterministic; mirror makes the symmetric pair. System: mesh only (SpineField.EmitMesh), rigid to the loft's joint.
@@ -911,6 +1024,25 @@ Spines, knobs or teeth on a RigidLoft's surface: scattered over a patch (t along
 | `seed` | int | Count | - | seed of the scatter |  |  |
 | `layer` | int | Count | - | material layer (0 = the body skin, 2 = the claw row) | 0..15 |  |
 | `sides` | int | Count | - | mesh: sides of each cone (0 = 6) | 0..16 |  |
+
+### Stumble
+
+A clumsy walker: every so often (seeded per individual) the body lurches down front first and springs back, stopping for part of it to readjust; adds to CreatureSim.JointLift and sets Halt. Froude-timed. System: StumbleRuntime (part runtime, stage Late) + CreatureSim JointLift / Halt.
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `every` | float | Seconds | x sqrt(s) | mean time between stumbles (each gap 0.5..1.5 x this, per individual) |  | golfball strider 6 |
+| `seconds` | float | Seconds | x sqrt(s) | one stumble: the quick dip and the springy recovery |  | golfball strider 0.7 |
+| `depth` | float | Metres | x s | how far the front of the body drops |  | golfball strider 0.07 |
+| `lurch` | float | Fraction | - | lurch: the share of the dip the tail end does not take (0 = level, 1 = only the front) | 0..1 | default 0.6 |
+| `haltShare` | float | Fraction | - | the share of a stumble it stops walking to readjust (0 = walks through it) | 0..1 | default 0.5 |
 
 ### Swell
 
