@@ -51,6 +51,18 @@ public class LegSpec
     public float clawCurveDeg;
     [Tooltip("Two-bone limb: webbing between the toes, fraction of the toe length (0 = none, 1 = to the tips).")]
     [Range(0f, 1f)] public float toeWeb;
+    // Two-bone limb mesh: a digitigrade dragon / raptor hind leg (Leg2Bone.Digitigrade) - a heavy thigh with muscle
+    // masses, a lean shin, a knobbly raised hock (ankleHeight: the metatarsus' height), a long metatarsus down to
+    // the toes, three forward toes (a fourth as a hallux behind) with knuckles and big curved talons. Off = the
+    // vertebrate limb above.
+    [Tooltip("Two-bone limb: digitigrade dragon / raptor leg mesh (heavy thigh, lean shin, raised hock, long metatarsus, talons).")]
+    public bool digitigrade;
+    [Tooltip("Digitigrade: the thigh's muscle masses, x upperRadius (0 = 0.5).")]
+    public float thighMass;
+    [Tooltip("Digitigrade: overlapping scutes on the front of the shin and metatarsus and on the toes.")]
+    public bool scutes;
+    [Tooltip("Digitigrade: a spur on the back of the hock, metres (0 = none).")]
+    public float spurLength;
 
     public const float DefaultSwingLimitDeg = 55f, DefaultKneeRangeDeg = 35f, DefaultKneeBlend = 0.45f, DefaultAnkleHeight = 1.2f;
     // the ankle height in use, metres at scale 1 (0 for an arthropod leg or a feeler)

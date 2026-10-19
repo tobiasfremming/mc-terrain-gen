@@ -41,6 +41,17 @@ public sealed class PlannedSwing
     public float PumpGain = 1.5f, MaxPush = 0.25f;       // push = gain x energy error (x g), |push| <= MaxPush g
     public float RestDamping;                            // 1/s amplitude decay rate, when not pumping
     public float LateralDamping = 2f;                    // 1/s
+    // Circling (play): instead of the planar pump, the body is driven round the single hold in a cone of half angle
+    // ConeAngle (a conical pendulum: tangential speed sqrt(g l sin tan), the angle held by a soft spring); the
+    // lateral calming is off. |push| <= MaxPush g as for the pump.
+    public bool Circling;
+    public float ConeAngle;                              // rad
+    public float CircleSense = 1f;                       // +1 counter-clockwise seen from above, -1 clockwise
+    // A soft catch: a rope added slack (AddHold(..., soft: true)) does not stop the body dead when it goes taut - it
+    // pays out at the body's speed along it and brakes at BrakeAccel (m/s^2) to the reel's own motion (a drop caught
+    // by a stretching arm, not a snatch).
+    public float BrakeAccel = 2f * 9.81f;
+    readonly bool[] soft = new bool[MaxHolds], engaged = new bool[MaxHolds];
 
     public float Amplitude { get; private set; }         // the energy amplitude about the single taut hold (rad)
     public float Energy { get; private set; }            // per unit mass, above the swing's lowest point (J/kg)
@@ -54,12 +65,13 @@ public sealed class PlannedSwing
     }
 
     // A rope from pivot, `length` long. Returns its slot (-1: all taken).
-    public int AddHold(Vector3 pivot, float length)
+    public int AddHold(Vector3 pivot, float length, bool softCatch = false)
     {
         for (int i = 0; i < MaxHolds; i++)
         {
             if (Active[i]) continue;
             Active[i] = true; Pivot[i] = pivot; Rope[i] = length; RopeTarget[i] = length; reelVel[i] = 0f;
+            soft[i] = softCatch; engaged[i] = false;
             HoldCount++;
             return i;
         }
@@ -88,6 +100,7 @@ public sealed class PlannedSwing
     readonly float[] reel = new float[MaxHolds];
 
     public bool Taut(int i) => Active[i] && (Position - Pivot[i]).magnitude >= Rope[i] - 1e-3f;
+    public bool Braking(int i) => Active[i] && soft[i];
 
     public void Step(float dt)
     {
@@ -102,7 +115,25 @@ public sealed class PlannedSwing
                 if (!Active[i]) continue;
                 float r0 = Rope[i];
                 float want = Mathf.Clamp(ReelGain * (RopeTarget[i] - r0), -ReelSpeed, ReelSpeed);
-                reelVel[i] = Mathf.MoveTowards(reelVel[i], want, ReelAccel * h);
+                if (soft[i])
+                {
+                    // slack: the rope waits; going taut it takes the body's speed along it, then brakes
+                    // (engaged the sub-step it would go taut in: one sub-step later the hard stop had already happened)
+                    Vector3 d = Position - Pivot[i];
+                    float len = d.magnitude, vr = len > 1e-6f ? OctoMath.Dot(Velocity, d) / len : 0f;
+                    if (!engaged[i] && len + Mathf.Max(0f, vr) * h >= r0 - 1e-4f)
+                    {
+                        engaged[i] = true;
+                        reelVel[i] = Mathf.Max(0f, vr);
+                    }
+                    if (engaged[i])
+                    {
+                        reelVel[i] = Mathf.MoveTowards(reelVel[i], Mathf.Min(want, 0f), BrakeAccel * h);
+                        if (reelVel[i] <= 0f) soft[i] = false;
+                    }
+                    else reelVel[i] = 0f;
+                }
+                else reelVel[i] = Mathf.MoveTowards(reelVel[i], want, ReelAccel * h);
                 Rope[i] = r0 + reelVel[i] * h;
                 reel[i] = reelVel[i];   // signed: < 0 reeling in, > 0 paying out
             }
@@ -141,7 +172,7 @@ public sealed class PlannedSwing
         Vector3 acc = Vector3.zero;
         Vector3 f = SwingDir - Up * OctoMath.Dot(SwingDir, Up);
         float fl = f.magnitude;
-        if (fl > 1e-4f)
+        if (fl > 1e-4f && !(Circling && live))
         {
             f *= 1f / fl;
             // across the swing plane: calm
@@ -150,7 +181,8 @@ public sealed class PlannedSwing
         }
         if (!live) return acc;
         int one = Single;
-        if (Pumping && one >= 0 && fl > 1e-4f)
+        if (Circling && one >= 0 && fl > 1e-4f) acc += Circle(x, v, one, f * (1f / fl));
+        else if (Pumping && one >= 0 && fl > 1e-4f)
         {
             Vector3 r = x - Pivot[one];
             float l = r.magnitude;
@@ -173,6 +205,29 @@ public sealed class PlannedSwing
         }
         else if (RestDamping > 0f) acc -= v * (2f * RestDamping);   // amplitude ~ exp(-RestDamping t)
         return acc;
+    }
+
+    // The conical drive: tangential speed toward the cone's, the cone angle toward ConeAngle (a damped spring along
+    // the meridian). From hanging still: a start along SwingDir.
+    Vector3 Circle(Vector3 x, Vector3 v, int one, Vector3 f)
+    {
+        Vector3 r = x - Pivot[one];
+        float l = r.magnitude;
+        if (l < 1e-4f) return Vector3.zero;
+        float g = Gravity, lim = MaxPush * g;
+        float y = -OctoMath.Dot(r, Up);
+        Vector3 rho = r + Up * y;
+        float rl = rho.magnitude;
+        if (rl < 0.03f * l) return f * lim;   // straight under the hold: lean out first
+        Vector3 rh = rho * (1f / rl);
+        Vector3 t = OctoMath.Cross(Up, rh) * (CircleSense < 0f ? -1f : 1f);   // round the hold, in the move's sense
+        float th = Mathf.Atan2(rl, y), th0 = Mathf.Clamp(ConeAngle, 0.05f, 1.2f);
+        float vWant = Mathf.Sqrt(g * l * Mathf.Sin(th0) * Mathf.Tan(th0));
+        Vector3 e = rh * Mathf.Cos(th) + Up * Mathf.Sin(th);      // along the meridian, away from the bottom
+        float w = Mathf.Sqrt(g / l);
+        float at = Mathf.Clamp(1.2f * w * (vWant - OctoMath.Dot(v, t)), -lim, lim);
+        float ae = Mathf.Clamp(w * w * l * (th0 - th) * 0.6f - 1.2f * w * OctoMath.Dot(v, e), -lim, lim);
+        return t * at + e * ae;
     }
 
     void UpdateEnergy()

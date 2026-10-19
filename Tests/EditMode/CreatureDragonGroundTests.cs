@@ -35,8 +35,10 @@ namespace TerrainGen.Tests
 
         // "The legs are just stumps": the hind legs are long enough to carry the hips at their stance clearance with
         // a bent knee (reach 1.15..1.6 x the hip's height over the foot) and their foot is a real foot (>= 35 % of the
-        // shin); the shin and thigh are slim (length >= 6 x radius). Standing and walking, both hind feet stay planted
-        // on the ground and the hips ride at their clearance.
+        // shin). Since 2026-10-20 ("make real-looking dragon legs") they are digitigrade dragon legs: a heavy thigh
+        // (length 3.5..6 x radius), a lean shin (>= 8 x radius), a raised hock on a long metatarsus (ankle >= 1/4 of
+        // the shin), scutes. Standing and walking, both hind feet stay planted on the ground and the hips ride at
+        // their clearance.
         [Test] public void HindLegs_RealProportions_CarryTheHips()
         {
             CreatureSpecies sp = CreatureDragonTwistTests.Dragon();
@@ -51,8 +53,10 @@ namespace TerrainGen.Tests
                 TestContext.WriteLine($"leg {l}: thigh {g.upperLength:F3} shin {g.lowerLength:F3} foot {g.footLength:F3} (r {g.upperRadius:F3}/{g.lowerRadius:F3}); hip {hip:F3} m up, reach {reach / hip:F2} x");
                 Assert.That(reach / hip, Is.InRange(1.15f, 1.6f), "long enough to stand on with a bent knee");
                 Assert.GreaterOrEqual(g.footLength, 0.35f * g.lowerLength, "a real foot");
-                Assert.GreaterOrEqual(g.upperLength, 6f * g.upperRadius, "a slim thigh");
-                Assert.GreaterOrEqual(g.lowerLength, 6f * g.lowerRadius, "a slim shin");
+                Assert.IsTrue(g.digitigrade && g.scutes, "a digitigrade dragon leg with scutes");
+                Assert.That(g.upperLength / g.upperRadius, Is.InRange(3.5f, 6f), "a heavy, muscled thigh");
+                Assert.GreaterOrEqual(g.lowerLength, 8f * g.lowerRadius, "a lean shin");
+                Assert.GreaterOrEqual(g.AnkleHeight, 0.25f * g.lowerLength, "a raised hock on a long metatarsus");
                 Assert.GreaterOrEqual(g.toeCount, 3, "clawed toes");
             }
             int hl = 0;
@@ -121,7 +125,7 @@ namespace TerrainGen.Tests
             {
                 var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, size);
                 var world = new Matrix4x4[bind.Length];
-                float memMin = float.MaxValue, underMin = float.MaxValue, fingMin = float.MaxValue, thumbMin = float.MaxValue, liftMin = float.MaxValue;
+                float memMin = float.MaxValue, underMin = float.MaxValue, fingMin = float.MaxValue, thumbMin = float.MaxValue, liftMin = float.MaxValue, wristMin = float.MaxValue;
                 string at = "";
                 float ts = Mathf.Sqrt(size);
                 for (int t = 0; t < 600; t++)
@@ -151,6 +155,9 @@ namespace TerrainGen.Tests
                     foreach (int i in fing) { Vector3 p = Pos(i); if (!Hand(p)) fingMin = Mathf.Min(fingMin, p.y); }
                     foreach (int i in thumb) thumbMin = Mathf.Min(thumbMin, Pos(i).y);
                     var cw = sim.Flight.Wings;
+                    // the wrist stands raised on the thumb claw (a pterosaur's, a vampire bat's), not on its own knob
+                    for (int w = 0; w < sp.WingCount; w++)
+                        wristMin = Mathf.Min(wristMin, (cw.State[w].wrist.y - sim.Legs[sp.wings[w].leg].foot.y) / (sp.wings[w].thumbLength * size));
                     for (int w = 0; w < sp.WingCount; w++)
                     {
                         Vector3 up = sim.Rotations[sp.legs[sp.wings[w].leg].attachJoint] * Vector3.up;
@@ -158,7 +165,8 @@ namespace TerrainGen.Tests
                         liftMin = Mathf.Min(liftMin, Mathf.Asin(Mathf.Clamp(Vector3.Dot(cw.FingerDir[mid], up), -1f, 1f)) * Mathf.Rad2Deg);
                     }
                 }
-                TestContext.WriteLine($"x{sizeFactor} {run}: membrane >= {memMin * 100f:F1} cm ({at}), under the trunk >= {underMin * 100f:F1} cm, fingers >= {fingMin * 100f:F1} cm, middle finger >= {liftMin:F0} deg up, thumb claws down to {thumbMin * 100f:F1} cm");
+                TestContext.WriteLine($"x{sizeFactor} {run}: membrane >= {memMin * 100f:F1} cm ({at}), under the trunk >= {underMin * 100f:F1} cm, fingers >= {fingMin * 100f:F1} cm, middle finger >= {liftMin:F0} deg up, thumb claws down to {thumbMin * 100f:F1} cm, wrist >= {wristMin:F2} x the thumb above the foot");
+                Assert.Greater(wristMin, 0.5f, $"x{sizeFactor} {run}: the wrist stands raised on the thumb claw, not on its knob");
                 Assert.Greater(liftMin, 15f, $"x{sizeFactor} {run}: the folded fingers point up");
                 Assert.Greater(fingMin, clear, $"x{sizeFactor} {run}: a finger near the ground");
                 Assert.Greater(memMin, run == "straight" ? clear : turnClear, $"x{sizeFactor} {run}: the membrane drags ({at})");

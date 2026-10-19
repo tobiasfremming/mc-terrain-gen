@@ -51,7 +51,8 @@ public class WingSpec
     // it) to stay clear of the forearm's line. 0 or 1 = the one humerus patch (7 bones per wing).
     [Range(0, 8)] public int flankPatches = 0;
     // On the ground the wrist stands on its thumb claw: raised off the walked foot point until the thumb's tip
-    // (thumbLength) is on it, at most this far (m at scale 1); the arm is drawn to the raised wrist, the gait's
+    // (thumbLength) is on it, at most this far (m at scale 1) - the hand bone flexes so the thumb points down onto the
+    // foot point (CreatureWings.HandBoneOut; the wrist cap and knuckle ride the forearm) - the arm is drawn to the raised wrist, the gait's
     // foot point is unchanged. 0 = on the wrist.
     public float groundWristLift = 0f;
     // On the ground the membrane's flank attach rises this far up the flank (x the joint's halfHeight): the
@@ -86,6 +87,16 @@ public class WingSpec
     [Range(0f, 1.5f)] public float fingerKnuckles = 0f;
     // A knuckle bulb at the wrist, radius = this x the forearm radius (0 = none).
     [Range(0f, 3f)] public float wristKnuckle = 0f;
+    // A dragon's / bat's arm (user 2026-10-20, "real-looking ... wing arms"; 0 = the plain tube): a thick humerus
+    // out of the chest with deltoid, biceps and triceps masses (this x the upper arm's radius), a ball elbow with an
+    // olecranon, a forearm thick near the elbow and lean at the wrist, carpal knobs at the wrist, flared metacarpal
+    // bases on the fingers and a two-part thumb (a skin digit and a pale claw on the same curve).
+    [Range(0f, 1.5f)] public float armMuscle = 0f;
+    // With armMuscle: the forearm's two-bone (radius / ulna) form - a second, slimmer bone along its trailing side,
+    // this x the forearm radius (0 = one bone).
+    [Range(0f, 1f)] public float forearmTwin = 0f;
+    // The thumb's root radius, m at scale 1 (0 = 0.45 x the forearm radius).
+    public float thumbRadius = 0f;
 
     // Fingers: the default (and the winged serpent's) finger count; a wing has FingerCount (fingerLengths.Length)
     public const int Fingers = 3, Ribs = 3;

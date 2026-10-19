@@ -55,6 +55,11 @@ public sealed class CreatureWings
     // (fractional joint index)
     public readonly Vector3[] ArmRibUp, PatchUp;
     readonly Quaternion[] handOnArm;
+    // per wing: the hand bone's out axis (+Z) as WriteBones writes it - st.handOut, flexed on the ground (wing-walk)
+    // about the hand normal so the thumb claw points down onto the foot point (WingSpec.groundWristLift > 0): the
+    // wrist stands raised on the claw, as a pterosaur or a vampire bat does. HandFlex: that flex, rad.
+    public readonly Vector3[] HandBoneOut;
+    public readonly float[] HandFlex;
     // per wing w, FlankPatches(w) + 1 nodes from FlankStart(w): the flank edge of the membrane between the humerus
     // and the body (the rear flank attach, points on the flank between it and the girdle, the shoulder)
     public readonly Vector3[] FlankNode;
@@ -93,6 +98,7 @@ public sealed class CreatureWings
         FlankNode = new Vector3[nodes];
         armSign = new float[c]; patchSign = new float[c]; groundWeight = new float[c];
         flankRise = new float[c];
+        HandBoneOut = new Vector3[c]; HandFlex = new float[c];
 
         for (int w = 0; w < c; w++)
         {
@@ -285,6 +291,7 @@ public sealed class CreatureWings
         if (st.tilt != 0f) nw = Rotate(nw, hOut, side[w] * st.tilt);
         groundWeight[w] = 0f;
         PoseHand(w, js, rs, sc, nw);
+        HandBoneOut[w] = st.handOut; HandFlex[w] = 0f;
     }
 
     // Wing-walk / perch (Phase B): the arm comes from elsewhere (CreatureLegs' wrist-as-foot), the wing is
@@ -319,6 +326,43 @@ public sealed class CreatureWings
         else { st.tilt = 0f; st.angleRate = 0f; }
         groundWeight[w] = 1f - Mathf.Clamp01(flightWeight);
         PoseHand(w, joints, rotations, scale, nw);
+        FlexHand(w, r);
+    }
+
+    const float kThumbForward = 0.35f;  // wing-walk: the thumb claw points down and this much forward
+    const float kMaxHandFlex = 2.4f;    // rad
+
+    // The hand bone on the ground (WingSpec.groundWristLift > 0): flexed about the hand normal until the thumb claw
+    // (ThumbTip's shape, in the hand's plane) points down and a little forward, blended by the ground weight. The
+    // fingers and the membrane keep the unflexed hand frame (they ride bones of their own); only the hand bone (the
+    // wrist cap, the knuckle and the thumb) turns.
+    void FlexHand(int w, Quaternion r)
+    {
+        ref WingState st = ref State[w];
+        HandBoneOut[w] = st.handOut; HandFlex[w] = 0f;
+        float gw = groundWeight[w];
+        if (!(gw > 0f) || !(specs[w].groundWristLift > 0f)) return;
+        Vector3 n = st.handNormal, o = st.handOut;
+        o = (o - n * Vector3.Dot(o, n)).normalized;
+        Vector3 fwd = -side[w] * Vector3.Cross(n, o);
+        ThumbLocal(w, out float ta, out float tb);
+        Vector3 d = -(r * Vector3.up) + kThumbForward * (r * Vector3.forward);
+        float want = Mathf.Atan2(Vector3.Dot(d, fwd), Vector3.Dot(d, o)), has = Mathf.Atan2(tb, ta);
+        float th = Mathf.DeltaAngle(has * Mathf.Rad2Deg, want * Mathf.Rad2Deg) * Mathf.Deg2Rad;
+        th = Mathf.Clamp(th, -kMaxHandFlex, kMaxHandFlex) * gw;
+        HandFlex[w] = th;
+        HandBoneOut[w] = o * Mathf.Cos(th) + fwd * Mathf.Sin(th);
+    }
+
+    // The thumb claw's tip from the wrist in the hand's plane (scale 1): a along the hand's out axis, b along its
+    // leading edge (WingedMeshBuilder.Arm's cone; ThumbTip).
+    void ThumbLocal(int w, out float a, out float b)
+    {
+        WingSpec ws = specs[w];
+        float rl = Mathf.Max(1e-4f, sp.legs[ws.leg].lowerRadius), len = Mathf.Max(1e-3f, ws.thumbLength);
+        float m = Mathf.Sqrt(0.8f * 0.8f + 0.3f * 0.3f + 0.2f * 0.2f);
+        a = -0.2f / m * len;
+        b = 0.6f * rl + 0.8f / m * len;
     }
 
     // The flight pose's shoulder and wrist target (before the fold pull-in and the IK), current joints.
@@ -341,8 +385,9 @@ public sealed class CreatureWings
         ref WingState st = ref State[w];
         WingSpec ws = specs[w];
         float rl = Mathf.Max(1e-4f, sp.legs[ws.leg].lowerRadius), len = Mathf.Max(1e-3f, ws.thumbLength);
-        Vector3 x = Vector3.Cross(st.handNormal, st.handOut), fwd = -side[w] * x;
-        Vector3 dir = (fwd * 0.8f + st.handNormal * 0.3f - st.handOut * 0.2f).normalized;
+        Vector3 o = HandBoneOut[w];  // the hand bone's frame (flexed on the ground)
+        Vector3 x = Vector3.Cross(st.handNormal, o), fwd = -side[w] * x;
+        Vector3 dir = (fwd * 0.8f + st.handNormal * 0.3f - o * 0.2f).normalized;
         return st.wrist + (fwd * (0.6f * rl) + dir * len - st.handNormal * (0.25f * len)) * scale;
     }
 
@@ -535,6 +580,7 @@ public sealed class CreatureWings
         // The arm membrane's planes: the sector (rear flank rib x forearm) and the patch (elbow, shoulder, rear
         // flank attach), their signs fixed by the rest pose (dorsal there; continuous while the rays never
         // line up, which the rear attach's rules above keep).
+        Vector3 ribMid;
         {
             int i = w * WingSpec.Ribs + 1;
             Vector3 cu = Vector3.Cross(RibDir[i], st.elbow - wrist);
@@ -550,6 +596,13 @@ public sealed class CreatureWings
             // the fan, as it does in a wing-walk)
             Vector3 mid = RibUp[i] + ArmRibUp[w];
             if (mid.sqrMagnitude > 1e-8f) RibUp[i] = mid.normalized;
+            ribMid = RibUp[i];
+            // a tall stance on the ground: the fan beside the rib rides its own bone (FanRearUp below), so the rib
+            // borders only the arm sector and takes the sector's roll. Halfway, the narrow sector (the rib and a
+            // near-vertical forearm ~10 deg apart, its plane turning over as the rib circles the forearm in tight
+            // turns) turned past 90 deg off the rib's frame and folded through itself.
+            float tg = ws.groundTallStance ? groundWeight[w] * fw : 0f;
+            if (tg > 0f) RibUp[i] = Vector3.Slerp(RibUp[i], ArmRibUp[w], tg).normalized;
         }
         // The rear flank rib as the fan beside it sees it (WingBoneLayout.FanRearRib, WingSpec.groundTallStance):
         // the rib's own roll in the air, rolled into the lifted fan's plane with the ground lift. The rear rib's
@@ -558,14 +611,14 @@ public sealed class CreatureWings
         // it collapsed into slivers in the wing-walk. The arm zone keeps the rear rib's own.
         {
             int r1 = w * WingSpec.Ribs + 1;
-            FanRearUp[w] = RibUp[r1];
+            FanRearUp[w] = ribMid;
             float g = ws.groundTallStance ? groundWeight[w] * fw : 0f;
             if (g > 0f)
             {
                 Vector3 fu = nw - RibDir[r1] * Vector3.Dot(nw, RibDir[r1]);
                 if (fu.sqrMagnitude > 1e-10f)
                 {
-                    Vector3 u = Vector3.Slerp(RibUp[r1], fu.normalized, g);
+                    Vector3 u = Vector3.Slerp(ribMid, fu.normalized, g);
                     u -= RibDir[r1] * Vector3.Dot(u, RibDir[r1]);
                     if (u.sqrMagnitude > 1e-10f) FanRearUp[w] = u.normalized;
                 }
@@ -626,7 +679,7 @@ public sealed class CreatureWings
             Quaternion upper = BoneRot(st.elbow - st.shoulder, pole, ar);
             dst[offset + sp.LegBone(leg, 0)] = Matrix4x4.TRS(st.shoulder, upper, sc);
             dst[offset + sp.LegBone(leg, 1)] = Matrix4x4.TRS(st.elbow, LowerRot(upper, st.wrist - st.elbow), sc);
-            dst[offset + sp.LegBone(leg, 2)] = Matrix4x4.TRS(st.wrist, Look(st.handOut, st.handNormal), sc);
+            dst[offset + sp.LegBone(leg, 2)] = Matrix4x4.TRS(st.wrist, Look(HandBoneOut[w], st.handNormal), sc);
             for (int k = 0; k < fingerCount[w]; k++)
                 dst[offset + sp.WingBone(w, k)] =
                     Matrix4x4.TRS(st.wrist, Look(FingerDir[fingerStart[w] + k], FanNormal[w]), sc);

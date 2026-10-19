@@ -20,7 +20,8 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | **SoftBody** | Body | exists | 6 + mouthCount x mouth.segments | 5, 6, 7 | boneless bodies: octopus, slug, jelly | Swinger, TreeOctopus |
 | **SpineBody** | Body | exists | = joints | 0 | anything with a backbone or a segmented trunk | Crocodile, DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, Hexadrake, KitMonitor, KomodoDragon, RockCrab, Scolopendra, SkyDragon, Tarantula, TentacleCrab, TestHexapod, TestSnake, TreeSpider, WingedSerpent |
 | **ArthropodLeg** | Limb | exists | = segments | 1, 2, 9 | insects, spiders, crabs, centipedes; anything with visible segments | DaddyLongLegs, DesertBeetle, GiantCentipede, RockCrab, Scolopendra, Tarantula, TentacleCrab, TreeSpider |
-| **Leg2Bone** | Limb | exists | 3 | 1, 2 | lizards, mammals, birds' legs, wing arms | Crocodile, DesertMonitor, Hexadrake, KitMonitor, KomodoDragon, SkyDragon, TestHexapod, WingedSerpent |
+| **Leg2Bone** | Limb | exists | 3 | 1, 2 | lizards, mammals, birds' legs, wing arms | DesertMonitor, Hexadrake, KitMonitor, SkyDragon, TestHexapod, WingedSerpent |
+| **SprawlLeg** | Limb | exists | 3 | 1, 2 | crocodilians, monitors, tegus, salamanders, any heavy-bodied sprawling or semi-erect walker | Crocodile, KomodoDragon |
 | **Wing** | Wing | exists | 6 + max(1, spec.flankPatches), +1 with spec.groundTallStance | 8, 1, 2 | bats, pterosaurs, dragons; the Fly module makes it fly | Hexadrake, SkyDragon, WingedSerpent |
 | **Eyes** | Sense | exists | 2 | 3 | always (every shipped species has two eye bones) | Crocodile, DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, Hexadrake, KitMonitor, KomodoDragon, RockCrab, Scolopendra, SkyDragon, Swinger, Tarantula, TentacleCrab, TestHexapod, TestSnake, TreeOctopus, TreeSpider, WingedSerpent |
 | **Antenna** | Chain | exists | = segments | 8 | whiskers, barbels, antennae, feelers, cerci, ribbon-like streamers | GiantCentipede, Scolopendra, SkyDragon |
@@ -29,7 +30,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | **Tongue** | Chain | exists | = segments | 14 | monitor lizards, snakes: a tongue that flicks in and out; any quick extensible feeler that hides in the head | KomodoDragon |
 | **FinStrip** | Fin | exists | 0 (skinned to the spine) | 8 | manes, crests, dorsal / anal fins, tail tufts, frills along a body | FinnedSandEel, Hexadrake, SkyDragon |
 | **Flapper** | Fin | exists | = segments (1-3) | 8 | pectoral fins, ear flaps, frills, small paddles that beat or flutter (not wings that fly: Wing) | FinnedSandEel |
-| **LegFin** | Fin | exists | 2 (thigh fin, shin fin) | 8 | finned or feathered legs: Caraxes-like leg frills, Microraptor leg wings, any flap that rides a limb and spreads in flight | SkyDragon |
+| **LegFin** | Fin | exists | 2 (thigh wing, shin wing) | 1, 8 | winged or finned legs: Microraptor hind wings, Caraxes-like leg membranes, any ribbed flap that rides a limb and spreads in flight | SkyDragon |
 | **ArmourPlates** | Rigid | exists | 0 (each plate rigid to its joint) | 10 | segmented armour: centipede / millipede tergites, woodlice, trilobites, armadillo bands, ankylosaur back plates | Scolopendra |
 | **EyeStalk** | Rigid | exists | 1 | 1, 2, 9 | crab and snail eye stalks, periscopes, anything on a stalk that folds away | RockCrab |
 | **Jaw** | Rigid | exists | 1 | 0, 2, 13 | a mouth that opens: a crocodile basking agape (opensUp), a yawn, a threat gape, a snapping beak | Crocodile |
@@ -69,7 +70,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 
 | species | format | plan | parts | modules | bones |
 |---|---|---|---|---|---|
-| Crocodile | kit | Spine | SpineBody, 4x Leg2Bone, Eyes, Jaw, 2x Sculpt, 21x ScuteRow | Walk (Diagonal), Slither, Wander, Skin, Layers | 51 |
+| Crocodile | kit | Spine | SpineBody, 4x SprawlLeg, Eyes, Jaw, 2x Sculpt, 21x ScuteRow | Walk (Diagonal), Slither, Wander, Skin, Layers | 51 |
 | DaddyLongLegs | legacy | Spine | SpineBody, 10x ArthropodLeg, Eyes | Walk (Tetrapod), Wander, Skin, Chitin | 71 |
 | DesertBeetle | legacy | Spine | SpineBody, 6x ArthropodLeg, Eyes | Walk (Tripod), Wander, Skin, Chitin | 35 |
 | DesertMonitor | legacy | Spine | SpineBody, 4x Leg2Bone, Eyes | Walk (Diagonal), Slither, Climb, Wander, ClimbExcursion, Skin | 40 |
@@ -78,7 +79,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | GiantCentipede | kit | Spine | SpineBody, Eyes, RigidLoft, RigidCone, 4x Antenna, 42x ArthropodLeg | Walk (Wave), Slither, Wander, Skin, Chitin, Layers | 252 |
 | Hexadrake | kit | Spine | SpineBody, 6x Leg2Bone, 2x Wing, Eyes, 5x RigidLoft, 3x RigidCone, 2x FinStrip | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane, Layers | 78 |
 | KitMonitor | kit | Spine | SpineBody, 4x Leg2Bone, Eyes | Walk (Diagonal), Slither, Climb, Wander, ClimbExcursion, Skin | 40 |
-| KomodoDragon | kit | Spine | SpineBody, 4x Leg2Bone, Eyes, 2x Sculpt, Tongue, 3x SkinFolds, 3x Swell | Walk (Diagonal), Slither, Wander, Skin, Layers | 53 |
+| KomodoDragon | kit | Spine | SpineBody, 4x SprawlLeg, Eyes, 2x Sculpt, Tongue, 3x SkinFolds, 3x Swell | Walk (Diagonal), Slither, Wander, Skin, Layers | 53 |
 | RockCrab | kit | Spine | SpineBody, Eyes, 10x ArthropodLeg, RigidLoft, 6x RigidCone, 2x EyeStalk, Tuck | Walk (Tetrapod), Wander, Skin, Chitin, Layers | 57 |
 | Scolopendra | kit | Spine | SpineBody, Eyes, RigidLoft, 2x Antenna, 40x ArthropodLeg, ArmourPlates, 4x Pincer, ThreatDisplay | Walk (Wave), Slither, Wander, Skin, Chitin, Layers | 245 |
 | SkyDragon | kit | Spine | SpineBody, 4x Leg2Bone, 2x LegFin, 2x Wing, Eyes, 4x RigidCone, 5x FinStrip, 4x Antenna, Swell, 7x RigidLoft | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane, Shimmer | 148 |
@@ -227,6 +228,69 @@ Vertebrate two-bone limb: TwoBoneIK with a pole, rounded knee blend, swing/knee 
 | `clawLength` | float | Metres | x s | claw length, 0 = 0.16 x footLength |  |  |
 | `clawCurveDeg` | float | Degrees | - | claw curl over its length, 0 = 75 |  |  |
 | `toeWeb` | float | Fraction | - | webbing between the toes, share of the toe length (0 = none) | 0..1 |  |
+| `digitigrade` | bool | Flag | - | digitigrade dragon / raptor leg mesh: heavy muscled thigh, lean shin, knobbly raised hock (ankleHeight = the metatarsus' height), long metatarsus, three forward toes (+ a hallux when toeCount >= 4) with knuckles and big talons |  |  |
+| `thighMass` | float | Fraction | - | digitigrade: the thigh's muscle masses, x upperRadius (0 = 0.5) | 0..1.5 |  |
+| `scutes` | bool | Flag | - | digitigrade: overlapping scutes on the front of the shin and metatarsus and on the toes |  |  |
+| `spurLength` | float | Metres | x s | digitigrade: a spur on the back of the hock (0 = none) |  |  |
+
+### SprawlLeg
+
+Heavy sprawling vertebrate limb: walks as a Leg2Bone (TwoBoneIK, pole, limits, ankle), drawn with a flank mass blended into the trunk, a muscled upper limb, a ball joint in loose skin folds, a thick forearm/shin (optional rows of large scales), a heavy wrist and a foot of individually described digits with thick curved claws and webbing. System: CreatureLegs (gait groups, throttle, sway) + SprawlLeg.EmitMesh (LimbLoft, DigitFoot).
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `role` | Walk / Feeler / WingArm / Folded | Enum | - | Walk steps in its gait group; Feeler is posed, never plants; WingArm is set by compose for a Wing's arm; Folded: a Wing's arm held folded on the ground (wrist at restOffset, never plants), flown by the Wing in the air |  |  |
+| `gaitGroup` | int | Count | - | gait group (one group steps at a time); -1 = from the Walk module's pattern | -1..31 |  |
+| `restOffset` | Vector3 | Metres | x s | foot rest point in the attach frame (x mirrored by side; y ignored: projected to the ground) |  |  |
+| `stepThreshold` | float | Metres | x s | foot travel before it steps (comfort radius) |  | monitor 0.11 |
+| `stepDuration` | float | Seconds | x sqrt(s) | step duration |  | monitor 0.12 |
+| `stepLift` | float | Metres | x s | step apex height |  |  |
+| `overshoot` | float | Metres | x s | the step lands this far ahead of the rest point |  |  |
+| `footLength` | float | Metres | x s | foot (tarsus claw) length |  |  |
+| `toeCount` | int | Count | - | toes (arthropod: tarsus claws) | 0..6 |  |
+| `forwardSwingLimitDeg` | float | Degrees | - | upper bone (arthropod: coxa yaw) swing limit toward the head, 0 = 55 |  |  |
+| `backSwingLimitDeg` | float | Degrees | - | swing limit toward the tail, 0 = 55 |  |  |
+| `kneeRangeDeg` | float | Degrees | - | knee range around its rest bend, 0 = 35 (arthropod: reach synergy extension) |  |  |
+| `kneeFlexDeg` | float | Degrees | - | knee flexion past rest, 0 = kneeRange (arthropod: reach synergy flexion) |  |  |
+| `upperLength` | float | Metres | x s | upper bone length | 0.005..2 | komodo fore 0.13 |
+| `lowerLength` | float | Metres | x s | lower bone length | 0.005..2 | komodo fore 0.12 |
+| `upperRadius` | float | Metres | x s | upper bone radius (the limb's thickness by the root) |  |  |
+| `lowerRadius` | float | Metres | x s | lower bone radius |  |  |
+| `pole` | Vector3 | Direction | - | knee direction hint in the attach frame (x mirrored): front z < 0 (elbow back), rear z > 0 (knee forward) |  |  |
+| `ankleHeight` | float | Metres | x s | ankle height above the foot's contact point, 0 = 1.2 x lowerRadius, < 0 = none |  |  |
+| `rootMass` | float | Fraction | - | flank mass radius, x upperRadius | 1..3 | default 1.5 |
+| `rootStretch` | float | Fraction | - | flank mass stretched along the spine, x its radius | 1..2.5 | default 1.4 |
+| `rootDepth` | float | Fraction | - | how deep the flank mass reaches into the body, x its radius | 0.5..2 | default 1.1 |
+| `muscle` | float | Fraction | - | muscle belly on top of the upper arm / thigh, x upperRadius | 0..1 | default 0.25 |
+| `muscleAt` | float | Fraction | - | where along the upper bone the belly is fullest | 0.1..0.9 | default 0.35 |
+| `kneeSize` | float | Fraction | - | elbow / knee ball radius, x upperRadius (at least 1.05 x lowerRadius) | 0.4..1.5 | default 0.8 |
+| `forearm` | float | Fraction | - | forearm / calf belly near the joint, x lowerRadius | 0..1 | default 0.2 |
+| `wrist` | float | Fraction | - | wrist / ankle radius, x lowerRadius | 0.4..1.2 | default 0.75 |
+| `folds` | int | Count | - | loose skin folds on each side of the elbow / knee (0 = smooth) | 0..6 |  |
+| `foldHeight` | float | Fraction | - | fold height, x the joint radius | 0..0.3 | default 0.08 |
+| `wristFolds` | int | Count | - | folds round the wrist / ankle (0 = none) | 0..4 |  |
+| `scaleRows` | int | Count | - | rows of large scales along the forearm / shin (0 = none) | 0..12 |  |
+| `scaleAround` | int | Count | - | large scales round the forearm / shin | 3..12 | default 6 |
+| `scaleHeight` | float | Fraction | - | large-scale relief, x lowerRadius | 0..0.3 | default 0.07 |
+| `around` | int | Count | - | mesh: vertices round the limb, 0 = 16 | 0..32 |  |
+| `digitLengths` | float[] | Fraction | - | each digit's length, x footLength, inner (I) to outer; empty = a lizard's (front 0.45 0.65 0.8 0.85 0.55, hind with the 4th longest) |  |  |
+| `phalanges` | int[] | Count | - | phalanges per digit, inner to outer; empty = the reptile formula 2 3 4 5 3 (hind 2 3 4 5 4) |  |  |
+| `digitSpreadDeg` | float | Degrees | - | fan of the digits from the innermost to the outermost | 0..160 | default 70 |
+| `footYawDeg` | float | Degrees | - | the whole foot turned outward from the heading | -30..60 | default 12 |
+| `digitRadius` | float | Metres | x s | digit radius at the root, 0 = 0.075 x footLength |  |  |
+| `palmWidth` | float | Fraction | - | sole width at the knuckles, x the digits' spread (0 = auto) | 0..3 |  |
+| `clawedDigits` | int | Count | - | digits with a claw, counted from the inner one (-1 = all) | -1..6 | default -1 |
+| `clawLength` | float | Metres | x s | claw length, 0 = 0.18 x footLength |  | komodo 0.03 |
+| `clawCurveDeg` | float | Degrees | - | claw curl over its length, 0 = 60 |  |  |
+| `clawThickness` | float | Fraction | - | claw base radius, x the digit's tip radius | 0.2..1.5 | default 0.8 |
+| `toeWeb` | float | Fraction | - | webbing between the digits, share of their length (0 = none) | 0..1 |  |
 
 ### Wing
 
@@ -242,7 +306,7 @@ Vertebrate two-bone limb: TwoBoneIK with a pole, rounded knee blend, swing/knee 
 | `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
 | `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
 | `arm` | string | PartRef | - | the Leg2Bone this wing rides on (its role becomes WingArm); a mirrored wing names the unmirrored id and gets .L / .R |  |  |
-| `spec` | WingSpec | Spec | - | the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle |  |  |
+| `spec` | WingSpec | Spec | - | the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius |  |  |
 
 ### Eyes
 
@@ -421,7 +485,7 @@ A fin or flap on 1-3 bones that beats with the body wave: frequency = the undula
 
 ### LegFin
 
-Spiny fin frills along the back of a Leg2Bone's thigh and shin (raked spines, scalloped edge): folded flat along the leg on the ground, spread and turned level toward the side in the air - with the hind legs trailing, a rear lift surface. System: LegFinRuntime (part runtime, stage Late) + LegFin.EmitMesh.
+Leg wings along the back of a Leg2Bone's thigh and shin: a fan of finger-like ribs raked toward the foot with a scalloped bat-wing membrane between them - folded flat along the leg on the ground, spread toward the side in the air (with the hind legs trailing, a rear wing pair), flexing with the wingbeat and tilting in glides and turns. System: LegFinRuntime (part runtime, stage Late) + LegFin.EmitMesh.
 
 | field | type | unit | size | meaning | range | example |
 |---|---|---|---|---|---|---|
@@ -433,16 +497,27 @@ Spiny fin frills along the back of a Leg2Bone's thigh and shin (raked spines, sc
 | `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
 | `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
 | `leg` | string | PartRef | - | the Leg2Bone it rides on; a mirrored fin names the unmirrored id and takes .L / .R |  |  |
-| `thighHeight` | float | Metres | x s | thigh fin: tallest spine |  | dragon 0.07 |
-| `shinHeight` | float | Metres | x s | shin fin: tallest spine |  | dragon 0.09 |
-| `rootStart` | float | Fraction | - | the fins' root along each bone: from this fraction .. | 0..0.9 | default 0.12 |
+| `thighHeight` | float | Metres | x s | thigh wing: its longest rib |  | dragon 0.3 |
+| `shinHeight` | float | Metres | x s | shin wing: its longest rib |  | dragon 0.42 |
+| `rootStart` | float | Fraction | - | the ribs' roots along each bone: from this fraction .. | 0..0.9 | default 0.12 |
 | `rootEnd` | float | Fraction | - | .. to this fraction | 0.1..1 | default 0.92 |
-| `spines` | int | Count | - | spines per fin (scallops between them along the free edge) | 1..16 | default 5 |
-| `spineDepth` | float | Fraction | - | valley depth between spines, fraction of the height | 0..0.9 | default 0.45 |
-| `rakeDeg` | float | Degrees | - | spread: the spines rake toward the foot by this much | 0..70 | default 35 |
-| `groundFold` | float | Fraction | - | on the ground the fin folds to this fraction of its height (the spines laid back along the leg) | 0.1..1 | default 0.3 |
-| `airDroopDeg` | float | Degrees | - | in the air the fin turns below the level by this much (droop; negative: above) | -45..45 |  |
-| `foldSeconds` | float | Seconds | x sqrt(s) | the ground fold eases in over this time | 0.02..2 | default 0.3 |
+| `spines` | int | Count | - | ribs per wing (a membrane zone between each pair) | 2..8 | default 5 |
+| `scallop` | float | Fraction | - | the trailing edge arcs in between rib tips by this fraction of their spacing (the bat-wing scallop) | 0..0.6 | default 0.3 |
+| `firstRib` | float | Fraction | - | the first rib's length, fraction of the longest (the ribs lengthen toward the foot) | 0.2..1 | default 0.55 |
+| `rakeDeg` | float | Degrees | - | the ribs' mean rake toward the foot | 0..70 | default 35 |
+| `fanDeg` | float | Degrees | - | the fan: the first rib rakes this much less than the last | 0..60 | default 30 |
+| `ribCurveDeg` | float | Degrees | - | each rib curves toward the foot by this much from root to tip | 0..40 | default 12 |
+| `ribRadius` | float | Metres | x s | rib radius at the root (finger-like, tapering, knuckled); 0 = no rib tubes | 0.. | dragon 0.006 |
+| `billow` | float | Fraction | - | the membrane bellies between the ribs by this fraction of their spacing | 0..0.2 | default 0 |
+| `groundFold` | float | Fraction | - | on the ground the spread presses to this fraction toward the leg | 0.05..1 | default 0.3 |
+| `foldShear` | float | Fraction | - | folded: the ribs lay back up the leg by this much per unit of spread | 0..3 | default 1.2 |
+| `foldSpan` | float | Fraction | - | folded: the whole wing fits inside this fraction of the bone's span (centred on the roots) | 0.2..1.5 | default 1 |
+| `airDroopDeg` | float | Degrees | - | powered flight: the wings turn below the level by this much (droop; negative: above) | -45..45 |  |
+| `glideDroopDeg` | float | Degrees | - | gliding: the same, eased in while the flight glides | -45..45 |  |
+| `flapDeg` | float | Degrees | - | flex with the wingbeat: the shin wing follows the main wings' stroke (up with it, lagging) by up to this much (the thigh 0.6x) | 0..30 |  |
+| `flutterHz` | float | Hz | / sqrt(s) | the flex's spring: its natural frequency (x 1/sqrt s), lightly damped - the lag and the flutter | 0.5..20 | default 4 |
+| `bankDeg` | float | Degrees | - | in a full bank the two sides tilt against each other by this much (the inner wing down) | 0..30 |  |
+| `foldSeconds` | float | Seconds | x sqrt(s) | the ground fold and the glide / bank angles ease over this time | 0.02..2 | default 0.3 |
 
 ### ArmourPlates
 

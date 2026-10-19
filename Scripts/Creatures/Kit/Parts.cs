@@ -235,6 +235,10 @@ namespace CreatureKit
         [Param(ParamUnit.Metres, "claw length, 0 = 0.16 x footLength")] public float clawLength;
         [Param(ParamUnit.Degrees, "claw curl over its length, 0 = 75")] public float clawCurveDeg;
         [Param(ParamUnit.Fraction, "webbing between the toes, share of the toe length (0 = none)", Min = 0f, Max = 1f)] public float toeWeb;
+        [Param(ParamUnit.Flag, "digitigrade dragon / raptor leg mesh: heavy muscled thigh, lean shin, knobbly raised hock (ankleHeight = the metatarsus' height), long metatarsus, three forward toes (+ a hallux when toeCount >= 4) with knuckles and big talons")] public bool digitigrade;
+        [Param(ParamUnit.Fraction, "digitigrade: the thigh's muscle masses, x upperRadius (0 = 0.5)", Min = 0f, Max = 1.5f)] public float thighMass;
+        [Param(ParamUnit.Flag, "digitigrade: overlapping scutes on the front of the shin and metatarsus and on the toes")] public bool scutes;
+        [Param(ParamUnit.Metres, "digitigrade: a spur on the back of the hock (0 = none)")] public float spurLength;
 
         public override int BoneCount(in SpeciesCtx c) => Bones;
 
@@ -244,6 +248,7 @@ namespace CreatureKit
             l.upperLength = upperLength; l.lowerLength = lowerLength; l.upperRadius = upperRadius; l.lowerRadius = lowerRadius;
             l.pole = pole; l.kneeBlend = kneeBlend; l.ankleHeight = ankleHeight;
             l.clawLength = clawLength; l.clawCurveDeg = clawCurveDeg; l.toeWeb = toeWeb;
+            l.digitigrade = digitigrade; l.thighMass = thighMass; l.scutes = scutes; l.spurLength = spurLength;
             return l;
         }
 
@@ -254,6 +259,7 @@ namespace CreatureKit
             p.upperLength = l.upperLength; p.lowerLength = l.lowerLength; p.upperRadius = l.upperRadius; p.lowerRadius = l.lowerRadius;
             p.pole = l.pole; p.kneeBlend = l.kneeBlend; p.ankleHeight = l.ankleHeight;
             p.clawLength = l.clawLength; p.clawCurveDeg = l.clawCurveDeg; p.toeWeb = l.toeWeb;
+            p.digitigrade = l.digitigrade; p.thighMass = l.thighMass; p.scutes = l.scutes; p.spurLength = l.spurLength;
             return p;
         }
 

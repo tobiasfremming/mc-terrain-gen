@@ -202,11 +202,64 @@ namespace TerrainGen.Tests
                     Matrix4x4 m = world[lf.FirstBone + k];
                     Vector3 normal = m.MultiplyVector(Vector3.right).normalized, spread = -m.MultiplyVector(Vector3.up).normalized;
                     float tilt = Vector3.Angle(normal, hipUp); tilt = Mathf.Min(tilt, 180f - tilt);
-                    TestContext.WriteLine($"  {lf.Part.id} fin {k}: plane {tilt:F1} deg from level, spread . side {Vector3.Dot(spread, sideDir):F2}");
-                    Assert.Less(tilt, 30f, "the fin lies level: a lift surface");
+                    TestContext.WriteLine($"  {lf.Part.id} fin {k}: plane {tilt:F1} deg from level (flex {lf.Flex:F1}), spread . side {Vector3.Dot(spread, sideDir):F2}");
+                    // level within 30 deg plus the wings' own droop and wingbeat flex (LegFin.airDroopDeg, flapDeg)
+                    Assert.Less(tilt, 30f + Mathf.Abs(lf.Part.airDroopDeg) + lf.Part.flapDeg, "the fin lies level: a lift surface");
                     Assert.Greater(Vector3.Dot(spread, sideDir), 0.5f, "spread toward the side, away from the body");
                 }
             }
+        }
+
+        // The leg wings are wings (user 2026-10-19, "make the leg wing flaps larger so that it can actually work like a
+        // wing"): their membrane per side is at least a quarter of a main wing's, the shin wing reaches out behind the
+        // leg further than the shin is long, the ribs are drawn; in level flight they flex with the wingbeat (at least
+        // half of flapDeg peak to peak) and in a glide they settle (the flex eases out).
+        [Test] public void LegFin_LegWings_SizedAndFlexing()
+        {
+            CreatureSpecies sp = CreatureDragonTwistTests.Dragon();
+            MeshData d = Mesh(sp);
+            var fin = new HashSet<int>(FinBones(sp));
+            int wLo = sp.WingBone(0, 0), wHi = sp.WingBone(sp.WingCount - 1, WingBoneLayout.Bones(sp.wings[sp.WingCount - 1]) - 1);
+            float aFin = 0f, aWing = 0f; int ribVerts = 0;
+            for (int k = 0; k < d.t.Length; k += 3)
+            {
+                int a = d.t[k], b = (int)d.uv2[a].x;
+                if (Mathf.RoundToInt(d.uv1[a].x) != PartMeshEmitter.PartMembrane) continue;
+                float area = 0.5f * Vector3.Cross(d.v[d.t[k + 1]] - d.v[a], d.v[d.t[k + 2]] - d.v[a]).magnitude;
+                if (fin.Contains(b)) aFin += area; else if (b >= wLo && b <= wHi) aWing += area;
+            }
+            for (int i = 0; i < d.v.Length; i++)
+                if (Mathf.RoundToInt(d.uv1[i].x) == PartMeshEmitter.PartLeg && fin.Contains((int)d.uv2[i].x)) ribVerts++;
+            LegFin lf = Parts<LegFin>(sp)[0];
+            LegSpec leg = sp.legs[lf.LegIndex(sp)];
+            float reach = 0f;
+            for (int i = 0; i < lf.Ribs; i++) reach = Mathf.Max(reach, -lf.RibPoint(leg, 1, i, 1f).y);
+            TestContext.WriteLine($"leg wings {aFin:F4} m2 vs main wings {aWing:F4} m2 (ratio {aFin / aWing:F2}), shin wing reach {reach:F3} m (shin {leg.lowerLength:F3} m), rib vertices {ribVerts}");
+            Assert.Greater(aFin / aWing, 0.25f, "leg wings at least a quarter of the main wings' membrane");
+            Assert.Greater(reach, leg.lowerLength, "the shin wing reaches out behind the leg further than the shin is long");
+            Assert.Greater(ribVerts, 0, "finger-like ribs");
+
+            float s = sp.scale;
+            var air = CreatureDragonTwistTests.AirborneDragon(sp, s, 6f * s, out _);
+            LegFinRuntime fr = null;
+            foreach (IPartRuntime r in air.PartRuntimes) if (r is LegFinRuntime x) { fr = x; break; }
+            float lo = float.MaxValue, hi = float.MinValue;
+            for (int t = 0; t < 120; t++)
+            {
+                air.Flight.SetGoals(6f * s, sp.flight.cruiseSpeed * air.TimeScale, 0f); air.Tick(kDt, air.Joints[0]);
+                lo = Mathf.Min(lo, fr.Flex); hi = Mathf.Max(hi, fr.Flex);
+            }
+            TestContext.WriteLine($"level flight: flex {lo:F1}..{hi:F1} deg");
+            Assert.Greater(hi - lo, 0.5f * lf.flapDeg, "the leg wings flex with the wingbeat");
+            int gl = 0;
+            for (int t = 0; t < 1200 && gl < 45; t++)
+            {
+                air.Flight.SetGoals(1.2f * s, air.Flight.Model.ForwardSpeed, 0f); air.Tick(kDt, air.Joints[0]);
+                gl = air.Flight.Model.Gliding ? gl + 1 : 0;
+            }
+            Assert.GreaterOrEqual(gl, 45, "a glide");
+            TestContext.WriteLine($"gliding 0.75 s: flex {fr.Flex:F2} deg");
+            Assert.Less(Mathf.Abs(fr.Flex), 0.25f * lf.flapDeg, "settling in a glide");
         }
 
         // ------------------------------------------------------------------ the wing's look
@@ -223,6 +276,8 @@ namespace TerrainGen.Tests
             Assert.GreaterOrEqual(ws.membraneDetail, 2, "a finer membrane grid");
             Assert.Greater(ws.fingerKnuckles, 0.3f, "knuckled finger bones");
             Assert.Greater(ws.wristKnuckle, 1f, "a wrist knuckle");
+            Assert.Greater(ws.armMuscle, 0.3f, "a muscled dragon arm (2026-10-20)");
+            Assert.Greater(ws.forearmTwin, 0.3f, "a two-bone forearm");
             MeshData d = Mesh(sp);
             // the membrane: every vertex accounted for at the finer grid (the bat-wing test counts them), and its sheet
             // off the plane of its zone: measure the spread of each finger-zone's vertices along the zone normal

@@ -22,7 +22,7 @@ using UnityEngine;
 //   Fallen      grounded and low: Travel to the nearest climbable region; arms anchor on the ground (crawl)
 // With mouth tentacles (OctopusController.Feeder: the two-armed swinger) the hunt ends differently - the arms never
 // strike:
-//   Stalk       far (no hold within 1.2 CreepLengths L of the prey, level): Travel - swing closer; near: Stalk at
+//   Stalk       far (no hold within 1.4 CreepLengths L of the prey, level): Travel - swing closer; near: Stalk at
 //               low urgency - creep, pulling itself up on the hold near the prey to just below it (CreepBelow L);
 //               back to swinging only past 2 CreepLengths (hysteresis)
 //   Feed        the prey is within the mouth's reach: Hold (the arms keep hanging on), intent.feed - the mouth
@@ -32,7 +32,7 @@ using UnityEngine;
 // Goals are clipped to the enclosure (centre, radius, height cap).
 public sealed class OctopusBrain
 {
-    public enum State { CanopyRest, Explore, Stalk, Ambush, Strike, Hold, Retreat, Fallen, Feed, Eat }
+    public enum State { CanopyRest, Explore, Stalk, Ambush, Strike, Hold, Retreat, Fallen, Feed, Eat, Play }
     public const float CreepLengths = 0.5f, CreepBelow = 0.25f, FeedGiveUpSeconds = 8f, SatedSeconds = 20f;   // x arm length; x TimeScale
     public int Meals;                            // cumulative (mouth feeders)
     float satedUntil = -1f;
@@ -101,16 +101,19 @@ public sealed class OctopusBrain
         c.EnclosureCentre = EnclosureCentre; c.EnclosureRadius = EnclosureRadius;
         float L = c.Body.Arms[0].Length;
         Vector3 head = c.Body.HeadCentre;
+        bool planned = c.Sequencer != null;
+        if (planned) Parole(c, L);
         Perceive(c, head, L);
         UpdateWatched(head);
+        if (planned && SwingerTick(dt, c, head, L)) { UpdateLook(dt); return; }
 
         OctoIntent it = c.Intent;
-        it.prey = null; it.strikers = 0; it.climb = false;
+        it.prey = null; it.strikers = 0; it.climb = false; it.play = PlayMove.None;
         switch (Mode)
         {
             case State.CanopyRest:
                 it.mode = OctoMode.Rest; it.goal = head; it.urgency = 0f;
-                if (seen && Target != null && c.Time >= satedUntil) { Enter(State.Stalk); break; }
+                if (WantHunt(c, L)) { Enter(State.Stalk); break; }
                 if (IsFallen(c, head, L)) { Enter(State.Fallen); break; }
                 if (c.Time > nextExplore && CanopyRegions.Count > 0)
                 {
@@ -121,7 +124,7 @@ public sealed class OctopusBrain
                 break;
             case State.Explore:
                 it.mode = OctoMode.Travel; it.goal = goal; it.urgency = 0.4f;
-                if (seen && Target != null && c.Time >= satedUntil) { Enter(State.Stalk); break; }
+                if (WantHunt(c, L)) { Enter(State.Stalk); break; }
                 // (no route to it after NoRouteSeconds - the hints show no way - or the trip takes too long: rest,
                 // then a new goal)
                 bool noRoute = c.Hints != null && StateTime > NoRouteSeconds * c.Body.TimeScale && !c.Route.Valid;
@@ -234,7 +237,13 @@ public sealed class OctopusBrain
     // Hunting with the mouth: swing close, creep the last bit to just below the prey, feed when it is in reach.
     void StalkToFeed(OctopusController c, ref OctoIntent it, Vector3 head, float L)
     {
-        if (Target == null || c.Time - lastSeenTime > 8f) { Target = null; it.mode = OctoMode.Rest; it.goal = head; Enter(State.CanopyRest); return; }
+        if (Target == null || c.Time - lastSeenTime > 8f)
+        {
+            if (c.Sequencer != null && Target != null) { GiveUps++; LastGiveUp = GiveUp.Lost; LastGiveUpTime = c.Time; LastGiveUpAt = LastSeen; huntOf = null; }
+            Target = null; it.mode = OctoMode.Rest; it.goal = head; Enter(State.CanopyRest); return;
+        }
+        // the swinger: a hunt it cannot finish (the spider left the trees, went far, or no progress) is given up
+        if (c.Sequencer != null && Hunt(c, L)) { it.mode = OctoMode.Rest; it.goal = head; it.urgency = 0f; return; }
         if (c.Feeder.InReach(Target))
         {
             it.mode = OctoMode.Hold; it.goal = head; it.prey = Target; it.feed = true;
@@ -254,7 +263,7 @@ public sealed class OctopusBrain
             d -= up * OctoMath.Dot(d, up);
             near = Mathf.Min(near, d.magnitude);
         }
-        bool far = near > (creeping ? 2f : 1.2f) * CreepLengths * L;
+        bool far = near > (creeping ? 2f : 1.4f) * CreepLengths * L;   // (enters creeping inside the sequencer's arrival, 0.6 L: else it arrived, hung and never crept)
         creeping = !far;
         it.mode = far ? OctoMode.Travel : Watched ? OctoMode.Rest : OctoMode.Stalk;
         it.goal = goal;
@@ -298,6 +307,268 @@ public sealed class OctopusBrain
         return n >= c.Board.MinAnchorsHanging;
     }
 
+    // ------------------------------------------------------------------ the swinger: hunts it can finish, and play
+    // (a planned body - OctopusController.Sequencer - only; the tree octopus never comes here)
+    //
+    // Retargeting: a spider is worth hunting only while a hold lies near it - a level branch within HoldLevelLengths
+    // L (level) and HoldBelowLengths below .. HoldAboveLengths above it (the hints; the swinger's own holds; probe-only:
+    // anything over it within reach), inside the enclosure, within 1.5 x the sight range. Checked every
+    // ReachCheckSeconds; unreachable for UnreachableSeconds of checks in a row (hysteresis), or no progress toward it
+    // (ProgressLengths L) for NoProgressSeconds, or a hunt longer than HuntSeconds: given up (GiveUp says why), and
+    // that spider is ignored for IgnoreSeconds, then let back only after two reachable checks in a row (parole). A
+    // spider seen while resting or travelling is checked once before the hunt starts (an unreachable one is ignored
+    // the same way). Given up: the next spider in sight, else roaming and play.
+    // Play: when not hunting, a rest ends in play (PlayChance; PlayChanceSated after a meal) or a trip. A play session
+    // is PlayMovesMin..PlayMovesMax moves, never the same move twice running: big pumped swings, an extra-high swing,
+    // swinging round in a cone under the hold, a drop to a lower branch, a chained run swung higher than it needs, a
+    // pause hanging. The sequencer swings them; every move starts from where the last one left the body (smooth).
+    public enum GiveUp { None, Lost, OffTrees, OnGround, TooFar, NoProgress, TooLong }
+    public GiveUp LastGiveUp { get; private set; }
+    public float LastGiveUpTime { get; private set; } = -100f;
+    public Vector3 LastGiveUpAt { get; private set; }  // where that spider was
+    public int GiveUps, HuntsSkipped;                 // cumulative: hunts given up, spiders not hunted (unreachable at sight)
+    public bool TargetReachable { get; private set; } = true;
+    public GiveUp Unreachable { get; private set; }   // the last check's verdict (None: reachable)
+    public const float ReachCheckSeconds = 0.5f, UnreachableSeconds = 2f, NoProgressSeconds = 12f, HuntSeconds = 60f;   // x TimeScale
+    public const float IgnoreSeconds = 20f, ParoleSeconds = 1f, ProgressLengths = 0.4f;
+    public const float HoldLevelLengths = 0.8f, HoldAboveLengths = 1.2f, HoldBelowLengths = 0.5f, GroundLengths = 0.25f;
+    const int MaxIgnored = 4;
+    readonly IPreyTarget[] ignored = new IPreyTarget[MaxIgnored];
+    readonly float[] ignoredUntil = new float[MaxIgnored];
+    readonly int[] ignoredOk = new int[MaxIgnored];
+    readonly BranchHint[] huntHints = new BranchHint[8];
+    float nextReachCheck, unreachableFor, huntStart, bestDist, bestAt, nextParole;
+    IPreyTarget huntOf;
+
+    public const float PlayChance = 0.6f, PlayChanceSated = 0.9f;
+    public const int PlayMovesMin = 3, PlayMovesMax = 5;
+    public PlayMove Move { get; private set; }
+    public float MoveAmplitude { get; private set; }
+    public int PlayMoves, PlaySessions;                                   // cumulative
+    public readonly int[] MoveCounts = new int[7];                       // per PlayMove
+    int movesLeft, playId;
+    float moveUntil;
+    PlayMove lastMove;
+
+    public bool Ignored(IPreyTarget p)
+    {
+        for (int i = 0; i < MaxIgnored; i++) if (ignored[i] == p && p != null) return true;
+        return false;
+    }
+
+    void Ignore(IPreyTarget p, float until)
+    {
+        int slot = 0;
+        for (int i = 0; i < MaxIgnored; i++)
+        {
+            if (ignored[i] == p) { slot = i; break; }
+            if (ignored[i] == null || ignoredUntil[i] < ignoredUntil[slot]) slot = i;
+        }
+        ignored[slot] = p; ignoredUntil[slot] = until; ignoredOk[slot] = 0;
+    }
+
+    // An ignored spider comes back only after two reachable checks in a row once its time is up.
+    void Parole(OctopusController c, float L)
+    {
+        if (c.Time < nextParole) return;
+        nextParole = c.Time + ParoleSeconds * c.Body.TimeScale;
+        for (int i = 0; i < MaxIgnored; i++)
+        {
+            if (ignored[i] == null || c.Time < ignoredUntil[i] || !c.Spare(6)) continue;
+            if (Check(c, ignored[i], L) != GiveUp.None) { ignoredOk[i] = 0; ignoredUntil[i] = c.Time + 2f * ParoleSeconds * c.Body.TimeScale; continue; }
+            if (++ignoredOk[i] >= 2) ignored[i] = null;
+        }
+    }
+
+    bool WantHunt(OctopusController c, float L)
+    {
+        if (!seen || Target == null || c.Time < satedUntil) return false;
+        if (c.Sequencer == null) return true;
+        // the swinger: is it worth it at all?
+        GiveUp why = Check(c, Target, L);
+        if (why == GiveUp.None) return true;
+        HuntsSkipped++; Unreachable = why; TargetReachable = false;
+        Ignore(Target, c.Time + IgnoreSeconds * c.Body.TimeScale);
+        Target = null; seen = false;
+        return false;
+    }
+
+    // Hunting: true = given up (the brain is back to rest; the next spider or play follows).
+    bool Hunt(OctopusController c, float L)
+    {
+        float ts = c.Body.TimeScale;
+        Vector3 up = c.Up, d = Target.Position - c.Sequencer.Pivot;
+        float dist = (d - up * OctoMath.Dot(d, up)).magnitude;
+        if (huntOf != Target)
+        {
+            huntOf = Target; huntStart = c.Time; bestDist = dist; bestAt = c.Time;
+            unreachableFor = 0f; TargetReachable = true; Unreachable = GiveUp.None; nextReachCheck = c.Time;
+        }
+        if (dist < bestDist - ProgressLengths * L) { bestDist = dist; bestAt = c.Time; }
+        if (c.Time >= nextReachCheck && c.Spare(6))
+        {
+            nextReachCheck = c.Time + ReachCheckSeconds * ts;
+            Unreachable = Check(c, Target, L);
+            TargetReachable = Unreachable == GiveUp.None;
+            unreachableFor = TargetReachable ? 0f : unreachableFor + ReachCheckSeconds * ts;
+        }
+        GiveUp why = GiveUp.None;
+        if (unreachableFor >= UnreachableSeconds * ts - 1e-4f) why = Unreachable;
+        else if (c.Time - bestAt > NoProgressSeconds * ts && (c.Feeder == null || !c.Feeder.Feeding)) why = GiveUp.NoProgress;
+        else if (c.Time - huntStart > HuntSeconds * ts) why = GiveUp.TooLong;
+        if (why == GiveUp.None) return false;
+        GiveUps++; LastGiveUp = why; LastGiveUpTime = c.Time; LastGiveUpAt = Target.Position;
+        Ignore(Target, c.Time + IgnoreSeconds * ts);
+        Target = null; seen = false; huntOf = null; creeping = false;
+        nextExplore = c.Time + (0.5f + Rand()) * ts;   // soon: roam or play
+        Enter(State.CanopyRest);
+        return true;
+    }
+
+    // Can the swinger get its mouth to this spider? None = yes, else why not.
+    GiveUp Check(OctopusController c, IPreyTarget p, float L)
+    {
+        Vector3 up = c.Up, q = p.Position;
+        if (!float.IsInfinity(EnclosureRadius) && c.HorizontalDistance(q) > EnclosureRadius - 0.5f * L) return GiveUp.TooFar;
+        Vector3 d = q - c.Sequencer.Pivot;
+        if ((d - up * OctoMath.Dot(d, up)).magnitude > 1.5f * RangeLengths * L) return GiveUp.TooFar;
+        for (int a = 0; a < c.Board.Arms; a++)
+            if (c.Board.Anchored[a] && NearHold(q, c.Board.Anchor[a], up, L)) return GiveUp.None;
+        bool ground = OnGround(c, q, L);
+        if (c.Hints != null)
+        {
+            int n = c.Hints.Query(q + up * (0.35f * L), up, -1f, 0f, 1.3f * L, c.Body.Spec.arm.TipRadius * c.Body.SizeScale * 1.5f, 2f * L, huntHints);
+            for (int i = 0; i < n; i++)
+                if (Mathf.Abs(OctoMath.Dot(huntHints[i].axis, up)) <= BranchRoute.MaxAxisRise && NearHold(q, huntHints[i].point, up, L) && c.HoldInside(huntHints[i].point))
+                    return GiveUp.None;
+            return ground ? GiveUp.OnGround : GiveUp.OffTrees;
+        }
+        // probe-only: the ground is what is known to be out of reach - unless something hangs over it within reach
+        if (!ground) return GiveUp.None;
+        return c.Cast(q + up * (0.05f * L), up, HoldAboveLengths * L, out _) ? GiveUp.None : GiveUp.OnGround;
+    }
+
+    static bool NearHold(Vector3 q, Vector3 hold, Vector3 up, float L)
+    {
+        Vector3 d = hold - q;
+        float rise = OctoMath.Dot(d, up);
+        return rise >= -HoldBelowLengths * L && rise <= HoldAboveLengths * L && (d - up * rise).magnitude <= HoldLevelLengths * L;
+    }
+
+    // On the ground: an up-facing surface just under it that is no branch (the sequencer's hold test).
+    static bool OnGround(OctopusController c, Vector3 q, float L)
+    {
+        Vector3 up = c.Up;
+        if (!c.Probe(q + up * (0.1f * L), up, (0.1f + GroundLengths) * L, SurfaceHit.NoSource, -1, out SurfaceHit h)) return false;
+        if (OctoMath.Dot(h.normal, up) < 0.8f || OctoMath.Dot(q - h.point, up) > GroundLengths * L) return false;
+        return !c.Sequencer.Holdable(c, h);
+    }
+
+    // The swinger's own states (rest -> play or a trip, play). False: the shared code handles this state.
+    bool SwingerTick(float dt, OctopusController c, Vector3 head, float L)
+    {
+        if (Mode != State.CanopyRest && Mode != State.Play) return false;
+        OctoIntent it = c.Intent;
+        it.prey = null; it.strikers = 0; it.climb = false; it.feed = false; it.play = PlayMove.None;
+        if (Mode == State.CanopyRest)
+        {
+            it.mode = OctoMode.Rest; it.goal = head; it.urgency = 0f;
+            if (WantHunt(c, L)) Enter(State.Stalk);
+            else if (IsFallen(c, head, L)) Enter(State.Fallen);
+            else if (c.Time > nextExplore)
+            {
+                bool sated = c.Time < satedUntil;
+                if (Rand() < (sated ? PlayChanceSated : PlayChance) || CanopyRegions.Count == 0) BeginPlay(c, head, L);
+                else { goal = PickGoal(c, head, L); Trips++; Enter(State.Explore); }
+            }
+            c.Intent = it;
+            return true;
+        }
+        // Play
+        if (WantHunt(c, L)) { Move = PlayMove.None; Enter(State.Stalk); c.Intent = it; return true; }
+        if (IsFallen(c, head, L)) { Move = PlayMove.None; Enter(State.Fallen); c.Intent = it; return true; }
+        float ts = c.Body.TimeScale;
+        bool done = c.Time > moveUntil;
+        if (Move == PlayMove.Run && Arrived(c, head, L)) { Arrivals++; done = true; }
+        if (Move == PlayMove.Run && c.Hints != null && c.Time - (moveUntil - RunSeconds * ts) > NoRouteSeconds * ts && !c.Route.Valid && !c.Sequencer.HasNext) done = true;
+        if (Move == PlayMove.Drop && c.Sequencer.PlayDone(playId)) done = true;
+        if (done) NextMove(c, head, L);
+        if (Mode == State.Play)
+        {
+            it.play = Move; it.playAmplitude = MoveAmplitude; it.playId = playId;
+            if (Move == PlayMove.Run) { it.mode = OctoMode.Travel; it.goal = goal; it.urgency = 0.5f; }
+            else { it.mode = OctoMode.Rest; it.goal = head; it.urgency = 0f; }
+        }
+        else { it.mode = OctoMode.Rest; it.goal = head; it.urgency = 0f; it.play = PlayMove.None; }
+        c.Intent = it;
+        return true;
+    }
+
+    public const float RunSeconds = 18f;
+
+    void BeginPlay(OctopusController c, Vector3 head, float L)
+    {
+        PlaySessions++;
+        movesLeft = PlayMovesMin + (int)(Rand() * (PlayMovesMax - PlayMovesMin + 1));
+        lastMove = PlayMove.None;
+        Enter(State.Play);
+        NextMove(c, head, L);
+    }
+
+    void NextMove(OctopusController c, Vector3 head, float L)
+    {
+        if (movesLeft-- <= 0)
+        {
+            Move = PlayMove.None;
+            nextExplore = c.Time + 0.5f * (RestMin + (RestMax - RestMin) * Rand()) * c.Body.TimeScale;
+            Enter(State.CanopyRest);
+            return;
+        }
+        // weighted, never the same move twice running (and no pause right after a pause's neighbour rest)
+        float wBig = 3f, wRun = 3f, wHigh = 1.2f, wCircle = 1.5f, wDrop = c.Sequencer.DropFailedRecently ? 0f : 1.2f, wPause = 1f;
+        switch (lastMove)
+        {
+            case PlayMove.BigSwing: wBig = 0f; wHigh *= 0.5f; break;
+            case PlayMove.HighSwing: wHigh = 0f; wBig *= 0.5f; break;
+            case PlayMove.Run: wRun = 0f; break;
+            case PlayMove.Circle: wCircle = 0f; break;
+            case PlayMove.Drop: wDrop = 0f; break;
+            case PlayMove.Pause: wPause = 0f; break;
+            case PlayMove.None: wPause = 0f; break;   // a session starts with something lively
+        }
+        float r = Rand() * (wBig + wRun + wHigh + wCircle + wDrop + wPause);
+        PlayMove m;
+        if ((r -= wBig) < 0f) m = PlayMove.BigSwing;
+        else if ((r -= wRun) < 0f) m = PlayMove.Run;
+        else if ((r -= wHigh) < 0f) m = PlayMove.HighSwing;
+        else if ((r -= wCircle) < 0f) m = PlayMove.Circle;
+        else if ((r -= wDrop) < 0f) m = PlayMove.Drop;
+        else m = PlayMove.Pause;
+        float dur;
+        switch (m)
+        {
+            case PlayMove.BigSwing: MoveAmplitude = (38f + 12f * Rand()) * Mathf.Deg2Rad; dur = 5f + 3f * Rand(); break;
+            case PlayMove.HighSwing: MoveAmplitude = (52f + 4f * Rand()) * Mathf.Deg2Rad; dur = 5f + 2f * Rand(); break;
+            case PlayMove.Circle: MoveAmplitude = (26f + 8f * Rand()) * Mathf.Deg2Rad; dur = 5f + 3f * Rand(); break;
+            case PlayMove.Drop: MoveAmplitude = 0f; dur = 8f; break;
+            case PlayMove.Run: MoveAmplitude = (44f + 8f * Rand()) * Mathf.Deg2Rad; dur = RunSeconds; goal = RunGoal(c, head, L); Trips++; break;
+            default: MoveAmplitude = 0f; dur = 1.5f + 2f * Rand(); break;
+        }
+        Move = m; lastMove = m;
+        moveUntil = c.Time + dur * c.Body.TimeScale;
+        playId++; PlayMoves++; MoveCounts[(int)m]++;
+    }
+
+    // A playful run: a hop to a branch nearby, else another crown.
+    Vector3 RunGoal(OctopusController c, Vector3 head, float L)
+    {
+        for (int attempt = 0; attempt < 3; attempt++)
+            if (TryGoal(c, head, L, true, out Vector3 g)) return g;
+        if (CanopyRegions.Count > 0) return PickGoal(c, head, L);
+        TryGoal(c, head, L, true, out Vector3 any);
+        return any;
+    }
+
     // ------------------------------------------------------------------ perception
 
     void Perceive(OctopusController c, Vector3 head, float L)
@@ -317,8 +588,11 @@ public sealed class OctopusBrain
             // (the cone is for finding prey; the one it is already watching it keeps in view all round - the eyes
             // turn: a body rocking on its holds turned its blind spot onto the prey it stalked and lost it)
             if (p != Target && Vector3.Dot(d, fwd) < cosHalf * dist) continue;
+            if (c.Sequencer != null && Ignored(p)) continue;   // the swinger gave it up (out of reach): not for now
             // one line of sight cast: the canopy (or anything) in between hides the prey
             if (c.Cast(head, d, dist - 0.05f * L, out SurfaceHit h)) continue;
+            // (the swinger keeps the one it hunts while it sees it: two spiders near each other flipped the hunt)
+            if (c.Sequencer != null && p == Target) { bestD = float.MinValue; bestP = p; continue; }
             if (dist < bestD) { bestD = dist; bestP = p; }
         }
         seen = bestP != null;

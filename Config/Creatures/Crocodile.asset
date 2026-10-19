@@ -243,64 +243,133 @@ MonoBehaviour:
         ringSegments: 18
         ringsPerSegment: 3
     - rid: 1001
-      type: {class: Leg2Bone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      type: {class: SprawlLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: fore
         at:
           joint: 7
           side: 0
-          offset: {x: 0.085, y: -0.03, z: 0}
+          offset: {x: 0.08, y: -0.045, z: 0}
           slot: 0
         mirror: 1
         role: 0
         gaitGroup: -1
-        restOffset: {x: 0.21, y: 0, z: 0.04}
+        restOffset: {x: 0.19, y: 0, z: 0.03}
         stepThreshold: 0.07
         stepDuration: 0.17
         stepLift: 0.03
         overshoot: 0.05
-        footLength: 0.05
+        footLength: 0.055
         toeCount: 5
         forwardSwingLimitDeg: 75
         backSwingLimitDeg: 50
         kneeRangeDeg: 50
         kneeFlexDeg: 18
-        upperLength: 0.11
-        lowerLength: 0.095
-        upperRadius: 0.03
-        lowerRadius: 0.02
-        pole: {x: 0.6, y: 0.6, z: -0.9}
-        kneeBlend: 0
+        upperLength: 0.095
+        lowerLength: 0.075
+        upperRadius: 0.027
+        lowerRadius: 0.021
+        pole: {x: 0.5, y: 0.3, z: -0.9}
+        ankleHeight: 0.018
+        rootMass: 1.5
+        rootStretch: 1.6
+        rootDepth: 1.2
+        muscle: 0.15
+        muscleAt: 0.35
+        kneeSize: 0.85
+        forearm: 0.15
+        wrist: 0.85
+        folds: 3
+        foldHeight: 0.14
+        wristFolds: 1
+        scaleRows: 5
+        scaleAround: 6
+        scaleHeight: 0.14
+        around: 18
+        digitLengths:
+        - 0.5
+        - 0.62
+        - 0.66
+        - 0.6
+        - 0.5
+        phalanges:
+        - 2
+        - 3
+        - 4
+        - 4
+        - 3
+        digitSpreadDeg: 90
+        footYawDeg: 10
+        digitRadius: 0.0065
+        palmWidth: 0
+        clawedDigits: 3
+        clawLength: 0.011
+        clawCurveDeg: 35
+        clawThickness: 0.7
+        toeWeb: 0
     - rid: 1002
-      type: {class: Leg2Bone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      type: {class: SprawlLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: hind
         at:
           joint: 15
           side: 0
-          offset: {x: 0.085, y: -0.025, z: 0}
+          offset: {x: 0.08, y: -0.04, z: 0}
           slot: 0
         mirror: 1
         role: 0
         gaitGroup: -1
-        restOffset: {x: 0.24, y: 0, z: 0}
+        restOffset: {x: 0.21, y: 0, z: -0.01}
         stepThreshold: 0.07
         stepDuration: 0.17
         stepLift: 0.03
         overshoot: 0.05
-        footLength: 0.068
+        footLength: 0.075
         toeCount: 4
         forwardSwingLimitDeg: 75
         backSwingLimitDeg: 50
         kneeRangeDeg: 50
         kneeFlexDeg: 18
-        upperLength: 0.125
-        lowerLength: 0.105
-        upperRadius: 0.036
-        lowerRadius: 0.023
-        pole: {x: 0.6, y: 0.6, z: 0.9}
-        kneeBlend: 0
-        toeWeb: 0.6
+        upperLength: 0.12
+        lowerLength: 0.097
+        upperRadius: 0.032
+        lowerRadius: 0.024
+        pole: {x: 0.5, y: 0.35, z: 0.9}
+        ankleHeight: 0.02
+        rootMass: 1.5
+        rootStretch: 1.6
+        rootDepth: 1.2
+        muscle: 0.2
+        muscleAt: 0.35
+        kneeSize: 0.85
+        forearm: 0.2
+        wrist: 0.8
+        folds: 3
+        foldHeight: 0.14
+        wristFolds: 1
+        scaleRows: 5
+        scaleAround: 6
+        scaleHeight: 0.14
+        around: 18
+        digitLengths:
+        - 0.55
+        - 0.8
+        - 0.95
+        - 0.85
+        phalanges:
+        - 2
+        - 3
+        - 4
+        - 4
+        digitSpreadDeg: 55
+        footYawDeg: 15
+        digitRadius: 0.0075
+        palmWidth: 0
+        clawedDigits: 3
+        clawLength: 0.013
+        clawCurveDeg: 35
+        clawThickness: 0.7
+        toeWeb: 0.75
     - rid: 1003
       type: {class: Eyes, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:

@@ -306,7 +306,7 @@ namespace TerrainGen.Tests
             {
                 var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, size);
                 var world = new Matrix4x4[bind.Length];
-                float memMin = float.MaxValue, underMin = float.MaxValue, fingMin = float.MaxValue, thumbMin = float.MaxValue, liftMin = float.MaxValue;
+                float memMin = float.MaxValue, underMin = float.MaxValue, fingMin = float.MaxValue, thumbMin = float.MaxValue, liftMin = float.MaxValue, wristMin = float.MaxValue;
                 string at = "";
                 float ts = Mathf.Sqrt(size);
                 for (int t = 0; t < 600; t++)
@@ -336,13 +336,17 @@ namespace TerrainGen.Tests
                     foreach (int i in fing) { Vector3 p = SkinPos(d, skin, i); if (!Hand(p)) fingMin = Mathf.Min(fingMin, p.y); }
                     foreach (int i in thumb) thumbMin = Mathf.Min(thumbMin, SkinPos(d, skin, i).y);
                     var cw = sim.Flight.Wings;
+                    // the wrist stands raised on the thumb claw (a pterosaur's, a vampire bat's), not on its own knob
+                    for (int w = 0; w < s.wings.Length; w++)
+                        wristMin = Mathf.Min(wristMin, (cw.State[w].wrist.y - sim.Legs[s.wings[w].leg].foot.y) / (s.wings[w].thumbLength * size));
                     for (int w = 0; w < s.wings.Length; w++)
                     {
                         Vector3 up = sim.Rotations[sp.legs[s.wings[w].leg].attachJoint] * Vector3.up;
                         liftMin = Mathf.Min(liftMin, Mathf.Asin(Mathf.Clamp(Vector3.Dot(cw.FingerDir[w * WingSpec.Fingers + 1], up), -1f, 1f)) * Mathf.Rad2Deg);
                     }
                 }
-                TestContext.WriteLine($"x{size} {run}: membrane >= {memMin * 100f:F1} cm ({at}), under the trunk >= {underMin * 100f:F1} cm, fingers >= {fingMin * 100f:F1} cm, middle finger >= {liftMin:F0} deg up, thumb claws down to {thumbMin * 100f:F1} cm");
+                TestContext.WriteLine($"x{size} {run}: membrane >= {memMin * 100f:F1} cm ({at}), under the trunk >= {underMin * 100f:F1} cm, fingers >= {fingMin * 100f:F1} cm, middle finger >= {liftMin:F0} deg up, thumb claws down to {thumbMin * 100f:F1} cm, wrist >= {wristMin:F2} x the thumb above the foot");
+                Assert.Greater(wristMin, 0.5f, $"x{size} {run}: the wrist stands raised on the thumb claw, not on its knob");
                 Assert.Greater(liftMin, 15f, $"x{size} {run}: the folded fingers point up");
                 Assert.Greater(fingMin, clear, $"x{size} {run}: a finger near the ground");
                 Assert.Greater(memMin, run == "straight" ? clear : turnClear, $"x{size} {run}: the membrane drags ({at})");

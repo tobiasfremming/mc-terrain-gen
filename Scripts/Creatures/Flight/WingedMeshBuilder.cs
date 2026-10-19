@@ -116,9 +116,11 @@ public static class WingedMeshBuilder
         readonly List<Vector2> uv0, uv1;
         readonly List<Vector4> uv2;
         readonly List<int> tris;
+        readonly PartMeshEmitter em;
 
         public Builder(PartMeshEmitter m)
         {
+            em = m;
             sp = m.Species; wings = m.WingSpecs; cw = m.Wings; bones = m.Bones;
             n = sp.JointCount; legs = sp.legs != null ? sp.legs.Length : 0;
             pos = m.Lists.pos; nrm = m.Lists.nrm; uv0 = m.Lists.uv0; uv1 = m.Lists.uv1; uv2 = m.Lists.uv2; tris = m.Lists.tris;
@@ -187,6 +189,7 @@ public static class WingedMeshBuilder
 
         public void Arm(int w)
         {
+            if (wings[w].armMuscle > 0f) { MuscledArm(w); return; }
             WingSpec ws = wings[w];
             LegSpec arm = sp.legs[ws.leg];
             WingState st = cw.State[w];
@@ -220,13 +223,18 @@ public static class WingedMeshBuilder
                 q.Add(S(c, tan, Mathf.Lerp(ru, rl, sg / total), drLimb, blob + sg, Blend(bu, bl, wt)));
             }
             q.Add(S(E + dl * (0.6f * ll), dl, Mathf.Lerp(ru, rl, (lu + 0.6f * ll) / total), drLimb, blob + lu + 0.6f * ll, Rigid(bl)));
-            q.Add(S(Wr, dl, rl, 0f, blob + total, Blend(bl, bh, 0.5f)));
+            // standing on the thumb claws (WingSpec.groundWristLift): the hand bone flexes on the ground until the thumb
+            // points down (CreatureWings.HandBoneOut), so the wrist's cap and knuckle ride the forearm and the hand bone
+            // carries the thumb alone (it swings about the wrist knuckle, its root inside it)
+            bool flexHand = ws.groundWristLift > 0f;
+            int bc = flexHand ? bl : bh;
+            q.Add(S(Wr, dl, rl, 0f, blob + total, flexHand ? Rigid(bl) : Blend(bl, bh, 0.5f)));
             for (int k = 1; k <= 2; k++)
             {
                 float a = 30f * k * Mathf.Deg2Rad;
-                q.Add(S(Wr + dl * (cap * Mathf.Sin(a)), dl, rl * Mathf.Cos(a), -Mathf.Tan(a) * rl / cap, blob + total + cap * Mathf.Sin(a), Rigid(bh)));
+                q.Add(S(Wr + dl * (cap * Mathf.Sin(a)), dl, rl * Mathf.Cos(a), -Mathf.Tan(a) * rl / cap, blob + total + cap * Mathf.Sin(a), Rigid(bc)));
             }
-            q.Add(S(Wr + dl * cap, dl, 0f, 0f, blob + total + cap, Rigid(bh), true));
+            q.Add(S(Wr + dl * cap, dl, 0f, 0f, blob + total + cap, Rigid(bc), true));
             Tube(q, bones[bu].rotation * Vector3.right, kTubeSegments, CreatureMeshBuilder.PartLeg);
 
             // thumb claw: a short curved cone off the wrist's leading edge, rigid to the hand
@@ -251,15 +259,141 @@ public static class WingedMeshBuilder
                 float kr = ws.wristKnuckle * rl;
                 Vector3 kc = Wr + fwd * (0.25f * kr) + st.handNormal * (0.15f * kr);
                 var kq = new List<Sample>();
-                kq.Add(S(kc - dl * kr, dl, 0f, 0f, 0f, Rigid(bh), true));
+                kq.Add(S(kc - dl * kr, dl, 0f, 0f, 0f, Rigid(bc), true));
                 for (int k = 1; k < 6; k++)
                 {
                     float a = -0.5f * Mathf.PI + Mathf.PI * k / 6f;
-                    kq.Add(S(kc + dl * (kr * Mathf.Sin(a)), dl, kr * Mathf.Cos(a), -Mathf.Tan(a), kr * (1f + Mathf.Sin(a)), Rigid(bh)));
+                    kq.Add(S(kc + dl * (kr * Mathf.Sin(a)), dl, kr * Mathf.Cos(a), -Mathf.Tan(a), kr * (1f + Mathf.Sin(a)), Rigid(bc)));
                 }
-                kq.Add(S(kc + dl * kr, dl, 0f, 0f, 2f * kr, Rigid(bh), true));
+                kq.Add(S(kc + dl * kr, dl, 0f, 0f, 2f * kr, Rigid(bc), true));
                 Tube(kq, st.handNormal, kTubeSegments + 2, CreatureMeshBuilder.PartLeg);
             }
+        }
+
+        // A dragon's / bat's arm (WingSpec.armMuscle): the humerus thick out of the chest with deltoid, biceps and
+        // triceps masses, a ball elbow (two caps on one sphere: never creases) with an olecranon, the forearm thick
+        // near the elbow and lean at the wrist with an optional second bone along its trailing side (forearmTwin),
+        // a knobbly wrist (the wrist knuckle and two carpal knobs) and a two-part thumb on the plain thumb's curve
+        // (CreatureWings.ThumbTip unchanged): a skin digit, then a pale claw. All rigid but the buried shoulder.
+        void MuscledArm(int w)
+        {
+            WingSpec ws = wings[w];
+            LegSpec arm = sp.legs[ws.leg];
+            WingState st = cw.State[w];
+            int bu = WingBoneLayout.LegBone(n, ws.leg, 0), bl = WingBoneLayout.LegBone(n, ws.leg, 1), bh = WingBoneLayout.LegBone(n, ws.leg, 2);
+            Vector3 S0 = st.shoulder, E = st.elbow, Wr = st.wrist;
+            float lu = Mathf.Max(1e-4f, (E - S0).magnitude), ll = Mathf.Max(1e-4f, (Wr - E).magnitude);
+            Vector3 du = (E - S0) / lu, dl = (Wr - E) / ll;
+            float ru = Mathf.Max(1e-4f, arm.upperRadius), rl = Mathf.Max(1e-4f, arm.lowerRadius), mu = ws.armMuscle;
+            Vector3 fwd = -cw.Side(w) * Vector3.Cross(st.handNormal, st.handOut);   // the leading edge
+            Vector3 dors = st.handNormal;
+            bool flexHand = ws.groundWristLift > 0f;
+            int bc = flexHand ? bl : bh;
+            float rE = Mathf.Max(0.8f * ru, 1.2f * rl), blob = 1.3f * ru;
+
+            // the humerus: a buried shoulder blended into the chest, thick and tapering to the elbow ball
+            float Hum(float f) { f = Mathf.Clamp01(f); return Mathf.Lerp(1.3f * ru, 0.85f * ru, f * f * (3f - 2f * f)); }
+            Vector4 sh = Blend(arm.attachJoint, bu, 0.5f);
+            var q = new List<Sample>();
+            q.Add(S(S0 - du * blob, du, 0f, 0f, 0f, sh, true));
+            q.Add(S(S0 - du * (0.866f * blob), du, 0.5f * Hum(0f), 0f, 0.134f * blob, sh));
+            q.Add(S(S0 - du * (0.5f * blob), du, 0.866f * Hum(0f), 0f, 0.5f * blob, sh));
+            q.Add(S(S0, du, Hum(0f), 0f, blob, Blend(arm.attachJoint, bu, 0.7f)));
+            for (int i = 1; i <= 4; i++)
+            {
+                float f = i / 5f;
+                q.Add(S(S0 + du * (f * lu), du, Hum(f), (Hum(f + 0.01f) - Hum(f - 0.01f)) / (0.02f * lu), blob + f * lu, f < 0.25f ? Blend(arm.attachJoint, bu, 0.9f) : Rigid(bu)));
+            }
+            q.Add(S(E, du, rE, 0f, blob + lu, Rigid(bu)));
+            for (int k = 1; k <= 2; k++)
+            {
+                float a = 30f * k * Mathf.Deg2Rad;
+                q.Add(S(E + du * (rE * Mathf.Sin(a)), du, rE * Mathf.Cos(a), -Mathf.Tan(a), blob + lu + rE * Mathf.Sin(a), Rigid(bu)));
+            }
+            q.Add(S(E + du * rE, du, 0f, 0f, blob + lu + rE, Rigid(bu), true));
+            Tube(q, bones[bu].rotation * Vector3.right, kTubeSegments + 4, CreatureMeshBuilder.PartLeg);
+
+            // the humerus' muscles (rigid to it)
+            Vector3 hd = (dors - du * Vector3.Dot(dors, du)).normalized, hf = Vector3.Cross(hd, du);
+            if (Vector3.Dot(hf, fwd) < 0f) hf = -hf;
+            void Muscle(Vector3 c, Vector3 along, Vector3 up, float ax, float ay, float az, int bone)
+            {
+                Matrix4x4 f = Matrix4x4.TRS(c, Quaternion.LookRotation(along, up), Vector3.one);
+                em.Ellipsoid(f, Vector3.zero, ax, ay, az, 10, 6, CreatureMeshBuilder.PartLeg, bone);
+            }
+            Muscle(S0 + du * (0.22f * lu) + hd * (0.5f * ru) + hf * (0.25f * ru), du, hd, (0.75f + 0.3f * mu) * ru, (0.5f + 0.3f * mu) * ru, 0.3f * lu, bu);   // deltoid
+            Muscle(S0 + du * (0.5f * lu) - hd * (0.3f * ru) + hf * (0.45f * ru), du, hd, (0.55f + 0.25f * mu) * ru, (0.5f + 0.25f * mu) * ru, 0.28f * lu, bu);  // biceps
+            Muscle(S0 + du * (0.45f * lu) - hf * (0.55f * ru), du, hd, (0.55f + 0.25f * mu) * ru, (0.55f + 0.25f * mu) * ru, 0.32f * lu, bu);                  // triceps
+
+            // the forearm: the elbow ball, thick near it, lean at the wrist; the olecranon on the bend's outside
+            float Fore(float f)
+            {
+                f = Mathf.Clamp01(f);
+                return f < 0.2f ? Mathf.Lerp(rE, (1f + 0.25f * mu) * rl, f / 0.2f) : Mathf.Lerp((1f + 0.25f * mu) * rl, 0.82f * rl, Mathf.Clamp01((f - 0.2f) / 0.6f));
+            }
+            q.Clear();
+            q.Add(S(E - dl * rE, dl, 0f, 0f, blob + lu - rE, Rigid(bl), true));
+            for (int k = 2; k >= 1; k--)
+            {
+                float a = 30f * k * Mathf.Deg2Rad;
+                q.Add(S(E - dl * (rE * Mathf.Sin(a)), dl, rE * Mathf.Cos(a), Mathf.Tan(a), blob + lu - rE * Mathf.Sin(a), Rigid(bl)));
+            }
+            q.Add(S(E, dl, rE, 0f, blob + lu, Rigid(bl)));
+            foreach (float f in new[] { 0.12f, 0.25f, 0.45f, 0.65f, 0.85f, 1f })
+                q.Add(S(E + dl * (f * ll), dl, Fore(f), (Fore(f + 0.01f) - Fore(f - 0.01f)) / (0.02f * ll), blob + lu + f * ll, Rigid(bl)));
+            float cap = kWristCap * rl;
+            for (int k = 1; k <= 2; k++)
+            {
+                float a = 30f * k * Mathf.Deg2Rad;
+                q.Add(S(Wr + dl * (cap * Mathf.Sin(a)), dl, 0.82f * rl * Mathf.Cos(a), -Mathf.Tan(a) * 0.82f * rl / cap, blob + lu + ll + cap * Mathf.Sin(a), Rigid(bc)));
+            }
+            q.Add(S(Wr + dl * cap, dl, 0f, 0f, blob + lu + ll + cap, Rigid(bc), true));
+            Tube(q, bones[bl].rotation * Vector3.right, kTubeSegments + 4, CreatureMeshBuilder.PartLeg);
+            Vector3 bend = du - dl;
+            if (bend.sqrMagnitude > 1e-8f) Muscle(E + bend.normalized * (0.55f * rE), dl, dors, 0.6f * rE, 0.6f * rE, 0.75f * rE, bl);   // olecranon
+            // the forearm's second bone along its trailing side
+            if (ws.forearmTwin > 0f)
+            {
+                float ru2 = ws.forearmTwin * rl;
+                Vector3 tr = -(fwd - dl * Vector3.Dot(fwd, dl)).normalized;
+                Vector3 a0 = E + dl * (0.1f * ll) + tr * (0.55f * rl), a1 = Wr - dl * (0.06f * ll) + tr * (0.55f * rl);
+                Vector3 t2 = (a1 - a0).normalized;
+                float l2 = (a1 - a0).magnitude;
+                var u = new List<Sample>();
+                u.Add(S(a0 - t2 * ru2, t2, 0f, 0f, 0f, Rigid(bl), true));
+                u.Add(S(a0, t2, 1.15f * ru2, 0f, ru2, Rigid(bl)));
+                u.Add(S(a0 + t2 * (0.5f * l2), t2, 0.85f * ru2, 0f, ru2 + 0.5f * l2, Rigid(bl)));
+                u.Add(S(a1, t2, 1.1f * ru2, 0f, ru2 + l2, Rigid(bl)));
+                u.Add(S(a1 + t2 * ru2, t2, 0f, 0f, 2f * ru2 + l2, Rigid(bl), true));
+                Tube(u, dors, kTubeSegments, CreatureMeshBuilder.PartLeg);
+            }
+            // the knobbly wrist: the knuckle and two carpal knobs (on the forearm when the hand flexes on the ground)
+            float kr = (ws.wristKnuckle > 0f ? ws.wristKnuckle : 1.2f) * rl;
+            Muscle(Wr + fwd * (0.25f * kr) + dors * (0.15f * kr), dl, dors, kr, 0.9f * kr, kr, bc);
+            Muscle(Wr + fwd * (0.7f * kr) + dors * (0.35f * kr) + dl * (0.2f * kr), dl, dors, 0.45f * kr, 0.4f * kr, 0.5f * kr, bc);
+            Muscle(Wr - fwd * (0.65f * kr) + dors * (0.3f * kr) + dl * (0.15f * kr), dl, dors, 0.45f * kr, 0.4f * kr, 0.5f * kr, bc);
+
+            // the thumb: the plain thumb's curve (ThumbTip), a skin digit with a knuckle to 55 %, a pale claw beyond
+            Vector3 tdir = (fwd * 0.8f + dors * 0.3f - dl * 0.2f).normalized;
+            float len = Mathf.Max(1e-3f, ws.thumbLength), r0 = ws.thumbRadius > 0f ? ws.thumbRadius : 0.45f * rl;
+            Vector3 root = Wr + fwd * (0.6f * rl);
+            Vector3 C(float t) => root + tdir * (len * t) - dors * (0.25f * len * t * t);
+            Vector3 T(float t) => (tdir - dors * (0.5f * t)).normalized;
+            var c2 = new List<Sample>();
+            c2.Add(S(C(0f) - T(0f) * (0.5f * r0), T(0f), 0f, 0f, 0f, Rigid(bh), true));
+            foreach (float t in new[] { 0f, 0.2f, 0.32f, 0.44f, 0.55f })
+            {
+                float g = (t - 0.32f) / 0.07f;
+                c2.Add(S(C(t), T(t), r0 * (1f - 0.35f * t) * (1f + 0.18f * Mathf.Exp(-g * g)), 0f, len * t, Rigid(bh)));
+            }
+            c2.Add(S(C(0.55f) + T(0.55f) * (0.4f * r0), T(0.55f), 0f, 0f, 0.55f * len + 0.4f * r0, Rigid(bh), true));
+            Tube(c2, dors, kFingerSegments + 2, CreatureMeshBuilder.PartLeg);
+            var c3 = new List<Sample>();
+            c3.Add(S(C(0.48f), T(0.48f), 0f, 0f, 0.48f * len, Rigid(bh), true));
+            foreach (float t in new[] { 0.52f, 0.65f, 0.8f, 0.92f })
+                c3.Add(S(C(t), T(t), 0.68f * r0 * (1f - (t - 0.52f) / 0.5f), -0.68f * r0 / (0.5f * len), len * t, Rigid(bh)));
+            c3.Add(S(C(1f), T(1f), 0f, 0f, len, Rigid(bh), true));
+            Tube(c3, dors, kFingerSegments + 1, CreatureMeshBuilder.PartFoot);
         }
 
         public void Fingers(int w)
@@ -272,6 +406,12 @@ public static class WingedMeshBuilder
                 int bone = sp.WingBone(w, k);
                 Vector3 d = cw.FingerDir[cw.FingerIndex(w, k)];
                 float len = ws.fingerLengths[k];
+                if (ws.armMuscle > 0f)
+                {
+                    // a metacarpal base: a flared knob on the finger's root by the wrist
+                    Matrix4x4 mf = Matrix4x4.TRS(st.wrist + d * (0.07f * len), Quaternion.LookRotation(d, st.handNormal), Vector3.one);
+                    em.Ellipsoid(mf, Vector3.zero, 1.45f * r0, 1.3f * r0, 0.09f * len, 8, 5, CreatureMeshBuilder.PartLeg, bone);
+                }
                 var q = new List<Sample>();
                 Vector4 rig = Rigid(bone);
                 float dr = -0.75f * r0 / len;

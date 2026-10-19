@@ -110,6 +110,9 @@ namespace CreatureKit
                 case Leg2Bone l:
                     l.upperLength *= f; l.lowerLength *= f; l.upperRadius *= f; l.lowerRadius *= f; l.ankleHeight *= f; l.clawLength *= f;
                     break;
+                case SprawlLeg sl:
+                    sl.Taper(f);
+                    break;
                 case ArthropodLeg a:
                     for (int i = 0; i < a.segments.Length; i++) { a.segments[i].length *= f; a.segments[i].radiusStart *= f; a.segments[i].radiusEnd *= f; }
                     break;
