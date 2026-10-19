@@ -118,6 +118,7 @@ public sealed class CreatureDebugView : MonoBehaviour
     static readonly Color32 kRoute = new Color32(0xFF, 0xE0, 0x40, 0xFF), kRouteDone = new Color32(0x80, 0x80, 0x80, 0xC0);
     static readonly Color32 kWaypoint = new Color32(0xFF, 0x40, 0xE0, 0xFF), kPivot = new Color32(0x40, 0xE0, 0xFF, 0xFF);
     static readonly Color32 kCatch = new Color32(0xFF, 0x9A, 0x30, 0xFF);
+    static readonly Color32 kArc = new Color32(0xF0, 0xF0, 0xF0, 0xFF);
     const int OctopusVertices = 2 * (3 + 3 + 3 + 1 + BranchRoute.MaxWaypoints + 1 + 16 + 4);
 
     void Cross(Vector3 p, float r, Color32 c)
@@ -135,7 +136,7 @@ public sealed class CreatureDebugView : MonoBehaviour
         bool travel = ArmCoordinator.Travelling(c.Intent.mode);
         if (travel) Cross(c.Brain != null ? c.Brain.Goal : c.Intent.goal, r, kGoal);
         ArmBlackboard b = c.Board;
-        BranchRoute route = c.Coordinator.Route;
+        BranchRoute route = c.Route;
         if (route.Valid)
         {
             Vector3 prev = b.PivotGroup >= 0 ? b.SwingCentre : head;
@@ -147,7 +148,23 @@ public sealed class CreatureDebugView : MonoBehaviour
             Line(prev, route.Goal, kRoute);
             if (!route.Done) Cross(route.Next, 1.5f * r, kWaypoint);
         }
-        if (b.PivotGroup >= 0)
+        SwingSequencer q = c.Sequencer;
+        if (q != null)
+        {
+            // the planned body (the swinger): each rope pivot -> the crown (cyan), the next hold (magenta), the predicted
+            // arc to the forward apex (white) and the apex (white cross), where the last hold was let go (grey) and caught (orange)
+            PlannedSwing sw = q.Swing;
+            for (int i = 0; i < PlannedSwing.MaxHolds; i++)
+                if (sw.Active[i]) { Cross(sw.Pivot[i], r, kPivot); Line(sw.Pivot[i], sw.Position, kPivot); }
+            if (q.HasNext) Cross(q.NextHold, 1.5f * r, kWaypoint);
+            if (q.Mode == SwingSequencer.Step.Pump || q.Mode == SwingSequencer.Step.Reach)
+            {
+                for (int i = 1; i < q.ArcCount; i++) Line(q.Arc[i - 1], q.Arc[i], kArc);
+                if (q.ArcCount > 0) Cross(q.PredictedApex, r, kArc);
+            }
+            if (q.Transfers > 0) { Cross(q.LastRelease, 0.6f * r, kRouteDone); Cross(q.LastCatch, 0.6f * r, kCatch); }
+        }
+        else if (b.PivotGroup >= 0)
         {
             Cross(b.SwingCentre, r, kPivot);
             Line(b.SwingCentre, head, kPivot);
@@ -155,7 +172,7 @@ public sealed class CreatureDebugView : MonoBehaviour
         for (int a = 0; a < b.Arms && a < 8; a++)
         {
             if (!b.Anchored[a]) continue;
-            int g = c.Coordinator.GroupOf(a);
+            int g = q != null ? (q.Use[a] == SwingSequencer.ArmUse.Hold ? b.PivotGroup : 1) : c.Coordinator.GroupOf(a);
             Color32 col = g < 0 ? kChain : g == b.PivotGroup ? kGoal : kCatch;
             Line(c.Body.Arms[a].X[0], b.Anchor[a], col);
         }

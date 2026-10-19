@@ -96,6 +96,11 @@ public struct CephalopodSpec
     // Look features of relatives (the swinger); 0 = off (the octopus, byte-identical): eyes on stalks of this length
     // (m), a pear-shaped mantle sac widest low down (0..1 blend toward the pear), a dark beak cone at the oral pole (m).
     public float eyeStalk, mantlePear, beakLength;
+    // How the body moves (planned-body rework 2026-10-19): 0 = emergent - the arms' constraint impulses carry a soft
+    // body (the tree octopus); 1 = planned - a reduced-order swing model (PlannedSwing) moves the body, one locomotion
+    // sequencer (SwingSequencer) decides the holds, the lattice adds secondary motion only (the swinger).
+    public int locomotion;
+    public bool Planned => locomotion == 1;
 
     public int ArmCount => armCount >= 2 ? armCount : 8;
     public float BodyMass => bodyMass > 0f ? bodyMass : 2.4f;
@@ -137,6 +142,7 @@ public struct CephalopodSpec
         if (arm.minStretch > 0f && arm.maxStretch > 0f && arm.minStretch > arm.maxStretch) return "cephalopod.arm stretch range is inverted";
         if (mouthCount < 0) return "cephalopod.mouthCount must be >= 0";
         if (minHolds < 0 || minHolds > ArmCount) return "cephalopod.minHolds must be in 0 .. armCount";
+        if (locomotion < 0 || locomotion > 1) return "cephalopod.locomotion must be 0 (emergent) or 1 (planned)";
         if (mouthCount > 0 && mouth.segments != 0 && mouth.segments < 4) return "cephalopod.mouth.segments must be >= 4";
         return null;
     }

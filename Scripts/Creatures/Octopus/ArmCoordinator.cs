@@ -57,7 +57,7 @@ public sealed class ArmCoordinator
     // rest variety (T6): idle slots re-rolled every 8-20 s (x TimeScale), with quiet windows
     float nextIdleRoll, restSince;
     bool wasRest;
-    int idleHang = -1, idleFeel = -1, idleGroom = -1, idleGroomArm = -1;
+    int idleHang = -1, idleGroom = -1, idleGroomArm = -1;
 
     // Strain: the force an arm puts on the body, in body weights, smoothed over StrainSeconds. A hold straining
     // past StrainLimit for StrainHoldSeconds is fighting the others (a run that cannot bend from the body to its
@@ -315,25 +315,16 @@ public sealed class ArmCoordinator
                     if (emergency) pre[a] = true;
                 }
             }
-            // 4. the rest: one feels the far side, the rearmost hang, the others tuck in. A free arm keeps the
-            // free role it has (these only change what an idle arm looks like; re-ranking them as the body turns
-            // churned roles for nothing)
-            bool feelTaken = false;
+            // 4. the rest: the rearmost hang, the others tuck in (no arm feels about without a job: a free arm sweeping
+            // the far side read as aimless flapping, user 2026-10-19 - support that runs short sends arms out above).
+            // A free arm keeps the free role it has (these only change what an idle arm looks like; re-ranking them as
+            // the body turns churned roles for nothing)
             for (int a = 0; a < arms; a++)
             {
                 if (want[a] != ArmRole.Rest || b.Anchored[a]) continue;
                 ArmRole cur = b.Role[a];
-                if (cur == ArmRole.Feel && !feelTaken && !CoolingDown(a, ArmRole.Feel, now)) { want[a] = ArmRole.Feel; feelTaken = true; }
-                else if (cur == ArmRole.Hang || cur == ArmRole.Tuck && !b.Grounded) want[a] = cur;
+                if (cur == ArmRole.Hang || cur == ArmRole.Tuck && !b.Grounded) want[a] = cur;
             }
-            int feel = -1; float fl = -1f;
-            for (int a = 0; a < arms; a++)
-                if (want[a] == ArmRole.Rest && !CoolingDown(a, ArmRole.Feel, now))
-                {
-                    float s = Mathf.Abs(lateral[a]) + (b.Role[a] == ArmRole.Feel ? Stickiness : 0f);
-                    if (s > fl) { fl = s; feel = a; }
-                }
-            if (feel >= 0 && !feelTaken) want[feel] = ArmRole.Feel;
             for (int a = 0; a < arms; a++)
                 if (want[a] == ArmRole.Rest) want[a] = facing[a] < -0.5f ? ArmRole.Hang : b.Grounded ? ArmRole.Rest : ArmRole.Tuck;
         }
@@ -436,25 +427,26 @@ public sealed class ArmCoordinator
     }
 
     // Rest variety (plan T6): with the support met, the spare free arms idle - mostly curled; now and then one
-    // hangs, one feels about, one grooms (bursts of 6-12 s x TimeScale between quiet windows of 15-30 s, all
-    // curled, so the body sleeps most of the time). A new rest first settles: no burst for FirstIdleSeconds.
+    // hangs and one grooms (bursts of 6-12 s x TimeScale between quiet windows of 15-30 s, all curled, so the body
+    // sleeps most of the time). A new rest first settles: no burst for FirstIdleSeconds. (No arm feels about at rest
+    // any more: an idle arm sweeping the air read as aimless, user 2026-10-19.)
     public const float FirstIdleSeconds = 40f;   // x TimeScale
     public float FirstIdle = FirstIdleSeconds;
     void IdleRoles(OctopusController c, bool supportMet)
     {
         ArmBlackboard b = c.Board;
         float now = c.Time, ts = c.Body.TimeScale;
-        if (now < restSince + FirstIdle * ts) { idleHang = idleFeel = idleGroom = idleGroomArm = -1; nextIdleRoll = now; return; }
+        if (now < restSince + FirstIdle * ts) { idleHang = idleGroom = idleGroomArm = -1; nextIdleRoll = now; return; }
         if (now >= nextIdleRoll)
         {
-            bool quiet = idleHang < 0 && idleFeel < 0 && idleGroom < 0 ? false : true;   // bursts and quiet windows alternate
-            idleHang = idleFeel = idleGroom = idleGroomArm = -1;
+            bool quiet = idleHang < 0 && idleGroom < 0 ? false : true;   // bursts and quiet windows alternate
+            idleHang = idleGroom = idleGroomArm = -1;
             if (!quiet)
             {
                 idleHang = PickFree(c);
                 float r = Rand();
-                if (r < 0.5f) { idleGroom = PickFree(c, idleHang); if (idleGroom >= 0) idleGroomArm = Rand() < 0.5f ? -1 : NeighbourOf(c, idleGroom); }
-                else idleFeel = PickFree(c, idleHang);
+                idleGroom = PickFree(c, idleHang);
+                if (idleGroom >= 0) idleGroomArm = r < 0.5f ? -1 : NeighbourOf(c, idleGroom);
             }
             nextIdleRoll = now + (quiet ? 15f + 15f * Rand() : 6f + 6f * Rand()) * ts;
         }
@@ -462,10 +454,9 @@ public sealed class ArmCoordinator
         {
             if (want[a] != ArmRole.Rest) continue;
             // a free arm hanging from the swing keeps hanging at rest (a calm drape; no relabelling)
-            if (c.Board.Role[a] == ArmRole.Hang && !c.Board.Anchored[a] && a != idleFeel && a != idleGroom) { want[a] = ArmRole.Hang; continue; }
+            if (c.Board.Role[a] == ArmRole.Hang && !c.Board.Anchored[a] && a != idleGroom) { want[a] = ArmRole.Hang; continue; }
             if (!supportMet) continue;
             if (a == idleHang && !CoolingDown(a, ArmRole.Hang, now)) want[a] = ArmRole.Hang;
-            else if (a == idleFeel && !CoolingDown(a, ArmRole.Feel, now)) want[a] = ArmRole.Feel;
             else if (a == idleGroom && !CoolingDown(a, ArmRole.Groom, now)) want[a] = ArmRole.Groom;
         }
     }

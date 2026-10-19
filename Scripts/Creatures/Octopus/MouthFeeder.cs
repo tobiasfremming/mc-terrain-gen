@@ -20,6 +20,9 @@ public sealed class MouthFeeder
     public const float EatSeconds = 2.5f;          // x TimeScale
     public const float GrabMargin = 0.015f;        // metres x sizeScale beyond the prey's radius
     public const float ReachTone = 2f, ReachPull = 0.12f;
+    // 1/s at scale 1: idle, a tentacle's velocity relative to the body's motion is damped this hard (TentacleChain.
+    // CalmDamping); at the chain's 1.2/s the light tentacles flapped as the body swung (tip p95 16 L/s, 160 reversals/min)
+    public const float IdleDamping = 8f;
 
     readonly OctopusBody body;
     readonly float[] dist;
@@ -97,6 +100,9 @@ public sealed class MouthFeeder
                 break;
         }
         if (Mode != State.Idle) body.Wake();
+        // idle, the tentacles hold themselves curled about the beak and move with the body (no flapping as it swings)
+        float calm = Mode == State.Idle ? IdleDamping : 0f;
+        for (int m = 0; m < body.MouthCount; m++) body.Mouth[m].CalmDamping = calm;
     }
 
     void ReachFor(OctopusController c)

@@ -152,19 +152,24 @@ namespace CreatureKit
                 for (int pair = 0; pair < s.Count; pair++)
                 {
                     int right = side > 0 ? 1 : 0;
-                    s[pair].gaitGroup = GroupOf(walk.pattern, pair, right, walk.waveGroups);
+                    s[pair].gaitGroup = GroupOf(walk.pattern, pair, right, walk.waveGroups, walk.waveTailToHead);
                 }
             }
             foreach (LimbPart l in walking) if (l.at.side != -1 && l.at.side != 1) l.gaitGroup = 0;
         }
 
-        public static int GroupOf(GaitPattern pattern, int pair, int right, int waveGroups)
+        public static int GroupOf(GaitPattern pattern, int pair, int right, int waveGroups, bool tailToHead = false)
         {
             switch (pattern)
             {
                 case GaitPattern.Diagonal: case GaitPattern.Tripod: case GaitPattern.Tetrapod: return (pair + right) % 2;
                 case GaitPattern.Alternate: return right;
-                case GaitPattern.Wave: int g = Mathf.Clamp(waveGroups, 2, 15); return ((pair % g) * 2 + right) % (2 * g);
+                case GaitPattern.Wave:
+                {
+                    // the groups step in ascending order (waveGait): group k lifts the k-th pair of every wavelength
+                    int g = Mathf.Clamp(waveGroups, 2, 15), k = (pair + right * (g / 2)) % g;
+                    return tailToHead ? (g - k) % g : k;
+                }
                 default: return 0;
             }
         }
@@ -243,7 +248,7 @@ namespace CreatureKit
             if (Error != null) throw new InvalidOperationException(Name + ": " + Error);
             var look = new CreatureLook();
             Module<Skin>()?.WriteTo(ref look);
-            if (Module<Membrane>() is Membrane mem) { look.membrane = mem.colour; look.membraneTranslucency = mem.translucency; look.veinContrast = mem.veinContrast; look.membraneRim = mem.rim; }
+            if (Module<Membrane>() is Membrane mem) { look.membrane = mem.colour; look.membraneTranslucency = mem.translucency; look.veinContrast = mem.veinContrast; look.membraneRim = mem.rim; look.membraneInner = mem.inner; }
             if (Module<Chitin>() is Chitin ch) { look.bandColor = ch.bandColor; look.sheen = ch.sheen; look.sheenColor = ch.sheenColor; }
             if (Module<Shimmer>() is Shimmer sh)
             {
@@ -275,6 +280,7 @@ namespace CreatureKit
                 dst.speed = walk.speed; dst.turnRateDeg = walk.turnRateDeg; dst.accel = walk.accel; dst.turnSlowdown = walk.turnSlowdown;
                 dst.gaitSwayDeg = walk.gaitSwayDeg; dst.gaitRollDeg = walk.gaitRollDeg; dst.subSteps = walk.subSteps;
                 dst.gaitBob = new GaitBob { amplitude = walk.bob.amplitude, hz = walk.bob.hz, damping = walk.bob.damping };
+                dst.waveGait = walk.pattern == GaitPattern.Wave;
             }
             Slither sl = Module<Slither>();
             dst.undulationDeg = sl != null ? sl.undulationDeg : 0f; dst.undulationHz = sl != null ? sl.undulationHz : 0f;

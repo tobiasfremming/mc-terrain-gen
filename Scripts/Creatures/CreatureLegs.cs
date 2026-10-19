@@ -118,6 +118,13 @@ sealed class CreatureLegs
     readonly float[] liftDelayT;   // arthropod: lift-off delay within its gait group, in step fractions
     readonly ArthropodLegPose[] poses;
     float feelerPhase;
+    // Wave gait (sp.waveGait): the walking legs' distinct gait groups in ascending id - the order they step in -
+    // and the place of the group whose turn is next. null = the event-driven gait.
+    readonly int[] waveOrder;
+    int waveNext;
+    // In a wave a planted foot of the group whose turn it is goes along when it has drifted this fraction of its
+    // step threshold from its rest point (an eligible foot always does): the rhythm stays even, without stamps.
+    const float kWaveJoin = 0.25f;
     // every arthropod leg's points (coxa base, joints, ankle, foot) from PointOffset[l]; the leg plane's normal
     public readonly Vector3[] Points;
     public readonly int[] PointOffset;
@@ -175,6 +182,7 @@ sealed class CreatureLegs
             restYaw[l] = SurfaceMath.Unit(ry, new Vector3(specs[l].side, 0f, 0f));
         }
         Points = new Vector3[points];
+        if (sp.waveGait) waveOrder = WaveOrder(specs);
         // the metachronal wave: within a gait group the rearmost leg lifts first, each leg further forward later
         for (int l = 0; l < c; l++)
         {
@@ -252,6 +260,14 @@ sealed class CreatureLegs
         for (int l = 0; l < specs.Length; l++)
         {
             Vector3 u = Up(l);
+            if (specs[l].feeler)
+            {
+                // a feeler (a pedipalp, a folded wing arm) is posed where it always is, never put on the ground
+                rest[l] = target[l] = FeelerPoint(l);
+                State[l].stepping = false; State[l].stepT = 0f;
+                State[l].footNormal = State[l].stepFromNormal = State[l].stepToNormal = u;
+                continue;
+            }
             Vector3 near = joints[specs[l].attachJoint] + rotations[specs[l].attachJoint] * (Mirror(specs[l].restOffset, l) * scale);
             Vector3 p = near - u * (sp.joints[specs[l].attachJoint].clearance * scale), n = u;
             bool got = ground.Probe(near, u, Window(l), out Vector3 gp, out Vector3 gn);
@@ -598,7 +614,8 @@ sealed class CreatureLegs
 
         // start steps
         int started = 0, startedGroup = -1;
-        for (int l = 0; l < c; l++)
+        if (waveOrder != null) started = StartWave(speed);
+        else for (int l = 0; l < c; l++)
         {
             if (!eligible[l]) continue;
             int g = specs[l].gaitGroup;
@@ -624,6 +641,74 @@ sealed class CreatureLegs
         }
 
         SolveIK(dt);
+        return started;
+    }
+
+    // ---- wave gait (sp.waveGait, T5.8) ----
+
+    // The walking legs' distinct gait groups, ascending: the order a wave steps them in.
+    static int[] WaveOrder(LegSpec[] specs)
+    {
+        int seen = 0, n = 0;
+        for (int l = 0; l < specs.Length; l++) if (!specs[l].feeler) seen |= 1 << (specs[l].gaitGroup & 31);
+        for (int g = 0; g < 32; g++) if ((seen & (1 << g)) != 0) n++;
+        var order = new int[n];
+        n = 0;
+        for (int g = 0; g < 32; g++) if ((seen & (1 << g)) != 0) order[n++] = g;
+        return order;
+    }
+
+    // The wave's step starts, in place of the event-driven rule. One group is in the air at a time, and the groups
+    // take their turns strictly in order: when the last group has landed and any foot wants to step (eligible:
+    // its stride, reach, joint range or the trunk), the next group in the order lifts - every one of its walking
+    // feet that is eligible or has drifted kWaveJoin of its threshold - so the lift-offs run down the body as a
+    // travelling wave (Walk.pattern Wave lays the groups out by pair). A group with no foot to move gives its turn
+    // to the next. A foot of the group in the air may join while that step is less than half done; a climbing
+    // foot about to be dragged (urgent) steps at once, as in the event-driven gait. Returns the steps started.
+    int StartWave(float speed)
+    {
+        int c = specs.Length, started = 0, busy = -1;
+        bool demand = false;
+        for (int l = 0; l < c; l++)
+        {
+            if (State[l].stepping) busy = specs[l].gaitGroup;
+            if (eligible[l]) demand = true;
+        }
+        for (int l = 0; l < c; l++)
+            if (eligible[l] && urgent[l] && !State[l].stepping) { StartStep(l, speed); started++; }
+        if (busy >= 0)
+        {
+            bool joinable = false;
+            for (int m = 0; m < c; m++)
+                if (specs[m].gaitGroup == busy && State[m].stepping && State[m].stepT < 0.5f) joinable = true;
+            if (!joinable) return started;
+            for (int l = 0; l < c; l++)
+            {
+                if (!eligible[l] || State[l].stepping || specs[l].gaitGroup != busy) continue;
+                if (Climbing && Steep(l) > kGripSteep && !GripHolds(l)) continue;
+                StartStep(l, speed); started++;
+            }
+            return started;
+        }
+        if (!demand) return started;
+        for (int k = 0; k < waveOrder.Length; k++)
+        {
+            int at = (waveNext + k) % waveOrder.Length, g = waveOrder[at], n = 0;
+            for (int l = 0; l < c; l++)
+            {
+                LegSpec s = specs[l];
+                if (s.feeler || s.gaitGroup != g || State[l].stepping) continue;
+                float thr = s.stepThreshold * scale;
+                if (Climbing) thr *= Factor(sp.climb.StrideFactor, Steep(l));
+                if (!eligible[l] && (target[l] - rest[l]).sqrMagnitude <= kWaveJoin * kWaveJoin * thr * thr) continue;
+                if (Climbing && Steep(l) > kGripSteep && !GripHolds(l)) continue;
+                StartStep(l, speed); n++;
+            }
+            if (n == 0) continue;
+            waveNext = (at + 1) % waveOrder.Length;
+            lastGroup = g;
+            return started + n;
+        }
         return started;
     }
 

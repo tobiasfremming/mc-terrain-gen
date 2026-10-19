@@ -123,6 +123,9 @@ namespace TerrainGen.Tests
         // the head blends to 0.45. Girdle p-p 0.221 x s before -> ~0.455 x s (x2.06; 1.46 m at full size); the model's own
         // bob shrank with the faster beat (0.316 -> 0.157 x s), so the girdle now rides well above it (bound changed
         // deliberately: it was "no more than the flight model").
+        // User feedback 2026-10-19 v4, "doesn't bob at all when flapping" (root cause: the landing approach faded it, see
+        // Lab_RenderedBodyBobs_WhenFlapping): girdleBob 3 -> 3.4, bobHead 0.45 -> 0.6, bobTail 0.4 -> 0.45: girdle
+        // 0.455 -> 0.518 x s (1.66 m at full size), mid 0.253 -> 0.291, head 0.205 -> 0.309; the wave still lags.
         [TestCase(1f)]
         [TestCase(0.94f)]
         [TestCase(1.06f)]
@@ -137,6 +140,91 @@ namespace TerrainGen.Tests
             Assert.Less(L.tailBob, L.midBob, "the tail bobs least");
             Assert.Less(L.headBob, L.girdleBob, "the head is stabilised");
             Assert.That(L.midLag, Is.InRange(0.1f, 1.0f), "the wave travels down the body (s at scale 1)");
+        }
+
+        // The bob as the user sees it in the lab (user feedback 2026-10-19, "the dragon doesn't bob at all when flapping the
+        // wings", while Flight_GirdleBob measured 0.455 x s): FlightBrain in the lab's aviary (AviarySizing) for six
+        // minutes - launches, patrols, soaring, manoeuvres, landing approaches, landings - the world-space height of the
+        // RENDERED body (WriteBoneWorld: the girdle, mid-body and head bones) in 2 s windows, its part locked to the
+        // wingbeat (least squares on the wing's stroke angle and rate: the swim, the manoeuvres and the altitude
+        // changes do not count) as a p-p. Root cause: the bob faded out with AirTwist.Calm, which is set for the whole
+        // landing approach (no swim, no manoeuvre while landing) - 30-40% of the airborne time, the wings beating all
+        // the way round it, the body dead still (beat-locked girdle 0.005 x s). Now AirTwist.BobCalm fades it only on
+        // the final, in the flare and on the ground; a slow roll keeps it too. Every window flapping in the air off a
+        // twisting manoeuvre must show the bob.
+        [TestCase(1, 1f / 60f)]
+        [TestCase(2, 1f / 60f)]
+        [TestCase(1, 1f / 144f)]
+        public void Lab_RenderedBodyBobs_WhenFlapping(int seed, float dt)
+        {
+            CreatureSpecies sp = CreatureDragonTwistTests.Dragon();
+            float s = sp.scale, T = Mathf.Sqrt(s);
+            float big = CreatureLab.MaxScale(sp);
+            float radius = AviarySizing.Radius(sp, big, CreatureLab.kAviaryRadius), height = AviarySizing.Height(sp, big, CreatureLab.kAviaryHeight);
+            EnclosureArea area = EnclosureArea.For(Vector3.zero, Vector3.up, radius, sp, big);
+            area.maxHeight = height;
+            var brain = new FlightBrain(area, seed);
+            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, s, seed) { Bounds = area };
+            int n = sp.JointCount, g = sim.Flight.Girdle, mid = (g + n) / 2;
+            var bones = new Matrix4x4[sp.BoneCount];
+            var gy = new List<float>(); var my = new List<float>(); var hy = new List<float>(); var wa = new List<float>();
+            var calm = new List<bool>(); var gliding = new List<bool>(); var landing = new List<bool>();
+            int ticks = Mathf.RoundToInt(360f / dt);
+            for (int k = 0; k < ticks; k++)
+            {
+                sim.Tick(dt, brain.Target(sim, dt));
+                sim.WriteBoneWorld(bones, 0);
+                gy.Add(bones[g].m13); my.Add(bones[mid].m13); hy.Add(bones[0].m13);
+                wa.Add(sim.Flight.Wings.State[0].angle);
+                AirTwist tw = sim.Flight.Twist;
+                bool twisting = tw.Busy && tw.Current != TwistManoeuvre.SlowRoll;
+                calm.Add(sim.Mode == FlightMode.Air && !sim.Flight.OnFinal && !twisting);
+                gliding.Add(sim.Flight.Model.Gliding);
+                landing.Add(sim.Flight.Landing);
+            }
+            int w = Mathf.RoundToInt(1f * T / dt), win = Mathf.RoundToInt(2f / dt);
+            List<float> G = HighPass(gy, w), M = HighPass(my, w), H = HighPass(hy, w), A = HighPass(wa, w);
+            var girdle = new List<float>(); var land = new List<float>(); var midB = new List<float>(); var head = new List<float>();
+            for (int a = 0; a + win <= ticks; a += win)
+            {
+                bool all = true, anyLanding = false; int glides = 0;
+                for (int i = a; i < a + win; i++) { all &= calm[i]; anyLanding |= landing[i]; if (gliding[i]) glides++; }
+                // skip a window that starts within 1 s (x sqrt s) of a fade (the launch, a manoeuvre's end), or that glides
+                for (int i = Mathf.Max(0, a - Mathf.RoundToInt(1f * T / dt)); i < a && all; i++) all &= calm[i];
+                if (!all || glides > win / 10) continue;
+                float lg = BeatLocked(G, A, a, win) / s;
+                girdle.Add(lg); midB.Add(BeatLocked(M, A, a, win) / s); head.Add(BeatLocked(H, A, a, win) / s);
+                if (anyLanding) land.Add(lg);
+            }
+            girdle.Sort(); land.Sort(); midB.Sort(); head.Sort();
+            float Med(List<float> l) => l.Count > 0 ? l[l.Count / 2] : 0f;
+            float Low(List<float> l) => l.Count > 0 ? l[l.Count / 10] : 0f;
+            TestContext.WriteLine($"seed {seed} dt {dt:F4}: {girdle.Count} flapping windows ({land.Count} landing), beat-locked p-p / s: girdle median {Med(girdle):F3} " +
+                                  $"(10th pct {Low(girdle):F3}), landing median {Med(land):F3}, mid {Med(midB):F3}, head {Med(head):F3}");
+            Assert.GreaterOrEqual(girdle.Count, 20, "it flaps in the air for a good part of six minutes");
+            Assert.GreaterOrEqual(land.Count, 2, "landing approaches were measured");
+            Assert.Greater(Med(girdle), 0.2f, "the rendered girdle heaves with the beat (x size; ~0.8 m p-p at full size)");
+            Assert.Greater(Low(girdle), 0.1f, "in (nearly) every flapping window, not only in some");
+            Assert.Greater(Med(land), 0.15f, "on the landing approach too (0.005 before: the bob faded for the whole approach)");
+            Assert.Greater(Med(midB), 0.1f, "the mid-body heaves");
+            Assert.Greater(Med(head), 0.06f, "the head bobs a little (stabilised)");
+        }
+
+        // The beat-synchronous part of y over a window: least squares on the wing's stroke angle and its rate (any phase),
+        // as the p-p of the equivalent sine (2 sqrt 2 rms).
+        static float BeatLocked(List<float> y, List<float> a, int from, int len)
+        {
+            double aa = 0, bb = 0, ab = 0, ya = 0, yb = 0;
+            for (int i = from + 1; i < from + len; i++)
+            {
+                double x1 = a[i], x2 = a[i] - a[i - 1];
+                aa += x1 * x1; bb += x2 * x2; ab += x1 * x2; ya += y[i] * x1; yb += y[i] * x2;
+            }
+            double det = aa * bb - ab * ab;
+            if (det < 1e-20) return 0f;
+            double c1 = (ya * bb - yb * ab) / det, c2 = (yb * aa - ya * ab) / det, ss = 0;
+            for (int i = from + 1; i < from + len; i++) { double f = c1 * a[i] + c2 * (a[i] - a[i - 1]); ss += f * f; }
+            return (float)(2.0 * System.Math.Sqrt(2.0 * ss / (len - 1)));
         }
 
         // The wyvern's deep downstroke (WingedSerpentFlightTests.Flight_DeepDownstroke: wrist ~0.96 of its 1.0 m reach,

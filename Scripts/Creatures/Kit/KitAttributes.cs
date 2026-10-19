@@ -28,6 +28,7 @@ namespace CreatureKit
         Struct,          // a nested kit struct or array of them; its own fields carry [Param]
         Spec,            // an existing runtime spec class held by value (WingSpec, FlightSpec, CephalopodSpec):
                          // its fields are documented where it is defined (creature-module skill)
+        Kilograms,       // a mass: x s^3 (a similar body's volume)
     }
 
     public static class UnitRules
@@ -39,6 +40,7 @@ namespace CreatureKit
                 case ParamUnit.Metres: return s;
                 case ParamUnit.Seconds: case ParamUnit.MetresPerSecond: return (float)Math.Sqrt(s);
                 case ParamUnit.Hz: case ParamUnit.DegPerSecond: return 1f / (float)Math.Sqrt(s);
+                case ParamUnit.Kilograms: return s * s * s;
                 default: return 1f;
             }
         }
@@ -50,6 +52,7 @@ namespace CreatureKit
                 case ParamUnit.Metres: return "x s";
                 case ParamUnit.Seconds: case ParamUnit.MetresPerSecond: return "x sqrt(s)";
                 case ParamUnit.Hz: case ParamUnit.DegPerSecond: return "/ sqrt(s)";
+                case ParamUnit.Kilograms: return "x s^3";
                 default: return "-";
             }
         }

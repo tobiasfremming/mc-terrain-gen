@@ -102,11 +102,14 @@ namespace TerrainGen.Tests
                 hand[sp.LegBone(sp.wings[w].leg, 2)] = true;
             }
             var mem = new List<int>(); var fing = new List<int>(); var thumb = new List<int>();
+            // the wing membrane: membrane-shaded vertices on the wing bones (not the mane, whiskers or leg fins: LegFin
+            // has its own ground check, CreatureLegFinTests)
+            int wLo = sp.WingBone(0, 0), wHi = sp.WingBone(sp.WingCount - 1, WingBoneLayout.Bones(sp.wings[sp.WingCount - 1]) - 1);
             for (int i = 0; i < v.Length; i++)
             {
                 Vector4 k = uv2[i];
                 int part = Mathf.RoundToInt(uv1[i].x);
-                if (part == WingedMeshBuilder.PartMembrane) mem.Add(i);
+                if (part == WingedMeshBuilder.PartMembrane && (int)k.x >= wLo && (int)k.x <= wHi) mem.Add(i);
                 else if (k.z > 0.999f && finger[(int)k.x]) fing.Add(i);
                 else if (part == CreatureMeshBuilder.PartFoot && k.z > 0.999f && hand[(int)k.x]) thumb.Add(i);
             }

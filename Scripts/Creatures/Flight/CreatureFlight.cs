@@ -31,7 +31,6 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     const float kTouchHeight = 1f;       // m at scale 1 above clearance: touchdown starts from at most this high
     const float kFlareSpeed = 0.55f;     // fraction of minSpeed the flare brakes to
     const float kFlareTimeout = 3f;      // s at scale 1: a flare that has not touched down by then goes around
-    const float kTuckReach = 0.8f;       // tucked hind legs: foot at this fraction of the leg's reach
     const float kHangRateDeg = 120f;     // perched drape: deg/s a hanging segment pitches down (at scale 1)
     const float kHangPitchDeg = 80f;     // ... toward this pitch below level (not straight down: see Drape)
     const float kHangDrop = 0.25f;       // m at scale 1: ground this much lower than the support plane leaves a joint hanging
@@ -444,6 +443,8 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             Chain.Twist.Bounds = sim.Bounds;
             Chain.Twist.SetFloor(GroundBelow, Model.Up, sp.joints[girdle].clearance * scale);
             Chain.Twist.Calm = Landing || Mode != FlightMode.Air;
+            // the bob goes on round the landing approach (the wings beat all the way) and fades only on the final
+            Chain.Twist.BobCalm = OnFinal || Mode != FlightMode.Air;
         }
         Chain.Step(dt, air, Model.Position, Model.Velocity, Model.BankedUp, Model.Up);
     }
@@ -919,8 +920,8 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             Quaternion ar = sim.Rotations[s.attachJoint];
             Vector3 so = s.shoulderOffset; so.x *= s.side;
             Vector3 shoulder = sim.Joints[s.attachJoint] + ar * (so * scale);
-            float reach = (s.upperLength + s.lowerLength) * scale * kTuckReach;
-            Vector3 tuckDir = ar * new Vector3(0.25f * s.side, -0.35f, -1f).normalized;
+            float reach = (s.upperLength + s.lowerLength) * scale * f.LegTuckReach;
+            Vector3 tuckDir = ar * new Vector3(f.LegTuckOut * s.side, -f.LegTuckDown, -1f).normalized;
             Vector3 foot = Vector3.Lerp(ls.foot, shoulder + tuckDir * reach, w);
             // touching down on a perch the foot comes down onto the branch from above (a straight blend from the
             // tuck swept the shin through it)

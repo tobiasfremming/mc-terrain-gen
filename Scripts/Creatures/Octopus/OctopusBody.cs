@@ -81,6 +81,8 @@ public sealed class OctopusBody
         armRestRot = new Quaternion[ArmCount];
         Arms = new TentacleChain[ArmCount];
         ArmForce = new Vector3[ArmCount]; armImpulse = new Vector3[ArmCount];
+        ArmAim = new Quaternion[ArmCount];
+        for (int a = 0; a < ArmCount; a++) ArmAim[a] = Quaternion.identity;
         for (int a = 0; a < ArmCount; a++)
         {
             Vector3 r = OctopusShape.ArmRoot(spec, a) * SizeScale, d = OctopusShape.ArmDir(spec, a);
@@ -207,6 +209,7 @@ public sealed class OctopusBody
     {
         if (!(dt > 0f)) return;
         dt = Mathf.Min(dt, kMaxDt);
+        if (Planned) { TickPlanned(dt); return; }
         if (Asleep)
         {
             if (!SleepStillValid()) Wake();
@@ -228,6 +231,200 @@ public sealed class OctopusBody
         for (int a = 0; a < ArmCount; a++) Arms[a].UpdateFrames(dt);
         for (int m = 0; m < MouthCount; m++) Mouth[m].UpdateFrames(dt);
         UpdateSleep(dt);
+    }
+
+    // ------------------------------------------------------------------ planned body (the swinger)
+    // Planned mode (CephalopodSpec.locomotion 1, planned-body rework 2026-10-19): a reduced-order model outside the
+    // body (PlannedSwing, driven by SwingSequencer) decides the body's rigid pose - origin = the arm crown (body-space
+    // origin), rotation = body space -> world - and hands it over every tick (SetPlannedPose). Then:
+    //   lattice   each particle is a damped spring on its rigid goal (pose x rest): the crown ring is exactly on it (it
+    //             carries the arms), the head front, neck, mantle and apex follow ever more softly (SecondaryOmega,
+    //             SecondaryZeta) - they lag a swing's acceleration (stretch at the bottom, squash and jiggle at a catch)
+    //             and settle when it stops. It carries no load and takes nothing back from the arms.
+    //   arms      roots kinematic on the pose (inverse mass 0), root frames = pose x ArmAim (a shoulder turn the
+    //             sequencer sets) x rest; the chains solve as usual (pins, tethers, muscles, gravity), damped
+    //             relative to the pose's velocity
+    //   mouths    as before (kinematic on the web cluster)
+    // The sub-steps interpolate the pose from the last tick's to this one's. SleepPlanned freezes everything but the
+    // breathing until Wake (the sequencer decides both). MaxArmSpeed: the fastest arm or mouth particle over the tick.
+    public bool Planned { get; private set; }
+    // rad/s at scale 1 (Froude: / sqrt(size)) per lattice slot: crown ring (rigid), neck ring, mantle ring, head front, apex
+    public static readonly float[] SecondaryOmega = { 0f, 18f, 11f, 28f, 9f };
+    public const float SecondaryZeta = 0.35f;
+    public const float SecondaryMaxOffset = 0.25f;   // x mantle length x size
+    public readonly Quaternion[] ArmAim;
+    public Vector3 PlanOrigin => planPos;
+    public Quaternion PlanRotation => planRot;
+    public Vector3 PlanVelocity => planVel;
+    public float MaxArmSpeed { get; private set; }
+
+    Vector3 planPos, planPrevPos, planVel;
+    Quaternion planRot = Quaternion.identity, planPrevRot = Quaternion.identity;
+    Vector3[] secVel, secOff, secGoalPrev, secGoalVel, tickArm;   // per lattice particle: offset velocity, offset, goal, goal velocity
+    float[] secW;
+    bool planFresh = true;
+
+    public void EnablePlanned()
+    {
+        if (Planned) return;
+        Planned = true;
+        planRot = Lattice.ClusterRotation[OctopusShape.ClusterWeb];
+        planPos = Lattice.X[0] - OctoMath.Rotate(planRot, Lattice.Rest[0]);
+        secVel = new Vector3[SoftLattice.Count]; secOff = new Vector3[SoftLattice.Count]; secGoalVel = new Vector3[SoftLattice.Count]; secGoalPrev = new Vector3[SoftLattice.Count]; secW = new float[SoftLattice.Count];
+        for (int k = 0; k < 4; k++) { secW[k] = SecondaryOmega[0]; secW[4 + k] = SecondaryOmega[1]; secW[8 + k] = SecondaryOmega[2]; }
+        secW[OctopusShape.HeadFront] = SecondaryOmega[3]; secW[OctopusShape.Apex] = SecondaryOmega[4];
+        for (int i = 0; i < SoftLattice.Count; i++) secW[i] /= TimeScale;
+        int n = 0;
+        for (int a = 0; a < ArmCount; a++) n += Arms[a].N;
+        for (int m = 0; m < MouthCount; m++) n += Mouth[m].N;
+        tickArm = new Vector3[n];
+        planFresh = true;
+    }
+
+    // The pose at the end of the coming tick. snap: a jump (spawn, teleport) - no interpolation, no secondary kick.
+    public void SetPlannedPose(Vector3 origin, Quaternion rotation, bool snap = false)
+    {
+        if (snap || planFresh)
+        {
+            // a jump: the arms and mouths go along rigidly (from the last pose, or the constructed one)
+            Quaternion d = OctoMath.Mul(rotation, OctoMath.Conj(planRot));
+            for (int a = 0; a < ArmCount; a++) Carry(Arms[a], d, planPos, origin);
+            for (int m = 0; m < MouthCount; m++) Carry(Mouth[m], d, planPos, origin);
+            planPrevPos = origin; planPrevRot = rotation; planPos = origin; planRot = rotation; planVel = Vector3.zero;
+            for (int i = 0; i < SoftLattice.Count; i++)
+            {
+                Vector3 g = origin + OctoMath.Rotate(rotation, Lattice.Rest[i]);
+                Lattice.X[i] = g; Lattice.Prev[i] = g; secGoalPrev[i] = g; secVel[i] = Vector3.zero; secOff[i] = Vector3.zero; secGoalVel[i] = Vector3.zero;
+            }
+            // the clusters' rotation is warm-started from the last one: a jump (a flip to hanging) starts it at the new one
+            for (int c = 0; c < SoftLattice.ClusterCount; c++) Lattice.ClusterRotation[c] = rotation;
+            Lattice.FitAll();
+            planFresh = false;
+            for (int a = 0; a < ArmCount; a++) SyncRootPlanned(a, origin, rotation);
+            return;
+        }
+        planPos = origin; planRot = rotation;
+    }
+
+    static void Carry(TentacleChain ch, Quaternion d, Vector3 from, Vector3 to)
+    {
+        for (int k = 0; k < ch.N; k++)
+        {
+            if (ch.Pinned[k]) continue;
+            ch.X[k] = to + OctoMath.Rotate(d, ch.X[k] - from);
+            ch.Prev[k] = ch.X[k];
+        }
+        ch.Back = to + OctoMath.Rotate(d, ch.Back - from);
+        ch.RootFrame = OctoMath.Mul(d, ch.RootFrame);
+        ch.UpdateFrames(0f);
+    }
+
+    public void SleepPlanned()
+    {
+        if (!Planned) return;
+        for (int i = 0; i < SoftLattice.Count; i++) { Lattice.Prev[i] = Lattice.X[i]; secVel[i] = Vector3.zero; secGoalVel[i] = Vector3.zero; }
+        for (int a = 0; a < ArmCount; a++) for (int k = 0; k < Arms[a].N; k++) Arms[a].Prev[k] = Arms[a].X[k];
+        for (int m = 0; m < MouthCount; m++) for (int k = 0; k < Mouth[m].N; k++) Mouth[m].Prev[k] = Mouth[m].X[k];
+        planPrevPos = planPos; planPrevRot = planRot; planVel = Vector3.zero;
+        MaxArmSpeed = 0f;
+        Asleep = true;
+    }
+
+    void TickPlanned(float dt)
+    {
+        if (Asleep)
+        {
+            Time += dt;
+            Lattice.AdvanceBreath(dt);
+            Lattice.FitAll();
+            planPrevPos = planPos; planPrevRot = planRot;
+            return;
+        }
+        int o = 0;
+        for (int a = 0; a < ArmCount; a++) for (int k = 0; k < Arms[a].N; k++) tickArm[o++] = Arms[a].X[k];
+        for (int m = 0; m < MouthCount; m++) for (int k = 0; k < Mouth[m].N; k++) tickArm[o++] = Mouth[m].X[k];
+        float h = dt / subSteps;
+        planVel = (planPos - planPrevPos) * (1f / dt);
+        for (int s = 0; s < subSteps; s++)
+        {
+            float t = (s + 1f) / subSteps;
+            Vector3 pos = planPrevPos + (planPos - planPrevPos) * t;
+            Quaternion rot = NLerp(planPrevRot, planRot, t);
+            PlannedSubStep(h, pos, rot);
+        }
+        planPrevPos = planPos; planPrevRot = planRot;
+        for (int a = 0; a < ArmCount; a++) ArmForce[a] = Vector3.zero;
+        Lattice.FitAll();
+        for (int a = 0; a < ArmCount; a++) Arms[a].UpdateFrames(dt);
+        for (int m = 0; m < MouthCount; m++) Mouth[m].UpdateFrames(dt);
+        float worst = 0f;
+        o = 0;
+        for (int a = 0; a < ArmCount; a++) for (int k = 0; k < Arms[a].N; k++) worst = Mathf.Max(worst, (Arms[a].X[k] - tickArm[o++]).sqrMagnitude);
+        for (int m = 0; m < MouthCount; m++) for (int k = 0; k < Mouth[m].N; k++) worst = Mathf.Max(worst, (Mouth[m].X[k] - tickArm[o++]).sqrMagnitude);
+        MaxArmSpeed = Mathf.Sqrt(worst) / dt;
+    }
+
+    void PlannedSubStep(float h, Vector3 pos, Quaternion rot)
+    {
+        Time += h;
+        lastSubStep = h;
+        Lattice.AdvanceBreath(h);
+        // the lattice: damped springs on the rigid goals
+        float maxOff = SecondaryMaxOffset * Spec.MantleLength * SizeScale, ih = 1f / h;
+        Vector3[] lx = Lattice.X, lp = Lattice.Prev;
+        for (int i = 0; i < SoftLattice.Count; i++)
+        {
+            // in the goal's frame: offset o = x - goal, o'' = -goal'' - w^2 o - 2 zeta w o'
+            Vector3 g = pos + OctoMath.Rotate(rot, Lattice.Rest[i]);
+            Vector3 gv = (g - secGoalPrev[i]) * ih, ga = (gv - secGoalVel[i]) * ih;
+            secGoalPrev[i] = g; secGoalVel[i] = gv;
+            lp[i] = lx[i];
+            float w = secW[i];
+            if (!(w > 0f)) { lx[i] = g; continue; }
+            Vector3 q = secVel[i], off = secOff[i];
+            q += (ga * -1f - off * (w * w) - q * (2f * SecondaryZeta * w)) * h;
+            off += q * h;
+            float ol = off.magnitude;
+            if (ol > maxOff) { off *= maxOff / ol; q -= off * (OctoMath.Dot(q, off) / (maxOff * maxOff)); }
+            secOff[i] = off; secVel[i] = q;
+            lx[i] = g + off;
+        }
+        for (int a = 0; a < ArmCount; a++)
+        {
+            TentacleChain ch = Arms[a];
+            SyncRootPlanned(a, pos, rot);
+            ch.Integrate(h, planVel);
+            for (int it = 0; it < iterations; it++) ch.SolveIteration(h);
+            SyncRootPlanned(a, pos, rot);
+            ch.EndSubStep(h);
+        }
+        if (MouthCount > 0) BodySpin(h);
+        for (int m = 0; m < MouthCount; m++)
+        {
+            TentacleChain ch = Mouth[m];
+            SyncMouth(m);
+            ch.Integrate(h, planVel);
+            for (int it = 0; it < iterations; it++) ch.SolveIteration(h);
+            SyncMouth(m);
+            ch.EndSubStep(h);
+        }
+    }
+
+    static Quaternion NLerp(Quaternion a, Quaternion b, float t)
+    {
+        float d = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w, sb = d < 0f ? -t : t, sa = 1f - t;
+        return OctoMath.Normalize(OctoMath.Q(a.x * sa + b.x * sb, a.y * sa + b.y * sb, a.z * sa + b.z * sb, a.w * sa + b.w * sb));
+    }
+
+    void SyncRootPlanned(int a, Vector3 pos, Quaternion rot)
+    {
+        TentacleChain ch = Arms[a];
+        Vector3 r = pos + OctoMath.Rotate(rot, OctopusShape.ArmRoot(Spec, a) * SizeScale);
+        ch.X[0] = r; ch.Prev[0] = r;
+        ch.InvMass[0] = 0f; ch.BackInvMass = 0f;
+        ch.RootFrame = OctoMath.Mul(rot, OctoMath.Mul(ArmAim[a], armRestRot[a]));
+        Vector3 f = OctoMath.Rotate(ch.RootFrame, 0f, 0f, 1f);
+        ch.Back = r - f * ch.Spacing;
     }
 
     // ------------------------------------------------------------------ sleep
@@ -379,6 +576,7 @@ public sealed class OctopusBody
         if (SwingGovernor > 0f) Govern(Mathf.Exp(-SwingGovernor * h));
         if (SwingPush.x != 0f || SwingPush.y != 0f || SwingPush.z != 0f) Push(SwingPush * (h * h));
         Vector3 refVel = Velocity(h);
+        if (MouthCount > 0) BodySpin(h);
         Lattice.Integrate(h, refVel);
         // Free arm segments relax their twist to the transported frame (the oral side stays oral, so an arm
         // curls toward its suckers); only pins turn the suckers. A twist target that follows the body axis fed
@@ -448,6 +646,29 @@ public sealed class OctopusBody
             Vector3[] p = Arms[a].Prev; float[] im = Arms[a].InvMass;
             for (int k = 1; k < Segments; k++) if (im[k] > 0f) { p[k].x -= d.x; p[k].y -= d.y; p[k].z -= d.z; }
         }
+    }
+
+    // The head's angular velocity over the last sub-step, handed to every chain with the head centre: the reference
+    // a calm chain is damped toward (TentacleChain.CalmDamping; the idle mouth tentacles). Scalar maths.
+    Quaternion spinPrev; bool spinValid;
+    void BodySpin(float h)
+    {
+        Quaternion q = Orientation;
+        float wx = 0f, wy = 0f, wz = 0f;
+        if (spinValid)
+        {
+            // d = q * conj(prev); omega = 2 d.xyz / h (d.w >= 0)
+            float px = -spinPrev.x, py = -spinPrev.y, pz = -spinPrev.z, pw = spinPrev.w;
+            float dx = q.w * px + q.x * pw + q.y * pz - q.z * py;
+            float dy = q.w * py - q.x * pz + q.y * pw + q.z * px;
+            float dz = q.w * pz + q.x * py - q.y * px + q.z * pw;
+            float dw = q.w * pw - q.x * px - q.y * py - q.z * pz;
+            float k = (dw < 0f ? -2f : 2f) / h;
+            wx = dx * k; wy = dy * k; wz = dz * k;
+        }
+        spinPrev = q; spinValid = true;
+        Vector3 w = new Vector3(wx, wy, wz), c = HeadCentre;
+        for (int m = 0; m < MouthCount; m++) { Mouth[m].RefOmega = w; Mouth[m].RefCentre = c; }
     }
 
     // Every particle's velocity (X - Prev) x f.

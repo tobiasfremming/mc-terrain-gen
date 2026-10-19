@@ -124,7 +124,7 @@ public sealed class OctopusBrain
                 if (seen && Target != null && c.Time >= satedUntil) { Enter(State.Stalk); break; }
                 // (no route to it after NoRouteSeconds - the hints show no way - or the trip takes too long: rest,
                 // then a new goal)
-                bool noRoute = c.Hints != null && StateTime > NoRouteSeconds * c.Body.TimeScale && !c.Coordinator.Route.Valid;
+                bool noRoute = c.Hints != null && StateTime > NoRouteSeconds * c.Body.TimeScale && !c.Route.Valid;
                 bool late = StateTime > ExploreSeconds * c.Body.TimeScale;
                 if (Arrived(c, head, L) || noRoute || late)
                 {

@@ -79,11 +79,28 @@ public sealed class TentacleChain
     // curl, which is defined in the twisted frame, and can keep a toned arm oscillating).
     public Vector3 AxisOrigin, AxisDir;
     public float ExtraDamping;               // absolute velocity damping, 1/s (settling, tests)
+    // A chain with no job holds itself the way the body moves (a muscular tentacle is viscous, not a rope): while it
+    // holds nothing, its velocity relative to the body's motion at each particle (refVel + RefOmega x (x - RefCentre))
+    // is damped at CalmDamping 1/s (at scale 1, Froude-slowed) instead of Spec.Damping. 0 = off. Used by the idle
+    // mouth tentacles (not coupled back to the body); on the arms it fed the swing (a third of the swinging mass).
+    public float CalmDamping;
+    // A passive chain's speed relative to its reference motion (m/s; 0 = off, only the hard kMaxSpeed cap): a coil let
+    // go of springs open at the bend cone within a sub-step, and a planned body's free arm should trail, not whip.
+    public float SpeedCap;
+    public Vector3 RefOmega, RefCentre;      // the body's angular velocity and centre (OctopusBody sets them per sub-step)
     // Tip-led reaching: each free particle is pulled toward its place on the last SetTargetShape's FABRIK
     // chain by this fraction per solver iteration, rising from 0 at the root to 1 x at the tip. 0 = off
     // (the curvature muscle alone). Reaching and striking arms use it: the curvature target holds a shape,
     // the pull carries the tip to the target against gravity.
     public float ShapePull;
+    // How fast the pull's goal may move (m/s at scale 1, x sqrt(size); 0 = it jumps to each new shape at once - a
+    // strike). The goal travels from where the arm is toward its place on the FABRIK chain at this speed, so a new
+    // shape is reached like a reach, never whipped into: pulled straight at a far new place (a feeling arm's aim, a
+    // tuck point, a groom stroke) the tip moved a few percent of the distance per solver pass and hit 30 m/s within
+    // two frames (2026-10-19). Starts at Spec.ReachSpeed.
+    public float PullSpeed;
+    readonly Vector3[] pullAt;
+    bool pullLive;
     bool hasShape;
     // Particles closer to the root than this (in particles) cannot twist: the web holds the arm base.
     // The cap then grows by MaxTwistDeg per particle. 0 = no cap (a free-standing arm).
@@ -122,6 +139,7 @@ public sealed class TentacleChain
     public TentacleChain(TentacleSpec spec, Vector3 root, Quaternion rootFrame, float sizeScale = 1f)
     {
         Spec = spec;
+        PullSpeed = spec.ReachSpeed;
         N = spec.Segments;
         SizeScale = Mathf.Max(1e-3f, sizeScale);
         invSize = SizeScale == 1f ? 1f : 1f / SizeScale;
@@ -131,7 +149,7 @@ public sealed class TentacleChain
         LengthTarget = new float[N - 1]; restLength = new float[N - 1]; arc = new float[N];
         BendTarget = new Vector3[N - 1]; restCurl = new Vector3[N - 1]; localTarget = new Vector3[N - 1]; muscleBend = new Vector3[N - 1];
         Pinned = new bool[N]; PinPoint = new Vector3[N]; PinNormal = new Vector3[N]; PinSource = new int[N]; PinGoal = new Vector3[N];
-        fab = new Vector3[N]; frameX = new Vector3[N]; rmfX = new Vector3[N]; rmfT = new Vector3[N];
+        fab = new Vector3[N]; pullAt = new Vector3[N]; frameX = new Vector3[N]; rmfX = new Vector3[N]; rmfT = new Vector3[N];
         DisplayX = new Vector3[N]; DisplayFrames = new Quaternion[N]; DisplayStretch = new float[N];
         // the drawn joint at particle k turns at most so far that the arc it is drawn as (CreatureSkin's arm curve,
         // radius = segment / (2 tan(angle / 2))) keeps 1.2 x the tube's radius at its shortest, thickest segment
@@ -310,6 +328,9 @@ public sealed class TentacleChain
         // a few periods (the run's particles move slower than the body) and no pumping could build one.
         int bp = -1;
         for (int k = 1; k < N; k++) if (Pinned[k]) { bp = k; break; }
+        bool calm = bp < 0 && CalmDamping > Spec.Damping;
+        if (calm) damp = MathF.Exp(-CalmDamping * (invSize == 1f ? h : h / MathF.Sqrt(SizeScale)));
+        float wx = RefOmega.x, wy = RefOmega.y, wz = RefOmega.z, cx0 = RefCentre.x, cy0 = RefCentre.y, cz0 = RefCentre.z;
         float invBp = bp > 0 ? 1f / bp : 0f;
         float ease = PinEaseSpeed * MathF.Sqrt(SizeScale) * h;
         for (int k = 1; k < N; k++)
@@ -322,7 +343,17 @@ public sealed class TentacleChain
             Vector3 xk = x[k], pk = p[k];
             float fr = bp > 0 ? (k < bp ? 1f - k * invBp : 0f) : 1f;
             float qx = rx * fr, qy = ry * fr, qz = rz * fr;
+            if (calm)
+            {
+                float ox = xk.x - cx0, oy = xk.y - cy0, oz = xk.z - cz0;
+                qx += wy * oz - wz * oy; qy += wz * ox - wx * oz; qz += wx * oy - wy * ox;
+            }
             float vx = ((xk.x - pk.x) * inv - qx) * damp + qx, vy = ((xk.y - pk.y) * inv - qy) * damp + qy, vz = ((xk.z - pk.z) * inv - qz) * damp + qz;
+            if (SpeedCap > 0f)
+            {
+                float rx2 = vx - qx, ry2 = vy - qy, rz2 = vz - qz, r2 = rx2 * rx2 + ry2 * ry2 + rz2 * rz2;
+                if (r2 > SpeedCap * SpeedCap) { float f = SpeedCap / MathF.Sqrt(r2); vx = qx + rx2 * f; vy = qy + ry2 * f; vz = qz + rz2 * f; }
+            }
             vx = vx * abs + gx; vy = vy * abs + gy; vz = vz * abs + gz;
             float s2 = vx * vx + vy * vy + vz * vz;
             if (s2 > vmax2) { float f = vmax / MathF.Sqrt(s2); vx *= f; vy *= f; vz *= f; }
@@ -341,6 +372,21 @@ public sealed class TentacleChain
             muscleBend[j] = OctoMath.Norm(m + (g - m) * follow, g);
         }
         sinusNow += (SinusAmount - sinusNow) * follow;
+        // the pull's goal travels toward the shape at PullSpeed (it starts where the arm is)
+        if (ShapePull > 0f && hasShape)
+        {
+            if (!pullLive) { for (int k = 0; k < N; k++) pullAt[k] = X[k]; pullLive = true; }
+            float step = PullSpeed > 0f ? PullSpeed * MathF.Sqrt(SizeScale) * h : float.PositiveInfinity;
+            for (int k = 1; k < N; k++)
+            {
+                Vector3 a = pullAt[k], b = fab[k];
+                float dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, d2 = dx * dx + dy * dy + dz * dz;
+                if (d2 <= step * step) { pullAt[k] = b; continue; }
+                float f = step / MathF.Sqrt(d2);
+                pullAt[k].x = a.x + dx * f; pullAt[k].y = a.y + dy * f; pullAt[k].z = a.z + dz * f;
+            }
+        }
+        else pullLive = false;
         // this sub-step's local bend targets: the muscles' bend + the travelling sinus (lateral, about local
         // +Y), fading in from the root
         float amp = sinusNow * Spec.SinusAmpDeg * Mathf.Deg2Rad;
@@ -471,7 +517,7 @@ public sealed class TentacleChain
             {
                 if (Pinned[k]) continue;
                 float w = pull * k * inv;
-                Vector3 x = X[k], f = fab[k];
+                Vector3 x = X[k], f = pullAt[k];
                 X[k].x = x.x + (f.x - x.x) * w; X[k].y = x.y + (f.y - x.y) * w; X[k].z = x.z + (f.z - x.z) * w;
             }
         }

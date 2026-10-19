@@ -143,6 +143,10 @@ public sealed class AirTwist
     // Set by CreatureFlight each sub-step: landing / launching (the swim fades out, no manoeuvre starts),
     // the aviary, the ground under the flyer (its height along up and the clearance the head keeps over it).
     public bool Calm;
+    // Set by CreatureFlight with Calm: the wingbeat's bob fades out (the flare and touchdown, the landing's final).
+    // Separate from Calm: the whole landing approach is calm (no swim, no manoeuvre), but the wings beat all the
+    // way round it, and a body that stopped heaving there read as no bob at all (user, 2026-10-19).
+    public bool BobCalm;
     public EnclosureArea? Bounds;
     bool floorSet;
     Vector3 floorPoint, floorUp;
@@ -368,8 +372,9 @@ public sealed class AirTwist
         }
         Roll = roll;
         // the bob fades in after the launch and out for the landing, like the swim, and quickly out for a manoeuvre
-        bool busy = Current != TwistManoeuvre.None;
-        bobLevel = Mathf.MoveTowards(bobLevel, Calm || !t.Bobs || busy ? 0f : 1f, h / ((busy ? kLoopSwimFade : kSwimFade) * T));
+        // (a slow roll keeps it: the path stays the straight flight line, only the up turns, and the bob is along world up)
+        bool busy = Current != TwistManoeuvre.None && Current != TwistManoeuvre.SlowRoll;
+        bobLevel = Mathf.MoveTowards(bobLevel, BobCalm || !t.Bobs || busy ? 0f : 1f, h / ((busy ? kLoopSwimFade : kSwimFade) * T));
         if (t.bobHighPass > 0f) bobSlow += (ShoulderBob - bobSlow) * Mathf.Min(1f, h / (t.bobHighPass * T));
         leadUp = Ortho(Rotate(up, tn, roll), tn, up);
         lead = next; tangent = tn;

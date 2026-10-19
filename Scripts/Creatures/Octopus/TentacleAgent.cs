@@ -82,8 +82,10 @@ public sealed class TentacleAgent
         Arm.ExtraDamping = 0f;
         // the muscles ease into a new shape, except a strike and a hold, which follow their prey at once
         Arm.ShapeRate = s == State.Strike || s == State.Hold ? TentacleChain.FastShapeRate : TentacleChain.DefaultShapeRate;
+        // the pull's goal moves at the arm's reach speed; a strike's at once
+        Arm.PullSpeed = s == State.Strike ? 0f : Arm.Spec.ReachSpeed;
         // the positional pull belongs to reaching and striking only
-        if (s != State.Reach && s != State.Strike) Arm.ShapePull = s == State.Feel ? 0.01f : 0f;
+        if (s != State.Reach && s != State.Strike) Arm.ShapePull = 0f;
     }
 
     // ------------------------------------------------------------------ the tick
@@ -153,6 +155,12 @@ public sealed class TentacleAgent
 
     public const float HangTone = 0.25f, TuckPull = 0.03f;
 
+    // A swing's catch is quick - the free arm swings out to the next hold within the swing (a gibbon's reach) - but
+    // eased like every move: its pull goal travels at CatchFroude x sqrt(g x arm length) (an arm length in about half
+    // a second of the swing's period; at the reach speed the catch came late and the swing stalled, 1/12 arrivals).
+    public const float CatchFroude = 2f, CatchPull = 0.01f;
+    float CatchSpeed => CatchFroude * Mathf.Sqrt(OctopusController.Gravity * Arm.Length / Arm.SizeScale);
+
     void TickCurl(OctopusController c)
     {
         ArmRole role = RoleOf(c);
@@ -217,24 +225,32 @@ public sealed class TentacleAgent
         if (role != ArmRole.Grip && role != ArmRole.Anchor && role != ArmRole.Feel) { HasTarget = false; Enter(State.Curl); return; }
         if (Swinging(c) && !SeeksHold(c)) { HasTarget = false; Enter(State.Curl); return; }
         bool commit = SeeksHold(c);
-        Arm.Tone = 1f; Arm.SinusAmount = 0.6f;
+        // (no sinus, no wandering sweep: an arm looking for a hold holds one steady aim while its casts and its tip
+        // do the looking - a wriggling, sweeping arm read as aimless flapping, user 2026-10-19)
+        Arm.Tone = 1f; Arm.SinusAmount = 0f;
         Vector3 root = Arm.X[0];
         Vector3 axis = ConeAxis(c);
         float L = Arm.Length;
-        if (Swinging(c) && c.Board.HasSwingTarget)
+        if (Swinging(c))
         {
-            // a swing's catch: the arm reaches out toward the route's next waypoint (purposeful, no wandering)
-            Vector3 toW = c.Board.SwingTarget - root;
+            // a swing's catch: the arm reaches out toward the route's next waypoint, or with no route toward where the
+            // next hold would be (an arm's length ahead of the pivot, level with it) - purposeful, no wandering
+            ArmBlackboard b = c.Board;
+            Vector3 from = b.PivotGroup >= 0 && b.SwingPivot != Vector3.zero ? b.SwingPivot : c.Body.HeadCentre + c.Up * (0.7f * L);
+            Vector3 aim = b.HasSwingTarget ? b.SwingTarget : from + b.SwingRoute * (SwingCatchBest * L);
+            Vector3 toW = aim - root;
             float tw = toW.magnitude;
             Arm.SetTargetShape(root + toW * (Mathf.Min(tw, 0.85f * L) / Mathf.Max(tw, 1e-4f)), 0.6f, false);
-            Arm.SinusAmount = 0.15f;
+            Arm.PullSpeed = CatchSpeed; Arm.ShapePull = CatchPull;
         }
+        // otherwise it aims along its cone (toward the route, up toward the branches) at 0.7 L. A grip arm on the way
+        // (travelling hand over hand) is drawn there by its tip, as a reach is; an arm looking for support at rest
+        // with its muscles alone (pulled up by its tip as well, a large arm buckled under its own weight and
+        // thrashed, 21 L/s at 4x)
         else
         {
-            // the exploratory curl path: a slowly wandering point in the cone at 0.7 L
-            float ph = c.Time * 0.6f / c.Body.TimeScale + Index * 1.7f;
-            Vector3 wander = Turn(axis, 0.55f * Mathf.Sin(ph), 0.45f * Mathf.Sin(1.3f * ph + 0.7f));
-            Arm.SetTargetShape(root + wander * (0.7f * L), 0.55f, false);
+            Arm.SetTargetShape(root + axis * (0.7f * L), 0.55f, false);
+            Arm.ShapePull = role == ArmRole.Grip && ArmCoordinator.Travelling(c.Intent.mode) ? CatchPull : 0f;
         }
 
         // touch: the tip feels what it brushes against, and grips it (if its role lets it commit)
@@ -292,8 +308,9 @@ public sealed class TentacleAgent
         reachGoal = tl <= step ? target : reachGoal + toT * (step / tl);
         bool far = (target - Arm.X[0]).magnitude > Arm.Length;
         Arm.SetTargetShape(reachGoal, w, far);
-        Arm.Tone = 1.6f; Arm.SinusAmount = 0.3f * (1f - w);
+        Arm.Tone = 1.6f; Arm.SinusAmount = 0f;
         Arm.ShapePull = 0.04f * w;
+        if (Swinging(c)) Arm.PullSpeed = CatchSpeed;
         float capture = 0.06f * Arm.SizeScale + 3f * tipR;
         Vector3 tip = Arm.X[Arm.N - 1];
         if ((tip - target).sqrMagnitude < capture * capture || (TactileTouch(c, out SurfaceHit touch) && (touch.point - m.point).magnitude < 0.25f * Arm.Length))

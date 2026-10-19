@@ -72,6 +72,21 @@ public class WingSpec
     public float area = 1f;              // aerodynamic area factor
     [Range(0f, 0.4f)] public float scallop = 0.12f;     // trailing-edge scallop depth between rays (fraction)
 
+    [Header("Look (all 0 = the plain wing: the winged serpent's, bit for bit)")]
+    // The scallop's depth as a fraction of the zone's own chord (the gap between its two ray tips) instead of its
+    // reach: a narrow zone gets a shallow arc, not a deep spike (the dragon's "maple leaf" edge, user 2026-10-19).
+    public bool scallopByChord = false;
+    // The membrane bellies out to the dorsal side between its rays: camber height at the middle of a zone, a fraction
+    // of the zone's width there (0 = flat sheets). The sheet meets each finger at an angle: the fingers stand out.
+    [Range(0f, 0.2f)] public float membraneBillow = 0f;
+    // Membrane mesh resolution: each zone's grid this many times finer both ways (0 or 1 = 6 x 8 per zone).
+    [Range(0, 3)] public int membraneDetail = 0;
+    // Finger bones: knuckle bulges at about a third and two thirds of the length and a flared root, this strong
+    // (fraction of the local radius; 0 = a smooth taper).
+    [Range(0f, 1.5f)] public float fingerKnuckles = 0f;
+    // A knuckle bulb at the wrist, radius = this x the forearm radius (0 = none).
+    [Range(0f, 3f)] public float wristKnuckle = 0f;
+
     // Fingers: the default (and the winged serpent's) finger count; a wing has FingerCount (fingerLengths.Length)
     public const int Fingers = 3, Ribs = 3;
     public const int MinFingers = 3, MaxFingers = 5;

@@ -198,6 +198,9 @@ public struct CreatureLook
     // its veins are (0..1), how dark its trailing rim is (0..1).
     public Color membrane;
     public float membraneTranslucency, veinContrast, membraneRim;
+    // ... and how far it takes on the body's dorsal colour toward its root (the wrist, the body, a fin's base), fading
+    // to its own colour at the edge (0..1; 0 = one colour)
+    public float membraneInner;
     // arthropod knee bands (mesh part 9) and a velvet sheen lobe (0 = none)
     public Color bandColor;
     public float sheen;
@@ -251,6 +254,11 @@ public class CreatureSpecies : ScriptableObject
     public WingSpec[] wings;
     public FlightSpec flight;
     public GaitBob gaitBob;
+    // Wave gait (the kit's Walk.pattern Wave, T5.8): the gait groups step strictly in turn, in ascending group id,
+    // the next as soon as the last has landed while any foot wants to step - a metachronal wave down the body
+    // (CreatureLegs.StartWave). false = the event-driven gait every shipped species walks with.
+    [Tooltip("Gait groups step strictly in turn (ascending id): a metachronal wave. Off = the event-driven gait.")]
+    public bool waveGait;
     public EyeSpot[] eyeCluster;
     public BodyAppendage[] appendages;
     // Membrane strips along the spine (the kit's FinStrip: manes, crests, fins), skinned to the spine; empty = none.
