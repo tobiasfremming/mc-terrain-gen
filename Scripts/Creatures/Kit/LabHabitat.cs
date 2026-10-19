@@ -4,7 +4,11 @@
 //   Aviary     it can fly (Fly with wings and a cruise speed): posts, trees, rock perches, a roof (AviarySizing)
 //   Climbable  Climb: an enclosure whose shade tree it may climb (ClimbingBrain)
 //   Plain      otherwise: an enclosure with a shade tree it walks round
-// Sizes: an aviary follows the flight (AviarySizing), an enclosure is 2 body lengths of radius, at least 5 m.
+// Sizes: an aviary follows the flight (AviarySizing), an enclosure is 2 body lengths of radius, at least 5 m, and
+// large enough that the head's safe disc (EnclosureArea.For: the radius less the lateral reach and margin, x size)
+// keeps kMinSafeLengths body lengths of room - a long creature with long legs (a giant centipede) is not penned
+// into tight circles. Every other shipped species' enclosure is unchanged by that floor (their safe discs are
+// >= 1.66 body lengths already).
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -30,7 +34,15 @@ namespace CreatureKit
         }
 
         // The enclosure (or aviary) radius for the species' largest individual (size scale maxScale).
+        public const float MinSafeLengths = 1.6f;
+
         public static float EnclosureRadius(CreatureSpecies sp, float maxScale, float aviaryRadius)
-            => sp != null && For(sp) == Habitat.Aviary ? AviarySizing.Radius(sp, maxScale, aviaryRadius) : Mathf.Max(5f, 2f * sp.Compiled.Runtime.BodyLength * maxScale);
+        {
+            if (sp != null && For(sp) == Habitat.Aviary) return AviarySizing.Radius(sp, maxScale, aviaryRadius);
+            CreatureSpecies rt = sp.Compiled.Runtime;
+            float length = rt.BodyLength * maxScale;
+            float safeFloor = MinSafeLengths * length + maxScale * (rt.MaxLateralReach + EnclosureArea.DefaultMargin);
+            return Mathf.Max(5f, Mathf.Max(2f * length, safeFloor));
+        }
     }
 }

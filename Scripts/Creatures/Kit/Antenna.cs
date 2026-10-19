@@ -23,6 +23,9 @@ public struct AntennaSpec
     public float airDrag;             // 1/s: drag of the air on the strand (Froude-scaled): how much it trails
     public float droopDeg;            // the rest curve bends down by this much toward the tip
     public float maxBendDeg;          // bend cone between segments (0 = 35)
+    public float probeDeg;            // probing: the rest curve sweeps side to side by this much (and up and down by
+                                      // 0.6 x it) about the root; 0 = still (bit-identical)
+    public float probeHz;             // probing sweeps per second at scale 1 (Froude-scaled)
 
     public int Segments => Mathf.Clamp(segments, 2, 16);
     public float MaxBend => maxBendDeg > 0f ? maxBendDeg : 35f;
@@ -46,6 +49,8 @@ namespace CreatureKit
         [Param(ParamUnit.Hz, "air drag rate (1/s): how much the strand trails a moving body", Example = "dragon 0.8")] public float airDrag = 0.8f;
         [Param(ParamUnit.Degrees, "the rest curve bends down by this much toward the tip")] public float droopDeg;
         [Param(ParamUnit.Degrees, "bend cone between segments (0 = 35)", Min = 0, Max = 90)] public float maxBendDeg;
+        [Param(ParamUnit.Degrees, "probing: the rest curve sweeps side to side by this much about the root (up and down by 0.6 x it, the pair out of step), all the time - a centipede feeling its way; 0 = still", Min = 0, Max = 60, Example = "scolopendra 14")] public float probeDeg;
+        [Param(ParamUnit.Hz, "probing sweeps per second", Example = "scolopendra 1.3")] public float probeHz;
 
         public override int BoneCount(in SpeciesCtx c) => Mathf.Clamp(segments, 2, 16);
 
@@ -53,14 +58,14 @@ namespace CreatureKit
         {
             joint = at.joint, side = at.side, offset = at.offset, direction = direction, length = length, segments = segments,
             radiusStart = radiusStart, radiusEnd = radiusEnd, stiffnessHz = stiffnessHz, damping = damping, airDrag = airDrag,
-            droopDeg = droopDeg, maxBendDeg = maxBendDeg,
+            droopDeg = droopDeg, maxBendDeg = maxBendDeg, probeDeg = probeDeg, probeHz = probeHz,
         };
 
         public static Antenna From(in AntennaSpec a, string id) => new Antenna
         {
             id = id, at = new PartSocket(a.joint, a.side, a.offset), direction = a.direction, length = a.length, segments = a.segments,
             radiusStart = a.radiusStart, radiusEnd = a.radiusEnd, stiffnessHz = a.stiffnessHz, damping = a.damping, airDrag = a.airDrag,
-            droopDeg = a.droopDeg, maxBendDeg = a.maxBendDeg,
+            droopDeg = a.droopDeg, maxBendDeg = a.maxBendDeg, probeDeg = a.probeDeg, probeHz = a.probeHz,
         };
 
         public override string Validate(in SpeciesCtx c)
@@ -71,6 +76,7 @@ namespace CreatureKit
             if (!(length > 0f)) return $"{id}: length must be > 0";
             if (!(stiffnessHz > 0f)) return $"{id}: stiffnessHz must be > 0";
             if (damping < 0f || airDrag < 0f) return $"{id}: damping and airDrag must be >= 0";
+            if (probeDeg < 0f || probeDeg > 60f || (probeDeg > 0f && !(probeHz > 0f))) return $"{id}: probeDeg 0..60, probeHz > 0 when probing";
             if (direction.sqrMagnitude < 1e-8f) return $"{id}: direction must not be zero";
             return null;
         }

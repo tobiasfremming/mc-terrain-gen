@@ -140,6 +140,20 @@ public struct GaitBob
     public float damping;
 }
 
+// Speed bursts (the kit's Walk.burst): every so often the cruise speed surges by `factor` for `seconds` - a predator's
+// sudden dash - then falls back. Irregular, seeded per individual; Froude-timed. factor <= 1 = off (bit-identical).
+[Serializable]
+public struct GaitBurst
+{
+    [Tooltip("Cruise speed x this at the peak of a burst (<= 1 = off). The gait's stride limit still caps it.")]
+    public float factor;
+    [Tooltip("Mean time between bursts, seconds at scale 1 (each gap 0.5..1.5 x this, per individual).")]
+    public float every;
+    [Tooltip("Length of one burst, seconds at scale 1 (a quick surge, a hold, an easing back).")]
+    public float seconds;
+    public bool On => factor > 1f && every > 0f && seconds > 0f;
+}
+
 // An extra eye, rigid to the eye bone of its side: offset in the eye joint's frame (x mirrored; x = 0: one eye).
 [Serializable]
 public struct EyeSpot
@@ -268,6 +282,7 @@ public class CreatureSpecies : ScriptableObject
     public WingSpec[] wings;
     public FlightSpec flight;
     public GaitBob gaitBob;
+    public GaitBurst gaitBurst;
     // Wave gait (the kit's Walk.pattern Wave, T5.8): the gait groups step strictly in turn, in ascending group id,
     // the next as soon as the last has landed while any foot wants to step - a metachronal wave down the body
     // (CreatureLegs.StartWave). false = the event-driven gait every shipped species walks with.

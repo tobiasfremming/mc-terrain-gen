@@ -15,7 +15,9 @@ public sealed class CreatureMeshLists
 // joints, per-segment taper) RIGID to its own bone, so no joint bend can fold the skin - the overlapping caps
 // of two segments cover their joint at any angle, like a hard exoskeleton coming out of a socket. Optional
 // joint bulbs (knuckles) rigid to the proximal bone, knee bands (separate part id, edge rings duplicated so
-// every triangle has a single part id), and claws at the tarsus tip. Only the coxa's buried start is blended
+// every triangle has a single part id), claws at the tarsus tip and optional spurs (LegSegment.spurLength: a
+// sharp claw-coloured horn at a segment's distal end, on its lower side, raked toward the tip; appended after
+// everything else, so a leg without spurs is byte-identical). Only the coxa's buried start is blended
 // 50/50 with the body's attach bone, like the lizard shoulder ring.
 public static class ArthropodLegMesh
 {
@@ -28,6 +30,8 @@ public static class ArthropodLegMesh
     const float kClawBend = 70f;        // degrees a claw curls down over its length
     const float kClawSplay = 22f;       // degrees between two claws' directions (fanned about the up axis)
     const float kMinRadius = 1e-4f;
+    const float kSpurRake = 50f;        // degrees a spur leans out of the segment axis (toward its lower side)
+    const float kSpurAt = 0.82f;        // where along the segment a spur sits
 
     // pts[offset .. offset + segs.Length]: the rest-pose points from ArthropodLegIK.Solve (coxa base, joints,
     // ankle, foot), planeNormal its pose.planeNormal; bones firstBone + k (k = segment), attachBone < 0 = none.
@@ -64,6 +68,26 @@ public static class ArthropodLegMesh
                 float yaw = claws == 1 ? 0f : Mathf.Lerp(-0.5f * kClawSplay, 0.5f * kClawSplay, c / (claws - 1f));
                 Claw(m, b + q * Vector3.forward * (0.5f * rt), q * Quaternion.AngleAxis(yaw, Vector3.up), 0.5f * rt, cl, firstBone + last, arc);
             }
+        }
+        // spurs: on the segment's lower side (the leg plane's down for it: -y of its frame, toward the ground for a
+        // raised femur, toward the body for a dropping tibia), raked toward the tip, curling a little further toward it
+        float sarc = arcStart;
+        for (int k = 0; k < n; k++)
+        {
+            Vector3 a = pts[offset + k], b = pts[offset + k + 1];
+            float L = (b - a).magnitude;
+            float sl = segs[k].spurLength;
+            if (sl > 0f && L > 1e-6f)
+            {
+                Quaternion q = ArthropodLegIK.SegmentRotation(a, b, planeNormal);
+                Vector3 t = q * Vector3.forward, y = q * Vector3.up;
+                float r = Mathf.Lerp(R0(segs[k]), R1(segs[k]), kSpurAt);
+                Vector3 basePt = a + t * (kSpurAt * L) - y * (0.75f * r);
+                Vector3 dir = Quaternion.AngleAxis(kSpurRake, q * Vector3.right) * t;      // t turned toward -y
+                Quaternion hq = Quaternion.LookRotation(dir, Vector3.Cross(dir, q * Vector3.right));
+                Horn(m, basePt, hq, Mathf.Max(0.45f * r, 0.18f * sl), 0f, sl, -20f, firstBone + k, PartFoot, kClawSides, sarc + kSpurAt * L, out _, out _);
+            }
+            sarc += L;
         }
     }
 

@@ -693,6 +693,15 @@
           "example": ""
         },
         {
+          "name": "segments[].spurLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "a sharp spur at the segment's distal end, on its lower side, raked toward the tip (claw layer); 0 = none",
+          "range": "",
+          "example": "scolopendra 0.0018"
+        },
+        {
           "name": "contactAngleDeg",
           "type": "float",
           "unit": "Degrees",
@@ -1468,6 +1477,24 @@
           "meaning": "bend cone between segments (0 = 35)",
           "range": "0..90",
           "example": ""
+        },
+        {
+          "name": "probeDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "probing: the rest curve sweeps side to side by this much about the root (up and down by 0.6 x it, the pair out of step), all the time - a centipede feeling its way; 0 = still",
+          "range": "0..60",
+          "example": "scolopendra 14"
+        },
+        {
+          "name": "probeHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "probing sweeps per second",
+          "range": "",
+          "example": "scolopendra 1.3"
         }
       ]
     },
@@ -2799,6 +2826,24 @@
           "example": "default 0.35"
         },
         {
+          "name": "keel",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "a sharp ridge along each plate's midline, x half height (0 = none)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "cornerSpike",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the back corners drawn out sideways (x the plate's half width) and backward into upturned points (0 = none)",
+          "range": "0..0.6",
+          "example": ""
+        },
+        {
           "name": "firstReach",
           "type": "float",
           "unit": "Fraction",
@@ -3330,6 +3375,24 @@
           "meaning": "mesh: sections along the length (0 = 16)",
           "range": "0..64",
           "example": ""
+        },
+        {
+          "name": "hideLoft",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "draws no loft (its keys still bound it): a Sculpt that follows this jaw draws it",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "headLiftDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "as it gapes the head lifts too: the rigid head's bones and the eyes turn up about the hinge by this much at full gape, the jaw opening gapeDeg from the lifted head (a crocodile: the skull rises as the lower jaw drops). Put the Jaw after the Eyes",
+          "range": "0..60",
+          "example": "crocodile 24"
         }
       ]
     },
@@ -3575,6 +3638,33 @@
           "example": ""
         },
         {
+          "name": "displayOpenDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "threat display (CreatureSim.Display, a ThreatDisplay part): the opening held at the full display; 0 = no display pose",
+          "range": "0..90",
+          "example": ""
+        },
+        {
+          "name": "displayRaiseDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "threat display: the whole appendage lifts about its root toward the joint's up by this much",
+          "range": "-60..90",
+          "example": ""
+        },
+        {
+          "name": "spineSegments",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "segments carrying the inner spines (the first N; 0 or 1 = the first only)",
+          "range": "0..4",
+          "example": ""
+        },
+        {
           "name": "layer",
           "type": "int",
           "unit": "Count",
@@ -3758,10 +3848,8 @@
       "useWhen": "head shapes: squared snouts, jaws, brows, nostrils, bosses; any rigid lump on a joint",
       "summary": "Lofted solid rigid to a spine joint: superellipse cross-sections (round to squared and flat-topped, separate above and below) keyed along a direction, curled and rolled. Snouts, jaws, brow ridges, nostril bumps, cheek plates, skull shapes the spine tube cannot express.",
       "usedBy": [
-        "Crocodile",
         "GiantCentipede",
         "Hexadrake",
-        "KomodoDragon",
         "RockCrab",
         "Scolopendra",
         "SkyDragon",
@@ -3983,6 +4071,359 @@
           "meaning": "lumps: noise seed (another seed, other lumps)",
           "range": "",
           "example": ""
+        }
+      ]
+    },
+    {
+      "name": "Sculpt",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "0 (rigid to its joint, or rides a Jaw's bone)",
+      "materialLayers": [
+        0,
+        2,
+        13
+      ],
+      "system": "mesh only (Sculpt.EmitMesh -> SculptMesher, cached per shape set), rigid to one bone",
+      "useWhen": "realistic heads and skulls: brows over recessed eye sockets, jowls, lip lines, nostrils, skull tables, a lower jaw on a Jaw; any rigid organic solid a loft cannot express",
+      "summary": "A solid modelled as a signed-distance field: ellipsoids, round cones, rounded boxes and planes in the joint frame, smooth-unioned, carved (smooth subtraction) and trimmed (smooth intersection), mirrored across the midline; polygonised once per species by surface nets with normals from the field's gradient, plus tooth rows placed on its lip line. Rigid to its joint or riding a Jaw's bone.",
+      "usedBy": [
+        "Crocodile",
+        "KomodoDragon"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "shapes",
+          "type": "SculptShape[]",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "the field's shapes, combined in order (the first is usually a Union)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "shapes[].kind",
+          "type": "Ellipsoid / RoundCone / Box / Plane",
+          "unit": "Enum",
+          "size": "-",
+          "meaning": "Ellipsoid | RoundCone (a tapered capsule from centre to end) | Box (rounded) | Plane (solid below it; for Intersect / Subtract)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "shapes[].op",
+          "type": "Union / Subtract / Intersect",
+          "unit": "Enum",
+          "size": "-",
+          "meaning": "Union (add) | Subtract (carve: a socket, a nostril, a groove) | Intersect (trim)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "shapes[].blend",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "smooth blend radius with the shapes before it (0 = a sharp crease)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "shapes[].centre",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "centre in the joint frame (RoundCone: its start; Plane: a point on it)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "shapes[].size",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "Ellipsoid radii / Box half extents; RoundCone: x = radius at the start, y = radius at the end",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "shapes[].end",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "RoundCone: its end in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "shapes[].rotationDeg",
+          "type": "Vector3",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "rotation of an Ellipsoid, Box or Plane: x pitch (+ nose down), y yaw (+ toward +x), z roll; a Plane's normal is its rotated +y",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "shapes[].round",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "Box: corner rounding",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "shapes[].squash",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "RoundCone: its cross-section's height / width (0 or 1 = round, 0.5 = flattened)",
+          "range": "0..4",
+          "example": ""
+        },
+        {
+          "name": "shapes[].mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "also its mirror image across the midline (x -> -x): eye sockets, nostrils, jowls (an Intersect trims by both)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "follow",
+          "type": "string",
+          "unit": "PartRef",
+          "size": "-",
+          "meaning": "a Jaw part whose bone it rides (a lower jaw that opens); empty = rigid to its joint",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "cell",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "grid cell of the polygoniser (smaller: finer and slower; ~1/60 of the head's length)",
+          "range": "",
+          "example": "crocodile 0.0045"
+        },
+        {
+          "name": "layer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer (part id): 0 the body's skin, 2 claw / horn",
+          "range": "0..15",
+          "example": ""
+        },
+        {
+          "name": "liningBelow",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the surface's upward-facing parts (normal within 60 deg of up) below this height (joint frame) are shaded as belly (a mouth's floor and palate show the pale lining, not the back); 0 = off",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "dorsalShift",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "shading: added to the dorsal value (-1 belly .. +1 back); -0.5 turns a lower jaw's sides pale like the throat",
+          "range": "-2..2",
+          "example": ""
+        },
+        {
+          "name": "teeth",
+          "type": "SculptTeeth[]",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "tooth rows on the surface",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "teeth[].from",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "guide line start in the joint frame (just outside the lip, on the side the teeth come out)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "teeth[].to",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "guide line end",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "teeth[].bow",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the guide line bows by this much at its middle (a curved tooth row)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "teeth[].count",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "teeth in the row",
+          "range": "1..32",
+          "example": ""
+        },
+        {
+          "name": "teeth[].length",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "tooth length (the end teeth 0.6 x)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "teeth[].radius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "tooth base radius",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "teeth[].direction",
+          "type": "Vector3",
+          "unit": "Direction",
+          "size": "-",
+          "meaning": "the way the teeth point (an upper row: down), in the joint frame; each tooth sits where this line leaves the solid",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "teeth[].splayDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "teeth splay outward (away from the midline) by this much",
+          "range": "-45..45",
+          "example": ""
+        },
+        {
+          "name": "teeth[].curveDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "each tooth curls back by this much",
+          "range": "-60..60",
+          "example": ""
+        },
+        {
+          "name": "teeth[].jitter",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "tooth lengths vary by up to this fraction (deterministic)",
+          "range": "0..0.9",
+          "example": ""
+        },
+        {
+          "name": "teeth[].sink",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "sunk into the gum by this fraction of its length",
+          "range": "0..0.9",
+          "example": ""
+        },
+        {
+          "name": "teeth[].mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "also the mirror row (x -> -x)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "toothLayer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer of the teeth: 2 claw, 13 teeth",
+          "range": "0..15",
+          "example": "default 13"
         }
       ]
     },
@@ -4544,6 +4985,129 @@
       ]
     },
     {
+      "name": "ThreatDisplay",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "0 (sets the sim's posture inputs)",
+      "materialLayers": [],
+      "system": "ThreatDisplayRuntime (part runtime, stage Late) + CreatureSim JointLift / Display",
+      "useWhen": "a predator that threatens when it stops: centipedes, scorpions, mantises, cobras rearing, a crab raising its claws",
+      "summary": "Posture: after standing still for idleDelay the creature rears into a threat display - head and forebody lifted (headLift fading over liftJoints), CreatureSim.Display ramped to 1 so parts with a display pose follow (Pincer.displayOpenDeg / displayRaiseDeg: forcipules spread, ultimate legs raised). Holds while it stands, drops when it walks.",
+      "usedBy": [
+        "Scolopendra"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "idleDelay",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "standstill before the display starts",
+          "range": "",
+          "example": "default 0.6"
+        },
+        {
+          "name": "riseSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "time to rear fully into the display",
+          "range": "",
+          "example": "default 0.5"
+        },
+        {
+          "name": "dropSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "time to drop out of it when the creature walks off",
+          "range": "",
+          "example": "default 0.25"
+        },
+        {
+          "name": "headLift",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "lift of the head (joint 0) at the full display",
+          "range": "",
+          "example": "scolopendra 0.006"
+        },
+        {
+          "name": "liftJoints",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "joints the lift fades over (joint 0 full .. this joint none)",
+          "range": "1..32",
+          "example": "default 6"
+        }
+      ]
+    },
+    {
       "name": "Tuck",
       "kind": "Rigid",
       "status": "exists",
@@ -4968,7 +5532,35 @@
         "TreeSpider",
         "WingedSerpent"
       ],
-      "params": []
+      "params": [
+        {
+          "name": "arriveRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "a goal counts as reached within this distance (0 = 0.4)",
+          "range": "",
+          "example": "scolopendra 0.12"
+        },
+        {
+          "name": "pauseMin",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "shortest pause at a goal (with pauseMax > 0; Froude-timed)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "pauseMax",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "longest pause at a goal (0 = the default 0.5..3 s, not size-scaled)",
+          "range": "",
+          "example": "scolopendra 0.5..1.2"
+        }
+      ]
     },
     {
       "name": "Climb",
@@ -5507,6 +6099,42 @@
           "meaning": "damping ratio (0.2 bouncy .. 1 dead)",
           "range": "0..2",
           "example": ""
+        },
+        {
+          "name": "burst",
+          "type": "GaitBurstDef",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "speed bursts: every so often the cruise speed surges (a predator's dash), seeded per individual; factor 0 = off",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "burst.factor",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "cruise speed x this at the peak of a burst (<= 1 = off); the gait's stride limit still caps it",
+          "range": "0..4",
+          "example": "scolopendra 2.2"
+        },
+        {
+          "name": "burst.every",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "mean time between bursts (each gap 0.5..1.5 x this, per individual)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "burst.seconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "one burst: a quick surge, a hold, an easing back",
+          "range": "",
+          "example": ""
         }
       ]
     },
@@ -6014,7 +6642,7 @@
       "name": "Crocodile",
       "kitVersion": 1,
       "plan": "Spine",
-      "bones": 52,
+      "bones": 51,
       "parts": [
         "SpineBody:body",
         "Leg2Bone:fore.L",
@@ -6022,11 +6650,9 @@
         "Leg2Bone:hind.L",
         "Leg2Bone:hind.R",
         "Eyes:eyes",
-        "RigidLoft:cranium",
-        "RigidLoft:orbit.L",
-        "RigidLoft:orbit.R",
         "Jaw:mandible",
-        "Jaw:snout",
+        "Sculpt:skull",
+        "Sculpt:jaw",
         "ScuteRow:nuchal.L",
         "ScuteRow:nuchal.R",
         "ScuteRow:nuchalOut.L",
@@ -6303,10 +6929,8 @@
         "Leg2Bone:hind.L",
         "Leg2Bone:hind.R",
         "Eyes:eyes",
-        "RigidLoft:skull",
-        "RigidLoft:jaw",
-        "RigidLoft:brow.L",
-        "RigidLoft:brow.R",
+        "Sculpt:head",
+        "Sculpt:jaw",
         "Tongue:tongue",
         "SkinFolds:throat",
         "SkinFolds:neckFold.L",
@@ -6364,7 +6988,7 @@
       "name": "Scolopendra",
       "kitVersion": 1,
       "plan": "Spine",
-      "bones": 243,
+      "bones": 245,
       "parts": [
         "SpineBody:body",
         "Eyes:eyes",
@@ -6415,7 +7039,8 @@
         "Pincer:forcipule.L",
         "Pincer:forcipule.R",
         "Pincer:ultimate.L",
-        "Pincer:ultimate.R"
+        "Pincer:ultimate.R",
+        "ThreatDisplay:threat"
       ],
       "modules": [
         "Walk",

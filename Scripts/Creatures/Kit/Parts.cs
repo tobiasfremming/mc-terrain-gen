@@ -280,17 +280,20 @@ namespace CreatureKit
         [Param(ParamUnit.Fraction, "joint bulb at the end: radius = knuckle x the larger adjacent radius (0 = none)")] public float knuckle;
         [Param(ParamUnit.Fraction, "start of the band-coloured stretch (fraction of the segment)", Min = 0, Max = 1)] public float bandStart;
         [Param(ParamUnit.Fraction, "end of the band-coloured stretch", Min = 0, Max = 1)] public float bandEnd;
+        [Param(ParamUnit.Metres, "a sharp spur at the segment's distal end, on its lower side, raked toward the tip (claw layer); 0 = none", Example = "scolopendra 0.0018")] public float spurLength;
 
         public LegSegment ToRuntime() => new LegSegment
         {
             length = length, radiusStart = radiusStart, radiusEnd = radiusEnd, restBendDeg = restBendDeg, minBendDeg = minBendDeg, maxBendDeg = maxBendDeg,
             flexWeight = flexWeight, liftWeight = liftWeight, axisTiltDeg = axisTiltDeg, knuckle = knuckle, bandStart = bandStart, bandEnd = bandEnd,
+            spurLength = spurLength,
         };
 
         public static SegmentDef From(in LegSegment s) => new SegmentDef
         {
             length = s.length, radiusStart = s.radiusStart, radiusEnd = s.radiusEnd, restBendDeg = s.restBendDeg, minBendDeg = s.minBendDeg, maxBendDeg = s.maxBendDeg,
             flexWeight = s.flexWeight, liftWeight = s.liftWeight, axisTiltDeg = s.axisTiltDeg, knuckle = s.knuckle, bandStart = s.bandStart, bandEnd = s.bandEnd,
+            spurLength = s.spurLength,
         };
     }
 

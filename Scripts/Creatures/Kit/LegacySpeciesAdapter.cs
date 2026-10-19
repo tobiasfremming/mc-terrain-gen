@@ -75,6 +75,7 @@ namespace CreatureKit
                 speed = sp.speed, turnRateDeg = sp.turnRateDeg, accel = sp.accel, turnSlowdown = sp.turnSlowdown,
                 gaitSwayDeg = sp.gaitSwayDeg, gaitRollDeg = sp.gaitRollDeg, subSteps = sp.subSteps,
                 bob = new GaitBobDef { amplitude = sp.gaitBob.amplitude, hz = sp.gaitBob.hz, damping = sp.gaitBob.damping },
+                burst = new GaitBurstDef { factor = sp.gaitBurst.factor, every = sp.gaitBurst.every, seconds = sp.gaitBurst.seconds },
                 pattern = GaitPattern.Explicit,
             };
             modules.Add(walk);

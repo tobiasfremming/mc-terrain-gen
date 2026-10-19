@@ -11,6 +11,9 @@ namespace TerrainGen.Tests
     // the mesh follows the runtime's pose (the drawn tip is the runtime's tip at a flex peak), and the size rule
     // (lengths x s, the flex clock x sqrt s). RED proofs: a pair curled into each other is caught by the clearance
     // check; an opening clock that ignores the standstill would never flex.
+    // Scolopendra v2 (2026-10-20): it has a ThreatDisplay, so at a standstill its pincers spread to their
+    // displayOpenDeg (breathing with the flex clock) instead of flexing to openDeg: the range and the peaks are
+    // measured against the opening each one actually reaches standing (Peak), and the pair clearance covers it.
     public class CreaturePincerTests
     {
         const float kDt = 1f / 60f;
@@ -28,6 +31,14 @@ namespace TerrainGen.Tests
 
         static CreatureSim Walker(CreatureSpecies sp, float s) =>
             new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, s, 1);
+
+        // The widest opening a pincer reaches standing: its display opening when the species has a ThreatDisplay.
+        static float Peak(Pincer p, CreatureSpecies sp)
+        {
+            bool display = false;
+            foreach (CreaturePart q in sp.Compiled.Parts) display |= q is ThreatDisplay;
+            return display && p.displayOpenDeg > 0f ? Mathf.Max(p.openDeg, p.displayOpenDeg) : p.openDeg;
+        }
 
         static Vector3 Ahead(CreatureSim sim) => sim.Joints[0] + (sim.Rotations[0] * Vector3.forward) * (10f * sim.SizeScale);
 
@@ -108,7 +119,7 @@ namespace TerrainGen.Tests
                     if (walking && tick > 120) walkHi[i] = Mathf.Max(walkHi[i], Mathf.Abs(o - list[i].Part.walkOpen * list[i].Part.openDeg));
                     if (!walking)
                     {
-                        if (o < last[i] && rising[i] && o > 0.9f * list[i].Part.openDeg) peaks[i]++;
+                        if (o < last[i] && rising[i] && o > 0.9f * Peak(list[i].Part, sp)) peaks[i]++;
                         rising[i] = o > last[i];
                     }
                     last[i] = o;
@@ -118,10 +129,11 @@ namespace TerrainGen.Tests
             for (int i = 0; i < 4; i++)
             {
                 Pincer p = ps[i].Part;
-                TestContext.WriteLine($"x{s:F2} {p.id}: opening {lo[i]:F2}..{hi[i]:F2} deg (open {p.openDeg}), walking off walkOpen by <= {walkHi[i]:F3}, {peaks[i]} flex peaks standing");
+                float peak = Peak(p, sp);
+                TestContext.WriteLine($"x{s:F2} {p.id}: opening {lo[i]:F2}..{hi[i]:F2} deg (open {p.openDeg}, standing peak {peak}), walking off walkOpen by <= {walkHi[i]:F3}, {peaks[i]} flex peaks standing");
                 Assert.GreaterOrEqual(lo[i], -1e-3f, p.id + ": never past closed");
-                Assert.LessOrEqual(hi[i], p.openDeg + 1e-3f, p.id + ": never past openDeg");
-                Assert.Greater(hi[i], 0.95f * p.openDeg, p.id + ": a flex opens fully");
+                Assert.LessOrEqual(hi[i], peak + 1e-3f, p.id + ": never past its widest opening (openDeg, or displayOpenDeg in a display)");
+                Assert.Greater(hi[i], 0.95f * peak, p.id + ": a flex (or the display) opens fully");
                 Assert.Less(walkHi[i], 0.02f * p.openDeg + 1e-3f, p.id + ": walking holds walkOpen");
                 // standing 14 s x T: (14 - delay) / period flexes (+-1 for the phase)
                 float want = (14f - p.idleDelay) / p.flexPeriod;
@@ -160,12 +172,13 @@ namespace TerrainGen.Tests
             }
         }
 
-        // Smallest surface clearance between the left and right pincer over the whole opening range (metres, scale 1).
+        // Smallest surface clearance between the left and right pincer over the whole opening range (metres, scale 1):
+        // closed .. openDeg, and on to displayOpenDeg when it opens wider in a display.
         static float PairClearance(Pincer left, Pincer right, out float atOpen)
         {
             var a = new List<Vector4>(); var b = new List<Vector4>();
             float worst = float.MaxValue; atOpen = 0f;
-            for (float open = 0f; open <= left.openDeg + 1e-3f; open += 1f)
+            for (float open = 0f; open <= Mathf.Max(left.openDeg, left.displayOpenDeg) + 1e-3f; open += 1f)
             {
                 Capsules(left, open, a); Capsules(right, open, b);
                 foreach (Vector4 u in a)
@@ -217,7 +230,7 @@ namespace TerrainGen.Tests
             List<PincerRuntime> ps = Pincers(sim);
             Run(sim, 4f, 0f, (w, l) => { });
             int guard = 0;
-            while (ps[0].Opening < 0.97f * ps[0].Part.openDeg && guard++ < 2000) sim.Tick(kDt, sim.Joints[0]);
+            while (ps[0].Opening < 0.97f * Peak(ps[0].Part, sp) && guard++ < 2000) sim.Tick(kDt, sim.Joints[0]);
             Assert.Less(guard, 2000, "reached a flex peak");
             var bones = new Matrix4x4[sp.Compiled.Runtime.BoneCount];
             sim.WriteBoneWorld(bones, 0);

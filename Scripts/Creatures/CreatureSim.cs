@@ -55,6 +55,10 @@ public sealed class CreatureSim
     //   Asleep            no sub-steps at all: body, legs and every sub-step stage hold exactly still (zero motion);
     //                     Late runtimes still step, so the runtime that put it to sleep can wake it.
     //   Crouch            metres (this individual's) every joint's clearance is lowered by while walking/standing.
+    //   JointLift         per joint, metres (this individual's) added to its clearance (null = none): a posture that
+    //                     rears the head and forebody (the kit's ThreatDisplay). Eased in by the grounding.
+    //   Display           0..1, how far into a threat display the creature is (set by a ThreatDisplay part; parts
+    //                     with a display pose - Pincer.displayOpenDeg - blend to it).
     float scare;
     public float Scared => scare;
     public void Scare(float intensity) { if (intensity > scare) scare = Mathf.Min(1f, intensity); }
@@ -62,6 +66,8 @@ public sealed class CreatureSim
     public bool Halt;
     public bool Asleep;
     public float Crouch;
+    public float[] JointLift;
+    public float Display;
 
     // Actual head speed (after the Bounds clamp), not the commanded one.
     public float Speed { get; private set; }
@@ -269,6 +275,7 @@ public sealed class CreatureSim
         subDt = dt;
         var sp = Species;
         float maxSpeed = sp.speed * TimeScale;
+        if (sp.gaitBurst.On) maxSpeed *= Burst(dt);
         float window = kGroundWindow * SizeScale;
         if (climb != null)
         {
@@ -364,6 +371,7 @@ public sealed class CreatureSim
             Vector3 u = climbing ? climb.Up[i] : Norm(upAt(p), up);
             pathUp[i] = u;
             float clear = js[i].clearance * SizeScale - Crouch;   // Crouch 0: exactly the clearance
+            if (JointLift != null) clear += JointLift[i];
             if (climbing) clear *= climb.ClearanceScale(i);
             var near = new Vector3(p.x - u.x * clear, p.y - u.y * clear, p.z - u.z * clear);
             Vector3 g0 = groundPoint[i];
@@ -564,6 +572,43 @@ public sealed class CreatureSim
             for (int i = 0; i < headK; i++) Path[i] += up * lift;
         RestoreLengths(seg, climbing, headK);
     }
+    // Walk.burst (CreatureSpecies.gaitBurst): the cruise speed's factor now. A burst starts every gap (0.5..1.5 x
+    // `every`, hashed from the seed and the burst's number), surges in its first 15 %, holds and eases back over its last
+    // 40 %. The first gap is 0.3..1.3 x `every` so a group never dashes in step. Froude: times x sqrt s.
+    float burstStart = float.NegativeInfinity, burstNext = float.NaN;
+    int burstCount;
+    public float BurstFactor { get; private set; } = 1f;
+
+    float Burst(float dt)
+    {
+        GaitBurst b = Species.gaitBurst;
+        float every = b.every * TimeScale, len = b.seconds * TimeScale;
+        if (float.IsNaN(burstNext)) burstNext = Time + every * (0.3f + Hash01(Seed, 0));
+        if (Time >= burstNext)
+        {
+            burstStart = Time;
+            burstCount++;
+            burstNext = Time + len + every * (0.5f + Hash01(Seed, burstCount));
+        }
+        float x = (Time - burstStart) / len, e = 0f;
+        if (x >= 0f && x < 1f) e = x < 0.15f ? Smooth01(x / 0.15f) : x < 0.6f ? 1f : 1f - Smooth01((x - 0.6f) / 0.4f);
+        BurstFactor = 1f + (b.factor - 1f) * e;
+        return BurstFactor;
+    }
+
+    static float Smooth01(float t) { t = Mathf.Clamp01(t); return t * t * (3f - 2f * t); }
+
+    // A deterministic 0..1 from two ints (integer hash, no allocation).
+    static float Hash01(int a, int b)
+    {
+        unchecked
+        {
+            uint h = (uint)a * 0x9E3779B1u ^ (uint)(b + 0x7F4A7C15) * 0x85EBCA77u;
+            h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12; h *= 0x297A2D39u; h ^= h >> 15;
+            return (h & 0xFFFFFF) / 16777216f;
+        }
+    }
+
     const float kHeadBaseLo = 20f, kHeadBaseHi = 40f, kHeadBaseShare = 0.35f, kHeadBaseTau = 0.4f, kHeadLiftTau = 0.3f;
     float headBase, headLift, subDt;
 

@@ -145,7 +145,7 @@ namespace CreatureKit
             {
                 case BrainKind.Flight: return new FlightBrain(area, seed, perches);
                 case BrainKind.Climbing: return new ClimbingBrain(area, seed);
-                case BrainKind.Wander: return new WanderBrain(area, seed);
+                case BrainKind.Wander: return WanderBrain.For(sp, area, seed);
                 case BrainKind.Modular: return Modular(sp, area, seed, perches);
                 default: return null;
             }
@@ -183,7 +183,7 @@ namespace CreatureKit
     {
         // the idle default every other behaviour has to beat
         public const float BaseUtility = 0.1f;
-        public override IBehaviour CreateBehaviour(in BehaviourCtx c) => new BrainBehaviour(new WanderBrain(c.Area, c.Seed), BaseUtility);
+        public override IBehaviour CreateBehaviour(in BehaviourCtx c) => new BrainBehaviour(WanderBrain.For(c.Species, c.Area, c.Seed), BaseUtility);
     }
 
     public sealed partial class ClimbExcursion

@@ -35,10 +35,12 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | **Jaw** | Rigid | exists | 1 | 0, 2, 13 | a mouth that opens: a crocodile basking agape (opensUp), a yawn, a threat gape, a snapping beak | Crocodile |
 | **Pincer** | Rigid | exists | = segments (1-4) | 11, 9 | forcipules, mandibles, chelicera fangs, pincers, earwig forceps, centipede ultimate legs - any jointed appendage that opens and closes | Scolopendra |
 | **RigidCone** | Rigid | exists | 0 (1 with ownBone) | 2 | horns, spikes, fangs, mandibles, chelicerae | GiantCentipede, Hexadrake, RockCrab, SkyDragon, Swinger, Tarantula, TentacleCrab, TreeOctopus, TreeSpider |
-| **RigidLoft** | Rigid | exists | 0 (rigid to its joint) | 0, 2 | head shapes: squared snouts, jaws, brows, nostrils, bosses; any rigid lump on a joint | Crocodile, GiantCentipede, Hexadrake, KomodoDragon, RockCrab, Scolopendra, SkyDragon, TentacleCrab |
+| **RigidLoft** | Rigid | exists | 0 (rigid to its joint) | 0, 2 | head shapes: squared snouts, jaws, brows, nostrils, bosses; any rigid lump on a joint | GiantCentipede, Hexadrake, RockCrab, Scolopendra, SkyDragon, TentacleCrab |
+| **Sculpt** | Rigid | exists | 0 (rigid to its joint, or rides a Jaw's bone) | 0, 2, 13 | realistic heads and skulls: brows over recessed eye sockets, jowls, lip lines, nostrils, skull tables, a lower jaw on a Jaw; any rigid organic solid a loft cannot express | Crocodile, KomodoDragon |
 | **ScuteRow** | Rigid | exists | 0 (skinned to the spine) | 12, 0 | crocodile and alligator armour, a tail's double crest, a stegosaur-like row of plates, spiny lizard backs | Crocodile |
 | **SkinFolds** | Rigid | exists | 0 (skinned to the spine) | 0 | neck and throat folds of monitor lizards, a dewlap, wrinkled elbows of skin, the gular folds of iguanas | KomodoDragon |
 | **Swell** | Rigid | exists | 0 (skinned to the spine) | 0 | a deep chest with flight muscles at the wing roots, shoulders, haunches, a belly - any bulk the body's elliptical profile cannot give | KomodoDragon, SkyDragon |
+| **ThreatDisplay** | Rigid | exists | 0 (sets the sim's posture inputs) |  | a predator that threatens when it stops: centipedes, scorpions, mantises, cobras rearing, a crab raising its claws | Scolopendra |
 | **Tuck** | Rigid | exists | 0 (poses the others' bones) |  | a creature that hides by folding up: rock crabs, box crabs, armadillos, pill bugs, tortoises | RockCrab |
 | **Repeat** | Sugar | exists | = count x template |  | centipede legs, spike rows, many fins | GiantCentipede, Scolopendra |
 
@@ -67,7 +69,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 
 | species | format | plan | parts | modules | bones |
 |---|---|---|---|---|---|
-| Crocodile | kit | Spine | SpineBody, 4x Leg2Bone, Eyes, 3x RigidLoft, 2x Jaw, 21x ScuteRow | Walk (Diagonal), Slither, Wander, Skin, Layers | 52 |
+| Crocodile | kit | Spine | SpineBody, 4x Leg2Bone, Eyes, Jaw, 2x Sculpt, 21x ScuteRow | Walk (Diagonal), Slither, Wander, Skin, Layers | 51 |
 | DaddyLongLegs | legacy | Spine | SpineBody, 10x ArthropodLeg, Eyes | Walk (Tetrapod), Wander, Skin, Chitin | 71 |
 | DesertBeetle | legacy | Spine | SpineBody, 6x ArthropodLeg, Eyes | Walk (Tripod), Wander, Skin, Chitin | 35 |
 | DesertMonitor | legacy | Spine | SpineBody, 4x Leg2Bone, Eyes | Walk (Diagonal), Slither, Climb, Wander, ClimbExcursion, Skin | 40 |
@@ -76,9 +78,9 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | GiantCentipede | kit | Spine | SpineBody, Eyes, RigidLoft, RigidCone, 4x Antenna, 42x ArthropodLeg | Walk (Wave), Slither, Wander, Skin, Chitin, Layers | 252 |
 | Hexadrake | kit | Spine | SpineBody, 6x Leg2Bone, 2x Wing, Eyes, 5x RigidLoft, 3x RigidCone, 2x FinStrip | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane, Layers | 78 |
 | KitMonitor | kit | Spine | SpineBody, 4x Leg2Bone, Eyes | Walk (Diagonal), Slither, Climb, Wander, ClimbExcursion, Skin | 40 |
-| KomodoDragon | kit | Spine | SpineBody, 4x Leg2Bone, Eyes, 4x RigidLoft, Tongue, 3x SkinFolds, 3x Swell | Walk (Diagonal), Slither, Wander, Skin, Layers | 53 |
+| KomodoDragon | kit | Spine | SpineBody, 4x Leg2Bone, Eyes, 2x Sculpt, Tongue, 3x SkinFolds, 3x Swell | Walk (Diagonal), Slither, Wander, Skin, Layers | 53 |
 | RockCrab | kit | Spine | SpineBody, Eyes, 10x ArthropodLeg, RigidLoft, 6x RigidCone, 2x EyeStalk, Tuck | Walk (Tetrapod), Wander, Skin, Chitin, Layers | 57 |
-| Scolopendra | kit | Spine | SpineBody, Eyes, RigidLoft, 2x Antenna, 40x ArthropodLeg, ArmourPlates, 4x Pincer | Walk (Wave), Slither, Wander, Skin, Chitin, Layers | 243 |
+| Scolopendra | kit | Spine | SpineBody, Eyes, RigidLoft, 2x Antenna, 40x ArthropodLeg, ArmourPlates, 4x Pincer, ThreatDisplay | Walk (Wave), Slither, Wander, Skin, Chitin, Layers | 245 |
 | SkyDragon | kit | Spine | SpineBody, 4x Leg2Bone, 2x LegFin, 2x Wing, Eyes, 4x RigidCone, 5x FinStrip, 4x Antenna, Swell, 7x RigidLoft | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane, Shimmer | 148 |
 | Swinger | legacy | Soft | 2x Tentacle, SoftBody, Eyes, RigidCone | Ambush, Skin, Cloak, Chromatophore | 97 |
 | Tarantula | legacy | Spine | SpineBody, 10x ArthropodLeg, Eyes, RigidCone | Walk (Tetrapod), Wander, Skin, Chitin | 75 |
@@ -179,6 +181,7 @@ Bend-limited follow-the-leader chain riding the ground or a climbed surface (Cre
 | `segments[].knuckle` | float | Fraction | - | joint bulb at the end: radius = knuckle x the larger adjacent radius (0 = none) |  |  |
 | `segments[].bandStart` | float | Fraction | - | start of the band-coloured stretch (fraction of the segment) | 0..1 |  |
 | `segments[].bandEnd` | float | Fraction | - | end of the band-coloured stretch | 0..1 |  |
+| `segments[].spurLength` | float | Metres | x s | a sharp spur at the segment's distal end, on its lower side, raked toward the tip (claw layer); 0 = none |  | scolopendra 0.0018 |
 | `contactAngleDeg` | float | Degrees | - | tarsus angle to the ground, 0 = 20 |  |  |
 | `kneeLiftDeg` | float | Degrees | - | lift synergy at mid-swing (reshapes the leg; the foot stays on its path) |  |  |
 | `swingRetract` | float | Fraction | - | mid-swing pull of the foot toward the coxa (flexing lifts the knee) | 0..0.5 |  |
@@ -282,6 +285,8 @@ Spring chain rooted on a spine joint: whiskers, barbels, feelers, cerci, streame
 | `airDrag` | float | Hz | / sqrt(s) | air drag rate (1/s): how much the strand trails a moving body |  | dragon 0.8 |
 | `droopDeg` | float | Degrees | - | the rest curve bends down by this much toward the tip |  |  |
 | `maxBendDeg` | float | Degrees | - | bend cone between segments (0 = 35) | 0..90 |  |
+| `probeDeg` | float | Degrees | - | probing: the rest curve sweeps side to side by this much about the root (up and down by 0.6 x it, the pair out of step), all the time - a centipede feeling its way; 0 = still | 0..60 | scolopendra 14 |
+| `probeHz` | float | Hz | / sqrt(s) | probing sweeps per second |  | scolopendra 1.3 |
 
 ### Tendril
 
@@ -465,6 +470,8 @@ A row of hard shingled dorsal plates over a spine body, one every `step` joints:
 | `grooveDepth` | float | Fraction | - | suture depth, x half height | 0..0.3 | default 0.06 |
 | `thickness` | float | Fraction | - | the plate's edge wall (its thickness at the margin), x half height | 0.02..1 | default 0.25 |
 | `cornerRound` | float | Fraction | - | planform: rounding of the four corners (0 = square, 0.9 = nearly oval) | 0..0.9 | default 0.35 |
+| `keel` | float | Fraction | - | a sharp ridge along each plate's midline, x half height (0 = none) | 0..1 |  |
+| `cornerSpike` | float | Fraction | - | the back corners drawn out sideways (x the plate's half width) and backward into upturned points (0 = none) | 0..0.6 |  |
 | `firstReach` | float | Fraction | - | front plate: x the plate pitch it reaches forward (a head shield's collar); 0 = like the others | 0..2 |  |
 | `layer` | int | Count | - | material layer (part id): 10 = armour plate; 0 body, 2 claw | 0..15 | default 10 |
 | `across` | int | Count | - | mesh: vertices across a plate | 6..40 | default 18 |
@@ -534,6 +541,8 @@ A hinged jaw on its own bone: a lofted solid (RigidLoft sections) with a tooth r
 | `toothLayer` | int | Count | - | material layer of the teeth: 2 claw (default), 13 teeth (restyle it with Layers) | 0..15 | default 2 |
 | `around` | int | Count | - | mesh: vertices around each section (0 = 20) | 0..48 |  |
 | `rings` | int | Count | - | mesh: sections along the length (0 = 16) | 0..64 |  |
+| `hideLoft` | bool | Flag | - | draws no loft (its keys still bound it): a Sculpt that follows this jaw draws it |  |  |
+| `headLiftDeg` | float | Degrees | - | as it gapes the head lifts too: the rigid head's bones and the eyes turn up about the hinge by this much at full gape, the jaw opening gapeDeg from the lifted head (a crocodile: the skull rises as the lower jaw drops). Put the Jaw after the Eyes | 0..60 | crocodile 24 |
 
 ### Pincer
 
@@ -566,6 +575,9 @@ A hinged, jointed, curved appendage on 1-4 bones that opens and closes: curls to
 | `idleDelay` | float | Seconds | x sqrt(s) | standstill before the first flex |  | default 0.6 |
 | `walkOpen` | float | Fraction | - | opening held while walking, x openDeg | 0..1 |  |
 | `phase` | float | Fraction | - | place in the flex cycle at its start (a second pair can lag the first) | 0..1 |  |
+| `displayOpenDeg` | float | Degrees | - | threat display (CreatureSim.Display, a ThreatDisplay part): the opening held at the full display; 0 = no display pose | 0..90 |  |
+| `displayRaiseDeg` | float | Degrees | - | threat display: the whole appendage lifts about its root toward the joint's up by this much | -60..90 |  |
+| `spineSegments` | int | Count | - | segments carrying the inner spines (the first N; 0 or 1 = the first only) | 0..4 |  |
 | `layer` | int | Count | - | material layer (part id) of the segments: 11 = pincer; 1 limb, 2 claw, 10 plate | 0..15 | default 11 |
 | `sides` | int | Count | - | mesh: sides of the tube (0 = 10) | 0..24 |  |
 
@@ -620,6 +632,50 @@ Lofted solid rigid to a spine joint: superellipse cross-sections (round to squar
 | `lumpHeight` | float | Metres | x s | lumps: the surface pushed in and out by up to this much (smooth noise; 0 = smooth). A boulder, a knobbly shell |  | rock crab 0.012 |
 | `lumpSize` | float | Metres | x s | lumps: their size (noise feature size) |  | rock crab 0.06 |
 | `lumpSeed` | int | Count | - | lumps: noise seed (another seed, other lumps) |  |  |
+
+### Sculpt
+
+A solid modelled as a signed-distance field: ellipsoids, round cones, rounded boxes and planes in the joint frame, smooth-unioned, carved (smooth subtraction) and trimmed (smooth intersection), mirrored across the midline; polygonised once per species by surface nets with normals from the field's gradient, plus tooth rows placed on its lip line. Rigid to its joint or riding a Jaw's bone. System: mesh only (Sculpt.EmitMesh -> SculptMesher, cached per shape set), rigid to one bone.
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `shapes` | SculptShape[] | Struct | - | the field's shapes, combined in order (the first is usually a Union) |  |  |
+| `shapes[].kind` | Ellipsoid / RoundCone / Box / Plane | Enum | - | Ellipsoid \| RoundCone (a tapered capsule from centre to end) \| Box (rounded) \| Plane (solid below it; for Intersect / Subtract) |  |  |
+| `shapes[].op` | Union / Subtract / Intersect | Enum | - | Union (add) \| Subtract (carve: a socket, a nostril, a groove) \| Intersect (trim) |  |  |
+| `shapes[].blend` | float | Metres | x s | smooth blend radius with the shapes before it (0 = a sharp crease) |  |  |
+| `shapes[].centre` | Vector3 | Metres | x s | centre in the joint frame (RoundCone: its start; Plane: a point on it) |  |  |
+| `shapes[].size` | Vector3 | Metres | x s | Ellipsoid radii / Box half extents; RoundCone: x = radius at the start, y = radius at the end |  |  |
+| `shapes[].end` | Vector3 | Metres | x s | RoundCone: its end in the joint frame |  |  |
+| `shapes[].rotationDeg` | Vector3 | Degrees | - | rotation of an Ellipsoid, Box or Plane: x pitch (+ nose down), y yaw (+ toward +x), z roll; a Plane's normal is its rotated +y |  |  |
+| `shapes[].round` | float | Metres | x s | Box: corner rounding |  |  |
+| `shapes[].squash` | float | Fraction | - | RoundCone: its cross-section's height / width (0 or 1 = round, 0.5 = flattened) | 0..4 |  |
+| `shapes[].mirror` | bool | Flag | - | also its mirror image across the midline (x -> -x): eye sockets, nostrils, jowls (an Intersect trims by both) |  |  |
+| `follow` | string | PartRef | - | a Jaw part whose bone it rides (a lower jaw that opens); empty = rigid to its joint |  |  |
+| `cell` | float | Metres | x s | grid cell of the polygoniser (smaller: finer and slower; ~1/60 of the head's length) |  | crocodile 0.0045 |
+| `layer` | int | Count | - | material layer (part id): 0 the body's skin, 2 claw / horn | 0..15 |  |
+| `liningBelow` | float | Metres | x s | the surface's upward-facing parts (normal within 60 deg of up) below this height (joint frame) are shaded as belly (a mouth's floor and palate show the pale lining, not the back); 0 = off | -1..1 |  |
+| `dorsalShift` | float | Fraction | - | shading: added to the dorsal value (-1 belly .. +1 back); -0.5 turns a lower jaw's sides pale like the throat | -2..2 |  |
+| `teeth` | SculptTeeth[] | Struct | - | tooth rows on the surface |  |  |
+| `teeth[].from` | Vector3 | Metres | x s | guide line start in the joint frame (just outside the lip, on the side the teeth come out) |  |  |
+| `teeth[].to` | Vector3 | Metres | x s | guide line end |  |  |
+| `teeth[].bow` | Vector3 | Metres | x s | the guide line bows by this much at its middle (a curved tooth row) |  |  |
+| `teeth[].count` | int | Count | - | teeth in the row | 1..32 |  |
+| `teeth[].length` | float | Metres | x s | tooth length (the end teeth 0.6 x) |  |  |
+| `teeth[].radius` | float | Metres | x s | tooth base radius |  |  |
+| `teeth[].direction` | Vector3 | Direction | - | the way the teeth point (an upper row: down), in the joint frame; each tooth sits where this line leaves the solid |  |  |
+| `teeth[].splayDeg` | float | Degrees | - | teeth splay outward (away from the midline) by this much | -45..45 |  |
+| `teeth[].curveDeg` | float | Degrees | - | each tooth curls back by this much | -60..60 |  |
+| `teeth[].jitter` | float | Fraction | - | tooth lengths vary by up to this fraction (deterministic) | 0..0.9 |  |
+| `teeth[].sink` | float | Fraction | - | sunk into the gum by this fraction of its length | 0..0.9 |  |
+| `teeth[].mirror` | bool | Flag | - | also the mirror row (x -> -x) |  |  |
+| `toothLayer` | int | Count | - | material layer of the teeth: 2 claw, 13 teeth | 0..15 | default 13 |
 
 ### ScuteRow
 
@@ -697,6 +753,25 @@ A muscle mass lofted round the spine over a stretch of joints: keel below (a ste
 | `inset` | float | Fraction | - | both ends sink this fraction of the body's radius inside the body | 0..0.5 | default 0.08 |
 | `ringsPerJoint` | int | Count | - | mesh: rings per spine segment (0 = 4) | 0..12 |  |
 | `around` | int | Count | - | mesh: vertices round each ring (0 = 32) | 0..64 |  |
+
+### ThreatDisplay
+
+Posture: after standing still for idleDelay the creature rears into a threat display - head and forebody lifted (headLift fading over liftJoints), CreatureSim.Display ramped to 1 so parts with a display pose follow (Pincer.displayOpenDeg / displayRaiseDeg: forcipules spread, ultimate legs raised). Holds while it stands, drops when it walks. System: ThreatDisplayRuntime (part runtime, stage Late) + CreatureSim JointLift / Display.
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `idleDelay` | float | Seconds | x sqrt(s) | standstill before the display starts |  | default 0.6 |
+| `riseSeconds` | float | Seconds | x sqrt(s) | time to rear fully into the display |  | default 0.5 |
+| `dropSeconds` | float | Seconds | x sqrt(s) | time to drop out of it when the creature walks off |  | default 0.25 |
+| `headLift` | float | Metres | x s | lift of the head (joint 0) at the full display |  | scolopendra 0.006 |
+| `liftJoints` | int | Count | - | joints the lift fades over (joint 0 full .. this joint none) | 1..32 | default 6 |
 
 ### Tuck
 
@@ -776,7 +851,11 @@ No parameters.
 
 Safe-disc points, walk, pause, glance (WanderBrain). Containment is structural: the head is clamped to the safe radius.
 
-No parameters.
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `arriveRadius` | float | Metres | x s | a goal counts as reached within this distance (0 = 0.4) |  | scolopendra 0.12 |
+| `pauseMin` | float | Seconds | x sqrt(s) | shortest pause at a goal (with pauseMax > 0; Froude-timed) |  |  |
+| `pauseMax` | float | Seconds | x sqrt(s) | longest pause at a goal (0 = the default 0.5..3 s, not size-scaled) |  | scolopendra 0.5..1.2 |
 
 ### Climb
 
@@ -856,6 +935,10 @@ Head steering in the tangent plane, chain, grounding, gait groups, girdle sway (
 | `bob.amplitude` | float | Metres | x s | peak dip of the body per lift-off (0 = off) |  |  |
 | `bob.hz` | float | Hz | / sqrt(s) | spring frequency |  |  |
 | `bob.damping` | float | Fraction | - | damping ratio (0.2 bouncy .. 1 dead) | 0..2 |  |
+| `burst` | GaitBurstDef | Struct | - | speed bursts: every so often the cruise speed surges (a predator's dash), seeded per individual; factor 0 = off |  |  |
+| `burst.factor` | float | Fraction | - | cruise speed x this at the peak of a burst (<= 1 = off); the gait's stride limit still caps it | 0..4 | scolopendra 2.2 |
+| `burst.every` | float | Seconds | x sqrt(s) | mean time between bursts (each gap 0.5..1.5 x this, per individual) |  |  |
+| `burst.seconds` | float | Seconds | x sqrt(s) | one burst: a quick surge, a hold, an easing back |  |  |
 
 ### Chitin
 
