@@ -168,7 +168,7 @@ public sealed class CreatureLab : MonoBehaviour
     internal void ApplyScales()
     {
         if (placedWorld == null) return;
-        IGroundProbe ground = placedWorld.Ground;
+        IGroundProbe ground = LabGround.Wrap(placedWorld.Ground);
         for (int k = 0; k < entries.Count; k++)
         {
             Entry e = entries[k];
@@ -225,7 +225,8 @@ public sealed class CreatureLab : MonoBehaviour
         if (species == null) return;
         placedWorld = world;
         entries.Clear();
-        IGroundProbe ground = world.Ground;
+        // every placement on the column's surface, however far the slot is above or below the player (LabGround)
+        IGroundProbe ground = LabGround.Wrap(world.Ground);
         Vector3 up = PlanetGravity.UpAt(origin);
         Vector3 fwd = Vector3.ProjectOnPlane(player.forward, up);
         if (fwd.sqrMagnitude < 1e-6f) fwd = Vector3.ProjectOnPlane(Vector3.forward, up);
@@ -292,7 +293,7 @@ public sealed class CreatureLab : MonoBehaviour
             float dist = Vector3.ProjectOnPlane(center - origin, up).magnitude - r;
             if (dist < nearestDist) { nearestDist = dist; nearestCentre = center; nearestRadius = r; }
         }
-        if (nearestDist < float.MaxValue) FramePlayer(ground, player, origin, nearestCentre, nearestRadius, sb);
+        if (nearestDist < float.MaxValue) FramePlayer(ground, player, origin, nearestCentre, nearestRadius, placed, sb);
         Debug.Log(sb.ToString());
     }
 
@@ -338,10 +339,14 @@ public sealed class CreatureLab : MonoBehaviour
     // Moves the player to kViewGap outside the nearest curb, facing its centre, on the sun's side (turned
     // kSunSide round from it, so the light models the animal instead of backlighting it); without a sun, on
     // the line toward where the player spawned. The whole enclosure and its animal are in view from the start.
-    static void FramePlayer(IGroundProbe ground, Transform player, Vector3 origin, Vector3 centre, float radius, System.Text.StringBuilder sb)
+    // The spot is kept clear of every other curb (kPlayerClear): of the two sun sides, the one nearer the spawn first,
+    // then the other, then the spawn's own side.
+    const float kPlayerClear = 1.5f;
+    static void FramePlayer(IGroundProbe ground, Transform player, Vector3 origin, Vector3 centre, float radius, List<Vector4> placed, System.Text.StringBuilder sb)
     {
         Vector3 up = PlanetGravity.UpAt(centre);
         Vector3 away = Vector3.ProjectOnPlane(origin - centre, up);
+        Vector3 spawnSide = away, otherSun = Vector3.zero;
         Light sun = RenderSettings.sun;
         if (sun == null)
         {
@@ -355,12 +360,19 @@ public sealed class CreatureLab : MonoBehaviour
             {
                 // of the two sides kSunSide off the sun, the one nearer the spawn
                 Vector3 a = Quaternion.AngleAxis(kSunSide, up) * toSun, b = Quaternion.AngleAxis(-kSunSide, up) * toSun;
-                away = Vector3.Dot(a, away) >= Vector3.Dot(b, away) ? a : b;
+                bool aFirst = Vector3.Dot(a, away) >= Vector3.Dot(b, away);
+                away = aFirst ? a : b; otherSun = aFirst ? b : a;
             }
         }
         if (away.sqrMagnitude < 1e-6f) away = -Vector3.ProjectOnPlane(player.forward, up);
         away.Normalize();
         Vector3 spot = centre + away * (radius + kViewGap);
+        foreach (Vector3 alt in new[] { otherSun, spawnSide })
+        {
+            if (LabLayout.Clear(spot, up, kPlayerClear, placed) || alt.sqrMagnitude < 1e-6f) continue;
+            Vector3 s = centre + alt.normalized * (radius + kViewGap);
+            if (LabLayout.Clear(s, up, kPlayerClear, placed)) { away = alt.normalized; spot = s; }
+        }
         if (!ground.Probe(spot + up * 2f, up, kProbeWindow + 2f, out Vector3 g, out _)) return;
         // the player's pivot height above the ground it stood on
         float lift = Mathf.Max(0f, Vector3.Dot(player.position - origin, PlanetGravity.UpAt(origin)));

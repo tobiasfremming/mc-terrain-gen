@@ -230,7 +230,11 @@ namespace CreatureKit
         [Param(ParamUnit.Metres, "upper bone radius")] public float upperRadius;
         [Param(ParamUnit.Metres, "lower bone radius")] public float lowerRadius;
         [Param(ParamUnit.Direction, "knee direction hint in the attach frame (x mirrored); needs a clear fore/aft part (front z < 0, rear z > 0) or the skin folds")] public Vector3 pole;
-        [Param(ParamUnit.Fraction, "share of each bone blended into the rounded knee, 0 = 0.45", Min = 0f, Max = 0.49f)] public float kneeBlend;
+        [Param(ParamUnit.Fraction, "0 = ball knee (rigid tubes meeting in one sphere, never creases); > 0 = the older skinned knee curve blending this share of each bone", Min = 0f, Max = 0.49f)] public float kneeBlend;
+        [Param(ParamUnit.Metres, "ankle height above the foot's contact point (the foot is built from it down to the toes), 0 = 1.2 x lowerRadius, < 0 = none; a high ankle is a digitigrade hock")] public float ankleHeight;
+        [Param(ParamUnit.Metres, "claw length, 0 = 0.16 x footLength")] public float clawLength;
+        [Param(ParamUnit.Degrees, "claw curl over its length, 0 = 75")] public float clawCurveDeg;
+        [Param(ParamUnit.Fraction, "webbing between the toes, share of the toe length (0 = none)", Min = 0f, Max = 1f)] public float toeWeb;
 
         public override int BoneCount(in SpeciesCtx c) => Bones;
 
@@ -238,7 +242,8 @@ namespace CreatureKit
         {
             LegSpec l = BaseSpec();
             l.upperLength = upperLength; l.lowerLength = lowerLength; l.upperRadius = upperRadius; l.lowerRadius = lowerRadius;
-            l.pole = pole; l.kneeBlend = kneeBlend;
+            l.pole = pole; l.kneeBlend = kneeBlend; l.ankleHeight = ankleHeight;
+            l.clawLength = clawLength; l.clawCurveDeg = clawCurveDeg; l.toeWeb = toeWeb;
             return l;
         }
 
@@ -247,7 +252,8 @@ namespace CreatureKit
             var p = new Leg2Bone { id = id };
             p.CopyBase(l);
             p.upperLength = l.upperLength; p.lowerLength = l.lowerLength; p.upperRadius = l.upperRadius; p.lowerRadius = l.lowerRadius;
-            p.pole = l.pole; p.kneeBlend = l.kneeBlend;
+            p.pole = l.pole; p.kneeBlend = l.kneeBlend; p.ankleHeight = l.ankleHeight;
+            p.clawLength = l.clawLength; p.clawCurveDeg = l.clawCurveDeg; p.toeWeb = l.toeWeb;
             return p;
         }
 

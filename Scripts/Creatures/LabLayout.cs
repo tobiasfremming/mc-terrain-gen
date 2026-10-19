@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 // Where the creature lab puts its enclosures (CreatureLab.Place, the creature kit's lab check): slots on a gentle
-// arc in front of the player, each drawn to the flattest of a few nearby spots, never within kEnclosureGap of a
+// arc (or ring) round the player, each drawn to the flattest of a few nearby spots, never within kEnclosureGap of a
 // neighbour. Pure geometry over an IGroundProbe (no GameObjects), so the offline harness runs it too
 // (CreatureKitLabTests.Lab_Placement_NeighboursNeverOverlap with every roster entry).
 public static class LabLayout
@@ -30,6 +30,7 @@ public static class LabLayout
     public static Vector3[] Centres(IGroundProbe ground, Vector3 origin, Vector3 fwd, Vector3 up, float[] radius,
                                     float spacing, float arcRadius, float searchRadius, float[] flatness, List<Vector4> placed)
     {
+        ground = LabGround.Wrap(ground);
         int n = radius.Length;
         Arc(radius, spacing, arcRadius, searchRadius, out float slotSpacing, out float slotRadius);
         float[] ring = Wraps(n, slotSpacing, slotRadius) ? RingAngles(radius, spacing, slotRadius, out slotRadius) : null;
@@ -97,6 +98,7 @@ public static class LabLayout
     public static Vector3 FlattestSpot(IGroundProbe ground, Vector3 slot, Vector3 up, float radius, float searchRadius,
                                        List<Vector4> placed, out float best)
     {
+        ground = LabGround.Wrap(ground);
         Vector3 t0 = Vector3.Cross(up, Mathf.Abs(up.y) < 0.99f ? Vector3.up : Vector3.right).normalized;
         Vector3 t1 = Vector3.Cross(up, t0);
         best = -2f;
@@ -146,5 +148,65 @@ public static class LabLayout
             if (d.sqrMagnitude < need * need) return k;
         }
         return -1;
+    }
+
+    // A free spot for an enclosure placed after the others (a grove): the flattest spot near slot (FlattestSpot,
+    // searching searchRadius), and while that still crowds an enclosure already placed (every candidate was taken
+    // and the push could not clear them all: a grove slot that lands on the lab's ring), the same search a step
+    // further out along slot - origin, up to kFreeTries steps. Returns the ground point.
+    public const int kFreeTries = 24;
+    public static Vector3 FreeSpot(IGroundProbe ground, Vector3 origin, Vector3 slot, Vector3 up, float radius, float searchRadius,
+                                   List<Vector4> placed, out float flatness)
+    {
+        Vector3 dir = Vector3.ProjectOnPlane(slot - origin, up);
+        dir = dir.sqrMagnitude > 1e-6f ? dir.normalized : Vector3.ProjectOnPlane(Vector3.forward, up).normalized;
+        Vector3 c = slot;
+        flatness = -2f;
+        for (int i = 0; i < kFreeTries; i++)
+        {
+            c = FlattestSpot(ground, slot + dir * (i * (radius + kEnclosureGap)), up, radius, searchRadius, placed, out flatness);
+            if (Crowds(c, up, radius, placed) < 0) return c;
+        }
+        return c;
+    }
+
+    // True when p is at least `clearance` outside every placed curb (planar): a spot for the player.
+    public static bool Clear(Vector3 p, Vector3 up, float clearance, List<Vector4> placed)
+    {
+        if (placed == null) return true;
+        for (int k = 0; k < placed.Count; k++)
+        {
+            Vector4 e = placed[k];
+            if (Vector3.ProjectOnPlane(p - (Vector3)e, up).magnitude < e.w + clearance) return false;
+        }
+        return true;
+    }
+}
+
+// The lab's ground: the terrain surface in the column through a point, wherever that point is. The creature probes
+// (FieldGroundProbe) search a window and then 16 m down through air or 8 m up through solid from the point they are
+// given - right for a body that stands on the ground, wrong for the lab, which asks at its slots on the player's
+// height: on the 2026-10-19 ring (enclosures ~70 m out) the DesertWorld dunes stand 8-11 m above the player's
+// spot, every probe there missed, and those enclosures, their trees, rocks and animals were left at the player's
+// height, under the sand. Here a probe that misses scans the column top-down from kColumnSpan above the point, each
+// step inside the inner probe's 16 m fall: the first surface found is the column's top (a heightfield's only one).
+// Every placement the lab makes (enclosure centres and rims, curbs, posts, trees, rocks, the player's spot, the
+// groves) goes through it; the creatures' own probes are untouched.
+public sealed class LabGround : IGroundProbe
+{
+    public const float kColumnSpan = 96f, kColumnStep = 12f, kScanWindow = 1f;
+    readonly IGroundProbe inner;
+    LabGround(IGroundProbe inner) { this.inner = inner; }
+
+    public static IGroundProbe Wrap(IGroundProbe g) => g == null || g is LabGround ? g : new LabGround(g);
+
+    public bool Probe(Vector3 near, Vector3 up, float window, out Vector3 point, out Vector3 normal)
+    {
+        if (inner.Probe(near, up, window, out point, out normal)) return true;
+        up = up.sqrMagnitude > 1e-8f ? up.normalized : Vector3.up;
+        for (float t = kColumnSpan; t >= -kColumnSpan; t -= kColumnStep)
+            if (inner.Probe(near + up * t, up, kScanWindow, out point, out normal)) return true;
+        point = near; normal = up;
+        return false;
     }
 }

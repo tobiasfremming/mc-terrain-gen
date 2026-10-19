@@ -1019,8 +1019,44 @@
           "type": "float",
           "unit": "Fraction",
           "size": "-",
-          "meaning": "share of each bone blended into the rounded knee, 0 = 0.45",
+          "meaning": "0 = ball knee (rigid tubes meeting in one sphere, never creases); > 0 = the older skinned knee curve blending this share of each bone",
           "range": "0..0.49",
+          "example": ""
+        },
+        {
+          "name": "ankleHeight",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "ankle height above the foot's contact point (the foot is built from it down to the toes), 0 = 1.2 x lowerRadius, < 0 = none; a high ankle is a digitigrade hock",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "clawLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "claw length, 0 = 0.16 x footLength",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "clawCurveDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "claw curl over its length, 0 = 75",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "toeWeb",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "webbing between the toes, share of the toe length (0 = none)",
+          "range": "0..1",
           "example": ""
         }
       ]

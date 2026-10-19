@@ -219,7 +219,11 @@ Vertebrate two-bone limb: TwoBoneIK with a pole, rounded knee blend, swing/knee 
 | `upperRadius` | float | Metres | x s | upper bone radius |  |  |
 | `lowerRadius` | float | Metres | x s | lower bone radius |  |  |
 | `pole` | Vector3 | Direction | - | knee direction hint in the attach frame (x mirrored); needs a clear fore/aft part (front z < 0, rear z > 0) or the skin folds |  |  |
-| `kneeBlend` | float | Fraction | - | share of each bone blended into the rounded knee, 0 = 0.45 | 0..0.49 |  |
+| `kneeBlend` | float | Fraction | - | 0 = ball knee (rigid tubes meeting in one sphere, never creases); > 0 = the older skinned knee curve blending this share of each bone | 0..0.49 |  |
+| `ankleHeight` | float | Metres | x s | ankle height above the foot's contact point (the foot is built from it down to the toes), 0 = 1.2 x lowerRadius, < 0 = none; a high ankle is a digitigrade hock |  |  |
+| `clawLength` | float | Metres | x s | claw length, 0 = 0.16 x footLength |  |  |
+| `clawCurveDeg` | float | Degrees | - | claw curl over its length, 0 = 75 |  |  |
+| `toeWeb` | float | Fraction | - | webbing between the toes, share of the toe length (0 = none) | 0..1 |  |
 
 ### Wing
 

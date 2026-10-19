@@ -316,7 +316,7 @@ public sealed class CreatureDebugView : MonoBehaviour
             else
             {
                 Line(st.shoulder, st.elbow, kLeg);
-                Line(st.elbow, st.foot, kLeg);
+                Line(st.elbow, st.ankle, kLeg); Line(st.ankle, st.foot, kLeg);
             }
             Vector3 q = sim.LegRestPoint(l);
             Line(q - Vector3.right * c, q + Vector3.right * c, kRest);

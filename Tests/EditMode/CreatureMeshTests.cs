@@ -236,7 +236,7 @@ namespace TerrainGen.Tests
                 AssertNear(s.shoulder, up.GetColumn(3), "upper origin " + l);
                 AssertNear((s.elbow - s.shoulder).normalized, up.rotation * Vector3.forward, "upper +Z " + l);
                 AssertNear(s.elbow, lo.GetColumn(3), "lower origin " + l);
-                AssertNear((s.foot - s.elbow).normalized, lo.rotation * Vector3.forward, "lower +Z " + l);
+                AssertNear((s.ankle - s.elbow).normalized, lo.rotation * Vector3.forward, "lower +Z " + l);
                 AssertNear(s.foot, ft.GetColumn(3), "foot origin " + l);
                 AssertNear(Vector3.up, ft.rotation * Vector3.up, "foot +Y " + l);
             }
@@ -303,7 +303,7 @@ namespace TerrainGen.Tests
             for (int l = 0; l < sim.Legs.Length; l++)
             {
                 LegState s = sim.Legs[l];
-                sb.Append($" L{l}={Vector3.Angle(s.elbow - s.shoulder, s.foot - s.elbow):F0}");
+                sb.Append($" L{l}={Vector3.Angle(s.elbow - s.shoulder, s.ankle - s.elbow):F0}");
             }
             return sb.ToString();
         }

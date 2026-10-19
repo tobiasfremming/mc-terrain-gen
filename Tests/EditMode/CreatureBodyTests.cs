@@ -90,7 +90,11 @@ namespace TerrainGen.Tests
                         for (int k = 0; k < 16; k++) Assert.AreEqual(want[k], got[k], 0f, $"frame {f} sim {i} bone {b} [{k}]");
                     }
                     foreach (Vector3 j in sims[i].Joints) { lo = Vector3.Min(lo, j); hi = Vector3.Max(hi, j); }
-                    foreach (LegState l in sims[i].Legs) { lo = Vector3.Min(lo, l.foot); hi = Vector3.Max(hi, l.foot); }
+                    foreach (LegState l in sims[i].Legs)
+                    {
+                        lo = Vector3.Min(lo, l.foot); hi = Vector3.Max(hi, l.foot);
+                        lo = Vector3.Min(lo, l.elbow); hi = Vector3.Max(hi, l.elbow);   // as SpineBody: knees peak above the body
+                    }
                     maxScale = Mathf.Max(maxScale, sims[i].SizeScale);
                 }
                 var bounds = new Bounds();

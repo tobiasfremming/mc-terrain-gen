@@ -66,8 +66,8 @@ MonoBehaviour:
   legs:
   - attachJoint: 2
     side: -1
-    shoulderOffset: {x: 0.0488, y: -0.0171, z: 0}
-    restOffset: {x: 0.16985, y: 0, z: 0.08795}
+    shoulderOffset: {x: 0.0488, y: -0.026, z: 0}
+    restOffset: {x: 0.178, y: 0, z: 0.08795}
     upperLength: 0
     lowerLength: 0
     upperRadius: 0
@@ -75,7 +75,7 @@ MonoBehaviour:
     pole: {x: 0, y: 1, z: 0}
     stepThreshold: 0.075
     stepDuration: 0.11
-    stepLift: 0.045
+    stepLift: 0.02
     overshoot: 0.05
     gaitGroup: 0
     footLength: 0.012
@@ -89,7 +89,7 @@ MonoBehaviour:
     - length: 0.0138
       radiusStart: 0.016
       radiusEnd: 0.015
-      restBendDeg: -10
+      restBendDeg: -20
       minBendDeg: -35
       maxBendDeg: 20
       flexWeight: 0
@@ -101,7 +101,7 @@ MonoBehaviour:
     - length: 0.0736
       radiusStart: 0.014
       radiusEnd: 0.011
-      restBendDeg: 40
+      restBendDeg: 28
       minBendDeg: 0
       maxBendDeg: 85
       flexWeight: 0.35
@@ -113,7 +113,7 @@ MonoBehaviour:
     - length: 0.0736
       radiusStart: 0.008
       radiusEnd: 0.006
-      restBendDeg: -85
+      restBendDeg: -78
       minBendDeg: -150
       maxBendDeg: -30
       flexWeight: -1
@@ -136,7 +136,7 @@ MonoBehaviour:
       bandEnd: 0
     contactAngleDeg: 25
     kneeLiftDeg: 0
-    swingRetract: 0.1
+    swingRetract: 0.04
     elevMinDeg: 0
     elevMaxDeg: 0
     liftDelay: 0
@@ -145,8 +145,8 @@ MonoBehaviour:
     feeler: 0
   - attachJoint: 2
     side: 1
-    shoulderOffset: {x: 0.0488, y: -0.0171, z: 0}
-    restOffset: {x: 0.16985, y: 0, z: 0.08795}
+    shoulderOffset: {x: 0.0488, y: -0.026, z: 0}
+    restOffset: {x: 0.178, y: 0, z: 0.08795}
     upperLength: 0
     lowerLength: 0
     upperRadius: 0
@@ -154,7 +154,7 @@ MonoBehaviour:
     pole: {x: 0, y: 1, z: 0}
     stepThreshold: 0.075
     stepDuration: 0.11
-    stepLift: 0.045
+    stepLift: 0.02
     overshoot: 0.05
     gaitGroup: 1
     footLength: 0.012
@@ -168,7 +168,7 @@ MonoBehaviour:
     - length: 0.0138
       radiusStart: 0.016
       radiusEnd: 0.015
-      restBendDeg: -10
+      restBendDeg: -20
       minBendDeg: -35
       maxBendDeg: 20
       flexWeight: 0
@@ -180,7 +180,7 @@ MonoBehaviour:
     - length: 0.0736
       radiusStart: 0.014
       radiusEnd: 0.011
-      restBendDeg: 40
+      restBendDeg: 28
       minBendDeg: 0
       maxBendDeg: 85
       flexWeight: 0.35
@@ -192,7 +192,7 @@ MonoBehaviour:
     - length: 0.0736
       radiusStart: 0.008
       radiusEnd: 0.006
-      restBendDeg: -85
+      restBendDeg: -78
       minBendDeg: -150
       maxBendDeg: -30
       flexWeight: -1
@@ -215,7 +215,7 @@ MonoBehaviour:
       bandEnd: 0
     contactAngleDeg: 25
     kneeLiftDeg: 0
-    swingRetract: 0.1
+    swingRetract: 0.04
     elevMinDeg: 0
     elevMaxDeg: 0
     liftDelay: 0
@@ -224,8 +224,8 @@ MonoBehaviour:
     feeler: 0
   - attachJoint: 3
     side: -1
-    shoulderOffset: {x: 0.044, y: -0.0162, z: 0}
-    restOffset: {x: 0.20731, y: 0, z: 0}
+    shoulderOffset: {x: 0.044, y: -0.026, z: 0}
+    restOffset: {x: 0.215, y: 0, z: 0}
     upperLength: 0
     lowerLength: 0
     upperRadius: 0
@@ -233,7 +233,7 @@ MonoBehaviour:
     pole: {x: 0, y: 1, z: 0}
     stepThreshold: 0.075
     stepDuration: 0.11
-    stepLift: 0.045
+    stepLift: 0.02
     overshoot: 0.05
     gaitGroup: 1
     footLength: 0.012
@@ -247,7 +247,7 @@ MonoBehaviour:
     - length: 0.015
       radiusStart: 0.016
       radiusEnd: 0.015
-      restBendDeg: -10
+      restBendDeg: -20
       minBendDeg: -35
       maxBendDeg: 20
       flexWeight: 0
@@ -259,7 +259,7 @@ MonoBehaviour:
     - length: 0.08
       radiusStart: 0.014
       radiusEnd: 0.011
-      restBendDeg: 40
+      restBendDeg: 28
       minBendDeg: 0
       maxBendDeg: 85
       flexWeight: 0.35
@@ -271,7 +271,7 @@ MonoBehaviour:
     - length: 0.08
       radiusStart: 0.008
       radiusEnd: 0.006
-      restBendDeg: -85
+      restBendDeg: -78
       minBendDeg: -150
       maxBendDeg: -30
       flexWeight: -1
@@ -294,7 +294,7 @@ MonoBehaviour:
       bandEnd: 0
     contactAngleDeg: 25
     kneeLiftDeg: 0
-    swingRetract: 0.1
+    swingRetract: 0.04
     elevMinDeg: 0
     elevMaxDeg: 0
     liftDelay: 0
@@ -303,8 +303,8 @@ MonoBehaviour:
     feeler: 0
   - attachJoint: 3
     side: 1
-    shoulderOffset: {x: 0.044, y: -0.0162, z: 0}
-    restOffset: {x: 0.20731, y: 0, z: 0}
+    shoulderOffset: {x: 0.044, y: -0.026, z: 0}
+    restOffset: {x: 0.215, y: 0, z: 0}
     upperLength: 0
     lowerLength: 0
     upperRadius: 0
@@ -312,7 +312,7 @@ MonoBehaviour:
     pole: {x: 0, y: 1, z: 0}
     stepThreshold: 0.075
     stepDuration: 0.11
-    stepLift: 0.045
+    stepLift: 0.02
     overshoot: 0.05
     gaitGroup: 0
     footLength: 0.012
@@ -326,7 +326,7 @@ MonoBehaviour:
     - length: 0.015
       radiusStart: 0.016
       radiusEnd: 0.015
-      restBendDeg: -10
+      restBendDeg: -20
       minBendDeg: -35
       maxBendDeg: 20
       flexWeight: 0
@@ -338,7 +338,7 @@ MonoBehaviour:
     - length: 0.08
       radiusStart: 0.014
       radiusEnd: 0.011
-      restBendDeg: 40
+      restBendDeg: 28
       minBendDeg: 0
       maxBendDeg: 85
       flexWeight: 0.35
@@ -350,7 +350,7 @@ MonoBehaviour:
     - length: 0.08
       radiusStart: 0.008
       radiusEnd: 0.006
-      restBendDeg: -85
+      restBendDeg: -78
       minBendDeg: -150
       maxBendDeg: -30
       flexWeight: -1
@@ -373,7 +373,7 @@ MonoBehaviour:
       bandEnd: 0
     contactAngleDeg: 25
     kneeLiftDeg: 0
-    swingRetract: 0.1
+    swingRetract: 0.04
     elevMinDeg: 0
     elevMaxDeg: 0
     liftDelay: 0
@@ -382,8 +382,8 @@ MonoBehaviour:
     feeler: 0
   - attachJoint: 5
     side: -1
-    shoulderOffset: {x: 0.0608, y: -0.02565, z: 0}
-    restOffset: {x: 0.21219, y: 0, z: -0.0874}
+    shoulderOffset: {x: 0.0608, y: -0.026, z: 0}
+    restOffset: {x: 0.22, y: 0, z: -0.0874}
     upperLength: 0
     lowerLength: 0
     upperRadius: 0
@@ -391,7 +391,7 @@ MonoBehaviour:
     pole: {x: 0, y: 1, z: 0}
     stepThreshold: 0.075
     stepDuration: 0.11
-    stepLift: 0.045
+    stepLift: 0.02
     overshoot: 0.05
     gaitGroup: 0
     footLength: 0.012
@@ -405,7 +405,7 @@ MonoBehaviour:
     - length: 0.0162
       radiusStart: 0.016
       radiusEnd: 0.015
-      restBendDeg: -10
+      restBendDeg: -20
       minBendDeg: -35
       maxBendDeg: 20
       flexWeight: 0
@@ -417,7 +417,7 @@ MonoBehaviour:
     - length: 0.0864
       radiusStart: 0.014
       radiusEnd: 0.011
-      restBendDeg: 40
+      restBendDeg: 28
       minBendDeg: 0
       maxBendDeg: 85
       flexWeight: 0.35
@@ -429,7 +429,7 @@ MonoBehaviour:
     - length: 0.0864
       radiusStart: 0.008
       radiusEnd: 0.006
-      restBendDeg: -85
+      restBendDeg: -78
       minBendDeg: -150
       maxBendDeg: -30
       flexWeight: -1
@@ -452,7 +452,7 @@ MonoBehaviour:
       bandEnd: 0
     contactAngleDeg: 25
     kneeLiftDeg: 0
-    swingRetract: 0.1
+    swingRetract: 0.04
     elevMinDeg: 0
     elevMaxDeg: 0
     liftDelay: 0
@@ -461,8 +461,8 @@ MonoBehaviour:
     feeler: 0
   - attachJoint: 5
     side: 1
-    shoulderOffset: {x: 0.0608, y: -0.02565, z: 0}
-    restOffset: {x: 0.21219, y: 0, z: -0.0874}
+    shoulderOffset: {x: 0.0608, y: -0.026, z: 0}
+    restOffset: {x: 0.22, y: 0, z: -0.0874}
     upperLength: 0
     lowerLength: 0
     upperRadius: 0
@@ -470,7 +470,7 @@ MonoBehaviour:
     pole: {x: 0, y: 1, z: 0}
     stepThreshold: 0.075
     stepDuration: 0.11
-    stepLift: 0.045
+    stepLift: 0.02
     overshoot: 0.05
     gaitGroup: 1
     footLength: 0.012
@@ -484,7 +484,7 @@ MonoBehaviour:
     - length: 0.0162
       radiusStart: 0.016
       radiusEnd: 0.015
-      restBendDeg: -10
+      restBendDeg: -20
       minBendDeg: -35
       maxBendDeg: 20
       flexWeight: 0
@@ -496,7 +496,7 @@ MonoBehaviour:
     - length: 0.0864
       radiusStart: 0.014
       radiusEnd: 0.011
-      restBendDeg: 40
+      restBendDeg: 28
       minBendDeg: 0
       maxBendDeg: 85
       flexWeight: 0.35
@@ -508,7 +508,7 @@ MonoBehaviour:
     - length: 0.0864
       radiusStart: 0.008
       radiusEnd: 0.006
-      restBendDeg: -85
+      restBendDeg: -78
       minBendDeg: -150
       maxBendDeg: -30
       flexWeight: -1
@@ -531,7 +531,7 @@ MonoBehaviour:
       bandEnd: 0
     contactAngleDeg: 25
     kneeLiftDeg: 0
-    swingRetract: 0.1
+    swingRetract: 0.04
     elevMinDeg: 0
     elevMaxDeg: 0
     liftDelay: 0

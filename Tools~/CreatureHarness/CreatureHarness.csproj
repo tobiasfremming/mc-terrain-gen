@@ -71,6 +71,7 @@
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureTreeSpiderClimbTests.cs" /><!-- ClimbTestMeshes, physics (the swinger's prey) -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureContainmentTests.cs" />   <!-- obstacles via CreatureLab -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureEnclosureTests.cs" />     <!-- curb meshes, lab GameObjects -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureLabTerrainTests.cs" />    <!-- the whole lab on DesertWorld: GameObjects, plants -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureGroundProbeTests.cs" />   <!-- physics + world config assets -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureOctopusPhysicsTests.cs" /><!-- physics colliders -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureOctopusWorldTests.cs" />  <!-- CreatureWorld, GameObjects -->

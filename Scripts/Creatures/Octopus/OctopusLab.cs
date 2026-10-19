@@ -114,7 +114,7 @@ public sealed class OctopusLab : MonoBehaviour
         if (octopus == null) { Debug.LogWarning("[OctopusLab] no octopus species assigned."); return; }
         PlantPrototypeSet first = SetFor(0);
         if (first == null) { Debug.LogWarning("[OctopusLab] no tree prototype set for the grove."); return; }
-        IGroundProbe ground = world.Ground;
+        IGroundProbe ground = LabGround.Wrap(world.Ground);   // the column's surface wherever the grove lands
         Vector3 origin = player.position;
         Vector3 up = PlanetGravity.UpAt(origin);
         Vector3 fwd = Vector3.ProjectOnPlane(player.forward, up).normalized;
@@ -142,7 +142,9 @@ public sealed class OctopusLab : MonoBehaviour
         foreach (Vector4 p in placed) farthest = Mathf.Max(farthest, Vector3.ProjectOnPlane((Vector3)p - origin, up).magnitude + p.w);
         Vector3 side = Vector3.Cross(up, fwd).normalized;
         Vector3 slot = origin + (fwd * 0.6f - side * 0.8f).normalized * (Mathf.Max(farthest, 20f) * 0.6f + radius + kGap);
-        Vector3 centre = CreatureLab.FlattestSpot(ground, slot, up, radius, 2f * radius, placed, out float flatness);
+        // clear of every enclosure and grove placed (the lab's ring can run through this slot) and of the player
+        placed.Add(new Vector4(origin.x, origin.y, origin.z, 1f));
+        Vector3 centre = LabLayout.FreeSpot(ground, origin, slot, up, radius, 2f * radius, placed, out float flatness);
         Vector3 cUp = PlanetGravity.UpAt(centre);
 
         var encGo = new GameObject("Enclosure " + octopus.name);

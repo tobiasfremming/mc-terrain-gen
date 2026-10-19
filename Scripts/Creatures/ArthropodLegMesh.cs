@@ -114,15 +114,41 @@ public static class ArthropodLegMesh
 
     static readonly List<Sample> samples = new List<Sample>(); // build-time scratch (mesh building is main-thread only)
 
+    // Segment shape (2026-10-19, "the legs look weird": every segment was a straight pipe of one width, so a leg
+    // read as plumbing). A long segment is a spindle: it swells by kSwell toward its middle (a femur's muscle, a
+    // tibia's shaft), and every segment past the coxa starts in a neck (kNeck x its start radius) that sits in
+    // the previous segment's end cap - the joint reads as one segment socketed into the next. Short segments
+    // (coxa, trochanter, patella: length < kSpindleMin radii) only get the neck.
+    public const float SpindleSwell = 0.2f;
+    const float kSwell = SpindleSwell;
+    const float kNeck = 0.8f;
+    const float kSpindleMin = 3f;
+    static readonly float[] kStations = { 0.12f, 0.3f, 0.5f, 0.7f, 0.88f };
+
     static void Segment(CreatureMeshLists m, LegSegment s, Vector3 a, Vector3 b, Quaternion q, int bone, int attach, int sides, float arc)
     {
         Vector3 t = q * Vector3.forward, x = q * Vector3.right, y = q * Vector3.up;
-        float L = (b - a).magnitude, r0 = R0(s), r1 = R1(s);
-        float slope = L > 1e-6f ? (r1 - r0) / L : 0f;   // dr / dsigma along the tube
+        float L = (b - a).magnitude, r1 = R1(s);
+        float r0 = attach >= 0 ? R0(s) : Mathf.Max(kMinRadius, kNeck * R0(s));   // the coxa's start is buried in the body
+        float swell = L > kSpindleMin * Mathf.Max(R0(s), r1) ? kSwell : 0f;
+        // radius along the tube (0 <= sg <= L) and its slope
+        float Rad(float sg)
+        {
+            float u = L > 1e-6f ? Mathf.Clamp01(sg / L) : 0f;
+            return Mathf.Lerp(r0, r1, u) * (1f + swell * Mathf.Sin(Mathf.PI * Mathf.Pow(u, 0.85f)));
+        }
+        float Slope(float sg)
+        {
+            const float h = 1e-4f;
+            if (L <= 2f * h) return 0f;
+            float lo = Mathf.Max(0f, sg - h), hi = Mathf.Min(L, sg + h);
+            return (Rad(hi) - Rad(lo)) / (hi - lo);
+        }
         bool band = s.bandEnd > s.bandStart;
         float bs = Mathf.Clamp01(s.bandStart) * L, be = Mathf.Clamp01(s.bandEnd) * L;
         int startPart = band && bs <= 0f ? PartBand : PartLeg, endPart = band && be >= L ? PartBand : PartLeg;
         Vector4 rigid = Rigid(bone), startSkin = attach >= 0 ? new Vector4(bone, attach, 0.5f, 0.5f) : rigid;
+        int PartAt(float sg) => band && sg > bs && sg < be ? PartBand : PartLeg;
 
         samples.Clear();
         void Add(float sg, float r, float tilt, int part, Vector4 skin, bool pole = false, bool restart = false) =>
@@ -136,11 +162,27 @@ public static class ArthropodLegMesh
             float sg = -r0 * Mathf.Cos(th), rr = r0 * Mathf.Sin(th);
             Add(sg, rr, -Mathf.Cos(th) / Mathf.Max(1e-6f, Mathf.Sin(th)), startPart, startSkin);
         }
-        // tube: the start ring, band edges (duplicated across a part change), the end ring
-        Add(0f, r0, -slope, startPart, startSkin);
-        if (band && bs > 0f && bs < L) { Add(bs, r0 + slope * bs, -slope, PartLeg, rigid); Add(bs, r0 + slope * bs, -slope, PartBand, rigid, restart: true); }
-        if (band && be > 0f && be < L && be > bs) { Add(be, r0 + slope * be, -slope, PartBand, rigid); Add(be, r0 + slope * be, -slope, PartLeg, rigid, restart: true); }
-        Add(L, r1, -slope, endPart, rigid);
+        // tube: the start ring, the spindle's stations and the band edges (duplicated across a part change), the end ring
+        Add(0f, r0, -Slope(0f), startPart, startSkin);
+        var stops = new List<Vector2>();   // (sigma, kind): 0 a spindle station, 1 into the band, 2 out of it
+        if (swell > 0f) foreach (float f in kStations) stops.Add(new Vector2(f * L, 0f));
+        if (band && bs > 0f && bs < L) stops.Add(new Vector2(bs, 1f));
+        if (band && be > 0f && be < L && be > bs) stops.Add(new Vector2(be, 2f));
+        stops.Sort((p, q2) => p.x != q2.x ? p.x.CompareTo(q2.x) : q2.y.CompareTo(p.y));
+        float last = -1f;
+        foreach (Vector2 p in stops)
+        {
+            float sg = p.x;
+            if (p.y == 0f)
+            {
+                if (Mathf.Abs(sg - last) < 1e-6f || (band && (Mathf.Abs(sg - bs) < 1e-6f || Mathf.Abs(sg - be) < 1e-6f))) continue;
+                Add(sg, Rad(sg), -Slope(sg), PartAt(sg), rigid);
+            }
+            else if (p.y == 1f) { Add(sg, Rad(sg), -Slope(sg), PartLeg, rigid); Add(sg, Rad(sg), -Slope(sg), PartBand, rigid, restart: true); }
+            else { Add(sg, Rad(sg), -Slope(sg), PartBand, rigid); Add(sg, Rad(sg), -Slope(sg), PartLeg, rigid, restart: true); }
+            last = sg;
+        }
+        Add(L, r1, -Slope(L), endPart, rigid);
         // end cap
         for (int i = kCapRings; i >= 1; i--)
         {

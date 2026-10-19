@@ -33,7 +33,7 @@ namespace TerrainGen.Tests
                 int l = int.Parse(path.Substring(5, path.IndexOf(']') - 5));
                 string f = path.Substring(path.IndexOf(']') + 2);
                 bool arthropod = sp.legs[l].IsArthropod;
-                if (arthropod) return f == "upperLength" || f == "lowerLength" || f == "upperRadius" || f == "lowerRadius" || f.StartsWith("pole") || f == "kneeBlend";
+                if (arthropod) return f == "upperLength" || f == "lowerLength" || f == "upperRadius" || f == "lowerRadius" || f.StartsWith("pole") || f == "kneeBlend" || f == "ankleHeight";
                 return f == "contactAngleDeg" || f == "kneeLiftDeg" || f == "swingRetract" || f == "elevMinDeg" || f == "elevMaxDeg"
                        || f == "liftDelay" || f == "kneeJoint" || f == "legSides";
             }

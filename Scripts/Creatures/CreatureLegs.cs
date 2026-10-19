@@ -4,6 +4,11 @@ using UnityEngine;
 public struct LegState
 {
     public Vector3 shoulder, elbow, foot, footNormal, stepFrom, stepTo;
+    // the two-bone limb's lower-bone end as drawn: the foot's contact point raised by the ankle height along
+    // footNormal (LegSpec.AnkleHeight; = foot for an arthropod leg, a wing arm or ankleHeight < 0). elbow is the
+    // drawn knee for that ankle. The gait (steps, joint limits, throttle) reads the limb with its end on the
+    // contact point, as before ankles existed, so an ankle changes the look and not the walk.
+    public Vector3 ankle;
     public Vector3 stepFromNormal, stepToNormal; // the foot's normal at lift-off and at the landing point
     public bool stepping; public float stepT;
 }
@@ -114,6 +119,9 @@ sealed class CreatureLegs
     // original code path unchanged. reachLen is every leg's foot reach (upper + lower for a two-bone leg).
     readonly ArthropodLegModel[] models;
     readonly float[] reachLen;
+    readonly float[] ankleH;       // two-bone: ankle height above the contact point, metres at scale 1 (0 = none)
+    readonly Vector3[] gaitElbow;  // two-bone: the knee of the limb ending on the contact point (the gait's limb)
+    readonly Quaternion[] restUpperRot; // two-bone: the upper bone's rest rotation in the attach frame (UpperRot)
     readonly Vector3[] restYaw;    // arthropod: rest outward direction in the attach frame
     readonly float[] liftDelayT;   // arthropod: lift-off delay within its gait group, in step fractions
     readonly ArthropodLegPose[] poses;
@@ -169,13 +177,15 @@ sealed class CreatureLegs
         trunkHalfWidth = new float[c];
         swingSlack = new float[c]; aimSlack = new float[c]; swingPrev = new Vector3[c]; aimPrev = new Vector3[c];
         for (int l = 0; l < c; l++) { prevSwing[l] = -1f; prevKnee[l] = -1f; }
-        models = new ArthropodLegModel[c]; reachLen = new float[c]; restYaw = new Vector3[c]; liftDelayT = new float[c];
+        models = new ArthropodLegModel[c]; reachLen = new float[c]; ankleH = new float[c]; gaitElbow = new Vector3[c]; restUpperRot = new Quaternion[c]; restYaw = new Vector3[c]; liftDelayT = new float[c];
         poses = new ArthropodLegPose[c]; PointOffset = new int[c]; PlaneNormal = new Vector3[c];
         int points = 0;
         for (int l = 0; l < c; l++)
         {
             models[l] = sp.LegModel(l);
             reachLen[l] = sp.LegReach(l);
+            ankleH[l] = specs[l].AnkleHeight;
+            for (int w = 0; w < sp.WingCount; w++) if (sp.wings[w] != null && sp.wings[w].leg == l) ankleH[l] = 0f;   // a wing arm walks on its wrist
             PointOffset[l] = points;
             if (models[l] != null) points += models[l].PointCount;
             Vector3 ry = Mirror(specs[l].restOffset, l); ry.y = 0f;
@@ -217,6 +227,7 @@ sealed class CreatureLegs
             {
                 Vector3 el = TwoBoneIK.Solve(sh, rs, s.upperLength, s.lowerLength, Mirror(s.pole, l), out Vector3 ft);
                 restUpper[l] = (el - sh).normalized;
+                restUpperRot[l] = BoneRot(restUpper[l], Mirror(s.pole, l), Quaternion.identity);
                 restKnee[l] = Vector3.Angle(el - sh, ft - el);
                 restReach[l] = (ft - sh).magnitude;
             }
@@ -949,8 +960,11 @@ sealed class CreatureLegs
             Vector3 pole = r * Mirror(s.pole, l);
             State[l].shoulder = shoulder;
             if (models[l] != null) { SolveArthropod(l, shoulder, r); continue; }
-            State[l].elbow = TwoBoneIK.Solve(shoulder, target[l], s.upperLength * scale, s.lowerLength * scale, pole, out Vector3 foot);
+            float l1 = s.upperLength * scale, l2 = s.lowerLength * scale;
+            Vector3 elbow = gaitElbow[l] = TwoBoneIK.Solve(shoulder, target[l], l1, l2, pole, out Vector3 foot);
             State[l].foot = foot;
+            if (ankleH[l] > 0f) State[l].elbow = TwoBoneIK.Solve(shoulder, foot + AnkleLift(l), l1, l2, pole, out State[l].ankle);
+            else { State[l].elbow = elbow; State[l].ankle = foot; }
         }
         UpdateThrottle(dt);
     }
@@ -966,7 +980,7 @@ sealed class CreatureLegs
         ArthropodLegIK.Solve(m, shoulder, target[l], State[l].footNormal, Up(l), r * restYaw[l], beta, scale, Points, o, out poses[l]);
         PlaneNormal[l] = poses[l].planeNormal;
         State[l].elbow = Points[o + m.KneeJoint];
-        State[l].foot = Points[o + m.SegmentCount];
+        State[l].foot = State[l].ankle = Points[o + m.SegmentCount];
     }
 
     void UpdateThrottle(float dt)
@@ -1031,7 +1045,7 @@ sealed class CreatureLegs
     float JointThrottle(int l, float dt)
     {
         LegState st = State[l];
-        JointAngles(l, st.shoulder, st.elbow, st.foot, out float swing, out float knee, out float swingLim, out float kneeLim);
+        JointAngles(l, st.shoulder, gaitElbow[l], st.foot, out float swing, out float knee, out float swingLim, out float kneeLim);
         float ps = prevSwing[l], pk = prevKnee[l];
         prevSwing[l] = swing; prevKnee[l] = knee;
         float lead = dt > 0f && ps >= 0f ? kJointLeadSec * timeScale / dt : 0f;
@@ -1083,6 +1097,27 @@ sealed class CreatureLegs
         return Mathf.Clamp01((kJointStopDeg - excess) / (kJointStopDeg - kJointSlowDeg));
     }
 
+    // The upper bone of a two-bone limb: its rest rotation in the attach frame swung onto the current direction
+    // by the shortest arc - no roll of its own. A bone rolled toward the pole twists about its axis as the limb
+    // swings past the pole, and the haunch rings skinned between it and the body then collapse (linear blend of
+    // two rotations far apart); a swing-only bone keeps body and limb within one swing angle of each other.
+    internal Quaternion UpperRot(int l, Vector3 dir, Quaternion attach)
+    {
+        if (dir.sqrMagnitude < 1e-12f) return attach * restUpperRot[l];
+        Vector3 d = Quaternion.Inverse(attach) * dir.normalized;
+        return attach * (Quaternion.FromToRotation(restUpper[l], d) * restUpperRot[l]);
+    }
+
+    // The ankle above the foot's contact point (along its normal), world metres: zero without an ankle height.
+    Vector3 AnkleLift(int l)
+    {
+        if (ankleH[l] <= 0f) return Vector3.zero;
+        return SurfaceMath.Unit(State[l].footNormal, Up(l)) * (ankleH[l] * scale);
+    }
+
+    // Ankle height of leg l, metres at scale 1 (0 = the lower bone ends on the ground).
+    internal float AnkleHeight(int l) => ankleH[l];
+
     // Writes every leg's bones as world matrices: upper, lower, foot for a two-bone leg; one per segment for
     // an arthropod leg (ArthropodLegIK.WriteBones).
     public void WriteBones(Matrix4x4[] dst, int offset)
@@ -1099,16 +1134,41 @@ sealed class CreatureLegs
             ref LegState st = ref State[l];
             Quaternion ar = rotations[s.attachJoint];
             Vector3 pole = ar * Mirror(s.pole, l);
-            Quaternion upper = BoneRot(st.elbow - st.shoulder, pole, ar);
+            Quaternion upper = UpperRot(l, st.elbow - st.shoulder, ar);
             dst[offset + sp.LegBone(l, 0)] = Matrix4x4.TRS(st.shoulder, upper, sc);
-            dst[offset + sp.LegBone(l, 1)] = Matrix4x4.TRS(st.elbow, LowerRot(upper, st.foot - st.elbow), sc);
+            dst[offset + sp.LegBone(l, 1)] = Matrix4x4.TRS(st.elbow, LowerRot(upper, st.ankle - st.elbow), sc);
 
             Vector3 n = SurfaceMath.Unit(st.footNormal, Vector3.up);
             Vector3 f = Vector3.ProjectOnPlane(ar * Vector3.forward, n);
             if (f.sqrMagnitude < 1e-8f) f = Vector3.ProjectOnPlane(ar * Vector3.up, n);
             if (f.sqrMagnitude < 1e-8f) f = Vector3.ProjectOnPlane(Vector3.forward, n);
-            dst[offset + sp.LegBone(l, 2)] = Matrix4x4.TRS(st.foot, Quaternion.LookRotation(f.normalized, n), sc);
+            Quaternion fr = Quaternion.LookRotation(f.normalized, n);
+            Vector3 fo = st.foot;
+            float peel = st.stepping && ankleH[l] > 0f && !Climbing ? ToePeel(l, st.stepT) : 0f;
+            if (peel != 0f)
+            {
+                // the foot turns about the ankle: the shin's end stays put, the heel lifts and the toes trail
+                Quaternion pr = Quaternion.AngleAxis(peel, fr * Vector3.right);
+                fr = pr * fr;
+                fo = st.ankle + pr * (st.foot - st.ankle);
+            }
+            dst[offset + sp.LegBone(l, 2)] = Matrix4x4.TRS(fo, fr, sc);
         }
+    }
+
+    // Swing foot pitch, degrees about the foot's right axis (+ = toes down), for a limb with an ankle: the toes
+    // trail after lift-off (peeling off the ground, kToePeelDeg near a third of the step) and reach up a little
+    // before landing (kToeReachDeg), flat at both ends. Draw-only: the gait never sees it. The trailing toes are
+    // kept above the ground the step has lifted the foot by (flat-ground estimate).
+    const float kToePeelDeg = 35f, kToeReachDeg = 12f;
+    float ToePeel(int l, float t)
+    {
+        if (t <= 0f || t >= 1f) return 0f;
+        if (t >= 0.6f) return -kToeReachDeg * Mathf.Sin(Mathf.PI * (t - 0.6f) / 0.4f);
+        LegSpec s = specs[l];
+        float lift = s.stepLift * Mathf.Sin(Mathf.PI * t), toe = Mathf.Max(1e-4f, s.footLength);
+        float cap = Mathf.Asin(Mathf.Clamp01(lift / toe)) * Mathf.Rad2Deg;
+        return Mathf.Min(cap, kToePeelDeg * Mathf.Sin(Mathf.PI * t / 0.6f));
     }
 
     // The lower bone: the upper bone's frame turned about the knee hinge onto the lower direction. Its +Y

@@ -542,7 +542,8 @@ namespace TerrainGen.Tests
                     float t = Mathf.Clamp01(Vector3.Dot(p - a, b - a) / (b - a).sqrMagnitude);
                     float dist = (p - (a + (b - a) * t)).magnitude;
                     float bulb = k + 1 < segs.Length ? segs[k].knuckle * Mathf.Max(segs[k].radiusEnd, segs[k + 1].radiusStart) : 0f;
-                    float rmax = Mathf.Max(Mathf.Max(segs[k].radiusStart, segs[k].radiusEnd), bulb);
+                    // a long segment swells toward its middle (ArthropodLegMesh.SpindleSwell)
+                    float rmax = Mathf.Max(Mathf.Max(segs[k].radiusStart, segs[k].radiusEnd) * (1f + ArthropodLegMesh.SpindleSwell), bulb);
                     Assert.LessOrEqual(dist, rmax + 1e-6f, $"{w}: vertex {i} of segment {k} is {dist:F5} m from its axis (max {rmax:F5})");
                     if (t >= 1f) maxEnd[k] = Mathf.Max(maxEnd[k], (p - b).magnitude);
                 }
