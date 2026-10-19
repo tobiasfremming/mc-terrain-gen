@@ -31,4 +31,6 @@ public struct LegSegment
     public float knuckle;
     [Tooltip("Fraction of the segment drawn in the look's band colour, start..end (0, 0 = none).")]
     public float bandStart, bandEnd;
+    [Tooltip("A sharp spur at the segment's distal end, metres at scale 1 (0 = none): on its lower side, raked toward the tip, claw-coloured.")]
+    public float spurLength;
 }

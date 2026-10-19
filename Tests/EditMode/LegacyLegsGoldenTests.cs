@@ -22,10 +22,10 @@ namespace TerrainGen.Tests
         // bit-identical is shown by the offline harness constants below, which still match on a6337d5.
         static readonly Dictionary<string, (ulong bones, ulong mesh)> Golden = new Dictionary<string, (ulong, ulong)>
         {
-            { "DesertMonitor", (0x0UL, 0x0UL) },   // capture in Unity: leg look 2026-10-19: ankle, swing-only upper bone, toe peel (was 0x90BEBD53968C4A95, mesh 0xE56A6E3CC28CF98A)
-            { "TestHexapod", (0x0UL, 0x0UL) },   // capture in Unity: leg look 2026-10-19: ankle, swing-only upper bone, toe peel (was 0x74CBED3B3EEC2DE0, mesh 0xC9E071DE0867056F)
+            { "DesertMonitor", (0x61949DEA4F41A162UL, 0xC1CFCBFEF0E782C2UL) },   // capture in Unity: leg look 2026-10-19: ankle, swing-only upper bone, toe peel (was 0x90BEBD53968C4A95, mesh 0xE56A6E3CC28CF98A)
+            { "TestHexapod", (0x5E6530589CC5564AUL, 0x0CEC1D141D6F3AC2UL) },   // capture in Unity: leg look 2026-10-19: ankle, swing-only upper bone, toe peel (was 0x74CBED3B3EEC2DE0, mesh 0xC9E071DE0867056F)
             { "DesertSnake", (0x3004A76C9481746FUL, 0x5022CF597CF3F50CUL) },     // rigid head over rims (R38, 2026-10-19; was 0xAB4B7C25AE2BFAA9)
-            { "Lizardish", (0x0UL, 0x0UL) },   // capture in Unity: leg look 2026-10-19: ankle, swing-only upper bone, toe peel (was 0xFD91F9955B3A64A2, mesh 0x139A617E5D148B58)
+            { "Lizardish", (0x3E76D6E486CE5405UL, 0x96C7EF083F93A953UL) },   // capture in Unity: leg look 2026-10-19: ankle, swing-only upper bone, toe peel (was 0xFD91F9955B3A64A2, mesh 0x139A617E5D148B58)
         };
 #else
         // the offline harness (.NET 8, scratchpad legs_impl), captured on f4bda2a

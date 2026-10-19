@@ -33,13 +33,12 @@ MonoBehaviour:
   - rid: 1015
   - rid: 1016
   - rid: 1017
-  - rid: 1018
   modules:
+  - rid: 1018
   - rid: 1019
   - rid: 1020
   - rid: 1021
   - rid: 1022
-  - rid: 1023
   references:
     version: 2
     RefIds:
@@ -67,27 +66,27 @@ MonoBehaviour:
           clearance: 0.062
           bendLimitDeg: 10
           rigid: 0
-        - halfWidth: 0.054
-          halfHeight: 0.03
+        - halfWidth: 0.056
+          halfHeight: 0.032
           clearance: 0.066
           bendLimitDeg: 10
           rigid: 0
-        - halfWidth: 0.056
-          halfHeight: 0.04
+        - halfWidth: 0.064
+          halfHeight: 0.042
           clearance: 0.076
           bendLimitDeg: 12
           rigid: 0
-        - halfWidth: 0.068
-          halfHeight: 0.048
+        - halfWidth: 0.072
+          halfHeight: 0.049
           clearance: 0.088
           bendLimitDeg: 12
           rigid: 0
-        - halfWidth: 0.084
+        - halfWidth: 0.086
           halfHeight: 0.056
           clearance: 0.1
           bendLimitDeg: 12
           rigid: 0
-        - halfWidth: 0.096
+        - halfWidth: 0.097
           halfHeight: 0.061
           clearance: 0.108
           bendLimitDeg: 12
@@ -244,63 +243,133 @@ MonoBehaviour:
         ringSegments: 18
         ringsPerSegment: 3
     - rid: 1001
-      type: {class: Leg2Bone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      type: {class: SprawlLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: fore
         at:
           joint: 7
           side: 0
-          offset: {x: 0.085, y: -0.03, z: 0}
+          offset: {x: 0.08, y: -0.045, z: 0}
           slot: 0
         mirror: 1
         role: 0
         gaitGroup: -1
-        restOffset: {x: 0.21, y: 0, z: 0.04}
+        restOffset: {x: 0.19, y: 0, z: 0.03}
         stepThreshold: 0.07
         stepDuration: 0.17
         stepLift: 0.03
         overshoot: 0.05
-        footLength: 0.05
+        footLength: 0.055
         toeCount: 5
         forwardSwingLimitDeg: 75
         backSwingLimitDeg: 50
         kneeRangeDeg: 50
         kneeFlexDeg: 18
-        upperLength: 0.11
-        lowerLength: 0.095
-        upperRadius: 0.03
-        lowerRadius: 0.02
-        pole: {x: 0.6, y: 0.6, z: -0.9}
-        kneeBlend: 0
+        upperLength: 0.095
+        lowerLength: 0.075
+        upperRadius: 0.027
+        lowerRadius: 0.021
+        pole: {x: 0.5, y: 0.3, z: -0.9}
+        ankleHeight: 0.018
+        rootMass: 1.5
+        rootStretch: 1.6
+        rootDepth: 1.2
+        muscle: 0.15
+        muscleAt: 0.35
+        kneeSize: 0.85
+        forearm: 0.15
+        wrist: 0.85
+        folds: 3
+        foldHeight: 0.14
+        wristFolds: 1
+        scaleRows: 5
+        scaleAround: 6
+        scaleHeight: 0.14
+        around: 18
+        digitLengths:
+        - 0.5
+        - 0.62
+        - 0.66
+        - 0.6
+        - 0.5
+        phalanges:
+        - 2
+        - 3
+        - 4
+        - 4
+        - 3
+        digitSpreadDeg: 90
+        footYawDeg: 10
+        digitRadius: 0.0065
+        palmWidth: 0
+        clawedDigits: 3
+        clawLength: 0.011
+        clawCurveDeg: 35
+        clawThickness: 0.7
+        toeWeb: 0
     - rid: 1002
-      type: {class: Leg2Bone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      type: {class: SprawlLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: hind
         at:
           joint: 15
           side: 0
-          offset: {x: 0.085, y: -0.025, z: 0}
+          offset: {x: 0.08, y: -0.04, z: 0}
           slot: 0
         mirror: 1
         role: 0
         gaitGroup: -1
-        restOffset: {x: 0.24, y: 0, z: 0}
+        restOffset: {x: 0.21, y: 0, z: -0.01}
         stepThreshold: 0.07
         stepDuration: 0.17
         stepLift: 0.03
         overshoot: 0.05
-        footLength: 0.068
+        footLength: 0.075
         toeCount: 4
         forwardSwingLimitDeg: 75
         backSwingLimitDeg: 50
         kneeRangeDeg: 50
         kneeFlexDeg: 18
-        upperLength: 0.125
-        lowerLength: 0.105
-        upperRadius: 0.036
-        lowerRadius: 0.023
-        pole: {x: 0.6, y: 0.6, z: 0.9}
-        kneeBlend: 0
+        upperLength: 0.12
+        lowerLength: 0.097
+        upperRadius: 0.032
+        lowerRadius: 0.024
+        pole: {x: 0.5, y: 0.35, z: 0.9}
+        ankleHeight: 0.02
+        rootMass: 1.5
+        rootStretch: 1.6
+        rootDepth: 1.2
+        muscle: 0.2
+        muscleAt: 0.35
+        kneeSize: 0.85
+        forearm: 0.2
+        wrist: 0.8
+        folds: 3
+        foldHeight: 0.14
+        wristFolds: 1
+        scaleRows: 5
+        scaleAround: 6
+        scaleHeight: 0.14
+        around: 18
+        digitLengths:
+        - 0.55
+        - 0.8
+        - 0.95
+        - 0.85
+        phalanges:
+        - 2
+        - 3
+        - 4
+        - 4
+        digitSpreadDeg: 55
+        footYawDeg: 15
+        digitRadius: 0.0075
+        palmWidth: 0
+        clawedDigits: 3
+        clawLength: 0.013
+        clawCurveDeg: 35
+        clawThickness: 0.7
+        toeWeb: 0.75
     - rid: 1003
       type: {class: Eyes, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
@@ -308,149 +377,59 @@ MonoBehaviour:
         at:
           joint: 0
           side: 0
-          offset: {x: 0.03, y: 0.041, z: -0.04}
+          offset: {x: 0.028, y: 0.04, z: -0.03}
           slot: 0
         mirror: 0
-        radius: 0.0105
+        radius: 0.0086
         cluster: []
     - rid: 1004
-      type: {class: RigidLoft, ns: CreatureKit, asm: TerrainGen.Runtime}
-      data:
-        id: cranium
-        at:
-          joint: 0
-          side: 0
-          offset: {x: 0, y: 0.008, z: -0.118}
-          slot: 0
-        mirror: 0
-        direction: {x: 0, y: 0, z: 1}
-        length: 0.128
-        keys:
-        - t: 0
-          halfWidth: 0.044
-          halfHeight: 0.024
-          rise: -0.002
-          squareTop: 3
-          squareBottom: 2.5
-        - t: 0.35
-          halfWidth: 0.06
-          halfHeight: 0.028
-          rise: 0.003
-          squareTop: 4.5
-          squareBottom: 3
-        - t: 0.75
-          halfWidth: 0.061
-          halfHeight: 0.027
-          rise: 0.003
-          squareTop: 4.5
-          squareBottom: 3
-        - t: 1
-          halfWidth: 0.052
-          halfHeight: 0.022
-          rise: 0
-          squareTop: 3
-          squareBottom: 3
-        curveDeg: 0
-        rollDeg: 0
-        shade: 0
-        around: 20
-        rings: 14
-    - rid: 1005
-      type: {class: RigidLoft, ns: CreatureKit, asm: TerrainGen.Runtime}
-      data:
-        id: orbit
-        at:
-          joint: 0
-          side: 0
-          offset: {x: 0.03, y: 0.031, z: -0.06}
-          slot: 0
-        mirror: 1
-        direction: {x: 0, y: 0.15, z: 1}
-        length: 0.042
-        keys:
-        - t: 0
-          halfWidth: 0.009
-          halfHeight: 0.006
-          rise: 0
-          squareTop: 2
-          squareBottom: 2
-        - t: 0.5
-          halfWidth: 0.014
-          halfHeight: 0.012
-          rise: 0.001
-          squareTop: 2
-          squareBottom: 2
-        - t: 1
-          halfWidth: 0.008
-          halfHeight: 0.005
-          rise: 0
-          squareTop: 2
-          squareBottom: 2
-        curveDeg: 0
-        rollDeg: 0
-        shade: 0
-        around: 12
-        rings: 8
-    - rid: 1006
       type: {class: Jaw, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: mandible
         at:
           joint: 0
           side: 0
-          offset: {x: 0, y: -0.002, z: -0.08}
+          offset: {x: 0, y: -0.027, z: -0.108}
           slot: 0
         mirror: 0
-        direction: {x: 0, y: -0.012, z: 1}
-        back: 0
+        direction: {x: 0, y: 0.02, z: 1}
+        back: 0.03
         length: 0.3
         keys:
         - t: 0
-          halfWidth: 0.054
-          halfHeight: 0.016
-          rise: -0.016
-          squareTop: 6
+          halfWidth: 0.05
+          halfHeight: 0.012
+          rise: -0.012
+          squareTop: 3
           squareBottom: 2.5
-        - t: 0.27
-          halfWidth: 0.057
-          halfHeight: 0.015
-          rise: -0.015
-          squareTop: 7
+        - t: 0.3
+          halfWidth: 0.062
+          halfHeight: 0.014
+          rise: -0.012
+          squareTop: 3
           squareBottom: 2.5
-        - t: 0.55
-          halfWidth: 0.045
-          halfHeight: 0.011
-          rise: -0.011
-          squareTop: 7
-          squareBottom: 2.5
-        - t: 0.83
-          halfWidth: 0.035
-          halfHeight: 0.009
-          rise: -0.009
-          squareTop: 7
-          squareBottom: 2.5
-        - t: 0.93
-          halfWidth: 0.037
-          halfHeight: 0.009
-          rise: -0.009
-          squareTop: 6
+        - t: 0.7
+          halfWidth: 0.036
+          halfHeight: 0.01
+          rise: -0.008
+          squareTop: 3
           squareBottom: 2.5
         - t: 1
-          halfWidth: 0.018
-          halfHeight: 0.006
-          rise: -0.007
+          halfWidth: 0.022
+          halfHeight: 0.008
+          rise: -0.006
           squareTop: 3
           squareBottom: 2.5
         curveDeg: 0
         opensUp: 0
-        gapeDeg: 0
-        restSeconds: 0
-        intervalSeconds: 0
-        openSeconds: 1
-        holdSeconds: 0
-        closeSeconds: 1
-        releaseSpeed: 0
-        teethPerSide: 11
+        gapeDeg: 40
+        restSeconds: 2.5
+        intervalSeconds: 8
+        openSeconds: 1.6
+        holdSeconds: 6
+        closeSeconds: 0.9
+        releaseSpeed: 0.12
+        teethPerSide: 0
         toothLength: 0.011
         toothRadius: 0.0032
         teethFrom: 0.33
@@ -461,77 +440,349 @@ MonoBehaviour:
         toothLayer: 13
         around: 24
         rings: 18
-    - rid: 1007
-      type: {class: Jaw, ns: CreatureKit, asm: TerrainGen.Runtime}
+        hideLoft: 1
+        headLiftDeg: 37
+    - rid: 1005
+      type: {class: Sculpt, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
-        id: snout
+        id: skull
         at:
           joint: 0
           side: 0
-          offset: {x: 0, y: 0.018, z: -0.03}
+          offset: {x: 0, y: 0, z: 0}
           slot: 0
         mirror: 0
-        direction: {x: 0, y: -0.02, z: 1}
-        back: 0
-        length: 0.25
-        keys:
-        - t: 0
-          halfWidth: 0.06
-          halfHeight: 0.019
-          rise: -0.001
-          squareTop: 3
-          squareBottom: 6
-        - t: 0.2
-          halfWidth: 0.057
-          halfHeight: 0.014
-          rise: -0.006
-          squareTop: 3
-          squareBottom: 7
-        - t: 0.5
-          halfWidth: 0.046
-          halfHeight: 0.011
-          rise: -0.009
-          squareTop: 3
-          squareBottom: 7
-        - t: 0.78
-          halfWidth: 0.036
-          halfHeight: 0.009
-          rise: -0.011
-          squareTop: 3
-          squareBottom: 7
-        - t: 0.9
-          halfWidth: 0.04
-          halfHeight: 0.013
-          rise: -0.007
-          squareTop: 2.3
-          squareBottom: 6
-        - t: 1
-          halfWidth: 0.022
-          halfHeight: 0.007
-          rise: -0.013
-          squareTop: 2.5
-          squareBottom: 3
-        curveDeg: 0
-        opensUp: 1
-        gapeDeg: 38
-        restSeconds: 2.5
-        intervalSeconds: 8
-        openSeconds: 1.6
-        holdSeconds: 6
-        closeSeconds: 0.9
-        releaseSpeed: 0.12
-        teethPerSide: 13
-        toothLength: 0.015
-        toothRadius: 0.0032
-        teethFrom: 0.12
-        teethTo: 0.97
-        toothInset: 0.08
-        toothSplayDeg: 12
+        shapes:
+        - kind: 1
+          op: 0
+          blend: 0
+          centre: {x: 0, y: -0.006, z: -0.05}
+          size: {x: 0.062, y: 0.024, z: 0}
+          end: {x: 0, y: -0.016, z: 0.172}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0
+          squash: 0.4
+          mirror: 0
+        - kind: 2
+          op: 0
+          blend: 0.016
+          centre: {x: 0, y: 0.002, z: -0.076}
+          size: {x: 0.064, y: 0.026, z: 0.042}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0.012
+          squash: 0
+          mirror: 0
+        - kind: 2
+          op: 0
+          blend: 0.012
+          centre: {x: 0, y: 0.024, z: -0.08}
+          size: {x: 0.04, y: 0.018, z: 0.03}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0.01
+          squash: 0
+          mirror: 0
+        - kind: 0
+          op: 0
+          blend: 0.016
+          centre: {x: 0.028, y: -0.018, z: 0.08}
+          size: {x: 0.014, y: 0.012, z: 0.04}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0
+          squash: 0
+          mirror: 1
+        - kind: 0
+          op: 0
+          blend: 0.01
+          centre: {x: 0, y: -0.018, z: 0.168}
+          size: {x: 0.025, y: 0.011, z: 0.026}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0
+          squash: 0
+          mirror: 0
+        - kind: 0
+          op: 0
+          blend: 0.01
+          centre: {x: 0.028, y: 0.034, z: -0.03}
+          size: {x: 0.016, y: 0.012, z: 0.019}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0
+          squash: 0
+          mirror: 1
+        - kind: 1
+          op: 0
+          blend: 0.008
+          centre: {x: 0.02, y: 0.024, z: -0.012}
+          size: {x: 0.0055, y: 0.003, z: 0}
+          end: {x: 0.012, y: 0.004, z: 0.055}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0
+          squash: 1
+          mirror: 1
+        - kind: 0
+          op: 0
+          blend: 0.008
+          centre: {x: 0, y: -0.004, z: 0.163}
+          size: {x: 0.014, y: 0.007, z: 0.014}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0
+          squash: 0
+          mirror: 0
+        - kind: 1
+          op: 0
+          blend: 0.025
+          centre: {x: 0, y: 0.004, z: -0.125}
+          size: {x: 0.058, y: 0.058, z: 0}
+          end: {x: 0, y: -0.002, z: -0.06}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0
+          squash: 0.62
+          mirror: 0
+        - kind: 3
+          op: 2
+          blend: 0.012
+          centre: {x: 0.06, y: 0, z: -0.07}
+          size: {x: 0, y: 0, z: 0}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: 0, y: -8.5, z: -66}
+          round: 0
+          squash: 0
+          mirror: 1
+        - kind: 0
+          op: 1
+          blend: 0.006
+          centre: {x: 0.032, y: -0.026, z: 0.14}
+          size: {x: 0.008, y: 0.014, z: 0.011}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0
+          squash: 0
+          mirror: 1
+        - kind: 0
+          op: 1
+          blend: 0.006
+          centre: {x: 0.028, y: 0.044, z: -0.03}
+          size: {x: 0.011, y: 0.009, z: 0.013}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0
+          squash: 0
+          mirror: 1
+        - kind: 0
+          op: 1
+          blend: 0.002
+          centre: {x: 0.005, y: 0.003, z: 0.166}
+          size: {x: 0.003, y: 0.004, z: 0.006}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0
+          squash: 0
+          mirror: 1
+        - kind: 0
+          op: 1
+          blend: 0.004
+          centre: {x: 0.017, y: 0.044, z: -0.088}
+          size: {x: 0.008, y: 0.005, z: 0.01}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0
+          squash: 0
+          mirror: 1
+        - kind: 3
+          op: 2
+          blend: 0.004
+          centre: {x: 0, y: -0.024, z: 0}
+          size: {x: 0, y: 0, z: 0}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: 178, y: 0, z: 0}
+          round: 0
+          squash: 0
+          mirror: 0
+        follow: 
+        cell: 0.006
         layer: 0
+        liningBelow: 0
+        dorsalShift: 0
+        teeth:
+        - from: {x: 0.019, y: -0.016, z: 0.18}
+          to: {x: 0.024, y: -0.016, z: 0.155}
+          bow: {x: 0, y: 0, z: 0}
+          count: 4
+          length: 0.01
+          radius: 0.003
+          direction: {x: 0, y: -1, z: 0}
+          splayDeg: 10
+          curveDeg: -10
+          jitter: 0.35
+          sink: 0.3
+          mirror: 1
+        - from: {x: 0.025, y: -0.016, z: 0.128}
+          to: {x: 0.029, y: -0.016, z: 0.1}
+          bow: {x: 0, y: 0, z: 0}
+          count: 3
+          length: 0.01
+          radius: 0.003
+          direction: {x: 0, y: -1, z: 0}
+          splayDeg: 12
+          curveDeg: -12
+          jitter: 0.35
+          sink: 0.3
+          mirror: 1
+        - from: {x: 0.034, y: -0.016, z: 0.088}
+          to: {x: 0.036, y: -0.016, z: 0.068}
+          bow: {x: 0, y: 0, z: 0}
+          count: 2
+          length: 0.017
+          radius: 0.004
+          direction: {x: 0, y: -1, z: 0}
+          splayDeg: 12
+          curveDeg: -14
+          jitter: 0.1
+          sink: 0.3
+          mirror: 1
+        - from: {x: 0.038, y: -0.016, z: 0.054}
+          to: {x: 0.046, y: -0.016, z: -0.004}
+          bow: {x: 0, y: 0, z: 0}
+          count: 8
+          length: 0.012
+          radius: 0.0033
+          direction: {x: 0, y: -1, z: 0}
+          splayDeg: 12
+          curveDeg: -12
+          jitter: 0.35
+          sink: 0.3
+          mirror: 1
         toothLayer: 13
-        around: 24
-        rings: 18
-    - rid: 1008
+    - rid: 1006
+      type: {class: Sculpt, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: jaw
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 0
+        shapes:
+        - kind: 1
+          op: 0
+          blend: 0
+          centre: {x: 0, y: -0.034, z: -0.112}
+          size: {x: 0.06, y: 0.019, z: 0}
+          end: {x: 0, y: -0.031, z: 0.17}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0
+          squash: 0.34
+          mirror: 0
+        - kind: 0
+          op: 0
+          blend: 0.012
+          centre: {x: 0, y: -0.03, z: 0.168}
+          size: {x: 0.024, y: 0.01, z: 0.022}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0
+          squash: 0
+          mirror: 0
+        - kind: 0
+          op: 0
+          blend: 0.018
+          centre: {x: 0.044, y: -0.04, z: -0.068}
+          size: {x: 0.015, y: 0.012, z: 0.036}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0
+          squash: 0
+          mirror: 1
+        - kind: 1
+          op: 0
+          blend: 0.01
+          centre: {x: 0.044, y: -0.034, z: -0.095}
+          size: {x: 0.011, y: 0.006, z: 0}
+          end: {x: 0.042, y: -0.02, z: -0.128}
+          rotationDeg: {x: 0, y: 0, z: 0}
+          round: 0
+          squash: 1
+          mirror: 1
+        - kind: 3
+          op: 2
+          blend: 0.01
+          centre: {x: 0.062, y: -0.024, z: -0.07}
+          size: {x: 0, y: 0, z: 0}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: 0, y: -8.5, z: -100}
+          round: 0
+          squash: 0
+          mirror: 1
+        - kind: 3
+          op: 2
+          blend: 0.015
+          centre: {x: 0, y: -0.05, z: -0.088}
+          size: {x: 0, y: 0, z: 0}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: -120, y: 0, z: 0}
+          round: 0
+          squash: 0
+          mirror: 0
+        - kind: 3
+          op: 2
+          blend: 0.004
+          centre: {x: 0, y: -0.024, z: 0}
+          size: {x: 0, y: 0, z: 0}
+          end: {x: 0, y: 0, z: 0}
+          rotationDeg: {x: -2, y: 0, z: 0}
+          round: 0
+          squash: 0
+          mirror: 0
+        follow: mandible
+        cell: 0.006
+        layer: 0
+        liningBelow: -0.016
+        dorsalShift: -0.45
+        teeth:
+        - from: {x: 0.019, y: -0.03, z: 0.145}
+          to: {x: 0.019, y: -0.03, z: 0.145}
+          bow: {x: 0, y: 0, z: 0}
+          count: 1
+          length: 0.018
+          radius: 0.004
+          direction: {x: 0, y: 1, z: 0}
+          splayDeg: 16
+          curveDeg: 10
+          jitter: 0
+          sink: 0.3
+          mirror: 1
+        - from: {x: 0.017, y: -0.03, z: 0.168}
+          to: {x: 0.022, y: -0.03, z: 0.152}
+          bow: {x: 0, y: 0, z: 0}
+          count: 3
+          length: 0.009
+          radius: 0.0028
+          direction: {x: 0, y: 1, z: 0}
+          splayDeg: 14
+          curveDeg: 10
+          jitter: 0.35
+          sink: 0.3
+          mirror: 1
+        - from: {x: 0.02, y: -0.03, z: 0.122}
+          to: {x: 0.034, y: -0.03, z: 0}
+          bow: {x: 0.003, y: 0, z: 0}
+          count: 11
+          length: 0.011
+          radius: 0.003
+          direction: {x: 0, y: 1, z: 0}
+          splayDeg: 16
+          curveDeg: 10
+          jitter: 0.35
+          sink: 0.3
+          mirror: 1
+        toothLayer: 13
+    - rid: 1007
       type: {class: ScuteRow, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: nuchal
@@ -554,7 +805,7 @@ MonoBehaviour:
         frontHeight: 0.45
         inset: 0.35
         layer: 12
-    - rid: 1009
+    - rid: 1008
       type: {class: ScuteRow, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: nuchalOut
@@ -577,7 +828,7 @@ MonoBehaviour:
         frontHeight: 0.45
         inset: 0.35
         layer: 12
-    - rid: 1010
+    - rid: 1009
       type: {class: ScuteRow, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: dorsal0
@@ -600,7 +851,7 @@ MonoBehaviour:
         frontHeight: 0.45
         inset: 0.35
         layer: 12
-    - rid: 1011
+    - rid: 1010
       type: {class: ScuteRow, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: dorsal1
@@ -623,7 +874,7 @@ MonoBehaviour:
         frontHeight: 0.45
         inset: 0.35
         layer: 12
-    - rid: 1012
+    - rid: 1011
       type: {class: ScuteRow, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: dorsal2
@@ -646,7 +897,7 @@ MonoBehaviour:
         frontHeight: 0.45
         inset: 0.35
         layer: 12
-    - rid: 1013
+    - rid: 1012
       type: {class: ScuteRow, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: dorsal3
@@ -669,7 +920,7 @@ MonoBehaviour:
         frontHeight: 0.45
         inset: 0.35
         layer: 12
-    - rid: 1014
+    - rid: 1013
       type: {class: ScuteRow, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: dorsal4
@@ -692,7 +943,7 @@ MonoBehaviour:
         frontHeight: 0.45
         inset: 0.35
         layer: 12
-    - rid: 1015
+    - rid: 1014
       type: {class: ScuteRow, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: flank
@@ -715,7 +966,7 @@ MonoBehaviour:
         frontHeight: 0.45
         inset: 0.35
         layer: 12
-    - rid: 1016
+    - rid: 1015
       type: {class: ScuteRow, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: tailCrest
@@ -738,7 +989,7 @@ MonoBehaviour:
         frontHeight: 0.25
         inset: 0.35
         layer: 12
-    - rid: 1017
+    - rid: 1016
       type: {class: ScuteRow, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: tailSingle
@@ -761,7 +1012,7 @@ MonoBehaviour:
         frontHeight: 0.25
         inset: 0.35
         layer: 12
-    - rid: 1018
+    - rid: 1017
       type: {class: ScuteRow, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: tailSide
@@ -784,7 +1035,7 @@ MonoBehaviour:
         frontHeight: 0.45
         inset: 0.35
         layer: 12
-    - rid: 1019
+    - rid: 1018
       type: {class: Walk, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         speed: 0.45
@@ -800,15 +1051,15 @@ MonoBehaviour:
           amplitude: 0
           hz: 0
           damping: 0
-    - rid: 1020
+    - rid: 1019
       type: {class: Slither, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         undulationDeg: 10
         undulationHz: 0.7
-    - rid: 1021
+    - rid: 1020
       type: {class: Wander, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
-    - rid: 1022
+    - rid: 1021
       type: {class: Skin, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         dorsal: {r: 0.25, g: 0.27, b: 0.17, a: 1}
@@ -826,7 +1077,7 @@ MonoBehaviour:
         sizeJitter: 0.08
         hueJitter: 0.012
         valueJitter: 0.07
-    - rid: 1023
+    - rid: 1022
       type: {class: Layers, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         rows:

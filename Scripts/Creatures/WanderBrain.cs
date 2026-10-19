@@ -10,6 +10,7 @@ public sealed class WanderBrain : ICreatureBrain
 
     readonly EnclosureArea area;
     readonly float pauseMin, pauseMax, arriveRadius;
+    readonly bool froudePauses;     // pauses x the individual's time scale (the kit's Wander.pauseMin/Max); off: seconds as given
     uint rng;
 
     bool walking;
@@ -28,6 +29,24 @@ public sealed class WanderBrain : ICreatureBrain
         this.area = area; this.pauseMin = pauseMin; this.pauseMax = pauseMax; this.arriveRadius = arriveRadius;
         rng = (uint)seed * 2654435761u + 0x9E3779B9u;
         if (rng == 0) rng = 2463534242u;
+    }
+
+    // The species' own wander (the kit's Wander module: arriveRadius, pauseMin / pauseMax; all 0 = the defaults above,
+    // exactly the brain every shipped species had).
+    public WanderBrain(EnclosureArea area, int seed, float pauseMin, float pauseMax, float arriveRadius, bool froudePauses)
+        : this(area, seed, pauseMin, pauseMax, arriveRadius) { this.froudePauses = froudePauses; }
+
+    public static WanderBrain For(CreatureSpecies sp, EnclosureArea area, int seed)
+    {
+        CreatureKit.Wander w = null;
+        if (sp != null)
+        {
+            var mods = CreatureKit.KitView.Modules(sp.Compiled.Runtime);
+            for (int i = 0; i < mods.Count && w == null; i++) w = mods[i] as CreatureKit.Wander;
+        }
+        if (w == null || !w.Custom) return new WanderBrain(area, seed);
+        bool pauses = w.pauseMax > 0f;
+        return new WanderBrain(area, seed, pauses ? w.pauseMin : 0.5f, pauses ? w.pauseMax : 3f, w.arriveRadius > 0f ? w.arriveRadius : 0.4f, pauses);
     }
 
     float Rand()
@@ -93,7 +112,7 @@ public sealed class WanderBrain : ICreatureBrain
             {
                 walking = false;
                 PausesStarted++;
-                pauseLen = pauseLeft = Mathf.Lerp(pauseMin, pauseMax, Rand());
+                pauseLen = pauseLeft = froudePauses ? Mathf.Lerp(pauseMin, pauseMax, Rand()) * sim.TimeScale : Mathf.Lerp(pauseMin, pauseMax, Rand());
                 looks = Rand() < kLookChance;
                 lookSign = Rand() < 0.5f ? -1f : 1f;
             }

@@ -110,6 +110,9 @@ namespace CreatureKit
                 case Leg2Bone l:
                     l.upperLength *= f; l.lowerLength *= f; l.upperRadius *= f; l.lowerRadius *= f; l.ankleHeight *= f; l.clawLength *= f;
                     break;
+                case SprawlLeg sl:
+                    sl.Taper(f);
+                    break;
                 case ArthropodLeg a:
                     for (int i = 0; i < a.segments.Length; i++) { a.segments[i].length *= f; a.segments[i].radiusStart *= f; a.segments[i].radiusEnd *= f; }
                     break;
@@ -281,6 +284,7 @@ namespace CreatureKit
                 dst.gaitSwayDeg = walk.gaitSwayDeg; dst.gaitRollDeg = walk.gaitRollDeg; dst.subSteps = walk.subSteps;
                 dst.gaitBob = new GaitBob { amplitude = walk.bob.amplitude, hz = walk.bob.hz, damping = walk.bob.damping };
                 dst.waveGait = walk.pattern == GaitPattern.Wave;
+                dst.gaitBurst = new GaitBurst { factor = walk.burst.factor, every = walk.burst.every, seconds = walk.burst.seconds };
             }
             Slither sl = Module<Slither>();
             dst.undulationDeg = sl != null ? sl.undulationDeg : 0f; dst.undulationHz = sl != null ? sl.undulationHz : 0f;

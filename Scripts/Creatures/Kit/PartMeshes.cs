@@ -167,6 +167,7 @@ namespace CreatureKit
             CreatureSpecies sp = m.Species;
             LegSpec s = sp.legs[l];
             if (s.IsArthropod) { ArthropodLeg.Emit(m, l); return; }   // the runtime leg decides (as before the kit)
+            if (s.digitigrade) { Digitigrade(m, s, l); return; }
             Matrix4x4[] bones = m.Bones;
             LegState st = m.Rest.Legs[l];
             int attach = s.attachJoint, bu = sp.LegBone(l, 0), bl = sp.LegBone(l, 1), bf = sp.LegBone(l, 2);

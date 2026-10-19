@@ -6,7 +6,9 @@
 // longitudinal sutures (`grooves`). Shingled: a plate's back margin is `slope` higher than its front, so every plate
 // tucks under the one before it and its back edge shows as a step - the seam - on the plate behind. When the body
 // bends, the plates slide over each other on the inside of the curve and part on the outside, showing the softer
-// body between them (rigid plates cannot crease or invert).
+// body between them (rigid plates cannot crease or invert). Optional, for a more aggressive armour (0 = off,
+// bit-identical): `keel`, a sharp ridge along each plate's midline; `cornerSpike`, the back corners drawn out sideways
+// and backward into upturned points, so the plate margins read as a row of thorns.
 // Mesh only, no bones: every vertex of a plate is rigid to its joint's spine bone. Material layer 10 (armour plate,
 // Chitin by default; `layer` picks another). Author at scale 1 (the body's joints are).
 using System;
@@ -34,6 +36,8 @@ namespace CreatureKit
         [Param(ParamUnit.Fraction, "suture depth, x half height", Min = 0, Max = 0.3f, Default = "0.06")] public float grooveDepth = 0.06f;
         [Param(ParamUnit.Fraction, "the plate's edge wall (its thickness at the margin), x half height", Min = 0.02f, Max = 1, Default = "0.25")] public float thickness = 0.25f;
         [Param(ParamUnit.Fraction, "planform: rounding of the four corners (0 = square, 0.9 = nearly oval)", Min = 0, Max = 0.9f, Default = "0.35")] public float cornerRound = 0.35f;
+        [Param(ParamUnit.Fraction, "a sharp ridge along each plate's midline, x half height (0 = none)", Min = 0, Max = 1)] public float keel;
+        [Param(ParamUnit.Fraction, "the back corners drawn out sideways (x the plate's half width) and backward into upturned points (0 = none)", Min = 0, Max = 0.6f)] public float cornerSpike;
         [Param(ParamUnit.Fraction, "front plate: x the plate pitch it reaches forward (a head shield's collar); 0 = like the others", Min = 0, Max = 2)] public float firstReach;
         [Param(ParamUnit.Count, "material layer (part id): 10 = armour plate; 0 body, 2 claw", Min = 0, Max = 15, Default = "10")] public int layer = PartMeshEmitter.PartPlate;
         [Param(ParamUnit.Count, "mesh: vertices across a plate", Min = 6, Max = 40, Default = "18")] public int across = 18;
@@ -55,6 +59,7 @@ namespace CreatureKit
             if (!(width >= 0.5f && width <= 2f)) return $"{id}: width must be in 0.5..2";
             if (!(flatness >= 1.2f && flatness <= 8f)) return $"{id}: flatness must be in 1.2..8";
             if (crown < 0f || slope < 0f || rim < 0f || grooveDepth < 0f) return $"{id}: crown, slope, rim, grooveDepth must be >= 0";
+            if (keel < 0f || keel > 1f || cornerSpike < 0f || cornerSpike > 0.6f) return $"{id}: keel 0..1, cornerSpike 0..0.6";
             if (overlap < 0f || overlap > 0.5f) return $"{id}: overlap must be in 0..0.5";
             if (!(thickness >= 0.02f)) return $"{id}: thickness must be >= 0.02";
             if (cornerRound < 0f || cornerRound > 0.9f) return $"{id}: cornerRound must be in 0..0.9";
@@ -82,8 +87,23 @@ namespace CreatureKit
         {
             float rc = Mathf.Max(1e-3f, cornerRound);
             float e = Mathf.Max(0f, (Mathf.Abs(2f * s - 1f) - (1f - rc)) / rc);   // 0 inside, 1 at the ends
-            return p.w * (1f - 0.5f * cornerRound * (1f - Mathf.Sqrt(Mathf.Max(0f, 1f - e * e))) - 0.5f * cornerRound * e * e);
+            float w = p.w * (1f - 0.5f * cornerRound * (1f - Mathf.Sqrt(Mathf.Max(0f, 1f - e * e))) - 0.5f * cornerRound * e * e);
+            if (cornerSpike > 0f) w += p.w * cornerSpike * SpikeAt(s);
+            return w;
         }
+
+        // The corner spike's profile along the plate (0 front .. 1 back): it grows from the middle, peaks sharply at
+        // kSpikeAt and falls to nothing at the back margin.
+        public const float SpikeAt0 = 0.35f, SpikePeak = 0.8f;
+        public static float SpikeAt(float s)
+        {
+            if (s <= SpikeAt0) return 0f;
+            if (s < SpikePeak) { float x = (s - SpikeAt0) / (SpikePeak - SpikeAt0); return x * x * x; }
+            return Mathf.Clamp01(1f - (s - SpikePeak) / (1f - SpikePeak));
+        }
+
+        // How much of the spike a point at lateral u carries (its swept-back, upturned tip at the margin).
+        static float SpikeEdge(float au) { float a2 = au * au; return a2 * a2 * a2; }
 
         static float Bump(float d, float width) { float x = d / width; return Mathf.Exp(-x * x); }
 
@@ -96,6 +116,13 @@ namespace CreatureKit
             // margins: a bead along the back edge and the sides, strongest at the back corners
             float bead = Mathf.Max(Bump(1f - au, 0.07f), Bump(1f - s, 0.07f));
             y += rim * bead;
+            // the keel: a sharp crest along the midline, faded in from the front margin
+            if (keel > 0f)
+            {
+                float k = Mathf.Max(0f, 1f - au / 0.2f);
+                y += keel * k * Mathf.Sqrt(k) * Mathf.Clamp01(s / 0.3f);
+            }
+            if (cornerSpike > 0f) y += 0.5f * cornerSpike * SpikeAt(s) * SpikeEdge(au);   // the spike tips turn up
             // sutures: grooves at evenly spaced places across each half (fading toward the front and back margins)
             if (grooves > 0 && grooveDepth > 0f)
             {
@@ -110,13 +137,23 @@ namespace CreatureKit
         public float BottomY(in Plate p, float u, float s)
         {
             float au = Mathf.Min(1f, Mathf.Abs(u));
-            return p.hh * (edgeHeight + slope * (s - 0.5f) - 0.6f * (1f - au * au));
+            float y = edgeHeight + slope * (s - 0.5f) - 0.6f * (1f - au * au);
+            if (cornerSpike > 0f) y += 0.5f * cornerSpike * SpikeAt(s) * SpikeEdge(au);
+            return p.hh * y;
         }
 
         public float Z(in Plate p, float s) => Mathf.Lerp(p.zFront, p.zBack, s);
 
-        public Vector3 Top(in Plate p, float u, float s) => new Vector3(u * HalfWidthAt(p, s), TopY(p, u, s), Z(p, s));
-        public Vector3 Bottom(in Plate p, float u, float s) => new Vector3(u * HalfWidthAt(p, s), BottomY(p, u, s), Z(p, s));
+        // ... at lateral u: the corner spikes sweep back.
+        public float Z(in Plate p, float u, float s)
+        {
+            float z = Mathf.Lerp(p.zFront, p.zBack, s);
+            if (cornerSpike > 0f) z -= 0.6f * cornerSpike * (p.zFront - p.zBack) * SpikeAt(s) * SpikeEdge(Mathf.Min(1f, Mathf.Abs(u)));
+            return z;
+        }
+
+        public Vector3 Top(in Plate p, float u, float s) => new Vector3(u * HalfWidthAt(p, s), TopY(p, u, s), Z(p, u, s));
+        public Vector3 Bottom(in Plate p, float u, float s) => new Vector3(u * HalfWidthAt(p, s), BottomY(p, u, s), Z(p, u, s));
 
         // ---------------------------------------------------------------- the mesh
 

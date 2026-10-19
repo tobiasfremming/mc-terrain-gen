@@ -29,6 +29,14 @@ namespace CreatureKit
     }
 
     [Serializable]
+    public struct GaitBurstDef
+    {
+        [Param(ParamUnit.Fraction, "cruise speed x this at the peak of a burst (<= 1 = off); the gait's stride limit still caps it", Min = 0, Max = 4, Example = "scolopendra 2.2")] public float factor;
+        [Param(ParamUnit.Seconds, "mean time between bursts (each gap 0.5..1.5 x this, per individual)")] public float every;
+        [Param(ParamUnit.Seconds, "one burst: a quick surge, a hold, an easing back")] public float seconds;
+    }
+
+    [Serializable]
     [Module("Walk", CreatureModule.Locomotion, Summary = "Head steering in the tangent plane, chain, grounding, gait groups, girdle sway (CreatureSim.SubStep, CreatureLegs). The default locomotion of a spine body.",
             Needs = "SpineBody")]
     public sealed class Walk : CreatureModule
@@ -44,11 +52,13 @@ namespace CreatureKit
         [Param(ParamUnit.Count, "groups of a Wave pattern: legs per side in one wavelength (each foot is in the air 1/waveGroups of the time)", Min = 2, Max = 15, Example = "centipede 5")] public int waveGroups = 4;
         [Param(ParamUnit.Flag, "Wave: the lift-offs run tail to head (a millipede's direct wave) instead of head to tail (a centipede's retrograde wave)")] public bool waveTailToHead;
         [Param(ParamUnit.Struct, "vertical body bounce kicked by each lift-off")] public GaitBobDef bob;
+        [Param(ParamUnit.Struct, "speed bursts: every so often the cruise speed surges (a predator's dash), seeded per individual; factor 0 = off")] public GaitBurstDef burst;
 
         public override string Validate(in SpeciesCtx c)
         {
             if (c.Soft) return "Walk needs a SpineBody";
             if (pattern == GaitPattern.Wave && (waveGroups < 2 || waveGroups > 15)) return "Walk.waveGroups must be 2..15 for the Wave pattern";
+            if (burst.factor > 1f && (!(burst.every > 0f) || !(burst.seconds > 0f))) return "Walk.burst: every and seconds must be > 0 when factor > 1";
             return null;
         }
     }
@@ -126,7 +136,17 @@ namespace CreatureKit
 
     [Serializable]
     [Module("Wander", CreatureModule.Behaviour, Summary = "Safe-disc points, walk, pause, glance (WanderBrain). Containment is structural: the head is clamped to the safe radius.")]
-    public sealed partial class Wander : CreatureModule { }
+    public sealed partial class Wander : CreatureModule
+    {
+        [Param(ParamUnit.Metres, "a goal counts as reached within this distance (0 = 0.4)", Example = "scolopendra 0.12")] public float arriveRadius;
+        [Param(ParamUnit.Seconds, "shortest pause at a goal (with pauseMax > 0; Froude-timed)")] public float pauseMin;
+        [Param(ParamUnit.Seconds, "longest pause at a goal (0 = the default 0.5..3 s, not size-scaled)", Example = "scolopendra 0.5..1.2")] public float pauseMax;
+
+        public bool Custom => arriveRadius > 0f || pauseMax > 0f;
+
+        public override string Validate(in SpeciesCtx c)
+            => arriveRadius < 0f || pauseMin < 0f || pauseMax < 0f || (pauseMax > 0f && pauseMin > pauseMax) ? "Wander: arriveRadius, pauseMin, pauseMax >= 0, pauseMin <= pauseMax" : null;
+    }
 
     [Serializable]
     [Module("ClimbExcursion", CreatureModule.Behaviour, Summary = "Approach a climbable obstacle, climb to a goal on its real surface, rest, descend (ClimbingBrain wrapping Wander).", Needs = "Climb")]

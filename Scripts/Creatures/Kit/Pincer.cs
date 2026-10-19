@@ -8,6 +8,10 @@
 // - opens slowly, holds, snaps shut, rests - every flexPeriod (the menacing idle flex of a centipede's forcipules),
 // the first segment turning by (1 - distalShare) of the opening and the joints beyond by the rest. Eased, so it
 // never pops; deterministic (no random numbers). Froude: lengths x s, times x sqrt s.
+// Threat display (CreatureSim.Display, set by a ThreatDisplay part; off by default): the opening blends to
+// displayOpenDeg (breathing a little with the flex clock) and the whole appendage lifts about its root toward the
+// joint's up by displayRaiseDeg - forcipules spread wide, ultimate legs raised like a scorpion's.
+// spineSegments puts the inner spines on the first N segments (1 = the first only).
 // Bones: Rigid block (after every shipped bone); runtime at stage Late (once per tick; it only poses bones).
 // Allocation-free after construction; main thread. Material layers 11 (pincer, Claw by default) and 9 (band: tip,
 // spines).
@@ -41,6 +45,9 @@ namespace CreatureKit
         [Param(ParamUnit.Seconds, "standstill before the first flex", Default = "0.6")] public float idleDelay = 0.6f;
         [Param(ParamUnit.Fraction, "opening held while walking, x openDeg", Min = 0, Max = 1)] public float walkOpen;
         [Param(ParamUnit.Fraction, "place in the flex cycle at its start (a second pair can lag the first)", Min = 0, Max = 1)] public float phase;
+        [Param(ParamUnit.Degrees, "threat display (CreatureSim.Display, a ThreatDisplay part): the opening held at the full display; 0 = no display pose", Min = 0, Max = 90)] public float displayOpenDeg;
+        [Param(ParamUnit.Degrees, "threat display: the whole appendage lifts about its root toward the joint's up by this much", Min = -60, Max = 90)] public float displayRaiseDeg;
+        [Param(ParamUnit.Count, "segments carrying the inner spines (the first N; 0 or 1 = the first only)", Min = 0, Max = 4)] public int spineSegments;
         [Param(ParamUnit.Count, "material layer (part id) of the segments: 11 = pincer; 1 limb, 2 claw, 10 plate", Min = 0, Max = 15, Default = "11")] public int layer = PartMeshEmitter.PartPincer;
         [Param(ParamUnit.Count, "mesh: sides of the tube (0 = 10)", Min = 0, Max = 24)] public int sides;
 
@@ -68,6 +75,8 @@ namespace CreatureKit
             if (!(flexPeriod > 0f) || idleDelay < 0f) return $"{id}: flexPeriod > 0, idleDelay >= 0";
             if (spines < 0 || spines > 8 || spineLength < 0f) return $"{id}: spines 0..8, spineLength >= 0";
             if (knuckle < 0f || knuckle > 1f) return $"{id}: knuckle must be in 0..1";
+            if (displayOpenDeg < 0f || displayOpenDeg > 90f || displayRaiseDeg < -60f || displayRaiseDeg > 90f) return $"{id}: displayOpenDeg 0..90, displayRaiseDeg -60..90";
+            if (spineSegments < 0 || spineSegments > MaxSegments) return $"{id}: spineSegments must be 0..{MaxSegments}";
             if (layer < 0 || layer >= PartLayers.MaxParts || (layer >= 4 && layer <= 7)) return $"{id}: layer must be a spine-shader part id (0..3, 8..15)";
             return null;
         }
@@ -117,6 +126,25 @@ namespace CreatureKit
 
         // The point at arc length t past the start of segment k (t may run a little past either end: the caps), joint
         // frame at scale 1, for opening `open`; tangent out. Each segment is an arc about the hinge axis (closed form).
+        public Vector3 PointAt(int k, float t, float open, float raise, out Vector3 tangent)
+        {
+            Vector3 p = PointAt(k, t, open, out tangent);
+            if (raise == 0f) return p;
+            Quaternion r = Raise(raise, out Vector3 off);
+            tangent = r * tangent;
+            return off + r * (p - off);
+        }
+
+        // The display lift: a turn by `raise` degrees about the root that takes the rest direction toward the joint's
+        // up (mirror-symmetric); off = the root offset (joint frame, scale 1).
+        public Quaternion Raise(float raise, out Vector3 off)
+        {
+            Local(out off, out Vector3 dir, out _);
+            Vector3 axis = Vector3.Cross(dir, Vector3.up);
+            if (axis.sqrMagnitude < 1e-8f) axis = Vector3.right;
+            return Quaternion.AngleAxis(raise, axis.normalized);
+        }
+
         public Vector3 PointAt(int k, float t, float open, out Vector3 tangent)
         {
             Local(out Vector3 off, out Vector3 dir, out Vector3 hinge);
@@ -144,11 +172,16 @@ namespace CreatureKit
         // `scale`: bone k sits at the start of segment k, its forward along the segment's start tangent, its up the
         // hinge axis made perpendicular.
         public void Pose(Vector3 jointPos, Quaternion jointRot, float scale, float open, Vector3[] pos, Quaternion[] rot)
+            => Pose(jointPos, jointRot, scale, open, 0f, pos, rot);
+
+        // ... lifted by `raise` degrees about its root (the threat display).
+        public void Pose(Vector3 jointPos, Quaternion jointRot, float scale, float open, float raise, Vector3[] pos, Quaternion[] rot)
         {
             Local(out _, out _, out Vector3 hinge);
+            if (raise != 0f) hinge = Raise(raise, out _) * hinge;
             for (int k = 0; k < Segments; k++)
             {
-                Vector3 p = PointAt(k, 0f, open, out Vector3 t);
+                Vector3 p = PointAt(k, 0f, open, raise, out Vector3 t);
                 pos[k] = jointPos + jointRot * (p * scale);
                 rot[k] = jointRot * Quaternion.LookRotation(t, hinge);
             }
@@ -232,33 +265,48 @@ namespace CreatureKit
             {
                 Spine(i, 0f, out Vector3 bp, out Vector3 sdir, out Vector3 tan, out float r0);
                 Quaternion hq = jr * Quaternion.LookRotation(sdir, -tan);
-                m.Horn(jp + jr * bp, hq, r0, 0f, spineLength, 15f, start, PartMeshEmitter.PartBand, 6, 0f, out _, out _);
+                m.Horn(jp + jr * bp, hq, r0, 0f, spineLength, 15f, start + SpineSegment(i), PartMeshEmitter.PartBand, 6, 0f, out _, out _);
             }
         }
 
-        public int SpineCount => spineLength > 0f ? Mathf.Clamp(spines, 0, 8) : 0;
+        public int SpinesPerSegment => spineLength > 0f ? Mathf.Clamp(spines, 0, 8) : 0;
+        public int SpineSegments => Mathf.Clamp(spineSegments, 1, Segments);
+        public int SpineCount => SpinesPerSegment * SpineSegments;
+        // The segment spine i sits on (spines run segment by segment, root first).
+        public int SpineSegment(int i) => SpinesPerSegment > 0 ? i / SpinesPerSegment : 0;
 
-        // Spine i (on the first segment) for opening `open`: its base on the segment's inner surface, its direction
-        // (inward, alternately a little down, toward the tip), the segment tangent there and its base radius; joint
-        // frame, scale 1. The mesh draws a horn of spineLength from it (curling 15 deg toward the tip).
+        // Spine i (on segment SpineSegment(i); the first segment's when spineSegments <= 1) for opening `open`: its
+        // base on the segment's inner surface, its direction (inward, alternately a little down, toward the tip), the
+        // segment tangent there and its base radius; joint frame, scale 1. The mesh draws a horn of spineLength from
+        // it (curling 15 deg toward the tip).
         public void Spine(int i, float open, out Vector3 basePt, out Vector3 dir, out Vector3 tangent, out float baseRadius)
+            => Spine(i, open, 0f, out basePt, out dir, out tangent, out baseRadius);
+
+        public void Spine(int i, float open, float raise, out Vector3 basePt, out Vector3 dir, out Vector3 tangent, out float baseRadius)
         {
             Local(out _, out _, out Vector3 hingeL);
-            int n = SpineCount;
-            float L0 = SegmentLength(0);
-            float f = n <= 1 ? 0.85f : Mathf.Lerp(0.3f, 0.9f, i / (n - 1f));
+            int n = SpinesPerSegment, k = SpineSegment(i);
+            int j = n > 0 ? i - k * n : 0;
+            float L0 = SegmentLength(k);
+            float f = n <= 1 ? 0.85f : Mathf.Lerp(0.3f, 0.9f, j / (n - 1f));
+            if (k > 0 && k == Segments - 1 && tipLength > 0f) f *= Mathf.Clamp01((L0 - tipLength) / L0);   // never on the dark tip
             float t = L0 * f;
-            Vector3 p = PointAt(0, t, open, out Vector3 tan);
-            Vector3 pA = PointAt(0, t, open - 2f, out _), pB = PointAt(0, t, open + 2f, out _);
+            Vector3 p = PointAt(k, t, open, out Vector3 tan);
+            Vector3 pA = PointAt(k, t, open - 2f, out _), pB = PointAt(k, t, open + 2f, out _);
             Vector3 inward = PartMeshEmitter.Unit(pA - pB, Vector3.Cross(hingeL, tan));   // toward closing
             inward = PartMeshEmitter.Unit(inward - tan * Vector3.Dot(inward, tan), inward);
             Vector3 down = PartMeshEmitter.Unit(Vector3.ProjectOnPlane(Vector3.down, tan), Vector3.down);
             float lean = (i & 1) == 0 ? 0.35f : -0.15f;   // alternate rows: inner-lower and inner
             dir = PartMeshEmitter.Unit(inward + down * lean + tan * 0.55f, inward);
-            float r = RadiusAt(t);
+            float r = RadiusAt(SegmentStart(k) + t);
             basePt = p + PartMeshEmitter.Unit(inward + down * lean, inward) * (0.8f * r);
             tangent = tan;
             baseRadius = Mathf.Max(0.3f * r, 0.22f * spineLength);
+            if (raise != 0f)
+            {
+                Quaternion q = Raise(raise, out Vector3 off);
+                basePt = off + q * (basePt - off); dir = q * dir; tangent = q * tangent;
+            }
         }
 
         // One tube sample at segment-local arc t of segment k, rest pose (open 0), rigid to its bone.
@@ -285,10 +333,12 @@ namespace CreatureKit
         readonly Vector3[] pos;
         readonly Quaternion[] rot;
         float open;                          // eased opening, degrees (0 at construction: the rest pose)
+        float raise;                         // eased display lift, degrees
         float still;                         // seconds the body has stood still
 
         public Pincer Part => p;
         public float Opening => open;
+        public float Raised => raise;
         public int FirstBone => start;
 
         public PincerRuntime(Pincer pincer, CreatureSim sim, int firstBone, SizeCtx size)
@@ -320,11 +370,14 @@ namespace CreatureKit
             get
             {
                 float walk = p.walkOpen;
-                if (Walking) return walk * p.openDeg;
+                float d = p.displayOpenDeg > 0f ? sim.Display : 0f;
+                if (Walking) return d > 0f ? Mathf.Lerp(walk * p.openDeg, p.displayOpenDeg, d) : walk * p.openDeg;
                 float t = still - p.idleDelay * T;
-                if (t < 0f) return walk * p.openDeg;
+                if (t < 0f) return d > 0f ? Mathf.Lerp(walk * p.openDeg, p.displayOpenDeg, d) : walk * p.openDeg;
                 float x = t / (p.flexPeriod * T) + p.phase;
-                return Mathf.Max(walk, Profile(x)) * p.openDeg;
+                float flex = Mathf.Max(walk, Profile(x)) * p.openDeg;
+                // the display: held wide open, breathing a little with the flex clock
+                return d > 0f ? Mathf.Lerp(flex, p.displayOpenDeg * (0.88f + 0.12f * Profile(x)), d) : flex;
             }
         }
 
@@ -333,9 +386,10 @@ namespace CreatureKit
             if (Walking) still = 0f; else still += dt;
             float k = 1f - Mathf.Exp(-dt / (kEaseSeconds * T));
             open += (TargetOpening - open) * k;
+            if (p.displayRaiseDeg != 0f) raise += (p.displayRaiseDeg * sim.Display - raise) * k;
         }
 
-        void PoseNow() => p.Pose(sim.Joints[p.at.joint], sim.Rotations[p.at.joint], scale, open, pos, rot);
+        void PoseNow() => p.Pose(sim.Joints[p.at.joint], sim.Rotations[p.at.joint], scale, open, raise, pos, rot);
 
         public void WriteBones(Matrix4x4[] dst, int offset)
         {
@@ -347,7 +401,7 @@ namespace CreatureKit
         // The tip in world space now (tests, bounds).
         public Vector3 Tip()
         {
-            Vector3 l = p.PointAt(n - 1, p.SegmentLength(n - 1), open, out _);
+            Vector3 l = p.PointAt(n - 1, p.SegmentLength(n - 1), open, raise, out _);
             return sim.Joints[p.at.joint] + sim.Rotations[p.at.joint] * (l * scale);
         }
 

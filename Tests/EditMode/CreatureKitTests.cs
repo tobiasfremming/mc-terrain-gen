@@ -374,7 +374,7 @@ namespace TerrainGen.Tests
         {
             const float dt = 1f / 30f;
             var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, area.center, Vector3.forward, sizeScale, seed) { Bounds = area };
-            ICreatureBrain brain = sp.CanFly ? new FlightBrain(area, seed) : (ICreatureBrain)new WanderBrain(area, seed);
+            ICreatureBrain brain = sp.CanFly ? new FlightBrain(area, seed) : (ICreatureBrain)WanderBrain.For(sp, area, seed);
             float far = 0f, path = 0f, top = 0f;
             Vector3 last = sim.Joints[0];
             for (int t = 0; t < (int)(seconds / dt); t++)
@@ -511,7 +511,7 @@ namespace TerrainGen.Tests
         {
             EnclosureArea area = LabArea(sp);
             var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, sp.scale, 1) { Bounds = area };
-            ICreatureBrain brain = sp.CanFly ? new FlightBrain(area, 1) : (ICreatureBrain)new WanderBrain(area, 1);
+            ICreatureBrain brain = sp.CanFly ? new FlightBrain(area, 1) : (ICreatureBrain)WanderBrain.For(sp, area, 1);
             var bones = new Matrix4x4[sp.BoneCount];
             for (int t = 0; t < 120; t++) { sim.Tick(kDt, brain.Target(sim, kDt)); sim.WriteBoneWorld(bones, 0); }
             return GcAllocs.Count(() =>

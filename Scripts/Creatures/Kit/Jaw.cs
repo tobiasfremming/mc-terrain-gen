@@ -43,6 +43,8 @@ namespace CreatureKit
         [Param(ParamUnit.Count, "material layer of the teeth: 2 claw (default), 13 teeth (restyle it with Layers)", Min = 0, Max = 15, Default = "2")] public int toothLayer = 2;
         [Param(ParamUnit.Count, "mesh: vertices around each section (0 = 20)", Min = 0, Max = 48)] public int around;
         [Param(ParamUnit.Count, "mesh: sections along the length (0 = 16)", Min = 0, Max = 64)] public int rings;
+        [Param(ParamUnit.Flag, "draws no loft (its keys still bound it): a Sculpt that follows this jaw draws it")] public bool hideLoft;
+        [Param(ParamUnit.Degrees, "as it gapes the head lifts too: the rigid head's bones and the eyes turn up about the hinge by this much at full gape, the jaw opening gapeDeg from the lifted head (a crocodile: the skull rises as the lower jaw drops). Put the Jaw after the Eyes", Min = 0, Max = 60, Example = "crocodile 24")] public float headLiftDeg;
 
         public override int BoneCount(in SpeciesCtx c) => 1;
         public override int MeshOrder => 100;
@@ -63,6 +65,14 @@ namespace CreatureKit
             if (teethPerSide < 0 || teethPerSide > 24) return $"{id}: teethPerSide must be in 0..24";
             if (teethPerSide > 0 && (!(toothLength > 0f) || !(toothRadius > 0f) || !(teethTo > teethFrom) || teethFrom < 0f || teethTo > 1f)) return $"{id}: teeth need length, radius > 0 and 0 <= teethFrom < teethTo <= 1";
             if (layer < 0 || layer >= PartLayers.MaxParts || toothLayer < 0 || toothLayer >= PartLayers.MaxParts) return $"{id}: layers must be in 0..{PartLayers.MaxParts - 1}";
+            if (!(headLiftDeg >= 0f && headLiftDeg <= 60f)) return $"{id}: headLiftDeg must be in 0..60";
+            if (headLiftDeg > 0f)
+            {
+                if (opensUp) return $"{id}: headLiftDeg lifts the head over a lower jaw (opensUp off)";
+                int me = c.IndexOf(this);
+                for (int i = 0; i < c.Parts.Count; i++)
+                    if (c.Parts[i] is Eyes && me >= 0 && i > me) return $"{id}: headLiftDeg needs the Jaw after the Eyes (it turns the eye bones they wrote)";
+            }
             return Shape().Validate(c) is string p ? $"{id}: {p}" : null;
         }
 
@@ -101,12 +111,18 @@ namespace CreatureKit
             Matrix4x4 bw = m.Bones[bone];
             Vector4 skin = PartMeshEmitter.Rigid(bone);
             RigidLoft L = Shape();
-            int na = L.Around, nr = L.Rings;
             int j = Mathf.Clamp(at.joint, 0, m.Joints - 1);
             float uBase = sp.headCapLength + sp.spacing * j;
             Vector3 jF = m.Rest.Rotations[j] * Vector3.forward, jUp = m.Rest.Rotations[j] * Vector3.up, jp = m.Rest.Joints[j];
-            const float e = 1e-3f;
             float U(Vector3 wp) => Mathf.Max(0f, uBase - Vector3.Dot(wp - jp, jF));
+            if (!hideLoft) EmitLoft(m, L, bw, skin, jUp, U);
+            EmitTeeth(m, bw, bone, jUp, U);
+        }
+
+        void EmitLoft(PartMeshEmitter m, RigidLoft L, Matrix4x4 bw, Vector4 skin, Vector3 jUp, Func<Vector3, float> U)
+        {
+            int na = L.Around, nr = L.Rings;
+            const float e = 1e-3f;
 
             int Pole(float t, Vector3 nLocal)
             {
@@ -142,7 +158,10 @@ namespace CreatureKit
             bool flip = Vector3.Dot(face, q0 - c1) < 0f;
             for (int i = 0; i + 1 < starts.Count; i++)
                 m.Stitch(starts[i], starts[i + 1], na, i == 0, i + 2 == starts.Count, flip);
+        }
 
+        void EmitTeeth(PartMeshEmitter m, Matrix4x4 bw, int bone, Vector3 jUp, Func<Vector3, float> U)
+        {
             // teeth: on each lip edge (phi = 0 right, pi left), toward the closing side, splayed outward
             for (int side = -1; side <= 1; side += 2)
                 for (int i = 0; i < teethPerSide; i++)
@@ -184,6 +203,7 @@ namespace CreatureKit
         readonly float scale, T;
         readonly Vector3 tipLocal, topLocal, bottomLocal;   // hinge-frame points for the bounds
         readonly float pad;
+        readonly bool liftEyes;   // headLiftDeg: the species has eyes on the lifted head
         float still, phaseTime, wait, hold, from;
         int gapes;
         uint seed;
@@ -209,6 +229,12 @@ namespace CreatureKit
             Vector3 p = sim.Joints[0];
             seed = (uint)(Mathf.RoundToInt(p.x * 97f) * 73856093 ^ Mathf.RoundToInt(p.z * 89f) * 19349663 ^ (ordinal + 1) * 83492791);
             wait = jaw.intervalSeconds * T * (0.25f + 0.5f * Hash01(0));
+            if (jaw.headLiftDeg > 0f)
+            {
+                CreatureSpecies sp = sim.Species;
+                int k = sp.RigidHead >= 2 ? sp.RigidHead : jaw.at.joint + 1;
+                foreach (CreaturePart q in KitView.Parts(sp)) if (q is Eyes) liftEyes = sp.eyeJoint < k;
+            }
         }
 
         public PartStage Stage => PartStage.Late;
@@ -265,13 +291,37 @@ namespace CreatureKit
             int j = jaw.at.joint;
             Quaternion r = sim.Rotations[j];
             Vector3 p = sim.Joints[j] + r * (jaw.Hinge * scale);
+            float lift = Lift;
+            if (lift > 0f)
+            {
+                // the head turns up about the hinge: its rigid bones (spine 0..K-1, or the jaw's joint) and the eyes
+                Quaternion up = r * Quaternion.AngleAxis(-lift, Vector3.right) * Quaternion.Inverse(r);
+                Matrix4x4 m = Matrix4x4.TRS(p, up, Vector3.one) * Matrix4x4.TRS(-p, Quaternion.identity, Vector3.one);
+                CreatureSpecies sp = sim.Species;
+                int k = sp.RigidHead >= 2 ? sp.RigidHead : 0;
+                if (k == 0) dst[offset + j] = m * dst[offset + j];
+                else for (int i = 0; i < k; i++) dst[offset + i] = m * dst[offset + i];
+                if (liftEyes)
+                    for (int e = 0; e < 2; e++) dst[offset + sp.EyeBone(e)] = m * dst[offset + sp.EyeBone(e)];
+                dst[offset + bone] = Matrix4x4.TRS(p, up * r * jaw.Open(Angle), new Vector3(scale, scale, scale));
+                return;
+            }
             dst[offset + bone] = Matrix4x4.TRS(p, r * jaw.Open(Angle), new Vector3(scale, scale, scale));
         }
 
-        Vector3 World(Vector3 hingeLocal)
+        // The head's lift now (degrees): headLiftDeg in proportion to the gape.
+        public float Lift => jaw.headLiftDeg > 0f && jaw.gapeDeg > 0f ? jaw.headLiftDeg * Angle / jaw.gapeDeg : 0f;
+
+        // A point of the jaw (hinge frame) in the world, on the lifted head (headLiftDeg).
+        Vector3 World(Vector3 hingeLocal) => World(hingeLocal, Angle);
+
+        Vector3 World(Vector3 hingeLocal, float angle)
         {
             int j = jaw.at.joint;
-            return sim.Joints[j] + sim.Rotations[j] * (jaw.JointPoint(hingeLocal, Angle) * scale);
+            Vector3 q = jaw.Open(angle) * hingeLocal;
+            float lift = Lift;
+            if (lift > 0f) q = Quaternion.AngleAxis(-lift, Vector3.right) * q;
+            return sim.Joints[j] + sim.Rotations[j] * ((jaw.Hinge + q) * scale);
         }
 
         public void EncapsulateBounds(ref Vector3 lo, ref Vector3 hi)
@@ -280,6 +330,13 @@ namespace CreatureKit
             Vector3 a = World(tipLocal), b = World(topLocal), e = World(bottomLocal);
             lo = Vector3.Min(lo, Vector3.Min(a, Vector3.Min(b, e)) - d);
             hi = Vector3.Max(hi, Vector3.Max(a, Vector3.Max(b, e)) + d);
+            if (Lift > 0f)
+            {
+                // the lifted head: about as long as the closed jaw, turned up with it
+                Vector3 h = World(tipLocal, 0f), t = World(topLocal, 0f);
+                lo = Vector3.Min(lo, Vector3.Min(h, t) - d);
+                hi = Vector3.Max(hi, Vector3.Max(h, t) + d);
+            }
         }
 
         public void DrawDebug(ICreatureDebugDraw d)

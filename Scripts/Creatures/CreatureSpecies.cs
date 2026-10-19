@@ -51,6 +51,18 @@ public class LegSpec
     public float clawCurveDeg;
     [Tooltip("Two-bone limb: webbing between the toes, fraction of the toe length (0 = none, 1 = to the tips).")]
     [Range(0f, 1f)] public float toeWeb;
+    // Two-bone limb mesh: a digitigrade dragon / raptor hind leg (Leg2Bone.Digitigrade) - a heavy thigh with muscle
+    // masses, a lean shin, a knobbly raised hock (ankleHeight: the metatarsus' height), a long metatarsus down to
+    // the toes, three forward toes (a fourth as a hallux behind) with knuckles and big curved talons. Off = the
+    // vertebrate limb above.
+    [Tooltip("Two-bone limb: digitigrade dragon / raptor leg mesh (heavy thigh, lean shin, raised hock, long metatarsus, talons).")]
+    public bool digitigrade;
+    [Tooltip("Digitigrade: the thigh's muscle masses, x upperRadius (0 = 0.5).")]
+    public float thighMass;
+    [Tooltip("Digitigrade: overlapping scutes on the front of the shin and metatarsus and on the toes.")]
+    public bool scutes;
+    [Tooltip("Digitigrade: a spur on the back of the hock, metres (0 = none).")]
+    public float spurLength;
 
     public const float DefaultSwingLimitDeg = 55f, DefaultKneeRangeDeg = 35f, DefaultKneeBlend = 0.45f, DefaultAnkleHeight = 1.2f;
     // the ankle height in use, metres at scale 1 (0 for an arthropod leg or a feeler)
@@ -138,6 +150,20 @@ public struct GaitBob
     public float hz;
     [Tooltip("Damping ratio (0.2 bouncy .. 1 dead).")]
     public float damping;
+}
+
+// Speed bursts (the kit's Walk.burst): every so often the cruise speed surges by `factor` for `seconds` - a predator's
+// sudden dash - then falls back. Irregular, seeded per individual; Froude-timed. factor <= 1 = off (bit-identical).
+[Serializable]
+public struct GaitBurst
+{
+    [Tooltip("Cruise speed x this at the peak of a burst (<= 1 = off). The gait's stride limit still caps it.")]
+    public float factor;
+    [Tooltip("Mean time between bursts, seconds at scale 1 (each gap 0.5..1.5 x this, per individual).")]
+    public float every;
+    [Tooltip("Length of one burst, seconds at scale 1 (a quick surge, a hold, an easing back).")]
+    public float seconds;
+    public bool On => factor > 1f && every > 0f && seconds > 0f;
 }
 
 // An extra eye, rigid to the eye bone of its side: offset in the eye joint's frame (x mirrored; x = 0: one eye).
@@ -268,6 +294,7 @@ public class CreatureSpecies : ScriptableObject
     public WingSpec[] wings;
     public FlightSpec flight;
     public GaitBob gaitBob;
+    public GaitBurst gaitBurst;
     // Wave gait (the kit's Walk.pattern Wave, T5.8): the gait groups step strictly in turn, in ascending group id,
     // the next as soon as the last has landed while any foot wants to step - a metachronal wave down the body
     // (CreatureLegs.StartWave). false = the event-driven gait every shipped species walks with.

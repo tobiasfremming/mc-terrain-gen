@@ -11,6 +11,9 @@ using UnityEngine;
 // then exact segment lengths from the root out, each segment inside a bend cone around the previous one (the
 // first around the root direction). The rest target is the rest curve (direction, droop) in the root joint's
 // frame. Froude-scaled: lengths x s, rates / sqrt(s). Allocation-free after construction; main thread.
+// Probing (probeDeg > 0): the rest curve itself sweeps about the root - side to side by probeDeg (mirrored, so the
+// pair sweeps in and out together), up and down by 0.6 x it at 1.37 x the rate, the right strand a quarter cycle
+// behind the left - so the antennae keep feeling ahead, walking or still. probeDeg 0: the curve is still (bit-identical).
 public sealed class CreatureAntennae : IPartRuntime
 {
     const float kTipSoft = 0.5f;    // the pull falls off by this fraction toward the tip
@@ -20,6 +23,8 @@ public sealed class CreatureAntennae : IPartRuntime
     readonly Vector3[] local;       // rest curve points in the joint frame, scale 1 (offset included)
     readonly Vector3[] pts, prev, targetPrev;
     readonly float[] cosBend, sinBend;
+    readonly Vector3[] probeAxis;   // per antenna: the up-down sweep's axis (joint frame), 0 = not probing
+    float clock;
     readonly float scale, T;
     readonly CreatureSpecies sp;          // the runtime species (bone layout); null: bones not written (tests)
     readonly Vector3[] joints;            // the sim's arrays (stepped and posed from them)
@@ -39,6 +44,7 @@ public sealed class CreatureAntennae : IPartRuntime
         for (int a = 0; a < specs.Length; a++) { first[a] = total; total += specs[a].Segments + 1; }
         local = new Vector3[total]; pts = new Vector3[total]; prev = new Vector3[total]; targetPrev = new Vector3[total];
         cosBend = new float[specs.Length]; sinBend = new float[specs.Length];
+        probeAxis = new Vector3[specs.Length];
         for (int a = 0; a < specs.Length; a++)
         {
             AntennaSpec s = specs[a];
@@ -57,6 +63,7 @@ public sealed class CreatureAntennae : IPartRuntime
             }
             float b = s.MaxBend * Mathf.Deg2Rad;
             cosBend[a] = Mathf.Cos(b); sinBend[a] = Mathf.Sin(b);
+            if (s.probeDeg > 0f) probeAxis[a] = axis;
         }
         Reset(joints, rotations);
     }
@@ -75,9 +82,21 @@ public sealed class CreatureAntennae : IPartRuntime
         }
     }
 
+    // The probing turn of antenna a now (joint frame, about its root); identity when it does not probe.
+    public Quaternion Probe(int a)
+    {
+        AntennaSpec s = specs[a];
+        if (!(s.probeDeg > 0f)) return Quaternion.identity;
+        float w = 2f * Mathf.PI * s.probeHz / T * clock, lag = s.side > 0 ? 0.5f * Mathf.PI : 0f;
+        float yaw = Mirror(s) * s.probeDeg * Mathf.Sin(w + lag);
+        float pitch = 0.6f * s.probeDeg * Mathf.Sin(1.37f * w + 2f * lag + 0.7f);
+        return Quaternion.AngleAxis(yaw, Vector3.up) * Quaternion.AngleAxis(pitch, probeAxis[a]);
+    }
+
     public void Step(float h, Vector3[] joints, Quaternion[] rotations)
     {
         if (!(h > 0f)) return;
+        clock += h;
         for (int a = 0; a < specs.Length; a++)
         {
             AntennaSpec s = specs[a];
@@ -85,12 +104,14 @@ public sealed class CreatureAntennae : IPartRuntime
             Quaternion r = rotations[s.joint];
             Vector3 j = joints[s.joint];
             Vector3 root = j + r * (local[o] * scale);
+            bool probing = s.probeDeg > 0f;
+            Quaternion pq = probing ? Probe(a) : Quaternion.identity;
             float w0 = 2f * Mathf.PI * s.stiffnessHz / T, zeta = Mathf.Max(0f, s.damping), drag = Mathf.Max(0f, s.airDrag) / T;
             pts[o] = root; prev[o] = root;
             for (int k = 1; k <= N; k++)
             {
                 int i = o + k;
-                Vector3 target = j + r * (local[i] * scale);
+                Vector3 target = probing ? j + r * ((local[o] + pq * (local[i] - local[o])) * scale) : j + r * (local[i] * scale);
                 Vector3 x = pts[i];
                 Vector3 v = (x - prev[i]) / h;
                 Vector3 vTarget = (target - targetPrev[i]) / h;
@@ -103,7 +124,7 @@ public sealed class CreatureAntennae : IPartRuntime
             }
             // exact lengths from the root out, inside the bend cones
             float seg = s.length / N * scale;
-            Vector3 pd = r * (local[o + 1] - local[o]).normalized;
+            Vector3 pd = probing ? r * (pq * (local[o + 1] - local[o])).normalized : r * (local[o + 1] - local[o]).normalized;
             for (int k = 1; k <= N; k++)
             {
                 int i = o + k;

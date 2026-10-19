@@ -38,7 +38,10 @@ public struct EnclosureArea
     public static float KeepOutFor(CreatureSpecies sp, float sizeScale)
         => sizeScale * (sp.MaxLateralReach + 0.25f * sp.BodyLength);
 
-    public static EnclosureArea For(Vector3 center, Vector3 up, float radius, CreatureSpecies sp, float sizeScale, float margin = 0.2f)
+    // The safe disc's margin inside the lateral reach, metres at scale 1 (x the size scale).
+    public const float DefaultMargin = 0.2f;
+
+    public static EnclosureArea For(Vector3 center, Vector3 up, float radius, CreatureSpecies sp, float sizeScale, float margin = DefaultMargin)
     {
         return new EnclosureArea
         {
