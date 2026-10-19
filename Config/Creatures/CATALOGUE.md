@@ -17,17 +17,17 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 
 | part | kind | status | bones | material layers | use when | used by |
 |---|---|---|---|---|---|---|
-| **SoftBody** | Body | exists | 6 | 5, 6, 7 | boneless bodies: octopus, slug, jelly | TreeOctopus |
-| **SpineBody** | Body | exists | = joints | 0 | anything with a backbone or a segmented trunk | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, WingedSerpent |
-| **ArthropodLeg** | Limb | exists | = segments | 1, 2, 9 | insects, spiders, crabs, centipedes; anything with visible segments | DaddyLongLegs, DesertBeetle, Tarantula |
+| **SoftBody** | Body | exists | 6 + mouthCount x mouth.segments | 5, 6, 7 | boneless bodies: octopus, slug, jelly | Swinger, TreeOctopus |
+| **SpineBody** | Body | exists | = joints | 0 | anything with a backbone or a segmented trunk | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, TreeSpider, WingedSerpent |
+| **ArthropodLeg** | Limb | exists | = segments | 1, 2, 9 | insects, spiders, crabs, centipedes; anything with visible segments | DaddyLongLegs, DesertBeetle, Tarantula, TreeSpider |
 | **Leg2Bone** | Limb | exists | 3 | 1, 2 | lizards, mammals, birds' legs, wing arms | DesertMonitor, KitMonitor, SkyDragon, TestHexapod, WingedSerpent |
 | **Wing** | Wing | exists | 6 + max(1, spec.flankPatches), +1 with spec.groundTallStance | 8, 1, 2 | bats, pterosaurs, dragons; the Fly module makes it fly | SkyDragon, WingedSerpent |
-| **Eyes** | Sense | exists | 2 | 3 | always (every shipped species has two eye bones) | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, TreeOctopus, WingedSerpent |
+| **Eyes** | Sense | exists | 2 | 3 | always (every shipped species has two eye bones) | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Swinger, Tarantula, TestHexapod, TestSnake, TreeOctopus, TreeSpider, WingedSerpent |
 | **Antenna** | Chain | exists | = segments | 8 | whiskers, barbels, antennae, feelers, cerci, ribbon-like streamers | SkyDragon |
-| **Tentacle** | Chain | exists | = spec.segments (0 = 24) | 4 | octopus arms; grabbing arms on any body (after T5.9) | TreeOctopus |
+| **Tentacle** | Chain | exists | = spec.segments (0 = 24) | 4 | octopus arms; grabbing arms on any body (after T5.9) | Swinger, TreeOctopus |
 | **FinStrip** | Fin | exists | 0 (skinned to the spine) | 8 | manes, crests, dorsal / anal fins, tail tufts, frills along a body | FinnedSandEel, SkyDragon |
 | **Flapper** | Fin | exists | = segments (1-3) | 8 | pectoral fins, ear flaps, frills, small paddles that beat or flutter (not wings that fly: Wing) | FinnedSandEel |
-| **RigidCone** | Rigid | exists | 0 (1 with ownBone) | 2 | horns, spikes, fangs, mandibles, chelicerae | SkyDragon, Tarantula, TreeOctopus |
+| **RigidCone** | Rigid | exists | 0 (1 with ownBone) | 2 | horns, spikes, fangs, mandibles, chelicerae | SkyDragon, Swinger, Tarantula, TreeOctopus, TreeSpider |
 | **RigidLoft** | Rigid | exists | 0 (rigid to its joint) | 0, 2 | head shapes: squared snouts, jaws, brows, nostrils, bosses; any rigid lump on a joint | SkyDragon |
 | **Repeat** | Sugar | exists | = count x template |  | centipede legs, spike rows, many fins | - |
 
@@ -35,22 +35,22 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 
 | module | category | status | needs | used by | what |
 |---|---|---|---|---|---|
-| **Ambush** | Behaviour | exists | SoftBody + Tentacle parts (spine bodies: T5.9) | TreeOctopus | Rest / explore / stalk / ambush / strike / hold / retreat (OctopusBrain + prey adapters; arm roles, grooming). Hold 1.5 s, no damage. |
-| **ClimbExcursion** | Behaviour | exists | Climb | DesertMonitor, KitMonitor | Approach a climbable obstacle, climb to a goal on its real surface, rest, descend (ClimbingBrain wrapping Wander). |
+| **Ambush** | Behaviour | exists | SoftBody + Tentacle parts (spine bodies: T5.9) | Swinger, TreeOctopus | Rest / explore / stalk / ambush / strike / hold / retreat (OctopusBrain + prey adapters; arm roles, grooming). Hold 1.5 s, no damage. |
+| **ClimbExcursion** | Behaviour | exists | Climb | DesertMonitor, KitMonitor, TreeSpider | Approach a climbable obstacle, climb to a goal on its real surface, rest, descend (ClimbingBrain wrapping Wander). |
 | **Flee** | Behaviour | exists | Walk | FinnedSandEel | Runs straight away from the nearest threat (CreatureThreats: the viewer in play mode) once it comes within the alarm radius, sliding along the enclosure wall when cornered; calms down after it leaves. Gives the species a ModularBrain (with Wander as the idle default). |
 | **FlightExcursion** | Behaviour | exists | Fly | SkyDragon, WingedSerpent | Rest, Face, Patrol, Soar, Landing on perches; predictive wall turn-back (FlightBrain). |
-| **Wander** | Behaviour | exists |  | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, WingedSerpent | Safe-disc points, walk, pause, glance (WanderBrain). Containment is structural: the head is clamped to the safe radius. |
-| **Climb** | Locomotion | exists | Walk | DesertMonitor, KitMonitor | Per-joint up field, real-geometry contact via ISurfaceProbe, pitch limiter (CreatureClimb, ClimbSpec). Terrain walls >= 50 deg over >= 1/2 body length (R30/R31). 0 = default for every number. |
+| **Wander** | Behaviour | exists |  | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, TreeSpider, WingedSerpent | Safe-disc points, walk, pause, glance (WanderBrain). Containment is structural: the head is clamped to the safe radius. |
+| **Climb** | Locomotion | exists | Walk | DesertMonitor, KitMonitor, TreeSpider | Per-joint up field, real-geometry contact via ISurfaceProbe, pitch limiter (CreatureClimb, ClimbSpec). Terrain walls >= 50 deg over >= 1/2 body length (R30/R31). 0 = default for every number. |
 | **Fly** | Locomotion | exists | Wing parts | SkyDragon, WingedSerpent | Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlight, FlightModel, AirChain). Froude-scaled. twist: the twisting Chinese-dragon air chain (AirTwist). |
 | **Slither** | Locomotion | exists | Walk | DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, TestSnake, WingedSerpent | Lateral head wave the drag chain carries back (undulation in the walk). Long wave: lambda = speed / Hz >= 0.7 body length (R27). |
-| **Walk** | Locomotion | exists | SpineBody | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, WingedSerpent | Head steering in the tangent plane, chain, grounding, gait groups, girdle sway (CreatureSim.SubStep, CreatureLegs). The default locomotion of a spine body. |
-| **Chitin** | Look | exists |  | DaddyLongLegs, DesertBeetle, Tarantula | Knee/segment bands (part 9) and a velvet sheen lobe: arthropod legs. |
-| **Chromatophore** | Look | exists | SoftBody | TreeOctopus | Dynamic colour cells, flash and passing-cloud phase (octopus shader). Makes the look dynamic. |
-| **Cloak** | Look | exists | SoftBody (spine bodies: Phase 4) | TreeOctopus | Dissolve in Forward only: the body vanishes, shadow + SSAO stay (the user's favourite bug). Per-instance, brain-driven, with hysteresis. Octopus today. |
+| **Walk** | Locomotion | exists | SpineBody | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, TreeSpider, WingedSerpent | Head steering in the tangent plane, chain, grounding, gait groups, girdle sway (CreatureSim.SubStep, CreatureLegs). The default locomotion of a spine body. |
+| **Chitin** | Look | exists |  | DaddyLongLegs, DesertBeetle, Tarantula, TreeSpider | Knee/segment bands (part 9) and a velvet sheen lobe: arthropod legs. |
+| **Chromatophore** | Look | exists | SoftBody | Swinger, TreeOctopus | Dynamic colour cells, flash and passing-cloud phase (octopus shader). Makes the look dynamic. |
+| **Cloak** | Look | exists | SoftBody (spine bodies: Phase 4) | Swinger, TreeOctopus | Dissolve in Forward only: the body vanishes, shadow + SSAO stay (the user's favourite bug). Per-instance, brain-driven, with hysteresis. Octopus today. |
 | **Layers** | Look | exists |  | - | Restyles part ids (material layers) for this species: shading model (Skin, Chitin, Membrane, Eye, Claw), tint, smoothness, and which layers (pattern, scale grain, sheen, shimmer) each has. Rows not listed keep the registry's (Kit/PartLayers.cs). A new part needs a row, never a shader edit. |
 | **Membrane** | Look | exists |  | FinnedSandEel, SkyDragon, WingedSerpent | Translucent veined membrane (part 8, the Membrane shading model, CreatureMembrane.hlsl): wings, FinStrip fins, antennae - any part whose layer row is Membrane. |
 | **Shimmer** | Look | exists |  | SkyDragon | Iridescent scale shimmer: thin-film colour bands (colour -> colour2 with the view angle) travelling head to tail along the body's back and flanks, a faint glow in each band (Creature.shader, part 0). The SkyDragon's signature; cheap (one pow, one cos per body pixel). |
-| **Skin** | Look | exists |  | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, TreeOctopus, WingedSerpent | Palette dorsal/flank/belly + procedural pattern by rest arc length (CreaturePattern.hlsl); per-individual size/hue/value jitter. Layers of parts 0-2. |
+| **Skin** | Look | exists |  | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Swinger, Tarantula, TestHexapod, TestSnake, TreeOctopus, TreeSpider, WingedSerpent | Palette dorsal/flank/belly + procedural pattern by rest arc length (CreaturePattern.hlsl); per-individual size/hue/value jitter. Layers of parts 0-2. |
 
 ## Species (examples to copy)
 
@@ -63,10 +63,12 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | FinnedSandEel | kit | Spine | SpineBody, Eyes, 2x FinStrip, 2x Flapper | Walk (Diagonal), Slither, Wander, Flee, Skin, Membrane | 54 |
 | KitMonitor | kit | Spine | SpineBody, 4x Leg2Bone, Eyes | Walk (Diagonal), Slither, Climb, Wander, ClimbExcursion, Skin | 40 |
 | SkyDragon | kit | Spine | SpineBody, 6x Leg2Bone, 2x Wing, Eyes, 4x RigidCone, 5x FinStrip, 4x Antenna, 7x RigidLoft | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane, Shimmer | 136 |
+| Swinger | legacy | Soft | 2x Tentacle, SoftBody, Eyes, RigidCone | Ambush, Skin, Cloak, Chromatophore | 97 |
 | Tarantula | legacy | Spine | SpineBody, 10x ArthropodLeg, Eyes, RigidCone | Walk (Tetrapod), Wander, Skin, Chitin | 75 |
 | TestHexapod | legacy | Spine | SpineBody, 6x Leg2Bone, Eyes | Walk (Tripod), Wander, Skin | 28 |
 | TestSnake | legacy | Spine | SpineBody, Eyes | Walk, Slither, Wander, Skin | 42 |
 | TreeOctopus | legacy | Soft | 8x Tentacle, SoftBody, Eyes, RigidCone | Ambush, Skin, Cloak, Chromatophore | 201 |
+| TreeSpider | legacy | Spine | SpineBody, 10x ArthropodLeg, Eyes, RigidCone | Walk (Tetrapod), Climb, Wander, ClimbExcursion, Skin, Chitin | 75 |
 | WingedSerpent | legacy | Spine | SpineBody, 4x Leg2Bone, 2x Wing, Eyes | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane | 73 |
 
 ## Parameters
@@ -84,7 +86,7 @@ Shape-matched soft lattice (OctopusBody/SoftLattice: 14 particles, 5 clusters) d
 | `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
 | `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
 | `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
-| `spec` | CephalopodSpec | Spec | - | the octopus body (CephalopodSpec: web, head, mantle, siphon, lattice); its `arm` comes from the Tentacle parts - fields: armCount, arm, bodyMass, webRadius, webDepth, headRadius, mantleRadius, mantleLength, mantleTiltDeg, eyeRadius, siphonLength, siphonRadius, beta, headStiffness, tipStiffness, breathAmp, breathHz, bodyDamping, subSteps, iterations, look, cloakEnabled |  |  |
+| `spec` | CephalopodSpec | Spec | - | the octopus body (CephalopodSpec: web, head, mantle, siphon, lattice); its `arm` comes from the Tentacle parts - fields: armCount, arm, bodyMass, webRadius, webDepth, headRadius, mantleRadius, mantleLength, mantleTiltDeg, eyeRadius, siphonLength, siphonRadius, beta, headStiffness, tipStiffness, breathAmp, breathHz, bodyDamping, subSteps, iterations, minHolds, mouthCount, mouth, mouthRing, eyeStalk, mantlePear, beakLength, look, cloakEnabled |  |  |
 
 ### SpineBody
 

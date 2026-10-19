@@ -142,14 +142,15 @@ namespace CreatureKit
     }
 
     [Serializable]
-    [Part("SoftBody", PartKind.Body, Bones = "6", Summary = "Shape-matched soft lattice (OctopusBody/SoftLattice: 14 particles, 5 clusters) driven by its Tentacle chains: mantle, head, web. Deforms everywhere: never a rigid head.",
+    [Part("SoftBody", PartKind.Body, Bones = "6 + mouthCount x mouth.segments", Summary = "Shape-matched soft lattice (OctopusBody/SoftLattice: 14 particles, 5 clusters) driven by its Tentacle chains: mantle, head, web. Deforms everywhere: never a rigid head.",
           System = "OctopusBody (self-ticking ICreatureBody)", MaterialLayers = new[] { 5, 6, 7 }, UseWhen = "boneless bodies: octopus, slug, jelly")]
     public sealed class SoftBody : CreaturePart
     {
         public const int SoftBones = 6;
         [Param(ParamUnit.Spec, "the octopus body (CephalopodSpec: web, head, mantle, siphon, lattice); its `arm` comes from the Tentacle parts")]
         public CephalopodSpec spec;
-        public override int BoneCount(in SpeciesCtx c) => SoftBones;
+        // the 6 soft bones, then the mouth tentacles' (cephalopod.mouthCount; OctopusBody's order)
+        public override int BoneCount(in SpeciesCtx c) => SoftBones + OctopusBody.MouthBonesFor(spec);
     }
 
     // ------------------------------------------------------------------ limbs

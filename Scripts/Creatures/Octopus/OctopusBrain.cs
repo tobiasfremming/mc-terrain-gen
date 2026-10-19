@@ -20,10 +20,23 @@ using UnityEngine;
 //   Retreat     deimatic flash 0.3 s, cloak 1, Travel to the farthest high region at urgency 1; uncloak after
 //               4-8 s of calm -> CanopyRest
 //   Fallen      grounded and low: Travel to the nearest climbable region; arms anchor on the ground (crawl)
+// With mouth tentacles (OctopusController.Feeder: the two-armed swinger) the hunt ends differently - the arms never
+// strike:
+//   Stalk       far (no hold within 1.2 CreepLengths L of the prey, level): Travel - swing closer; near: Stalk at
+//               low urgency - creep, pulling itself up on the hold near the prey to just below it (CreepBelow L);
+//               back to swinging only past 2 CreepLengths (hysteresis)
+//   Feed        the prey is within the mouth's reach: Hold (the arms keep hanging on), intent.feed - the mouth
+//               tentacles reach for it slowly; it gets away -> Stalk
+//   Eat         a mouth tentacle has it: Hold until the feeder has eaten it (Eaten event) -> CanopyRest, sated for
+//               SatedSeconds (no new hunt)
 // Goals are clipped to the enclosure (centre, radius, height cap).
 public sealed class OctopusBrain
 {
-    public enum State { CanopyRest, Explore, Stalk, Ambush, Strike, Hold, Retreat, Fallen }
+    public enum State { CanopyRest, Explore, Stalk, Ambush, Strike, Hold, Retreat, Fallen, Feed, Eat }
+    public const float CreepLengths = 0.5f, CreepBelow = 0.25f, FeedGiveUpSeconds = 8f, SatedSeconds = 20f;   // x arm length; x TimeScale
+    public int Meals;                            // cumulative (mouth feeders)
+    float satedUntil = -1f;
+    bool creeping;
 
     public const float PerceptionSeconds = 0.2f;
     public const float ConeDeg = 270f;
@@ -97,7 +110,7 @@ public sealed class OctopusBrain
         {
             case State.CanopyRest:
                 it.mode = OctoMode.Rest; it.goal = head; it.urgency = 0f;
-                if (seen && Target != null) { Enter(State.Stalk); break; }
+                if (seen && Target != null && c.Time >= satedUntil) { Enter(State.Stalk); break; }
                 if (IsFallen(c, head, L)) { Enter(State.Fallen); break; }
                 if (c.Time > nextExplore && CanopyRegions.Count > 0)
                 {
@@ -108,7 +121,7 @@ public sealed class OctopusBrain
                 break;
             case State.Explore:
                 it.mode = OctoMode.Travel; it.goal = goal; it.urgency = 0.4f;
-                if (seen && Target != null) { Enter(State.Stalk); break; }
+                if (seen && Target != null && c.Time >= satedUntil) { Enter(State.Stalk); break; }
                 // (no route to it after NoRouteSeconds - the hints show no way - or the trip takes too long: rest,
                 // then a new goal)
                 bool noRoute = c.Hints != null && StateTime > NoRouteSeconds * c.Body.TimeScale && !c.Coordinator.Route.Valid;
@@ -119,6 +132,19 @@ public sealed class OctopusBrain
                     nextExplore = c.Time + RestMin + (RestMax - RestMin) * Rand();
                     Enter(State.CanopyRest);
                 }
+                break;
+            case State.Stalk when c.Feeder != null:
+                StalkToFeed(c, ref it, head, L);
+                break;
+            case State.Feed:
+                it.mode = OctoMode.Hold; it.goal = head; it.prey = Target; it.feed = true;
+                if (Target == null || c.Feeder == null) { Target = null; Enter(State.CanopyRest); break; }
+                // it got away (out of reach, or nothing caught in time): stalk again
+                if (!c.Feeder.Feeding && StateTime > 0.3f && !c.Feeder.InReach(Target) || StateTime > FeedGiveUpSeconds * c.Body.TimeScale) Enter(State.Stalk);
+                break;
+            case State.Eat:
+                it.mode = OctoMode.Hold; it.goal = head; it.prey = Target; it.feed = true;
+                if (c.Feeder == null || !c.Feeder.Feeding && StateTime > 0.5f) { Target = null; Enter(State.CanopyRest); }
                 break;
             case State.Stalk:
             {
@@ -160,18 +186,80 @@ public sealed class OctopusBrain
                 if (StateTime > 40f) { Target = null; Enter(State.CanopyRest); }
                 break;
             case State.Fallen:
-                // back up from the ground: hand over hand along the trunk (swinging needs something to hang from)
+            {
+                // back up from the ground: hand over hand along the trunk (swinging needs something to hang from).
+                // A region high in a crown is no goal to crawl to (the arms reached up into the air under it and
+                // the body wandered about the ground until one happened onto the trunk): first the foot of the
+                // nearest surface that rises (a trunk, a wall), crawling; then up it to the region's height.
+                if (StateTime < dt * 1.5f) { region = NearestRegion(head, L); haveFoot = atFoot = false; nextFootSearch = 0f; }
+                if (!haveFoot && c.Time >= nextFootSearch)
+                {
+                    haveFoot = FindRisingSurface(c, head, region, L, out footPoint, out footNormal);
+                    nextFootSearch = c.Time + FootSearchSeconds * c.Body.TimeScale;
+                }
+                goal = region;
+                if (haveFoot)
+                {
+                    Vector3 up = c.Up, off = footNormal - up * OctoMath.Dot(footNormal, up);
+                    off = OctoMath.Norm(off, Vector3.zero) * (ClimbOffLengths * L);
+                    Vector3 rel = footPoint - head;
+                    float level = (rel - up * OctoMath.Dot(rel, up)).magnitude;
+                    // at the foot (an arm's reach from the surface): up it, beside it, to the region's height
+                    if (level < FootReachLengths * L) atFoot = true;
+                    goal = atFoot ? footPoint + off + up * OctoMath.Dot(region - footPoint, up) : footPoint + off + up * (0.3f * L);
+                }
                 it.mode = OctoMode.Travel; it.goal = goal; it.urgency = 0.7f; it.climb = true;
-                if (StateTime < dt * 1.5f) goal = NearestRegion(head, L);
-                if (!c.Board.Grounded && c.Board.AnchoredCount >= 2 && (head - goal).magnitude < 0.6f * L) Enter(State.CanopyRest);
-                if (StateTime > 60f) Enter(State.CanopyRest);
+                if (!c.Board.Grounded && c.Board.AnchoredCount >= 2 && (head - goal).magnitude < 0.6f * L && (!haveFoot || atFoot)) { Enter(State.CanopyRest); atFoot = false; }
+                if (StateTime > 60f) { Enter(State.CanopyRest); atFoot = false; }
                 break;
+            }
         }
         c.Intent = it;
         UpdateLook(dt);
     }
 
-    internal void OnGrab(IPreyTarget p) { GrabsMade++; Target = p; if (Mode == State.Strike) Enter(State.Hold); }
+    internal void OnGrab(IPreyTarget p) { GrabsMade++; Target = p; if (Mode == State.Strike) Enter(State.Hold); else if (Mode == State.Feed) Enter(State.Eat); }
+
+    // The feeder has eaten it: rest, sated for a while.
+    internal void OnEaten(IPreyTarget p)
+    {
+        Meals++;
+        if (Target == p) Target = null;
+        seen = false;
+        satedUntil = time + SatedSeconds;
+        nextExplore = time + RestMin + (RestMax - RestMin) * Rand();
+        Enter(State.CanopyRest);
+    }
+
+    // Hunting with the mouth: swing close, creep the last bit to just below the prey, feed when it is in reach.
+    void StalkToFeed(OctopusController c, ref OctoIntent it, Vector3 head, float L)
+    {
+        if (Target == null || c.Time - lastSeenTime > 8f) { Target = null; it.mode = OctoMode.Rest; it.goal = head; Enter(State.CanopyRest); return; }
+        if (c.Feeder.InReach(Target))
+        {
+            it.mode = OctoMode.Hold; it.goal = head; it.prey = Target; it.feed = true;
+            Enter(State.Feed);
+            return;
+        }
+        Vector3 predicted = LastSeen + lastVel * 1f, up = c.Up;
+        goal = Clip(predicted - up * (CreepBelow * L), L);
+        // creep once a hold lies near below the prey (level distance): the body pulls itself up on it. The swinging
+        // head passing close is not enough - from a hold a bar behind, a pull goes nowhere. (Hysteresis: swinging
+        // close and creeping do not flip at the threshold.)
+        float near = float.PositiveInfinity;
+        for (int a = 0; a < c.Board.Arms; a++)
+        {
+            if (!c.Board.Anchored[a]) continue;
+            Vector3 d = predicted - c.Board.Anchor[a];
+            d -= up * OctoMath.Dot(d, up);
+            near = Mathf.Min(near, d.magnitude);
+        }
+        bool far = near > (creeping ? 2f : 1.2f) * CreepLengths * L;
+        creeping = !far;
+        it.mode = far ? OctoMode.Travel : Watched ? OctoMode.Rest : OctoMode.Stalk;
+        it.goal = goal;
+        it.urgency = far ? 0.4f : 0.15f;
+    }
     internal void OnRelease(IPreyTarget p) { }
 
     static bool AnyArmHolding(OctopusController c)
@@ -188,11 +276,26 @@ public sealed class OctopusBrain
         Enter(State.Retreat);
     }
 
+    // On the ground below the canopy - or hanging far below it (a swing that caught holds low on a trunk left the
+    // body hanging at full stretch under the crowns, out of reach of every branch and of every route: it gave up
+    // trip after trip and never got back up). Either way it climbs back.
+    public const float LowHangLengths = 1.2f;   // x arm length below the nearest canopy region
     bool IsFallen(OctopusController c, Vector3 head, float L)
     {
-        if (!c.Board.Grounded || CanopyRegions.Count == 0) return false;
+        if (CanopyRegions.Count == 0) return false;
         Vector3 n = NearestRegion(head, L);
-        return Vector3.Dot(n - head, c.Up) > 0.8f * L;
+        float below = Vector3.Dot(n - head, c.Up);
+        // (Grounded is any upward-facing contact - an arm lying over a branch top counts: an octopus hanging in a
+        // crown from holds above it is not on the ground. It climbed back from there, hand over hand, a few times a
+        // minute: most of its role changes)
+        return c.Board.Grounded && !HoldsAbove(c, head, L) ? below > 0.8f * L : below > LowHangLengths * L;
+    }
+
+    static bool HoldsAbove(OctopusController c, Vector3 head, float L)
+    {
+        int n = 0;
+        for (int a = 0; a < c.Board.Arms; a++) if (c.Board.Anchored[a] && Vector3.Dot(c.Board.Anchor[a] - head, c.Up) > 0.3f * L) n++;
+        return n >= c.Board.MinAnchorsHanging;
     }
 
     // ------------------------------------------------------------------ perception
@@ -211,7 +314,9 @@ public sealed class OctopusBrain
             Vector3 d = p.Position - head;
             float dist = d.magnitude;
             if (dist > range || dist < 1e-4f) continue;
-            if (Vector3.Dot(d, fwd) < cosHalf * dist) continue;
+            // (the cone is for finding prey; the one it is already watching it keeps in view all round - the eyes
+            // turn: a body rocking on its holds turned its blind spot onto the prey it stalked and lost it)
+            if (p != Target && Vector3.Dot(d, fwd) < cosHalf * dist) continue;
             // one line of sight cast: the canopy (or anything) in between hides the prey
             if (c.Cast(head, d, dist - 0.05f * L, out SurfaceHit h)) continue;
             if (dist < bestD) { bestD = dist; bestP = p; }
@@ -337,6 +442,39 @@ public sealed class OctopusBrain
         if (!float.IsInfinity(EnclosureRadius) && h.magnitude > lim && lim > 0f) { h = h.normalized * lim; p.x = EnclosureCentre.x + h.x; p.z = EnclosureCentre.z + h.y; }
         if (!float.IsInfinity(HeightCap) && p.y > EnclosureCentre.y + HeightCap) p.y = EnclosureCentre.y + HeightCap;
         return p;
+    }
+
+    // Fallen: the foot of the climb back (FindRisingSurface), and whether the body has reached it.
+    public const float FootSearchSeconds = 2f;         // x TimeScale: no rising surface seen yet -> look again
+    public const float FootSearchLengths = 4f;         // x arm length: how far it looks
+    public const float FootReachLengths = 0.7f;        // x arm length, level: at the foot, the climb starts
+    public const float ClimbOffLengths = 0.2f;         // x arm length: the climb's goal stands this far off the surface
+    const int FootRays = 16;
+    Vector3 region, footPoint, footNormal;
+    bool haveFoot, atFoot;
+    float nextFootSearch;
+
+    // The nearest surface that rises (steeper than ~53 deg: a trunk or a wall, not the ground) around the body, a
+    // little above the ground, weighted toward the region the octopus wants to get back to. One ring of casts.
+    bool FindRisingSurface(OctopusController c, Vector3 head, Vector3 toward, float L, out Vector3 point, out Vector3 normal)
+    {
+        Vector3 up = c.Up;
+        Vector3 t0 = OctoMath.Norm(OctoMath.Cross(up, Mathf.Abs(up.y) < 0.9f ? Vector3.up : Vector3.right), Vector3.right), t1 = OctoMath.Cross(up, t0);
+        Vector3 origin = head + up * (0.5f * L);
+        point = normal = Vector3.zero;
+        float best = float.MaxValue; bool found = false;
+        for (int i = 0; i < FootRays; i++)
+        {
+            float a = i * (2f * Mathf.PI / FootRays);
+            Vector3 dir = t0 * Mathf.Cos(a) + t1 * Mathf.Sin(a);
+            if (!c.Cast(origin, dir, FootSearchLengths * L, out SurfaceHit h)) continue;
+            if (Mathf.Abs(OctoMath.Dot(h.normal, up)) > 0.6f) continue;
+            if (!c.HoldInside(h.point)) continue;
+            Vector3 r = toward - h.point;
+            float s = h.distance + 0.5f * (r - up * OctoMath.Dot(r, up)).magnitude;
+            if (s < best) { best = s; point = h.point; normal = h.normal; found = true; }
+        }
+        return found;
     }
 
     Vector3 NearestRegion(Vector3 from, float L)

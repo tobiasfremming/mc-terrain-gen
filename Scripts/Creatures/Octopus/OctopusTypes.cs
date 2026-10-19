@@ -18,6 +18,7 @@ public struct OctoIntent
     public Vector3 swingDir;      // (swinging, later) the swing's direction
     public Vector3 routeNext;     // (swinging, later) the next hint waypoint; zero = none
     public bool climb;            // Travel / Retreat by hand-over-hand pulling (back up from the ground) instead of swinging
+    public bool feed;             // Hold: the mouth tentacles (MouthFeeder) take `prey` when it is within their reach
 }
 
 // What an arm is for (user decision 5): the octopus (ArmCoordinator) decides, the arm executes it itself.
@@ -25,7 +26,8 @@ public struct OctoIntent
 //   Grip    grip on the route and pull      Feel    explore around, grips only when allowed (support low)
 //   Hang    limp, draped down               Groom   strokes over the mantle or a neighbouring arm
 //   Tuck    curled compactly under the body Strike  may strike / hold prey
-public enum ArmRole { Rest, Anchor, Grip, Feel, Hang, Groom, Tuck, Strike }
+//   Feed    (mouth tentacles only, MouthFeeder) reach for, grab and eat prey; never an arm's role
+public enum ArmRole { Rest, Anchor, Grip, Feel, Hang, Groom, Tuck, Strike, Feed }
 
 // What the arm says back about its role.
 public enum ArmReport { None, Busy, Done, Failed }
@@ -77,6 +79,9 @@ public interface IBranchHints
 public sealed class OctopusEvents
 {
     public event Action<IPreyTarget> Strike, Grabbed, Released;
+    // The prey was eaten (MouthFeeder, after the grab): the owner removes it. No release follows.
+    public event Action<IPreyTarget> Eaten;
+    internal void RaiseEaten(IPreyTarget p) => Eaten?.Invoke(p);
     internal void RaiseStrike(IPreyTarget p) => Strike?.Invoke(p);
     internal void RaiseGrabbed(IPreyTarget p) => Grabbed?.Invoke(p);
     internal void RaiseReleased(IPreyTarget p) => Released?.Invoke(p);

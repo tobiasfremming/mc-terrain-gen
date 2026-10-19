@@ -118,7 +118,7 @@ public sealed class CreatureDebugView : MonoBehaviour
     static readonly Color32 kRoute = new Color32(0xFF, 0xE0, 0x40, 0xFF), kRouteDone = new Color32(0x80, 0x80, 0x80, 0xC0);
     static readonly Color32 kWaypoint = new Color32(0xFF, 0x40, 0xE0, 0xFF), kPivot = new Color32(0x40, 0xE0, 0xFF, 0xFF);
     static readonly Color32 kCatch = new Color32(0xFF, 0x9A, 0x30, 0xFF);
-    const int OctopusVertices = 2 * (3 + 3 + 3 + 1 + BranchRoute.MaxWaypoints + 1 + 16);
+    const int OctopusVertices = 2 * (3 + 3 + 3 + 1 + BranchRoute.MaxWaypoints + 1 + 16 + 4);
 
     void Cross(Vector3 p, float r, Color32 c)
     {
@@ -158,6 +158,14 @@ public sealed class CreatureDebugView : MonoBehaviour
             int g = c.Coordinator.GroupOf(a);
             Color32 col = g < 0 ? kChain : g == b.PivotGroup ? kGoal : kCatch;
             Line(c.Body.Arms[a].X[0], b.Anchor[a], col);
+        }
+        // mouth tentacles feeding (the swinger): the beak to the prey they reach for or eat (magenta)
+        MouthFeeder fd = c.Feeder;
+        if (fd != null && fd.Feeding && fd.Prey != null)
+        {
+            Vector3 p = fd.Prey.Position;
+            Line(fd.Centre, p, kWaypoint);
+            Cross(p, 0.5f * r, kWaypoint);
         }
     }
 

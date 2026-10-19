@@ -129,6 +129,17 @@ namespace CreatureKit
         }
 
         public static Vector4 Rigid(int bone) => new Vector4(bone, bone, 1f, 0f);
+
+        // A vertex normal from an unnormalised direction (a cross product of mesh tangents). Never .normalized:
+        // Unity returns ZERO below a magnitude of 1e-5, and the tangents of small parts (mm-sized fins, finite
+        // differences over 1e-3 of a section) cross to ~1e-6 - a zero normal is a NaN pixel in Creature.shader,
+        // which bloom spreads into a white blow-out (the glowing heads and tails, CreatureMeshNormalTests).
+        // Bit-identical to .normalized wherever that returned a unit vector.
+        public static Vector3 Unit(Vector3 v, Vector3 fallback)
+        {
+            float len = v.magnitude;
+            return len > 1e-12f && !float.IsInfinity(len) ? v / len : fallback;
+        }
         // bone0 is always the heavier bone (the nearest rigid frame of the vertex)
         public static Vector4 Blend(int b0, int b1, float w1) => w1 > 0.5f ? new Vector4(b1, b0, w1, 1f - w1) : new Vector4(b0, b1, 1f - w1, w1);
 

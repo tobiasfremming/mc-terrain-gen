@@ -41,7 +41,7 @@ public sealed class CreatureRenderer : IDisposable
         kPatternType = Shader.PropertyToID("_PatternType"), kPatternParams = Shader.PropertyToID("_PatternParams"),
         kSurfaceParams = Shader.PropertyToID("_SurfaceParams"), kBodyParams = Shader.PropertyToID("_BodyParams"),
         kOctoColors0 = Shader.PropertyToID("_OctoSucker"), kOctoColors1 = Shader.PropertyToID("_OctoSubsurface"),
-        kOctoParams = Shader.PropertyToID("_OctoParams"), kOctoParams2 = Shader.PropertyToID("_OctoParams2"),
+        kOctoParams = Shader.PropertyToID("_OctoParams"), kOctoParams2 = Shader.PropertyToID("_OctoParams2"), kOctoParams3 = Shader.PropertyToID("_OctoParams3"),
         kMembraneColor = Shader.PropertyToID("_MembraneColor"), kMembraneParams = Shader.PropertyToID("_MembraneParams"),
         kBandColor = Shader.PropertyToID("_BandColor"), kSheenColor = Shader.PropertyToID("_SheenColor"), // arthropod bands, velvet sheen (alpha = strength)
         kShimmerColor = Shader.PropertyToID("_ShimmerColor"), kShimmerColor2 = Shader.PropertyToID("_ShimmerColor2"), kShimmerParams = Shader.PropertyToID("_ShimmerParams"), // iridescent shimmer
@@ -230,6 +230,8 @@ public sealed class CreatureRenderer : IDisposable
             props.SetColor(kOctoColors1, ol.Subsurface);
             props.SetVector(kOctoParams, new Vector4(ol.ChromaScale, ol.Papillae, ol.SuckerSize, ol.CloudSpeed));
             props.SetVector(kOctoParams2, new Vector4(ol.Wetness, ol.RimGlint, arm.RootRadius, arm.Length));
+            // bands per rest metre: the mesh's arc length is at scale 1, so the bands scale with the animal
+            props.SetVector(kOctoParams3, new Vector4(ol.ArmBands, ol.ArmBandContrast, 0f, 0f));
         }
         else
         {

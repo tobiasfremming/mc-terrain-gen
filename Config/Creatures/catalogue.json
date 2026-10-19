@@ -5,7 +5,7 @@
       "name": "SoftBody",
       "kind": "Body",
       "status": "exists",
-      "bones": "6",
+      "bones": "6 + mouthCount x mouth.segments",
       "materialLayers": [
         5,
         6,
@@ -15,6 +15,7 @@
       "useWhen": "boneless bodies: octopus, slug, jelly",
       "summary": "Shape-matched soft lattice (OctopusBody/SoftLattice: 14 particles, 5 clusters) driven by its Tentacle chains: mantle, head, web. Deforms everywhere: never a rigid head.",
       "usedBy": [
+        "Swinger",
         "TreeOctopus"
       ],
       "params": [
@@ -86,7 +87,7 @@
           "type": "CephalopodSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "the octopus body (CephalopodSpec: web, head, mantle, siphon, lattice); its `arm` comes from the Tentacle parts - fields: armCount, arm, bodyMass, webRadius, webDepth, headRadius, mantleRadius, mantleLength, mantleTiltDeg, eyeRadius, siphonLength, siphonRadius, beta, headStiffness, tipStiffness, breathAmp, breathHz, bodyDamping, subSteps, iterations, look, cloakEnabled",
+          "meaning": "the octopus body (CephalopodSpec: web, head, mantle, siphon, lattice); its `arm` comes from the Tentacle parts - fields: armCount, arm, bodyMass, webRadius, webDepth, headRadius, mantleRadius, mantleLength, mantleTiltDeg, eyeRadius, siphonLength, siphonRadius, beta, headStiffness, tipStiffness, breathAmp, breathHz, bodyDamping, subSteps, iterations, minHolds, mouthCount, mouth, mouthRing, eyeStalk, mantlePear, beakLength, look, cloakEnabled",
           "range": "",
           "example": ""
         }
@@ -114,6 +115,7 @@
         "Tarantula",
         "TestHexapod",
         "TestSnake",
+        "TreeSpider",
         "WingedSerpent"
       ],
       "params": [
@@ -378,7 +380,8 @@
       "usedBy": [
         "DaddyLongLegs",
         "DesertBeetle",
-        "Tarantula"
+        "Tarantula",
+        "TreeSpider"
       ],
       "params": [
         {
@@ -1128,10 +1131,12 @@
         "FinnedSandEel",
         "KitMonitor",
         "SkyDragon",
+        "Swinger",
         "Tarantula",
         "TestHexapod",
         "TestSnake",
         "TreeOctopus",
+        "TreeSpider",
         "WingedSerpent"
       ],
       "params": [
@@ -1418,6 +1423,7 @@
       "useWhen": "octopus arms; grabbing arms on any body (after T5.9)",
       "summary": "Verlet + XPBD-lite particle chain (TentacleChain) that wraps real bark (WrapMarch); driven by TentacleAgent (reach, grip, hold). Octopus arms today; socket-rooted on a spine body is T5.9.",
       "usedBy": [
+        "Swinger",
         "TreeOctopus"
       ],
       "params": [
@@ -1876,8 +1882,10 @@
       "summary": "Curved cone rigid to a spine joint: horn, spike, claw, chelicera with a fang (BodyAppendage). mirror emits the pair from this one part (no .L/.R: it has no bones). ownBone: the octopus siphon.",
       "usedBy": [
         "SkyDragon",
+        "Swinger",
         "Tarantula",
-        "TreeOctopus"
+        "TreeOctopus",
+        "TreeSpider"
       ],
       "params": [
         {
@@ -2345,6 +2353,7 @@
       "needs": "SoftBody + Tentacle parts (spine bodies: T5.9)",
       "summary": "Rest / explore / stalk / ambush / strike / hold / retreat (OctopusBrain + prey adapters; arm roles, grooming). Hold 1.5 s, no damage.",
       "usedBy": [
+        "Swinger",
         "TreeOctopus"
       ],
       "params": []
@@ -2357,7 +2366,8 @@
       "summary": "Approach a climbable obstacle, climb to a goal on its real surface, rest, descend (ClimbingBrain wrapping Wander).",
       "usedBy": [
         "DesertMonitor",
-        "KitMonitor"
+        "KitMonitor",
+        "TreeSpider"
       ],
       "params": []
     },
@@ -2438,6 +2448,7 @@
         "Tarantula",
         "TestHexapod",
         "TestSnake",
+        "TreeSpider",
         "WingedSerpent"
       ],
       "params": []
@@ -2450,7 +2461,8 @@
       "summary": "Per-joint up field, real-geometry contact via ISurfaceProbe, pitch limiter (CreatureClimb, ClimbSpec). Terrain walls >= 50 deg over >= 1/2 body length (R30/R31). 0 = default for every number.",
       "usedBy": [
         "DesertMonitor",
-        "KitMonitor"
+        "KitMonitor",
+        "TreeSpider"
       ],
       "params": [
         {
@@ -2818,6 +2830,7 @@
         "Tarantula",
         "TestHexapod",
         "TestSnake",
+        "TreeSpider",
         "WingedSerpent"
       ],
       "params": [
@@ -2949,7 +2962,8 @@
       "usedBy": [
         "DaddyLongLegs",
         "DesertBeetle",
-        "Tarantula"
+        "Tarantula",
+        "TreeSpider"
       ],
       "params": [
         {
@@ -2988,6 +3002,7 @@
       "needs": "SoftBody",
       "summary": "Dynamic colour cells, flash and passing-cloud phase (octopus shader). Makes the look dynamic.",
       "usedBy": [
+        "Swinger",
         "TreeOctopus"
       ],
       "params": []
@@ -2999,6 +3014,7 @@
       "needs": "SoftBody (spine bodies: Phase 4)",
       "summary": "Dissolve in Forward only: the body vanishes, shadow + SSAO stay (the user's favourite bug). Per-instance, brain-driven, with hysteresis. Octopus today.",
       "usedBy": [
+        "Swinger",
         "TreeOctopus"
       ],
       "params": []
@@ -3260,10 +3276,12 @@
         "FinnedSandEel",
         "KitMonitor",
         "SkyDragon",
+        "Swinger",
         "Tarantula",
         "TestHexapod",
         "TestSnake",
         "TreeOctopus",
+        "TreeSpider",
         "WingedSerpent"
       ],
       "params": [
@@ -3585,6 +3603,25 @@
       ]
     },
     {
+      "name": "Swinger",
+      "kitVersion": 0,
+      "plan": "Soft",
+      "bones": 97,
+      "parts": [
+        "Tentacle:arm0",
+        "Tentacle:arm1",
+        "SoftBody:body",
+        "Eyes:eyes",
+        "RigidCone:siphon"
+      ],
+      "modules": [
+        "Ambush",
+        "Skin",
+        "Cloak",
+        "Chromatophore"
+      ]
+    },
+    {
       "name": "Tarantula",
       "kitVersion": 0,
       "plan": "Spine",
@@ -3671,6 +3708,35 @@
         "Skin",
         "Cloak",
         "Chromatophore"
+      ]
+    },
+    {
+      "name": "TreeSpider",
+      "kitVersion": 0,
+      "plan": "Spine",
+      "bones": 75,
+      "parts": [
+        "SpineBody:body",
+        "ArthropodLeg:leg0",
+        "ArthropodLeg:leg1",
+        "ArthropodLeg:leg2",
+        "ArthropodLeg:leg3",
+        "ArthropodLeg:leg4",
+        "ArthropodLeg:leg5",
+        "ArthropodLeg:leg6",
+        "ArthropodLeg:leg7",
+        "ArthropodLeg:leg8",
+        "ArthropodLeg:leg9",
+        "Eyes:eyes",
+        "RigidCone:cone0"
+      ],
+      "modules": [
+        "Walk",
+        "Climb",
+        "Wander",
+        "ClimbExcursion",
+        "Skin",
+        "Chitin"
       ]
     },
     {

@@ -139,6 +139,8 @@ sealed class CreatureLegs
     // 1.3 m/s): the waiting leg was stretched past its reach and the IK dragged the planted foot.
     public float StopSpeed { get; private set; } = float.PositiveInfinity;
     public float StopDecel = 0f;
+    float climbStride; bool climbStrideValid;   // ClimbStrideSpeed low-passed (a cap that toggled jerked the body)
+    const float kClimbStrideTau = 0.3f;         // seconds (x sqrt scale)
 
     public CreatureLegs(CreatureSpecies sp, IGroundProbe ground, Func<Vector3, Vector3> upAt,
                         Vector3[] joints, Quaternion[] rotations, float scale, float timeScale = 1f, CreatureClimb climb = null)
@@ -170,7 +172,7 @@ sealed class CreatureLegs
             PointOffset[l] = points;
             if (models[l] != null) points += models[l].PointCount;
             Vector3 ry = Mirror(specs[l].restOffset, l); ry.y = 0f;
-            restYaw[l] = ry.sqrMagnitude > 1e-12f ? ry.normalized : new Vector3(specs[l].side, 0f, 0f);
+            restYaw[l] = SurfaceMath.Unit(ry, new Vector3(specs[l].side, 0f, 0f));
         }
         Points = new Vector3[points];
         // the metachronal wave: within a gait group the rearmost leg lifts first, each leg further forward later
@@ -236,7 +238,7 @@ sealed class CreatureLegs
             ground.Probe(near, u, Window(l), out p, out n);
             rest[l] = p;
             target[l] = p;
-            State[l].footNormal = n.sqrMagnitude > 1e-12f ? n.normalized : u;
+            State[l].footNormal = SurfaceMath.Unit(n, u);
             State[l].stepFromNormal = State[l].stepToNormal = State[l].footNormal;
         }
         SolveIK(0f);
@@ -257,7 +259,7 @@ sealed class CreatureLegs
             if (Grip) GripPoint(l, near, u, got, ref p, ref n);
             rest[l] = p; target[l] = p;
             State[l].stepping = false; State[l].stepT = 0f;
-            State[l].footNormal = n.sqrMagnitude > 1e-12f ? n.normalized : u;
+            State[l].footNormal = SurfaceMath.Unit(n, u);
             State[l].stepFromNormal = State[l].stepToNormal = State[l].footNormal;
             prevSwing[l] = -1f; prevKnee[l] = -1f;
         }
@@ -341,7 +343,7 @@ sealed class CreatureLegs
     Vector3 Up(int l)
     {
         if (Climbing) return climb.Up[specs[l].attachJoint];
-        Vector3 u = upAt(joints[specs[l].attachJoint]); return u.sqrMagnitude > 1e-12f ? u.normalized : Vector3.up;
+        Vector3 u = upAt(joints[specs[l].attachJoint]); return SurfaceMath.Unit(u, Vector3.up);
     }
 
     // ---- climbing ----
@@ -515,7 +517,15 @@ sealed class CreatureLegs
         }
 
         // climbing, the stride-limited speed of the stance the legs have now (MaxSpeed, read by the next sub-step)
-        MaxSpeed = Climbing ? ClimbStrideSpeed() : walkMaxSpeed;
+        if (Climbing)
+        {
+            float cs = ClimbStrideSpeed();
+            if (!climbStrideValid) climbStride = cs;
+            else climbStride += (cs - climbStride) * (1f - Mathf.Exp(-dt / (kClimbStrideTau * timeScale)));
+            climbStrideValid = true;
+            MaxSpeed = climbStride;
+        }
+        else { MaxSpeed = walkMaxSpeed; climbStrideValid = false; }
 
         UpdateDroop(dt);
 
@@ -543,7 +553,7 @@ sealed class CreatureLegs
                 float sm = t * t * (3f - 2f * t);
                 // the foot turns from the ground it left to the ground it lands on over the swing
                 Vector3 fn = Vector3.Lerp(State[l].stepFromNormal, State[l].stepToNormal, sm);
-                State[l].footNormal = fn.sqrMagnitude > 1e-12f ? fn.normalized : State[l].stepToNormal;
+                State[l].footNormal = SurfaceMath.Unit(fn, State[l].stepToNormal);
                 // the swing passes over the rest point at mid-step (quadratic Bezier through it), so the
                 // limb swings through its rest pose instead of cutting past the shoulder
                 Vector3 a = State[l].stepFrom, b = State[l].stepTo;
@@ -739,7 +749,7 @@ sealed class CreatureLegs
             else if (!Climbing) p = q; // climbing: a point pushed off the surface stays where the surface is
         }
         State[l].stepTo = p;
-        State[l].stepToNormal = n.sqrMagnitude > 1e-12f ? n.normalized : u;
+        State[l].stepToNormal = SurfaceMath.Unit(n, u);
     }
 
     // A swinging foot passes the shoulder: keep it at least as far away as the knee's flex limit
@@ -966,7 +976,7 @@ sealed class CreatureLegs
         Quaternion r = rotations[s.attachJoint];
         Vector3 u = Up(l), rh = r * restYaw[l];
         rh -= u * Vector3.Dot(rh, u);
-        rh = rh.sqrMagnitude > 1e-12f ? rh.normalized : r * restYaw[l];
+        rh = SurfaceMath.Unit(rh, r * restYaw[l]);
         Vector3 xf = Vector3.Cross(u, poses[l].planeNormal);   // the leg's outward direction (plane normal = x cross up)
         float swing = Vector3.Angle(rh, xf);
         Vector3 moved = xf - rh;
@@ -1008,7 +1018,7 @@ sealed class CreatureLegs
             dst[offset + sp.LegBone(l, 0)] = Matrix4x4.TRS(st.shoulder, upper, sc);
             dst[offset + sp.LegBone(l, 1)] = Matrix4x4.TRS(st.elbow, LowerRot(upper, st.foot - st.elbow), sc);
 
-            Vector3 n = st.footNormal.sqrMagnitude > 1e-12f ? st.footNormal.normalized : Vector3.up;
+            Vector3 n = SurfaceMath.Unit(st.footNormal, Vector3.up);
             Vector3 f = Vector3.ProjectOnPlane(ar * Vector3.forward, n);
             if (f.sqrMagnitude < 1e-8f) f = Vector3.ProjectOnPlane(ar * Vector3.up, n);
             if (f.sqrMagnitude < 1e-8f) f = Vector3.ProjectOnPlane(Vector3.forward, n);

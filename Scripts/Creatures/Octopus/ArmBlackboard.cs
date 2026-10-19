@@ -30,8 +30,12 @@ public sealed class ArmBlackboard
     public int PivotGroup = -1;
     public Vector3 SwingPivot, SwingRoute;   // the pivot's front hold (along the route), the route direction (level)
     public Vector3 SwingCentre;              // the centroid of the holds the body hangs from
+    public Vector3 SupportCentre;            // where the pivot group's own search for support centres (beside its holds)
     public Vector3 SwingTarget;              // the route's next waypoint (the catch the arms reach for)
     public bool HasSwingTarget;
+    // Catches only at the waypoint (false: the swing has found nothing there for a while - any hold ahead on the
+    // way to it will do, ArmCoordinator.StuckSeconds)
+    public bool SwingTargetStrict = true;
     public readonly bool[] Pulling;                  // the one arm that pulls the body this tick (-1: none)
     public int CommittedSupport { get; private set; }   // anchored arms whose role keeps them holding (Anchor, Grip)
     public int AnchoredCount { get; private set; }

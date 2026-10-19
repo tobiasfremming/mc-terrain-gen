@@ -133,7 +133,7 @@ namespace CreatureKit
                         Vector3 di = p[Mathf.Min(i + 1, cols) * (rows + 1) + j] - p[Mathf.Max(i - 1, 0) * (rows + 1) + j];
                         Vector3 dj = p[i * (rows + 1) + Mathf.Min(j + 1, rows)] - p[i * (rows + 1) + Mathf.Max(j - 1, 0)];
                         Vector3 nn = Vector3.Cross(dj, di);
-                        nn = nn.sqrMagnitude > 1e-20f ? nn.normalized : normal;
+                        nn = PartMeshEmitter.Unit(nn, normal);   // never .normalized (zero below 1e-5)
                         if (Vector3.Dot(nn, normal) < 0f) nn = -nn;          // +n = the paddle's upper side
                         nn *= sign;
                         float t = i / (float)cols, v = j / (float)rows;

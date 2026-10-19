@@ -25,6 +25,12 @@ public sealed class OctopusLab : MonoBehaviour
     [Tooltip("The prey creature on the grove floor (e.g. the desert beetle or snake); none = only the player.")]
     public CreatureSpecies preySpecies;
     public float preyScale = 0f;
+    [Tooltip("How many prey creatures (the swinger's grove: several small spiders).")]
+    public int preyCount = 1;
+    [Tooltip("The prey climbs the grove's trees (ClimbingBrain on their real bark; the species needs climb.canClimb).")]
+    public bool preyClimbs = false;
+    [Tooltip("A prey that was eaten (mouth feeders: the swinger) comes back after this many seconds, at a tree's foot.")]
+    public float respawnSeconds = 20f;
     [Tooltip("Octopus size scale; 0 = the species' scale (x the individual's size jitter).")]
     public float octopusScale = 0f;
     [Tooltip("Opt-in: ignore the species' scale and fit the size to the grove's branches (MinWrapTurns).")]
@@ -44,6 +50,10 @@ public sealed class OctopusLab : MonoBehaviour
 
     public OctopusCreature Octopus { get; private set; }
     public CreatureSim Prey { get; private set; }
+    public readonly List<CreatureSim> PreySims = new List<CreatureSim>();
+    // placed (or given up): the next OctopusLab on this object waits for it, so two groves never take one spot
+    public bool Done { get; private set; }
+    public int Meals { get; private set; }
     public CreatureEnclosure Enclosure { get; private set; }
     public readonly List<EnclosurePlant> Trees = new List<EnclosurePlant>();
     public BranchHints Hints { get; private set; }
@@ -68,8 +78,28 @@ public sealed class OctopusLab : MonoBehaviour
             yield return null;
             waited += Time.unscaledDeltaTime;
         }
-        if (player == null || world.Ground == null) { Debug.LogWarning("[OctopusLab] no ground / player; no grove placed."); yield break; }
-        Place(world, player);
+        // groves one after another (each keeps clear of the ones placed before it)
+        while (!EarlierDone() && waited <= 3f * kWaitSeconds) { yield return null; waited += Time.unscaledDeltaTime; }
+        if (player == null || world.Ground == null) { Debug.LogWarning("[OctopusLab] no ground / player; no grove placed."); Done = true; yield break; }
+        try { Place(world, player); }
+        finally { Done = true; }
+    }
+
+    bool EarlierDone()
+    {
+        foreach (OctopusLab l in GetComponents<OctopusLab>())
+        {
+            if (l == this) return true;
+            if (l.enabled && l.octopus != null && !l.Done) return false;
+        }
+        return true;
+    }
+
+    int Index()
+    {
+        OctopusLab[] all = GetComponents<OctopusLab>();
+        for (int i = 0; i < all.Length; i++) if (all[i] == this) return i;
+        return 0;
     }
 
     PlantPrototypeSet SetFor(int i)
@@ -174,30 +204,86 @@ public sealed class OctopusLab : MonoBehaviour
         Octopus.Viewer = Camera.main != null ? Camera.main.transform : player;
         Octopus.Brain.Prey.Add(new PlayerPrey(player));
 
-        // the prey creature on the floor, walking around the trunks
+        // the prey creatures: on the floor walking around the trunks, or (preyClimbs: the swinger's spiders) climbing
+        // the trees' real bark
         if (preySpecies != null)
         {
             float pScale = preyScale > 0f ? preyScale : preySpecies.scale;
-            EnclosureArea parea = EnclosureArea.For(centre, cUp, radius, preySpecies, CreatureLab.MaxScale(preySpecies, pScale));
-            parea.obstacleCenters = new Vector3[Enclosure.obstacles.Count]; parea.obstacleRadii = new float[Enclosure.obstacles.Count];
-            for (int i = 0; i < Enclosure.obstacles.Count; i++) { parea.obstacleCenters[i] = Enclosure.obstacles[i]; parea.obstacleRadii[i] = Enclosure.obstacles[i].w; }
-            parea.keepOut = EnclosureArea.KeepOutFor(preySpecies, CreatureLab.MaxScale(preySpecies, pScale));
-            var brain = new PreyBrain(new WanderBrain(parea, seed + 1), seed + 1);
-            Vector3 pAt = centre + t0 * (0.5f * groveRadius);
-            if (ground.Probe(pAt + cUp * 2f, cUp, kProbeWindow + 2f, out Vector3 pg, out _)) pAt = pg;
-            Prey = world.Spawn(preySpecies, pAt, t1, brain, parea, seed + 1, pScale);
-            OctopusCreature oct = Octopus;
-            Octopus.Brain.Prey.Add(new CreaturePrey(Prey, brain) { GrabberPosition = () => oct.Body.HeadCentre });
+            preyArea = EnclosureArea.For(centre, cUp, radius, preySpecies, CreatureLab.MaxScale(preySpecies, pScale));
+            int no = Enclosure.obstacles.Count;
+            preyArea.obstacleCenters = new Vector3[no]; preyArea.obstacleRadii = new float[no];
+            for (int i = 0; i < no; i++) { preyArea.obstacleCenters[i] = Enclosure.obstacles[i]; preyArea.obstacleRadii[i] = Enclosure.obstacles[i].w; }
+            preyArea.keepOut = EnclosureArea.KeepOutFor(preySpecies, CreatureLab.MaxScale(preySpecies, pScale));
+            if (preyClimbs && preySpecies.climb.canClimb)
+            {
+                preyArea.obstacleClimbable = new bool[no];
+                for (int i = 0; i < no; i++) preyArea.obstacleClimbable[i] = true;
+                preyArea.maxHeight = 0.8f * tallest;
+            }
+            preyWorld = world; preyScaleUsed = pScale; preyCentre = centre; preyUp = cUp; preyT0 = t0; preyT1 = t1; preyRadius = groveRadius;
+            for (int k = 0; k < Mathf.Max(1, preyCount); k++) SpawnPrey(k);
+            Prey = PreySims.Count > 0 ? PreySims[0] : null;
         }
+        Octopus.Controller.Events.Eaten += OnEaten;
 
         if (logEvents)
         {
+            Octopus.Controller.Events.Eaten += p => Debug.Log($"[OctopusLab] {octopus.name} ate {Name(p)}");
             Octopus.Controller.Events.Strike += p => Debug.Log($"[OctopusLab] strike at {Name(p)}");
             Octopus.Controller.Events.Grabbed += p => Debug.Log($"[OctopusLab] grabbed {Name(p)}");
             Octopus.Controller.Events.Released += p => Debug.Log($"[OctopusLab] released {Name(p)}");
         }
         Debug.Log($"[OctopusLab] grove of {Trees.Count} trees at {centre} (r {radius:F1} m, flatness {flatness:F3}, tallest {tallest:F1} m), " +
                   $"octopus at scale {ChosenScale:F2} holding with {held} arms, prey {(Prey != null ? preySpecies.name : "player only")}, hints {Hints.TreeCount} trees");
+    }
+
+    // ------------------------------------------------------------------ prey (spawn, eaten, respawn)
+
+    EnclosureArea preyArea;
+    CreatureWorld preyWorld;
+    float preyScaleUsed, preyRadius;
+    Vector3 preyCentre, preyUp, preyT0, preyT1;
+    int preySpawned;
+    readonly List<float> respawnAt = new List<float>();
+
+    // Prey k: at a tree's foot (climbers: a little out from the trunk) or on the floor between the trees.
+    void SpawnPrey(int k)
+    {
+        int seedK = seed + 1 + 17 * preySpawned++;
+        float ring = preyClimbs ? 0f : 0.5f * preyRadius;
+        Vector3 at = preyCentre + preyT0 * ring;
+        if (preyClimbs && preyArea.obstacleCenters != null && preyArea.obstacleCenters.Length > 0)
+        {
+            int o = (k + preySpawned) % preyArea.obstacleCenters.Length;
+            float a = 2.4f * preySpawned;
+            Vector3 off = (preyT0 * Mathf.Cos(a) + preyT1 * Mathf.Sin(a)) * (preyArea.obstacleRadii[o] + 0.6f);
+            at = preyArea.obstacleCenters[o] + off;
+        }
+        if (preyWorld.Ground.Probe(at + preyUp * 2f, preyUp, kProbeWindow + 2f, out Vector3 pg, out _)) at = pg;
+        ICreatureBrain inner = preyClimbs ? (ICreatureBrain)new ClimbingBrain(preyArea, seedK, 0.9f) : new WanderBrain(preyArea, seedK);
+        var brain = new PreyBrain(inner, seedK);
+        CreatureSim sim = preyWorld.Spawn(preySpecies, at, preyT1, brain, preyArea, seedK, preyScaleUsed);
+        PreySims.Add(sim);
+        OctopusCreature oct = Octopus;
+        Octopus.Brain.Prey.Add(new CreaturePrey(sim, brain) { GrabberPosition = () => oct.Body.HeadCentre });
+    }
+
+    // Eaten (a mouth feeder's grab-and-eat): the prey is gone - no gore, it simply leaves the world - and another
+    // comes back at a tree's foot after respawnSeconds.
+    void OnEaten(IPreyTarget p)
+    {
+        Meals++;
+        if (!(p is CreaturePrey cp)) return;
+        Octopus.Brain.Prey.Remove(p);
+        PreySims.Remove(cp.Sim);
+        if (preyWorld != null) preyWorld.Despawn(cp.Sim);
+        respawnAt.Add(Time.time + respawnSeconds);
+    }
+
+    void Update()
+    {
+        for (int i = respawnAt.Count - 1; i >= 0; i--)
+            if (Time.time >= respawnAt[i] && preySpecies != null && preyWorld != null) { respawnAt.RemoveAt(i); SpawnPrey(PreySims.Count); }
     }
 
     // ------------------------------------------------------------------ role readout (plan T5)
@@ -235,7 +321,7 @@ public sealed class OctopusLab : MonoBehaviour
         float minutes = Mathf.Clamp(c.Time / 60f, 1f / 60f, 1f);
         float weight = Octopus.Body.TotalMass * OctopusController.Gravity;
         roleText.Length = 0;
-        roleText.Append("octopus  ").Append(Octopus.Brain.Mode).Append("  intent ").Append(c.Intent.mode)
+        roleText.Append(octopus.name).Append("  ").Append(Octopus.Brain.Mode).Append("  intent ").Append(c.Intent.mode)
                 .Append("  speed ").Append(c.Board.DesiredVelocity.magnitude.ToString("F2")).Append(" m/s  holds ").Append(b.AnchoredCount)
                 .Append("  role changes/min/arm ").Append((recent / (minutes * n)).ToString("F1")).Append('\n');
         // the intent: where it is going, its route over the branches (waypoint / count), the swing
@@ -258,13 +344,24 @@ public sealed class OctopusLab : MonoBehaviour
             if (b.Anchored[a]) roleText.Append("  holds");
             roleText.Append('\n');
         }
+        // the mouth tentacles (mouth feeders: the swinger): role, what they do, meals
+        MouthFeeder fd = c.Feeder;
+        if (fd != null)
+        {
+            roleText.Append("mouth x").Append(fd.Count).Append("  ").Append(fd.RoleOf(0).ToString().PadRight(7)).Append(fd.Mode.ToString().PadRight(9));
+            if (fd.Feeding && fd.Prey != null) roleText.Append(" prey ").Append(fd.DistanceTo(fd.Prey).ToString("F2")).Append(" m (reach ").Append(fd.Reach.ToString("F2")).Append(')');
+            roleText.Append("  grabs ").Append(fd.Grabs).Append(" eaten ").Append(fd.Eats).Append('\n');
+        }
         roleCache = roleText.ToString();
     }
 
     void OnGUI()
     {
         if (!showRoles || Octopus == null || roleCache.Length == 0) return;
-        GUI.Box(new Rect(10f, 10f, 560f, 22f + 16f * 10f), roleCache);
+        // one box per grove, stacked (the octopus's, then the swinger's)
+        int lines = 1;
+        for (int i = 0; i < roleCache.Length; i++) if (roleCache[i] == '\n') lines++;
+        GUI.Box(new Rect(10f, 10f + Index() * 200f, 560f, 6f + 16f * lines), roleCache);
     }
 
     static string Name(IPreyTarget p) => p is PlayerPrey ? "the player" : p is CreaturePrey cp ? cp.Sim.Species.name : "prey";

@@ -5,7 +5,8 @@ using UnityEngine;
 // The creature lab scene: the SampleScene's world objects (light, volume, player + camera, target, terrain
 // manager, grass; no plant scatter) copied into a fresh scene on the flat lab world, plus a Creatures root
 // with the CreatureWorld, the CreatureLab that places one enclosure (or aviary) per roster entry at runtime and,
-// when the roster has a grove animal (a soft body: the tree octopus), the OctopusLab with its grove.
+// for every grove animal in the roster (a soft body: the tree octopus, the two-armed swinger), an OctopusLab with
+// its own grove (placed one after another).
 // The animals are Config/Creatures/CreatureLabRoster.asset (creature kit T3.5: habitats from the species'
 // modules, sizes from its scale overrides). Derived, not hand-edited: regenerate with the menu item.
 //
@@ -24,6 +25,9 @@ public static class CreatureLabScene
         "Assets/TerrainGen/Config/Flora/Prototypes/TreePlant_Prototypes.asset",
     };
     const string kGrovePreyPath = "Assets/TerrainGen/Config/Creatures/DesertBeetle.asset";
+    // a mouth feeder's grove (the swinger, design 2026-10-19): smaller trees (branches within its 1.4 m arms), several
+    // small spiders climbing them
+    const string kSpiderPreyPath = "Assets/TerrainGen/Config/Creatures/TreeSpider.asset";
 
     static readonly string[] kRoots = { "Directional Light", "Global Volume", "Player", "TargetTransform", "Terrain", "TerrainGrass" };
 
@@ -48,7 +52,7 @@ public static class CreatureLabScene
         if (roster == null) return "Missing " + CreatureLabRoster.AssetPath;
         for (int i = 0; i < roster.entries.Count; i++)
             if (roster.entries[i].species == null) return CreatureLabRoster.AssetPath + ": entry " + i + " names no species";
-        roster.Split(out var enclosures, out CreatureSpecies grove);
+        roster.SplitGroves(out var enclosures, out var groves);
 
         var render = SampleSceneCopy.RenderSnapshot.Capture();
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
@@ -66,7 +70,7 @@ public static class CreatureLabScene
         lab.plantScale = 2f;   // the Baobab at 2x (creature-module skill: the lab's shade tree)
         root.AddComponent<CreatureDebugView>();
         lab.enclosurePlant = AssetDatabase.LoadAssetAtPath<PlantPrototypeSet>(kBaobabPath);
-        if (grove != null)
+        foreach (CreatureSpecies grove in groves)
         {
             var octo = root.AddComponent<OctopusLab>();
             octo.octopus = grove;
@@ -75,6 +79,13 @@ public static class CreatureLabScene
             octo.groveSets = sets.ToArray();
             octo.treeScale = 1f;
             octo.preySpecies = AssetDatabase.LoadAssetAtPath<CreatureSpecies>(kGrovePreyPath);
+            if (grove.cephalopod.MouthCount > 0)
+            {
+                // tuning starting points, not measured in the Editor yet
+                octo.treeScale = 0.6f; octo.groveTrees = 5; octo.canopyOverlap = 0.6f;
+                octo.preySpecies = AssetDatabase.LoadAssetAtPath<CreatureSpecies>(kSpiderPreyPath);
+                octo.preyCount = 4; octo.preyClimbs = true; octo.seed = 47;
+            }
         }
         copies.Add(root);
 
@@ -85,6 +96,6 @@ public static class CreatureLabScene
         AssetDatabase.SaveAssets();
         return "Built " + kScenePath + " <- " + kConfigPath + " (" + (cfg.defaultDensity != null ? cfg.defaultDensity.name : "null")
              + ", globe " + cfg.useGlobe + ", plants " + cfg.enablePlants + "; roster " + enclosures.Count + " enclosures"
-             + (grove != null ? " + grove (" + grove.name + ")" : "") + ")";
+             + (groves.Count > 0 ? " + groves (" + string.Join(", ", groves.ConvertAll(g => g.name)) + ")" : "") + ")";
     }
 }

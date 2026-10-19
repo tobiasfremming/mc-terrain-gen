@@ -74,7 +74,7 @@ public static class FinStripMesh
                     Vector3 dc = p[Mathf.Min(c + 1, cols) * (rows + 1) + k] - p[Mathf.Max(c - 1, 0) * (rows + 1) + k];
                     Vector3 dr = p[c * (rows + 1) + Mathf.Min(k + 1, rows)] - p[c * (rows + 1) + Mathf.Max(k - 1, 0)];
                     Vector3 n = Vector3.Cross(dc, dr);
-                    n = n.sqrMagnitude > 1e-20f ? n.normalized : Vector3.right;
+                    n = CreatureKit.PartMeshEmitter.Unit(n, Vector3.right);   // never .normalized (zero below 1e-5)
                     n *= sign;
                     float v = k / (float)rows;
                     m.pos.Add(p[i] + n * kSheetOffset);

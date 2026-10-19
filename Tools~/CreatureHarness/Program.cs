@@ -39,8 +39,7 @@ public static class Program
         // and were removed; the dragon's Size moved the other way - float chaos, not the head. On merge/next the wyvern's MaxBend and Size pass offline again and were removed)
         // Seeded samples of chaotic runs: the rigid head moves which seeds land in a failure mode the integration branch
         // has too (measured 2026-10-19 on more seeds, integration 310a026+ vs this branch; findings for their owners)
-        { "CreatureClimbWhipTests.LabCycle_SlopedBuriedFoot_NoWhip",
-          "finding: on the 16-deg slope the tail tip (joint 25) goes into the bark while the body leaves the trunk - the gait sway turns the path's tail into it (Path stays outside, Joints 10.4 cm in at seed 2 t=4599). Integration itself, seeds 12..39: 2/28 over the inside bound (worst 50 cm), 5/28 over the whip bound; this branch 1/28 and 3/28" },
+        // (R38 climbing fix 2026-10-19: CreatureClimbWhipTests.LabCycle_SlopedBuriedFoot_NoWhip passes offline and in Unity again - entry removed)
         { "CreatureDragonTwistTests.Brain_Manoeuvres_InTheAviary(1,0.94)",
           "finding: manoeuvres in 3 min are a seeded sample - integration has 2/16 seed x size runs under 3 (s3 x1.06: 2, s4 x1.06: 1), this branch 2/16 (s1 x0.94: 2, s3 x1.06: 2)" },
         { "CreatureKitTests(SkyDragon).Size",

@@ -32,6 +32,7 @@ public sealed class ArmCoordinator
     public const float FailCooldownSeconds = 3f;    // x TimeScale
     public const float DoneCooldownSeconds = 1.5f;  // x TimeScale
     public const int MaxChangesPerDecision = 2;
+    public const float RetakeBelow = 0.3f, RetakeAbove = 0.5f;   // facing: a free grip arm below gives Grip up, a free arm above takes it (early)
     const int RoleCount = 8;
 
     public float Stickiness = 0.25f;                // tests: 0 shows what hysteresis prevents
@@ -240,7 +241,9 @@ public sealed class ArmCoordinator
             }
         }
 
-        int support = b.MinAnchors + 1;
+        // (never every arm: one must stay free to grip ahead - a two-armed animal with both arms kept as support
+        // could not move hand over hand)
+        int support = Mathf.Min(b.MinAnchors + 1, arms - 1);
         int anchoredFree = 0;   // anchored arms not striking
         for (int a = 0; a < arms; a++) if (b.Anchored[a] && want[a] != ArmRole.Strike) anchoredFree++;
 
@@ -400,7 +403,14 @@ public sealed class ArmCoordinator
                 if (!forced)
                 {
                     if (budget <= 0) continue;
-                    if (!modeChanged && now - b.RoleSince[a] < hold) continue;
+                    // (a free grip arm still looking about - not reaching, not holding - whose side the body has
+                    // turned away from the route, and a free arm the body has turned toward it, trade early: the
+                    // body rocks on its holds and turns as the arms reach - a facing kept for MinHold went stale
+                    // within half a second)
+                    bool turned = travel && !SwingTravel(it) && !b.Anchored[a] && c.Agents[a].IsLooking
+                                  && (cur == ArmRole.Grip ? facing[a] < RetakeBelow : w == ArmRole.Grip && facing[a] > RetakeAbove);
+                    // (after half the minimum hold: a role is never flipped straight back)
+                    if (!modeChanged && now - b.RoleSince[a] < (turned ? 0.5f * hold : hold)) continue;
                     budget--;
                 }
                 SetRole(b, a, w, now);
@@ -510,7 +520,12 @@ public sealed class ArmCoordinator
     public const float CatchAhead = 0.25f;            // x arm length: a hold this far ahead of the pivot catches
     public const float PumpAfterSeconds = 0.8f;       // x TimeScale: no catch this long after a transfer -> pump
     public const float PumpRadial = 0.07f, PumpDrive = 0.06f;
-    public const float PumpCapDeg = 45f, SwingDampAboveDeg = 52f, SwingDampRate = 1.4f;
+    public const float PumpCapDeg = 45f, SwingDampRate = 1.4f;
+    // The energy bound (by construction, not by tuning the pump): above GovernFromDeg of energy amplitude the
+    // whole animal is damped (OctopusBody.SwingGovernor), ramping to GovernRate (x 1/TimeScale) at GovernFullDeg.
+    // The pump stops at PumpCapDeg below it, so pumping alone never reaches the governor; a transfer onto holds
+    // far ahead (the body starts well behind its new pivot) does, and the governor takes that energy back out.
+    public const float GovernFromDeg = 40f, GovernFullDeg = 60f, GovernRate = 4f;   // deg, deg, 1/s (x 1/TimeScale)
     public const float FollowSlack = 1.02f;
     public const float MaxPumpRate = 0.6f;            // LengthTarget change per second (x 1/TimeScale)
     public const float HangChord = 0.75f, HangReelRate = 0.12f;   // x arm length; LengthTarget per second (x 1/TimeScale)
@@ -518,11 +533,16 @@ public sealed class ArmCoordinator
     public readonly SwingPhase Swing = new SwingPhase();
     public readonly BranchRoute Route = new BranchRoute();   // the planned waypoints to the goal (with hints)
     public const float ReplanSeconds = 6f;            // x TimeScale: no transfer this long -> plan again from here
+    public const float StuckSeconds = 3f;             // x TimeScale: no transfer this long -> catches short of the waypoint
+    public const float HorizonReplanSeconds = 0.5f;   // x TimeScale: the soonest a route that ended short is planned on
     public const float WaypointReach = 0.45f;         // x arm length: holds this near a waypoint have reached it
     public const float CatchNear = 0.6f;              // x arm length: a catch this near the waypoint counts
     public int Replans, WaypointsPassed;              // cumulative
     public int Swings, BranchSwings, Regroups, PivotLost;   // cumulative: transfers, transfers onto another surface, group assignments, pivots that lost every hold
-    public float SwingDamping { get; private set; }   // extra body damping while the swing is too wide (1/s)
+    public float SwingDamping { get; private set; }   // extra body damping while the swing settles at its goal (1/s)
+    public float SwingGovernor { get; private set; }  // whole-animal damping while the swing is too wide (1/s)
+    public Vector3 SwingPush { get; private set; }    // the pump's push on the whole animal (m/s^2, OctopusBody.SwingPush)
+    public const float PumpAccel = 0.15f, PumpTaperBoost = 2f;   // x g; the taper (1 - A/cap) x boost, at most PumpAccel
     public bool Pumping { get; private set; }
     public float PlayPump;                            // > 0: pump even without a catch waiting (idle swinging)
     readonly int[] swingGroup;
@@ -633,7 +653,7 @@ public sealed class ArmCoordinator
             b.SwingLen[a] = 0f; swingGroup[a] = -1;
             ArmCommand cmd = b.Command[a]; cmd.swing = false; cmd.letGo = false; cmd.group = -1; b.Command[a] = cmd; b.Group[a] = -1;
         }
-        SwingDamping = 0f; Pumping = false;
+        SwingDamping = SwingGovernor = 0f; SwingPush = Vector3.zero; Pumping = false;
         Route.Clear(); b.HasSwingTarget = false;
     }
 
@@ -673,7 +693,7 @@ public sealed class ArmCoordinator
         {
             // hanging from nothing of the groups (the rear arms, or falling): every group arm looks for a hold
             for (int a = 0; a < arms; a++) SetSwingCommand(b, a, swingGroup[a] >= 0, false, 0f);
-            Swing.Reset(); Pumping = false; SwingDamping = 0f;
+            Swing.Reset(); Pumping = false; SwingDamping = SwingGovernor = 0f; SwingPush = Vector3.zero;
             return;
         }
         // the route: planned over the branch hints from the holds to the goal (again for a new goal, or when the
@@ -684,7 +704,11 @@ public sealed class ArmCoordinator
         needPlan = false;
         // (a plan that found no route is tried again soon: the holds have moved)
         float again = (Route.Valid ? ReplanSeconds : 1f) * ts;
-        if (c.Hints != null && !restingNow && (newGoal || !SwingArrived && now - transferAt > again && now - plannedAt > again))
+        // a route that ended short of the goal (the plan's horizon: its query budget, or the hints ran out there) is
+        // planned on from the holds it reached at once - swinging on without a waypoint, any hold ahead was a catch,
+        // a trunk's too, and the body swung down a stem out of the crowns
+        bool horizon = Route.Valid && Route.Done && !Route.ReachesGoal && now - plannedAt > HorizonReplanSeconds * ts;
+        if (c.Hints != null && !restingNow && (newGoal || !SwingArrived && (horizon || now - transferAt > again && now - plannedAt > again)))
         {
             if (!newGoal) Replans++;
             Route.Plan(c.Hints, P, c.Intent.goal, up, L, 1.5f * tipR);
@@ -702,14 +726,23 @@ public sealed class ArmCoordinator
         }
         b.HasSwingTarget = Route.Valid && !Route.Done;
         b.SwingTarget = b.HasSwingTarget ? Route.Next : c.Intent.goal;
+        // no transfer for StuckSeconds: the waypoint is out of reach from this hang (and the pump has not brought
+        // it into reach) - a hold ahead on the way to it is a catch too, and the swing moves up to it
+        b.SwingTargetStrict = now - transferAt < StuckSeconds * ts;
         // the pivot's front: catches count as ahead of its foremost hold (a pivot spread over two branches would
         // otherwise take a catch on the forward one of them as a swing ahead - and hang between them, not swing)
         float front = FrontOf(b, pg, P, Rl, out int rear, out float back);
         b.SwingPivot = P + Rl * front; b.SwingRoute = Rl; b.SwingCentre = P;
         // spread along the route (holds on two branches): the rearmost lets go, if the support allows - the body
-        // swings under the forward ones
-        if (front - back > SpreadLengths * L && rear >= 0 && b.CanRelease(rear) && pivotN > b.MinAnchorsHanging) SetLetGo(b, rear, true);
-        Swing.Update(body.Lattice.CentreOfMass(), P, up, Rl, OctopusController.Gravity, dt, 0.06f * ts);
+        // swings under the forward ones. With no hold to spare (one rear and one front hold: the body hung between
+        // them, held back from the swing for good) the pivot group first takes another hold beside its front one
+        // (letting the rear go at once left the body on a single hold, and the arms fought: 270 body weights)
+        bool spread = front - back > SpreadLengths * L && rear >= 0;
+        if (spread && b.CanRelease(rear) && pivotN > b.MinAnchorsHanging) SetLetGo(b, rear, true);
+        bool spreadShort = spread && pivotN <= b.MinAnchorsHanging;
+        b.SupportCentre = spreadShort ? b.SwingPivot : P;
+        Vector3 com = body.Lattice.CentreOfMass();
+        Swing.Update(com, P, up, Rl, OctopusController.Gravity, dt, 0.06f * ts);
 
         int frontAhead = 0;
         for (int a = 0; a < arms; a++)
@@ -726,7 +759,10 @@ public sealed class ArmCoordinator
         // the transfer: at the forward apex (or with no swing to wait for, or once a whole swing has been missed)
         float period = 2f * Mathf.PI / Mathf.Max(Swing.Natural, 1e-3f);
         bool apex = !Swing.Valid || Swing.Amplitude < 4f * Mathf.Deg2Rad || Swing.Theta > 0f && Swing.Omega <= 0f;
-        if (caught && !SwingArrived && (apex || now - caughtSince > period))
+        // ... and not while the body would start its swing on the new holds far behind them (a catch far ahead of a
+        // short swing): the swing that follows would start past TransferMaxDeg - the energy of a drop from there,
+        // not the pump's. It waits for a nearer apex, at most two periods
+        if (caught && !SwingArrived && (apex || now - caughtSince > period) && (now - caughtSince > 2f * period || CatchAngle(b, fg, P, Rl, front, L, up, com) < TransferMaxDeg * Mathf.Deg2Rad))
         {
             for (int a = 0; a < arms; a++)
             {
@@ -744,7 +780,7 @@ public sealed class ArmCoordinator
             transferAt = now; caughtSince = -1f;
             pivotN = PivotCentroid(b, pg, out P);
             front = FrontOf(b, pg, P, Rl, out _, out _);
-            b.SwingPivot = P + Rl * front; b.SwingCentre = P;
+            b.SwingPivot = P + Rl * front; b.SwingCentre = b.SupportCentre = P; spreadShort = false;
         }
         else if (pivotSource < 0) pivotSource = MajoritySource(c, pg);
 
@@ -752,7 +788,10 @@ public sealed class ArmCoordinator
         float amp = Swing.Amplitude * Mathf.Rad2Deg;
         bool pumpWanted = (!caught && now - transferAt > PumpAfterSeconds * ts) || PlayPump > 0f;
         Pumping = pumpWanted && amp < PumpCapDeg && !SwingArrived;
-        SwingDamping = amp > SwingDampAboveDeg || SwingArrived ? SwingDampRate / ts : 0f;
+        SwingDamping = SwingArrived ? SwingDampRate / ts : 0f;
+        // (only for a body hanging below its holds: one above them - holds taken below at spawn - has no swing)
+        SwingGovernor = Swing.Valid && Mathf.Abs(Swing.Theta) < 0.5f * Mathf.PI
+            ? GovernRate / ts * Mathf.Clamp01((amp - GovernFromDeg) / (GovernFullDeg - GovernFromDeg)) : 0f;
         bool swinging = Swing.Valid && Swing.Amplitude > 1f * Mathf.Deg2Rad;
         float w = Swing.Valid ? Swing.Omega / Mathf.Max(Swing.Natural, 1e-3f) : 0f;
         // the drive pulls the body the way it swings; from rest it drives at the natural frequency to seed it
@@ -760,6 +799,21 @@ public sealed class ArmCoordinator
         float drive = !still ? Mathf.Clamp(w / Mathf.Max(Swing.Amplitude, 0.05f), -1f, 1f) : Mathf.Sin(Swing.Natural * now);
         float radial = swinging ? 2f * Swing.Kinetic - 1f : 0f;
         float maxStep = MaxPumpRate / ts * dt;
+        // the pump's energy: a push on the whole animal along the swing's tangent, the way it swings (from stillness
+        // at the natural frequency), PumpAccel x g, tapering to nothing at the cap - an explicit, bounded energy input.
+        // (The holds' length pumping alone could not even hold a swing: soft arms stretch at the bottom of every
+        // swing, where the pump shortens them, and the swing died out under it - 46 to 5 deg in 15 s of pumping.)
+        // (only while waiting: not while an arm reaches for or closes on a catch - the push swung the body into
+        // the catch at speed and the holds fought it, 250 body weights)
+        SwingPush = Vector3.zero;
+        bool catching = false;
+        for (int a = 0; a < arms; a++)
+            if (swingGroup[a] == fg && (c.Agents[a].Mode == TentacleAgent.State.Reach || c.Agents[a].Mode == TentacleAgent.State.Grip)) catching = true;
+        if (Pumping && !catching && Swing.Valid && Mathf.Abs(Swing.Theta) < 0.5f * Mathf.PI)
+        {
+            Vector3 tangent = Rl * Mathf.Cos(Swing.Theta) + up * Mathf.Sin(Swing.Theta);
+            SwingPush = tangent * (PumpAccel * OctopusController.Gravity * drive * Mathf.Min(1f, PumpTaperBoost * Mathf.Max(0f, 1f - amp / PumpCapDeg)));
+        }
 
         for (int a = 0; a < arms; a++)
         {
@@ -817,7 +871,7 @@ public sealed class ArmCoordinator
             }
             // who seeks a hold: the catching group always; the pivot group only to make up the support
             bool seek = !letGo && (resting ? b.AnchoredCount < c.RestAnchors && !anchored
-                                           : grp == fg || SwingArrived || pivotN < b.MinAnchorsHanging || b.AnchoredCount < b.MinAnchors);
+                                           : grp == fg || SwingArrived || pivotN < b.MinAnchorsHanging || spreadShort || b.AnchoredCount < b.MinAnchors);
             SetSwingCommand(b, a, seek, letGo, len);
         }
     }
@@ -826,8 +880,21 @@ public sealed class ArmCoordinator
     bool IsCatch(ArmBlackboard b, int a, Vector3 P, Vector3 Rl, float front, float L)
     {
         Vector3 h = b.Anchor[a];
-        if (b.HasSwingTarget && (h - b.SwingTarget).magnitude < CatchNear * L && OctoMath.Dot(h - P, Rl) > front) return true;
+        if (b.HasSwingTarget && b.SwingTargetStrict && (h - b.SwingTarget).magnitude < CatchNear * L && OctoMath.Dot(h - P, Rl) > front) return true;
         return OctoMath.Dot(h - P, Rl) > front + CatchAhead * L;
+    }
+
+    public const float TransferMaxDeg = 70f;
+
+    // The body's angle from straight down under the catch holds of group g (rad, unsigned).
+    float CatchAngle(ArmBlackboard b, int g, Vector3 P, Vector3 Rl, float front, float L, Vector3 up, Vector3 com)
+    {
+        Vector3 c = Vector3.zero; int n = 0;
+        for (int a = 0; a < arms; a++)
+            if (b.Anchored[a] && swingGroup[a] == g && !b.Command[a].letGo && IsCatch(b, a, P, Rl, front, L)) { c += b.Anchor[a]; n++; }
+        if (n == 0) return 0f;
+        Vector3 d = com - c * (1f / n);
+        return Mathf.Abs(Mathf.Atan2(OctoMath.Dot(d, Rl), Mathf.Max(-OctoMath.Dot(d, up), 1e-4f)));
     }
 
     public const float SpreadLengths = 0.35f;   // x arm length: a pivot spread farther along the route lets its rearmost go

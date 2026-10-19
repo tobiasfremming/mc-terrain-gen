@@ -19,8 +19,8 @@ namespace TerrainGen.Tests
 #if UNITY_EDITOR
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
-            { "WingedSerpent", 0UL },   // rigid head + feat/wyvern-trees data (2026-10-19): recapture (0 = report)
-            { "SkyDragon", 0UL },       // rigid head (2026-10-19): recapture
+            { "WingedSerpent", 0x24CCE26149E5522BUL },   // da59bfc (2026-10-19): rigid head + feat/wyvern-trees data
+            { "SkyDragon", 0xA42AC911278A1FD9UL },       // da59bfc (2026-10-19): rigid head on the RigidLoft head
         };
 #else
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
@@ -92,16 +92,16 @@ namespace TerrainGen.Tests
 #if UNITY_EDITOR
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
-            // rigid head (2026-10-19): every one recaptured (0 = report the value)
-            { "DesertBeetle", 0UL }, { "DaddyLongLegs", 0UL }, { "Tarantula", 0UL },
-            { "WingedSerpent", 0UL /* rigid head + feat/wyvern-trees data */ }, { "SkyDragon", 0UL }, { "KitMonitor", 0UL },
+            // da59bfc (2026-10-19): rigid head (+ feat/wyvern-trees data for the serpent); KitMonitor = DesertMonitor's bones
+            { "DesertBeetle", 0x6F8C1E247D6717C9UL /* R38 rigid head over rims; was 0x7EE694A1D6DCC2F6 */ }, { "DaddyLongLegs", 0x528567DD58C2C0E5UL }, { "Tarantula", 0x109D36AB222C53A6UL /* R38; was 0x3FFDCDB621DEB7FD */ },
+            { "WingedSerpent", 0x052FEB1EAD20C942UL }, { "SkyDragon", 0x04F9DEE338D332BCUL }, { "KitMonitor", 0x90BEBD53968C4A95UL /* R38; was 0x52982D21E9F52F5C */ },
         };
 #else
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
             // rigid head (2026-10-19): head joints 2, 2, 3, 2, 2 (auto), 3 (auto, = DesertMonitor's, still bit-identical to it)
-            { "DesertBeetle", 0xDBB3F2FA6766AC22UL }, { "DaddyLongLegs", 0xE95F7961F0A7D560UL }, { "Tarantula", 0xF1CB64350C3D6F9DUL },
-            { "WingedSerpent", 0x6F1262984FBBED19UL /* merge/next 2026-10-19: rigid head + tall stance (rigid head alone 0x8A85F58517392C26, wyvern-trees alone 0xF0B147085F1B2FD2) */ }, { "SkyDragon", 0x443742B5546FE27AUL /* integration 0x78C97545F691E5C3 */ }, { "KitMonitor", 0x10D774963F4B93DBUL },
+            { "DesertBeetle", 0xF971D4AF2276C7F0UL /* R38 rigid head over rims; was 0xDBB3F2FA6766AC22 */ }, { "DaddyLongLegs", 0xE95F7961F0A7D560UL }, { "Tarantula", 0xC3636620EEAB2695UL /* R38; was 0xF1CB64350C3D6F9D */ },
+            { "WingedSerpent", 0x6F1262984FBBED19UL /* merge/next 2026-10-19: rigid head + tall stance (rigid head alone 0x8A85F58517392C26, wyvern-trees alone 0xF0B147085F1B2FD2) */ }, { "SkyDragon", 0x443742B5546FE27AUL /* integration 0x78C97545F691E5C3 */ }, { "KitMonitor", 0x72B52B3229301DDBUL /* R38; was 0x10D774963F4B93DB */ },
         };
 #endif
 

@@ -84,6 +84,18 @@ public struct CephalopodSpec
     public float breathAmp, breathHz;
     public float bodyDamping;       // lattice velocity damping relative to the body, 1/s
     public int subSteps, iterations;
+    // Holds the body needs while hanging off the ground (ArmBlackboard.MinAnchorsHanging; 0 = 2). A two-armed
+    // brachiator sets 1: an arm lets go only while the other one holds (gibbon).
+    public int minHolds;
+    // Mouth tentacles: a second, short chain set in a ring around the beak (the oral pole) that only feeds
+    // (MouthFeeder); they never hold the body. 0 = none (the octopus). `mouth` follows the TentacleSpec defaults
+    // rule (author its length and radii: the defaults are an arm's). mouthRing: root ring radius (0 = 0.5 x webRadius).
+    public int mouthCount;
+    public TentacleSpec mouth;
+    public float mouthRing;
+    // Look features of relatives (the swinger); 0 = off (the octopus, byte-identical): eyes on stalks of this length
+    // (m), a pear-shaped mantle sac widest low down (0..1 blend toward the pear), a dark beak cone at the oral pole (m).
+    public float eyeStalk, mantlePear, beakLength;
 
     public int ArmCount => armCount >= 2 ? armCount : 8;
     public float BodyMass => bodyMass > 0f ? bodyMass : 2.4f;
@@ -105,6 +117,9 @@ public struct CephalopodSpec
     public float BodyDamping => bodyDamping > 0f ? bodyDamping : 0.3f;
     public int SubSteps => subSteps > 0 ? subSteps : 3;
     public int Iterations => iterations > 0 ? iterations : 3;
+    public int MinHolds => minHolds > 0 ? minHolds : 2;
+    public int MouthCount => mouthCount > 0 ? mouthCount : 0;
+    public float MouthRing => mouthRing > 0f ? mouthRing : 0.5f * WebRadius;
 
     public OctopusLook look;
     // The cloak (dither-dissolve while stalked / retreating). Off by default (user, 2026-10-18: the dither reads
@@ -120,6 +135,9 @@ public struct CephalopodSpec
         if (armCount != 0 && armCount < 2) return "cephalopod.armCount must be >= 2";
         if (arm.segments != 0 && arm.segments < 4) return "cephalopod.arm.segments must be >= 4";
         if (arm.minStretch > 0f && arm.maxStretch > 0f && arm.minStretch > arm.maxStretch) return "cephalopod.arm stretch range is inverted";
+        if (mouthCount < 0) return "cephalopod.mouthCount must be >= 0";
+        if (minHolds < 0 || minHolds > ArmCount) return "cephalopod.minHolds must be in 0 .. armCount";
+        if (mouthCount > 0 && mouth.segments != 0 && mouth.segments < 4) return "cephalopod.mouth.segments must be >= 4";
         return null;
     }
 }
@@ -136,6 +154,8 @@ public struct OctopusLook
     public float cloudSpeed;              // passing-cloud bands, m/s along the body
     public float wetness;                 // clear-coat strength
     public float rimGlint;                // cloak edge glint
+    public float armBands;                // dark bands across the arms, per metre at scale 1 (0 = none: the octopus)
+    public float armBandContrast;         // their strength 0..1 (0 = 0.6)
 
     public float ChromaScale => chromaScale > 0f ? chromaScale : 55f;
     public float Papillae => papillae > 0f ? papillae : 0.5f;
@@ -143,6 +163,8 @@ public struct OctopusLook
     public float CloudSpeed => cloudSpeed > 0f ? cloudSpeed : 0.35f;
     public float Wetness => wetness > 0f ? wetness : 0.8f;
     public float RimGlint => rimGlint > 0f ? rimGlint : 0.6f;
+    public float ArmBands => armBands > 0f ? armBands : 0f;
+    public float ArmBandContrast => armBandContrast > 0f ? Mathf.Min(armBandContrast, 1f) : 0.6f;
     public Color Sucker => sucker.a > 0f ? sucker : new Color(0.93f, 0.78f, 0.68f, 1f);
     public Color Subsurface => subsurface.a > 0f ? subsurface : new Color(0.95f, 0.35f, 0.18f, 1f);
 }
