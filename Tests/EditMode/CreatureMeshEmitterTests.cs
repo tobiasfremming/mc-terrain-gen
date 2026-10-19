@@ -21,6 +21,8 @@ namespace TerrainGen.Tests
             CreatureSpecies sp = CreatureKitAssets.Load(name);
             Assert.IsNotNull(sp, name);
             if (sp.bodyPlan == CreatureBodyPlan.Cephalopod) Assert.Ignore("cephalopod: OctopusMeshBuilder (octopus internals stay until its roles plan lands)");
+            string changed = MeshBytes.ChangedSinceReference(sp);
+            if (changed != null) Assert.Ignore(changed);
             // a kit-only part (MeshOrder 100) appends after every legacy vertex: the legacy mesh is then a byte prefix
             bool prefix = CreatureKitAssets.KitOnlyReason(sp) != null;
             string diff = MeshBytes.Compare(MeshBytes.Legacy(sp), MeshBytes.Current(sp), prefix);
@@ -31,6 +33,8 @@ namespace TerrainGen.Tests
         {
             CreatureSpecies sp = CreatureKitAssets.Load(name);
             if (sp.bodyPlan == CreatureBodyPlan.Cephalopod) Assert.Ignore("cephalopod: OctopusRestPose");
+            string changed = MeshBytes.ChangedSinceReference(sp);
+            if (changed != null) Assert.Ignore(changed);
             string diff = MeshBytes.CompareMatrices(LegacyRestPose.BoneWorld(sp), CreatureRestPose.BoneWorld(sp));
             Assert.IsNull(diff, name + ": rest bone worlds differ: " + diff);
         }
@@ -52,6 +56,11 @@ namespace TerrainGen.Tests
         [Test] public void Mesh_Bytes_EqualLegacy_SerpentFactoryWings()
         {
             WingedSerpentTestSpecies.Serpent s = WingedSerpentTestSpecies.Create();
+            // the wing features added after the reference (MeshBytes.ChangedSinceReference) off: the rest of the
+            // winged path must still be the reference's byte for byte
+            foreach (WingSpec ws in s.wings) { ws.groundTallStance = false; ws.flankPatches = 0; }
+            s.species.InvalidateCompiled();
+            Assert.IsNull(MeshBytes.ChangedSinceReference(s.species));
             try
             {
                 var a = MeshBytes.Of(LegacyWingedMeshBuilder.Build(s.species, s.wings));
@@ -106,6 +115,27 @@ namespace TerrainGen.Tests
             Object.DestroyImmediate(m);
             return b;
         }
+
+        // Why a species' mesh differs from the frozen reference on purpose (null: it must not). The wing mesh changed
+        // after the kit move (feat/wyvern-trees 2026-10-19, user requests): a tall stance's straight-spine bind
+        // (WingSpec.groundTallStance) and the membrane's flank edge split into patches along the body
+        // (WingSpec.flankPatches, more bones per wing). A species using them is compared with the current builder
+        // where a test needs a mesh (Reference); the kit move stays pinned by every other species (SkyDragon's
+        // wings, the factory serpent with the features off) and by the RED tests.
+        public static string ChangedSinceReference(CreatureSpecies sp)
+        {
+            CreatureSpecies r = sp.Compiled.Runtime;
+            if (r.wings == null) return null;
+            foreach (WingSpec ws in r.wings)
+                if (ws != null && (ws.groundTallStance || WingBoneLayout.FlankPatchCount(ws) > 1))
+                    return sp.name + ": wing features after the frozen reference (groundTallStance / flankPatches)";
+            return null;
+        }
+
+        // The mesh a species must come out as: the frozen reference, or the current builder for a species that
+        // changed on purpose (ChangedSinceReference).
+        public static MeshBytes Reference(CreatureSpecies sp) => ChangedSinceReference(sp) != null ? Current(sp) : Legacy(sp);
+        public static Matrix4x4[] ReferenceBoneWorld(CreatureSpecies sp) => ChangedSinceReference(sp) != null ? CreatureRestPose.BoneWorld(sp) : LegacyRestPose.BoneWorld(sp);
 
         public static MeshBytes Legacy(CreatureSpecies sp)
         {

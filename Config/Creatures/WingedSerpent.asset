@@ -17,127 +17,127 @@ MonoBehaviour:
   joints:
   - halfWidth: 0.042
     halfHeight: 0.0357
-    clearance: 0.1
+    clearance: 0.95
     bendLimitDeg: 18
     rigid: 0
   - halfWidth: 0.046
     halfHeight: 0.0391
-    clearance: 0.1
+    clearance: 0.915
     bendLimitDeg: 18
     rigid: 1
   - halfWidth: 0.034
     halfHeight: 0.0289
-    clearance: 0.1
+    clearance: 0.88
     bendLimitDeg: 18
     rigid: 0
   - halfWidth: 0.038
     halfHeight: 0.0323
-    clearance: 0.1
+    clearance: 0.845
     bendLimitDeg: 18
     rigid: 0
   - halfWidth: 0.042
     halfHeight: 0.0357
-    clearance: 0.1
+    clearance: 0.81
     bendLimitDeg: 18
     rigid: 0
   - halfWidth: 0.046
     halfHeight: 0.0391
-    clearance: 0.1
+    clearance: 0.775
     bendLimitDeg: 18
     rigid: 0
   - halfWidth: 0.07
     halfHeight: 0.0595
-    clearance: 0.1
+    clearance: 0.74
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.068333
     halfHeight: 0.058083
-    clearance: 0.1
+    clearance: 0.73
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.066667
     halfHeight: 0.056667
-    clearance: 0.1
+    clearance: 0.695
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.065
     halfHeight: 0.05525
-    clearance: 0.1
+    clearance: 0.66
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.063333
     halfHeight: 0.053833
-    clearance: 0.1
+    clearance: 0.625
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.061667
     halfHeight: 0.052417
-    clearance: 0.1
+    clearance: 0.59
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.06
     halfHeight: 0.051
-    clearance: 0.1
+    clearance: 0.555
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.058333
     halfHeight: 0.049583
-    clearance: 0.1
+    clearance: 0.52
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.056667
     halfHeight: 0.048167
-    clearance: 0.1
+    clearance: 0.485
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.055
     halfHeight: 0.04675
-    clearance: 0.1
+    clearance: 0.45
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.050231
     halfHeight: 0.042697
-    clearance: 0.1
+    clearance: 0.415
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.046697
     halfHeight: 0.039693
-    clearance: 0.1
+    clearance: 0.38
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.043516
     halfHeight: 0.036989
-    clearance: 0.1
+    clearance: 0.345
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.040544
     halfHeight: 0.034462
-    clearance: 0.1
+    clearance: 0.31
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.037719
     halfHeight: 0.032061
-    clearance: 0.1
+    clearance: 0.275
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.035005
     halfHeight: 0.029754
-    clearance: 0.1
+    clearance: 0.24
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.032381
     halfHeight: 0.027524
-    clearance: 0.1
+    clearance: 0.205
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.029831
     halfHeight: 0.025356
-    clearance: 0.1
+    clearance: 0.17
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.027344
     halfHeight: 0.023242
-    clearance: 0.1
+    clearance: 0.135
     bendLimitDeg: 14
     rigid: 0
   - halfWidth: 0.024912
@@ -182,11 +182,12 @@ MonoBehaviour:
     rigid: 0
   headCapLength: 0.09
   tailTipLength: 0.06
+  rigidHeadJoints: 2
   legs:
   - attachJoint: 6
     side: -1
     shoulderOffset: {x: 0.06, y: 0.02, z: 0}
-    restOffset: {x: 0.85, y: 0, z: 0.25}
+    restOffset: {x: 0.32, y: 0, z: 0.3}
     upperLength: 0.5
     lowerLength: 0.6
     upperRadius: 0.034
@@ -207,7 +208,7 @@ MonoBehaviour:
   - attachJoint: 6
     side: 1
     shoulderOffset: {x: 0.06, y: 0.02, z: 0}
-    restOffset: {x: 0.85, y: 0, z: 0.25}
+    restOffset: {x: 0.32, y: 0, z: 0.3}
     upperLength: 0.5
     lowerLength: 0.6
     upperRadius: 0.034
@@ -228,9 +229,9 @@ MonoBehaviour:
   - attachJoint: 15
     side: -1
     shoulderOffset: {x: 0.04, y: -0.01, z: 0}
-    restOffset: {x: 0.15, y: 0, z: -0.02}
-    upperLength: 0.1
-    lowerLength: 0.095
+    restOffset: {x: 0.12, y: 0, z: 0}
+    upperLength: 0.28
+    lowerLength: 0.27
     upperRadius: 0.022
     lowerRadius: 0.015
     pole: {x: 0.3, y: 0.6, z: 1}
@@ -249,9 +250,9 @@ MonoBehaviour:
   - attachJoint: 15
     side: 1
     shoulderOffset: {x: 0.04, y: -0.01, z: 0}
-    restOffset: {x: 0.15, y: 0, z: -0.02}
-    upperLength: 0.1
-    lowerLength: 0.095
+    restOffset: {x: 0.12, y: 0, z: 0}
+    upperLength: 0.28
+    lowerLength: 0.27
     upperRadius: 0.022
     lowerRadius: 0.015
     pole: {x: 0.3, y: 0.6, z: 1}
@@ -336,16 +337,18 @@ MonoBehaviour:
     - 30
     - 78
     fingerFoldDeg:
-    - 100
-    - 122
-    - 146
+    - 120
+    - 134
+    - 148
     fingerMinGapDeg: 4
     fingerFoldGapDeg: 10
-    groundLiftDeg: 30
-    groundWristLift: 0.1
+    groundLiftDeg: 50
+    groundTallStance: 1
+    flankPatches: 6
+    groundWristLift: 0.14
     groundFlankRise: 0.8
     fingerRadius: 0.014
-    thumbLength: 0.09
+    thumbLength: 0.12
     membraneRearJoint: 14
     membraneFrontJoint: 6
     trailingRib: 0.8
@@ -372,16 +375,18 @@ MonoBehaviour:
     - 30
     - 78
     fingerFoldDeg:
-    - 100
-    - 122
-    - 146
+    - 120
+    - 134
+    - 148
     fingerMinGapDeg: 4
     fingerFoldGapDeg: 10
-    groundLiftDeg: 30
-    groundWristLift: 0.1
+    groundLiftDeg: 50
+    groundTallStance: 1
+    flankPatches: 6
+    groundWristLift: 0.14
     groundFlankRise: 0.8
     fingerRadius: 0.014
-    thumbLength: 0.09
+    thumbLength: 0.12
     membraneRearJoint: 14
     membraneFrontJoint: 6
     trailingRib: 0.8
@@ -426,3 +431,6 @@ MonoBehaviour:
     airUndulationHz: 1.2
     tailSag: 0.3
     headStabilise: 0.35
+    avoidLookahead: 2.4
+    avoidMargin: 0.35
+    perchGrip: 1

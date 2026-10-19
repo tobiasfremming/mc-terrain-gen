@@ -54,6 +54,8 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     public readonly FlightModel Model;
     public readonly CreatureWings Wings;
     public readonly AirChain Chain;
+    public readonly FlightAvoidance Avoidance; // obstacles ahead (FlightSpec.avoidLookahead > 0; else inert)
+    readonly ISurfaceProbe obstacles;         // what the avoidance casts against: the surfaces (bark, rocks), not the terrain
     public readonly float[] AirWeight;   // per joint: 0 the walking body .. 1 the air chain
     public FlightMode Mode { get; private set; }
     public float ModeTime { get; private set; }
@@ -88,6 +90,8 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         Wings = new CreatureWings(sp, sp.wings, sim.Joints, sim.Rotations, scale);
         Wings.ResetStroke(1f);
         Chain = new AirChain(sp, f, girdle, scale);
+        Avoidance = new FlightAvoidance(f, scale, FlightAvoidance.HalfSpan(sp));
+        obstacles = ground is CompositeSurfaceProbe comp ? comp.Surfaces : ground as ISurfaceProbe;
         Mode = FlightMode.Ground;
         foldFloor = 1f;
     }
@@ -111,6 +115,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         Model.AltitudeGoal = altitudeGoal;
         Model.SpeedGoal = f.cruiseSpeed * T;
         Model.TurnRateGoal = 0f;
+        goalAlt = Model.AltitudeGoal; goalSpeed = Model.SpeedGoal; goalTurn = 0f;
         Chain.Reset(Model.Position, Model.Velocity);
         Array.Copy(sim.Joints, air, n);
         for (int i = 0; i < n; i++) AirWeight[i] = 0f;
@@ -118,6 +123,8 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         armBlend = 0f; foldFloor = 1f;
         Landing = false; Perched = false;
         probeCountdown = 0;
+        Avoidance.Reset();
+        sim.SetGrip(false);
         Mode = FlightMode.Launch; ModeTime = 0f;
         Launches++;
         return true;
@@ -125,14 +132,22 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
 
     // Altitude (world, along up), speed (m/s) and turn rate (rad/s, + = right) to fly at. Ignored while
     // landing (the landing autopilot owns the goals).
-    public void SetGoals(float altitude, float speed, float turnRate)
+    // toward: the point the turn rate pursues (TurnToward), when it does - the avoidance then predicts the
+    // pursuit (the turn eases off as the heading comes round) instead of a constant turn.
+    public void SetGoals(float altitude, float speed, float turnRate, Vector3? toward = null)
     {
         if (Landing) return;
         Model.AltitudeGoal = altitude; Model.SpeedGoal = speed; Model.TurnRateGoal = turnRate;
+        goalAlt = altitude; goalSpeed = speed; goalTurn = turnRate; goalToward = toward;
     }
+    Vector3? goalToward, landToward;
+
+    // The brain's goals as it set them (the avoidance overrides the model's copy for a while; every sub-step
+    // starts again from these).
+    float goalAlt, goalSpeed, goalTurn;
 
     // Steer toward a point (pure pursuit within the coordinated turn's limit) at an altitude and speed.
-    public void SteerTo(Vector3 point, float altitude, float speed) => SetGoals(altitude, speed, TurnToward(point));
+    public void SteerTo(Vector3 point, float altitude, float speed) => SetGoals(altitude, speed, TurnToward(point), point);
 
     // The tightest level turn's radius at the current speed (bank at maxBankDeg).
     public float TurnRadius
@@ -147,6 +162,15 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     // Containment by prediction: the tightest turn toward the enclosure's middle, from here, must still fit
     // inside the safe disc (its circle's far side within safeRadius - kWallSlack). Once it barely does, turn
     // that way at the coordinated limit (true, turnRate set).
+    // A planned final (avoidance on) is flown a little slower than cruise (kSlowApproach; slower than ~0.85
+    // cruise the serpent cannot hold its height), for a tighter turn (R ~ v^2) among trees.
+    public float ApproachSpeed => kSlowApproach * f.cruiseSpeed * T;
+    public float ApproachRadius
+    {
+        get { float v = ApproachSpeed; return v * v / (FlightModel.G * Mathf.Tan(f.maxBankDeg * Mathf.Deg2Rad)); }
+    }
+    const float kSlowApproach = 0.88f;
+
     public bool WallTurn(out float turnRate)
     {
         turnRate = 0f;
@@ -169,6 +193,10 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         return true;
     }
 
+    // A straight leg clear of obstacles (bark, rocks) for the whole span (FlightAvoidance.SegmentClear); always
+    // true while the avoidance is off.
+    public bool LegClear(Vector3 from, Vector3 to) => !Avoidance.Enabled || Avoidance.SegmentClear(obstacles, from, to, Model.Up);
+
     public float TurnToward(Vector3 point)
     {
         Vector3 up = Model.Up;
@@ -189,15 +217,63 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     {
         Landing = true; LandPoint = point; landSource = source; landAxis = axis;
         approach = Approach.Entry;
+        // a branch perch with an approach heading: hits on the branch are the perch, the final flies along it
+        // avoidance on, a planned final (a heading given): flown along it; on a perch (source != 0) along the
+        // branch's slope, hits on the branch being the perch
+        perchHeading = axis.sqrMagnitude > 1e-8f && Avoidance.Enabled ? Vector3.ProjectOnPlane(axis, Model.Up) : Vector3.zero;
+        perchRise = 0f;
+        Avoidance.ClearPerch();
+        if (perchHeading.sqrMagnitude > 1e-8f)
+        {
+            perchRise = source != 0 ? Vector3.Dot(axis, Model.Up) / perchHeading.magnitude : 0f;
+            perchHeading.Normalize();
+            if (source != 0) Avoidance.SetPerch(point, axis);
+        }
+        else perchHeading = Vector3.zero;
+        if (perchHeading != Vector3.zero)
+        {
+            PlanHold(point, perchHeading, out holdEntry, out holdCentre, out holdRadius, out holdSense);
+            // already behind the runway and heading in: straight onto the final line; else out along the lane first
+            Vector3 rel = Vector3.ProjectOnPlane(Model.Position - point, Model.Up);
+            outbound = !(Vector3.Dot(rel, perchHeading) < -FinalRun && Vector3.Dot(Model.Forward, perchHeading) > 0f);
+            laneAlt = Model.Altitude; laps = 0;
+        }
         PlanEntry();
     }
 
     Vector3 landAxis;
+    // A planned final is a racetrack flown by L1 guidance (L1Turn): out along a lane beside the final line
+    // (holdSense side, two approach turn radii over, against the heading) until there is a runway of FinalRun
+    // behind the point, then the turn in (round holdCentre) onto the line and the final along it.
+    Vector3 holdEntry, holdCentre; // planned final: where its runway starts, and the turn-in circle there
+    float holdRadius, holdSense;   // ... its radius and side (+1: the lane and the turn on the right)
+    bool outbound;                 // on the lane, flying away from the point
+    const float kRunwayRadii = 1.5f;   // approach turn radii of straight final before the flare
+    const float kL1Time = 1.3f;        // s at scale 1: L1 guidance's look-ahead time (its distance = speed x this)
+    const float kL1Min = 0.8f;     // m at scale 1: ... at least (the flare's low speed)
+    const float kPerchStroke = 0.5f;  // of the comfort band: a branch flare's strokes at most
+    const float kFinalYaw = 30f, kFinalCross = 0.4f; // a planned final starts this well lined up (deg) and this near its line (x the turn radius)
+    const float kPerchFlare = 0.7f;
+    const float kPerchFootArc = 0.15f; // m at scale 1: a hind foot's rise over its touchdown blend onto a perch   // m at scale 1 above the clearance a branch flare holds (kTouchMargin over ground)
+    const float kLowFinal = 0.8f;
+    const float kLaneHigh = 2.5f;     // m at scale 1: the racetrack's lane at most this far over the approach height
+    float laneAlt;
+    int laps;                         // racetrack laps flown without a final (they relax its gates)                    // the height the landing started at (the lane keeps it)     // m at scale 1 below the approach height a planned final may still start
+    const float kFinalAlignDeg = 25f; // the flare starts only this well lined up (else round again)
+    // the straight final's length before the point (the flare distance and kRunwayRadii approach turn radii)
+    float FinalRun => f.flareDistance * scale + kRunwayRadii * ApproachRadius;
+    float perchRise;        // the branch's rise along perchHeading (tan of its slope)
+    Vector3 perchHeading;   // avoidance on, landing on a branch: the final's heading (along the branch), else zero
     enum Approach { Entry, Final }
     Approach approach;
     Vector3 entryPoint, finalDir;
     public Vector3 EntryPoint => entryPoint;
     public bool OnFinal => Landing && approach == Approach.Final;
+    public int GoArounds { get; private set; }     // flares that went round (debug), and why the last did:
+    public int LastGoAround { get; private set; }  // 1 off its line, 2 past the point, 3 below it, 4 too long
+    public Vector3 HoldCentre => holdCentre;      // planned final: the turn-in circle (debug)
+    public bool Outbound => Landing && perchHeading != Vector3.zero && approach == Approach.Entry && outbound; // on the lane (debug)
+    public Vector3 ApproachHeading => perchHeading; // planned final's heading, zero = none (debug)
     // turn rate per radian of heading error (/ sqrt(scale)): FlightSpec.PursuitGain (0 = 0.9)
     const float kGlideSlope = 0.3f;        // final: altitude above the flare per metre of distance
     const float kApproachHeight = 2f;      // m at scale 1 above the landing point at the entry
@@ -217,6 +293,13 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         toL = toL.sqrMagnitude > 1e-8f ? toL.normalized : h;
         float best = float.MinValue;
         finalDir = h; entryPoint = LandPoint - h * d;
+        if (perchHeading != Vector3.zero)
+        {
+            // a branch: the final comes in along it, from the side the brain checked
+            finalDir = perchHeading; entryPoint = LandPoint - perchHeading * d;
+            entryPoint += up * (Vector3.Dot(LandPoint - entryPoint, up) + kApproachHeight * scale);
+            return;
+        }
         for (int k = 0; k < 12; k++)
         {
             Vector3 dir = Quaternion.AngleAxis(30f * k, up) * h;
@@ -236,6 +319,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     public void CancelLanding()
     {
         Landing = false;
+        Avoidance.ClearPerch();
         if (Mode == FlightMode.Flare) Mode = FlightMode.Air;
     }
 
@@ -281,10 +365,12 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             case FlightMode.Air:
             case FlightMode.Flare:
                 ModeTime += dt;
+                Model.AmplitudeCap = float.MaxValue;
                 if (Landing) SteerLanding();
                 AirStep(dt);
                 Array.Copy(air, sim.Joints, n);
                 Chain.WriteRotations(sim.Rotations);
+                sim.RigidHeadFromRotations();   // the rigid head (rigidHeadJoints) in the air too
                 Array.Copy(Chain.Up, sim.Up, n);
                 sim.SetFlightSpeed(Model.Velocity.magnitude);
                 if (Landing && ReadyToTouchDown()) BeginTouchdown();
@@ -299,6 +385,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
                     armBlend = 0f; foldFloor = 1f;
                     Perched = landSource != 0;
                     Landing = false;
+                    Avoidance.ClearPerch();
                     Landings++;
                 }
                 return true;
@@ -330,6 +417,15 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     void AirStep(float dt)
     {
         Model.Up = Up(Model.Position);
+        if (Avoidance.Enabled && !Landing) { Model.AltitudeGoal = goalAlt; Model.SpeedGoal = goalSpeed; Model.TurnRateGoal = goalTurn; }
+        // (out on a racetrack's lane the perch is an obstacle like any other: the flyer is going round, not down)
+        bool goingDown = Landing && !Outbound;
+        if (Avoidance.Enabled && Landing && landSource != 0)
+        {
+            if (goingDown) Avoidance.SetPerch(LandPoint, landAxis); else Avoidance.ClearPerch();
+        }
+        if (Avoidance.Enabled) Avoidance.Apply(dt, Model, obstacles, sim.Bounds, goingDown ? LandPoint : (Vector3?)null, Mode == FlightMode.Flare,
+                                              Landing ? landToward : goalToward, f.PursuitGain);
         Model.Control(dt);
         Wings.Advance(dt, Model);
         if (foldFloor > 0f)
@@ -419,7 +515,58 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
                 // (a teardrop); near the enclosure's wall turn back at once.
                 float yawToL = dist > 1e-3f ? Mathf.Abs(Vector3.SignedAngle(Model.Forward, to / dist, up)) : 180f;
                 float R = TurnRadius;
-                if (yawToL < 25f && dist > flare + R)
+                if (perchHeading != Vector3.zero)
+                {
+                    // a planned final (a branch, or a clear line into open ground): out along the lane until there
+                    // is a runway behind the point (or the enclosure's wall comes up), then in onto the final line
+                    Vector3 rel = Vector3.ProjectOnPlane(Model.Position - LandPoint, up);
+                    float along = Vector3.Dot(rel, perchHeading);
+                    // (and high enough: a slow climber turned in from low reached the point below it and went
+                    // round right at the tree; the wall ends the lane whatever the height)
+                    // (hysteresis: out on the lane it must climb half way further before turning in)
+                    bool high = Vector3.Dot(Model.Position, up) > landH + (kApproachHeight - (outbound ? 0.5f : 1f) * kLowFinal) * scale;
+                    // the turn in (a semicircle round PlanHold's centre: tangent to the final line at its runway's
+                    // start) begins abeam that centre; earlier only where the turn from here would leave the safe disc
+                    bool wallNear = false;
+                    if (outbound && sim.Bounds.HasValue)
+                    {
+                        Vector3 turnC = Model.Position - Vector3.Cross(up, perchHeading) * (holdSense * holdRadius);
+                        wallNear = sim.Bounds.Value.PlanarDistance(turnC) + holdRadius > sim.Bounds.Value.safeRadius - kWallSlack * scale;
+                    }
+                    if (outbound && ((along < -FinalRun && high) || wallNear)) outbound = false;
+                    // out on the lane it keeps the height it came in at (cruise is over the crowns: coming down to
+                    // the approach height at once the lane's turns swept the trees), up to kLaneHigh over the
+                    // approach height; turned in it comes down to the approach height before the final starts
+                    float approachH = landH + kApproachHeight * scale;
+                    Model.AltitudeGoal = outbound ? Mathf.Clamp(laneAlt, approachH, approachH + kLaneHigh * scale) : approachH;
+                    // each lap round the racetrack without a final widens the gates a little (relax, up to 3)
+                    float relax = Mathf.Min(laps, 3);
+                    bool notHigh = Vector3.Dot(Model.Position, up) < approachH + kLowFinal * (1f + 0.5f * relax) * scale;
+                    Model.SpeedGoal = ApproachSpeed;
+                    landToward = null;
+                    if (outbound)
+                    {
+                        Vector3 lane = LandPoint + Vector3.Cross(up, perchHeading) * (holdSense * 2f * holdRadius);
+                        Model.TurnRateGoal = L1Turn(lane, -perchHeading);
+                        return;
+                    }
+                    Model.TurnRateGoal = L1Turn(LandPoint, perchHeading);
+                    // on the line behind the runway's start, lined up: the final (glide slope) starts
+                    float yawH = Vector3.Angle(Model.Forward, perchHeading);
+                    float cross = Mathf.Abs(Vector3.Dot(rel, Vector3.Cross(up, perchHeading)));
+                    if (yawH < kFinalYaw + 5f * relax && cross < kFinalCross * (1f + 0.5f * relax) * holdRadius && high && notHigh)
+                    {
+                        approach = Approach.Final; finalDir = perchHeading; entryPoint = Model.Position;
+                    }
+                    else
+                    {
+                        // turned in too late (near the point, not on the line), or still too low by the runway's
+                        // start (it would reach the point below it): out again, climbing on the lane
+                        if (along > -flare || (!high && along > -FinalRun - holdRadius)) { outbound = true; laps++; }
+                        return;
+                    }
+                }
+                else if (yawToL < 25f && dist > flare + R)
                 {
                     approach = Approach.Final; finalDir = to / dist; entryPoint = Model.Position;
                 }
@@ -428,35 +575,108 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
                     bool room = dist > flare + 2f * R;
                     Model.AltitudeGoal = landH + kApproachHeight * scale;
                     Model.SpeedGoal = f.cruiseSpeed * T;
-                    Model.TurnRateGoal = WallTurn(out float wt) ? wt : room || yawToL < 90f ? TurnToward(LandPoint) : 0f;
+                    bool wall = WallTurn(out float wt), pursue = !wall && (room || yawToL < 90f);
+                    Model.TurnRateGoal = wall ? wt : pursue ? TurnToward(LandPoint) : 0f;
+                    landToward = pursue ? LandPoint : (Vector3?)null;
                     return;
                 }
             }
-            Model.AltitudeGoal = landH + clear + kTouchMargin * scale + kGlideSlope * Mathf.Max(0f, dist - flare);
-            Model.SpeedGoal = kApproachSpeed * f.cruiseSpeed * T;
-            Model.TurnRateGoal = TurnToward(LandPoint);
+            Model.AltitudeGoal = PerchFloor(landH + clear + kTouchMargin * scale + kGlideSlope * Mathf.Max(0f, dist - flare), clear);
+            Model.SpeedGoal = perchHeading != Vector3.zero ? ApproachSpeed : kApproachSpeed * f.cruiseSpeed * T;
+            // a planned final holds its line (the guidance field, steeper near it); else pursue the point
+            if (perchHeading != Vector3.zero) { Model.TurnRateGoal = L1Turn(LandPoint, perchHeading); landToward = null; }
+            else { Model.TurnRateGoal = TurnToward(LandPoint); landToward = LandPoint; }
             // flare once the point is within flareDistance ahead and close to the track; passed it (or wide of
             // it) without flaring: go around
             float aheadD = Vector3.Dot(to, Model.Forward);
             float lateral = (to - Model.Forward * aheadD).magnitude;
-            if (aheadD < flare && aheadD > -0.25f * flare && lateral < 0.6f * flare) { Mode = FlightMode.Flare; ModeTime = 0f; }
+            bool lined = perchHeading == Vector3.zero || Vector3.Angle(Model.Forward, perchHeading) < kFinalAlignDeg;
+            if (aheadD < flare && aheadD > -0.25f * flare && lateral < 0.6f * flare && lined) { Mode = FlightMode.Flare; ModeTime = 0f; }
             else
             {
-                if (aheadD < 0.5f * flare) { approach = Approach.Entry; PlanEntry(); }
+                if (aheadD < 0.5f * flare) { approach = Approach.Entry; outbound = true; PlanEntry(); }
                 return;
             }
         }
-        Model.AltitudeGoal = landH + clear + 0.5f * kTouchMargin * scale;
+        // (over a branch the flare stays higher, kPerchFlare: the braking downstrokes reach a metre below the
+        // girdle and swept the branch behind the point; the touchdown eases the rest of the way)
+        Model.AltitudeGoal = PerchFloor(landH + clear + (landSource != 0 ? kPerchFlare : 0.5f * kTouchMargin) * scale, clear);
+        // ... and beats shallow (kPerchStroke of the band): a full downstroke reaches past the branch
+        Model.AmplitudeCap = landSource != 0 ? kPerchStroke : float.MaxValue;
         Model.SpeedGoal = kFlareSpeed * f.minSpeed * T * Mathf.Clamp01(dist / flare);
-        Model.TurnRateGoal = TurnToward(LandPoint);
+        Model.TurnRateGoal = perchHeading != Vector3.zero ? L1Turn(LandPoint, perchHeading) : TurnToward(LandPoint);
         // flown past the point in the flare without touching down: go around
         // past the point, below it (missed it, e.g. beside a branch), or too long in the flare: go around
         bool below = Vector3.Dot(Model.Position, up) < landH - 0.25f * scale;
-        if ((Vector3.Dot(to, Model.Forward) < -flare && ModeTime > 0.5f * T) || (below && ModeTime > 0.5f * T) || ModeTime > kFlareTimeout * T)
+        // a planned final's flare that has turned off its line (a lateral miss at low speed pulled it round): go
+        // round at once - turning in the flare swept the wings through the tree
+        bool offLine = perchHeading != Vector3.zero && Vector3.Angle(Model.Forward, perchHeading) > kFinalAlignDeg + 15f;
+        bool passed = Vector3.Dot(to, Model.Forward) < -flare && ModeTime > 0.5f * T;
+        if (offLine || passed || (below && ModeTime > 0.5f * T) || ModeTime > kFlareTimeout * T)
         {
-            Mode = FlightMode.Air; ModeTime = 0f; approach = Approach.Entry; PlanEntry();
+            GoArounds++; LastGoAround = offLine ? 1 : passed ? 2 : below && ModeTime > 0.5f * T ? 3 : 4;
+            Mode = FlightMode.Air; ModeTime = 0f; approach = Approach.Entry; outbound = true; PlanEntry();
         }
     }
+
+    // The racetrack of a planned final into `point` along `heading` (see holdEntry): the runway's start FinalRun
+    // back along the line, and the turn-in circle (an approach turn radius) tangent to the line there on the side
+    // that fits the enclosure better (its far edge nearer the middle; no enclosure: the flyer's side). The lane
+    // runs on that side, two radii over.
+    public void PlanHold(Vector3 point, Vector3 heading, out Vector3 entry, out Vector3 centre, out float radius, out float sense)
+    {
+        Vector3 up = Model.Up;
+        Vector3 hd = Vector3.ProjectOnPlane(heading, up).normalized;
+        radius = ApproachRadius;
+        entry = point - hd * FinalRun;
+        Vector3 side = Vector3.Cross(up, hd);
+        Vector3 cR = entry + side * radius, cL = entry - side * radius;
+        bool right;
+        if (sim.Bounds.HasValue)
+        {
+            EnclosureArea a = sim.Bounds.Value;
+            right = a.PlanarDistance(cR) <= a.PlanarDistance(cL);
+        }
+        else right = Vector3.Dot(Model.Position - entry, side) >= 0f;
+        centre = right ? cR : cL;
+        sense = right ? 1f : -1f;
+    }
+
+    // L1 guidance onto the line through p0 along dir (Park, Deyst and How 2004): the reference point is where a
+    // circle of L1 round the flyer meets the line ahead (the line's nearest point when it is farther than L1); the
+    // turn rate is 2 v sin(eta) / L1, eta the angle from the ground track to it (a full turn when it is behind).
+    // L1 = speed x kL1Time (x sqrt scale): it shrinks as the flare brakes, so the line is held to the end. Stable
+    // against the bank's lag where a heading pursuit of the line overshot by 20-30 deg.
+    float L1Turn(Vector3 p0, Vector3 dir)
+    {
+        Vector3 up = Model.Up;
+        Vector3 rel = Vector3.ProjectOnPlane(Model.Position - p0, up);
+        Vector3 side = Vector3.Cross(up, dir);
+        float e = Vector3.Dot(rel, side), along = Vector3.Dot(rel, dir);
+        float v = Mathf.Max(Model.HorizontalSpeed, f.minSpeed * T);
+        float L1 = Mathf.Max(kL1Time * T * Model.HorizontalSpeed, kL1Min * scale);
+        float ahead = Mathf.Abs(e) < L1 ? Mathf.Sqrt(L1 * L1 - e * e) : 0f;
+        Vector3 to = Vector3.ProjectOnPlane(p0 + dir * (along + ahead) - Model.Position, up);
+        Vector3 track = Vector3.ProjectOnPlane(Model.Velocity, up);
+        if (track.sqrMagnitude < 1e-6f) track = Model.Forward;
+        float eta = Vector3.SignedAngle(track, to, up) * Mathf.Deg2Rad;
+        float sinEta = Mathf.Abs(eta) > 0.5f * Mathf.PI ? Mathf.Sign(eta) : Mathf.Sin(eta);
+        float wMax = FlightModel.G * Mathf.Tan(f.maxBankDeg * Mathf.Deg2Rad) / v;
+        return Mathf.Clamp(2f * v * sinEta / Mathf.Max(L1, 1e-3f), -wMax, wMax);
+    }
+
+    // Over a sloping branch on the final: never lower than the branch under the flyer (its height along the
+    // line, from the point's height and the branch's rise) plus the clearance and the touch margin.
+    float PerchFloor(float goal, float clear)
+    {
+        if (perchHeading == Vector3.zero || perchRise == 0f) return goal;
+        Vector3 up = Model.Up;
+        float along = Vector3.Dot(Vector3.ProjectOnPlane(Model.Position - LandPoint, up), perchHeading);
+        if (along >= 0f || along < -kPerchFloorBack * scale) return goal;
+        return Mathf.Max(goal, Vector3.Dot(LandPoint, up) + perchRise * along + clear + (landSource != 0 ? kPerchFlare : kTouchMargin) * scale);
+    }
+    const float kPerchFloorBack = 3f; // m at scale 1 behind the point the branch floor applies
+    const float kPerchCapture = 0.4f; // m at scale 1: a perch touchdown starts this near the branch's line
 
     bool ReadyToTouchDown()
     {
@@ -466,6 +686,16 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         // up to kTouchHeight above its clearance: the touchdown eases the rest of the way down
         bool low = HeightAboveGround <= clear + kTouchHeight * scale;
         bool there = to.magnitude < 0.5f * f.flareDistance * scale || ModeTime > 1.5f * T;
+        if (landSource != 0)
+        {
+            // a perch (a branch): low over the point itself, not the ground under the girdle (a probe straight
+            // down misses a 10 cm branch a hand's width to the side), and close to its line (or the point); the
+            // eased touchdown lays the body along it (BeginTouchdown)
+            float above = Vector3.Dot(Model.Position - LandPoint, Model.Up);
+            float off = perchHeading != Vector3.zero ? Mathf.Abs(Vector3.Dot(to, Vector3.Cross(Model.Up, perchHeading))) : to.magnitude;
+            low = above <= clear + kTouchHeight * scale;
+            there = to.magnitude < 0.5f * f.flareDistance * scale && off < kPerchCapture * scale;
+        }
         return low && there;
     }
 
@@ -484,10 +714,26 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             axis.Normalize();
             if (Vector3.Dot(axis, Model.Forward) < 0f) axis = -axis;
             float seg = sp.spacing * scale;
-            for (int i = 0; i < n; i++)
-                sim.Joints[i] = LandPoint + up * (sp.joints[i].clearance * scale) - axis * (seg * (i - girdle));
+            // each segment its own length: the clearances may vary along the spine (a tall stance's), so the run
+            // along the perch per segment is what is left of it after the height step (was seg flat: +9 %)
+            sim.Joints[girdle] = LandPoint + up * (sp.joints[girdle].clearance * scale);
+            for (int i = girdle + 1; i < n; i++)
+            {
+                float dh = (sp.joints[i].clearance - sp.joints[i - 1].clearance) * scale;
+                sim.Joints[i] = sim.Joints[i - 1] - axis * Mathf.Sqrt(Mathf.Max(0f, seg * seg - dh * dh)) + up * dh;
+            }
+            for (int i = girdle - 1; i >= 0; i--)
+            {
+                float dh = (sp.joints[i].clearance - sp.joints[i + 1].clearance) * scale;
+                sim.Joints[i] = sim.Joints[i + 1] + axis * Mathf.Sqrt(Mathf.Max(0f, seg * seg - dh * dh)) + up * dh;
+            }
             touchSpeed = 0f;
         }
+        sim.SetGrip(f.perchGrip && landSource != 0);   // perched: the feet close round the branch
+        // onto a perch the arms come down to the raised wrist (standing on the thumb claws) from the start: blended
+        // straight to the foot point, the wrist swept the branch's flank (it is set again once on the ground)
+        if (landSource != 0)
+            for (int w = 0; w < Wings.Count; w++) wristLift[w] = Mathf.Max(wristLift[w], sp.wings[w].groundWristLift * scale);
         sim.ResetGround(0.5f * touchSpeed, (kTouchHeight + 1f) * scale);
         offsetValid = false;
         Mode = FlightMode.Touchdown; ModeTime = 0f;
@@ -548,7 +794,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     // its frames are the chain's (the walking frames' head follows the ground heading, not the rising head).
     internal void AfterFrames()
     {
-        if (Mode == FlightMode.Launch && Chain.Twist != null) Chain.WriteRotations(sim.Rotations);
+        if (Mode == FlightMode.Launch && Chain.Twist != null) { Chain.WriteRotations(sim.Rotations); sim.RigidHeadFromRotations(); }
     }
 
     // Perched (or any flyer on the ground): joints past the edge of what they stand on hang - a tail over a
@@ -676,6 +922,9 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             float reach = (s.upperLength + s.lowerLength) * scale * kTuckReach;
             Vector3 tuckDir = ar * new Vector3(0.25f * s.side, -0.35f, -1f).normalized;
             Vector3 foot = Vector3.Lerp(ls.foot, shoulder + tuckDir * reach, w);
+            // touching down on a perch the foot comes down onto the branch from above (a straight blend from the
+            // tuck swept the shin through it)
+            if (Mode == FlightMode.Touchdown && landSource != 0) foot += (ar * Vector3.up) * (4f * w * (1f - w) * kPerchFootArc * scale);
             Vector3 pole = s.pole; pole.x *= s.side;
             pole = ar * pole;
             Vector3 elbow = TwoBoneIK.Solve(shoulder, foot, s.upperLength * scale, s.lowerLength * scale, pole, out Vector3 ft);

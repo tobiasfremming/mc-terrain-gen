@@ -137,14 +137,16 @@ namespace TerrainGen.Tests
             Assert.Less(miss, 4f, "lands near the point");
             // stand: feet planted, body at its clearance
             var feet = new Vector3[sim.Legs.Length];
+            var wasStepping = new bool[sim.Legs.Length];
             for (int t = 0; t < 30; t++) sim.Tick(kDt, sim.Joints[0]);
-            for (int l = 0; l < feet.Length; l++) feet[l] = sim.Legs[l].foot;
+            for (int l = 0; l < feet.Length; l++) { feet[l] = sim.Legs[l].foot; wasStepping[l] = sim.Legs[l].stepping; }
             for (int t = 0; t < 60; t++)
             {
                 sim.Tick(kDt, sim.Joints[0]);
+                // planted on both ticks (the tick a tidy-up step lands, the foot still finishes its swing)
                 for (int l = 0; l < feet.Length; l++)
-                    if (!sim.Legs[l].stepping) Assert.Less((sim.Legs[l].foot - feet[l]).magnitude, 1e-3f, $"foot {l} slides after landing");
-                for (int l = 0; l < feet.Length; l++) feet[l] = sim.Legs[l].foot;
+                    if (!sim.Legs[l].stepping && !wasStepping[l]) Assert.Less((sim.Legs[l].foot - feet[l]).magnitude, 1e-3f, $"foot {l} slides after landing");
+                for (int l = 0; l < feet.Length; l++) { feet[l] = sim.Legs[l].foot; wasStepping[l] = sim.Legs[l].stepping; }
             }
             for (int i = 0; i < sim.Joints.Length; i++)
                 Assert.AreEqual(s.species.joints[i].clearance, sim.Joints[i].y, 0.03f, $"joint {i} height after landing");

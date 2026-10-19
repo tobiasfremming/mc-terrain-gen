@@ -223,7 +223,7 @@ namespace TerrainGen.Tests
             for (int w = 0; w < sp.WingCount; w++)
             {
                 if (sp.WingBone(w, 0) != next) return $"wing {w} starts at bone {sp.WingBone(w, 0)}, expected {next}";
-                next += WingBoneLayout.BonesPerWing;
+                next += WingBoneLayout.Bones(sp.wings[w]);
             }
             if (sp.EyeBone(0) != next || sp.EyeBone(1) != next + 1) return $"eyes at bones {sp.EyeBone(0)}, {sp.EyeBone(1)}, expected {next}, {next + 1}";
             next += 2;
@@ -252,7 +252,7 @@ namespace TerrainGen.Tests
             for (int l = 0; l < (sp.legs != null ? sp.legs.Length : 0); l++)
                 for (int k = 0; k < sp.legs[l].SegmentCount; k++) if (!used[sp.LegBone(l, k)]) bare.Add($"leg {l} bone {k}");
             for (int w = 0; w < sp.WingCount; w++)
-                for (int k = 0; k < WingBoneLayout.BonesPerWing; k++) if (!used[sp.WingBone(w, k)]) bare.Add($"wing {w} bone {k}");
+                for (int k = 0; k < WingBoneLayout.Bones(sp.wings[w]); k++) if (!used[sp.WingBone(w, k)]) bare.Add($"wing {w} bone {k}");
             if (sp.eyeRadius > 0f) for (int e = 0; e < 2; e++) if (!used[sp.EyeBone(e)]) bare.Add("eye " + e);
             foreach (CreatureKit.BoneRange r in sp.Layout.Ranges)
                 if (r.Start >= legacyEnd) for (int k = 0; k < r.Count; k++) if (!used[r.Start + k]) bare.Add($"{r.Id} bone {k}");

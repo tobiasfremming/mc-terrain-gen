@@ -147,6 +147,7 @@ MonoBehaviour:
     rigid: 0
   headCapLength: 0.05
   tailTipLength: 0.04
+  rigidHeadJoints: 3
   legs:
   - attachJoint: 7
     side: -1

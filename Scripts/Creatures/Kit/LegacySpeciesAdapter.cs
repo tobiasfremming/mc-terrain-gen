@@ -47,7 +47,7 @@ namespace CreatureKit
             parts.Add(new SpineBody
             {
                 id = "body", spacing = sp.spacing, headCapLength = sp.headCapLength, tailTipLength = sp.tailTipLength, joints = joints,
-                ringSegments = sp.ringSegments, ringsPerSegment = sp.ringsPerSegment,
+                ringSegments = sp.ringSegments, ringsPerSegment = sp.ringsPerSegment, rigidHeadJoints = sp.rigidHeadJoints,
             });
 
             // legs: leg l -> its part id (folded pairs: <id>.L / <id>.R)

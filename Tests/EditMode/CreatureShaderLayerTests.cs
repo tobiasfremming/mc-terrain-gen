@@ -17,7 +17,7 @@ namespace TerrainGen.Tests
     public class CreatureShaderLayerTests
     {
         const string kShader = "MarchingCubes/Creature", kLegacy = "Hidden/TerrainGen/CreatureLegacyReference";
-        const int kSize = 192;
+        const int kSize = 384;   // thin-legged species (DaddyLongLegs) cover only ~40 px per view at 192
 
         readonly List<Object> trash = new List<Object>();
         readonly List<CreatureRenderer> renderers = new List<CreatureRenderer>();

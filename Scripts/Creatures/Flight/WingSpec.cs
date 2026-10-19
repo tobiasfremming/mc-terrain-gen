@@ -36,7 +36,18 @@ public class WingSpec
     // On the ground (wing-walk, perch) the folded hand's fan is turned up about the rear flank rib until the
     // fan's outer edge rises this far above the girdle's plane: the folded fingers sweep back and up, clear
     // of the ground, the membrane tucked between them and the flank (user feedback 2026-10-18). 0 = flat.
-    [Range(0f, 60f)] public float groundLiftDeg = 0f;
+    [Range(0f, 75f)] public float groundLiftDeg = 0f;
+    // A tall stance on near-vertical folded arms (a pterosaur's; the spine's clearances carry the shoulders
+    // high and slope to the hips): the hand bone (and its thumb claw) stays on the forearm when the folded fan
+    // lifts (groundLiftDeg) - only the fingers and the membrane turn up, a steep lift does not kink the wrist -
+    // and the mesh's bind pose (the spread glide pose) keeps a straight spine at the girdle's clearance instead
+    // of following the stance's varying clearances. Off = the low wing-walk (the hand turns with the fan).
+    public bool groundTallStance = false;
+    // The membrane between the humerus and the flank as this many affine patches side by side along the flank
+    // (WingBoneLayout.FlankPatchCount; one bone each): the flank edge follows the body's curve instead of a
+    // straight chord from the rear attach to the shoulder, and the rear attach slides along the flank (never off
+    // it) to stay clear of the forearm's line. 0 or 1 = the one humerus patch (7 bones per wing).
+    [Range(0, 8)] public int flankPatches = 0;
     // On the ground the wrist stands on its thumb claw: raised off the walked foot point until the thumb's tip
     // (thumbLength) is on it, at most this far (m at scale 1); the arm is drawn to the raised wrist, the gait's
     // foot point is unchanged. 0 = on the wrist.

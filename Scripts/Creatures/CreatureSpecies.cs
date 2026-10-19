@@ -220,6 +220,14 @@ public class CreatureSpecies : ScriptableObject
     public float spacing;
     public SpineJoint[] joints;
     public float headCapLength, tailTipLength;
+    // Rigid head (user 2026-10-19): the first rigidHeadJoints spine joints move as one rigid body - their layout and
+    // frames stay the rest shape's whatever the ground, a climb or a flight does (no bend, per-joint draping or
+    // twist between them); the bend happens in the neck behind. 0 = off (every joint grounded on its own: the
+    // test fixtures, a worm); 2..JointCount-1 = on. A kit SpineBody defaults to its profile's head (SpineBody.rigidHeadJoints).
+    [Tooltip("Head joints that move as one rigid body (0 = off, every joint drapes on its own; else 2..joints-1).")]
+    [Min(0)] public int rigidHeadJoints;
+    // The rigid head's joint count the sim uses: 0 when off or meaningless (fewer than 2 joints, no neck behind).
+    public int RigidHead => rigidHeadJoints >= 2 && rigidHeadJoints < JointCount ? rigidHeadJoints : 0;
     public LegSpec[] legs;
     public float speed, turnRateDeg, accel, turnSlowdown;
     public float undulationDeg, undulationHz;
@@ -404,6 +412,7 @@ public class CreatureSpecies : ScriptableObject
         if (!(spacing > 0f)) return "spacing must be > 0";
         if (!(scale > 0f)) return "scale must be > 0";
         if (eyeJoint < 0 || eyeJoint >= n) return "eyeJoint out of range";
+        if (rigidHeadJoints < 0 || rigidHeadJoints > n - 1) return $"rigidHeadJoints {rigidHeadJoints} out of range 0..{n - 1}";
         for (int i = 0; i < LegCount; i++)
         {
             LegSpec l = legs[i];

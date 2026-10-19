@@ -17,6 +17,7 @@ MonoBehaviour:
   joints: []
   headCapLength: 0
   tailTipLength: 0
+  rigidHeadJoints: 0
   legs: []
   speed: 0
   turnRateDeg: 0

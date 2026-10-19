@@ -22,18 +22,18 @@ namespace TerrainGen.Tests
         // bit-identical is shown by the offline harness constants below, which still match on a6337d5.
         static readonly Dictionary<string, (ulong bones, ulong mesh)> Golden = new Dictionary<string, (ulong, ulong)>
         {
-            { "DesertMonitor", (0x5CA3EBE4BA35469AUL, 0xE56A6E3CC28CF98AUL) },
+            { "DesertMonitor", (0UL, 0xE56A6E3CC28CF98AUL) },   // rigid head (2026-10-19): recapture (0 = report)
             { "TestHexapod", (0x74CBED3B3EEC2DE0UL, 0xC9E071DE0867056FUL) },
-            { "DesertSnake", (0xBD9F06CEDFA332D1UL, 0x5022CF597CF3F50CUL) },
+            { "DesertSnake", (0UL, 0x5022CF597CF3F50CUL) },     // rigid head (2026-10-19): recapture
             { "Lizardish", (0xFD91F9955B3A64A2UL, 0x139A617E5D148B58UL) },
         };
 #else
         // the offline harness (.NET 8, scratchpad legs_impl), captured on f4bda2a
         static readonly Dictionary<string, (ulong bones, ulong mesh)> Golden = new Dictionary<string, (ulong, ulong)>
         {
-            { "DesertMonitor", (0x53B537BC3A04F006UL, 0xC330116046C3CEECUL) },
+            { "DesertMonitor", (0x10D774963F4B93DBUL, 0xC330116046C3CEECUL) },   // rigid head 3 (2026-10-19; was 0x53B537BC3A04F006)
             { "TestHexapod", (0x54A1ED3EDAA99E05UL, 0x026EBCE6D39A2C0EUL) },
-            { "DesertSnake", (0x6CA7AD57C56B6496UL, 0xAA47EE710711F7EAUL) },
+            { "DesertSnake", (0x5788FB67C4BAF321UL, 0xAA47EE710711F7EAUL) },     // rigid head 2 (2026-10-19; was 0x6CA7AD57C56B6496)
             { "Lizardish", (0x6CECE9DD201C6DD4UL, 0x54AF3E0105515CDEUL) },
         };
 #endif

@@ -106,6 +106,7 @@ MonoBehaviour:
           bendLimitDeg: 13
         jointCount: 72
         rigidHead: 1
+        rigidHeadJoints: -1
         ringSegments: 16
         ringsPerSegment: 3
     - rid: 1001

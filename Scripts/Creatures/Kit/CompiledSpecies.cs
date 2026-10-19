@@ -229,7 +229,9 @@ namespace CreatureKit
             }
             var chains = new List<int>();
             for (int i = 0; i < Parts.Count; i++) if (Parts[i] is Antenna) chains.Add(Layout.Start(i));
-            Layout.SetLegacyStarts(legStart, wings < 0 ? eyes : wings, eyes, chains.ToArray());
+            var wingStarts = new List<int>();
+            for (int i = 0; i < Parts.Count; i++) if (Parts[i] is Wing) wingStarts.Add(Layout.Start(i));
+            Layout.SetLegacyStarts(legStart, wings < 0 ? eyes : wings, eyes, chains.ToArray(), wingStarts.ToArray());
         }
 
         // ------------------------------------------------------------ the legacy runtime fields
@@ -252,6 +254,7 @@ namespace CreatureKit
             if (Soft)
             {
                 dst.bodyPlan = CreatureBodyPlan.Cephalopod;
+                dst.rigidHeadJoints = 0;   // a soft body deforms everywhere: never a rigid head
                 CephalopodSpec spec = ((SoftBody)Body).spec;
                 int arms = 0;
                 foreach (CreaturePart p in Parts) if (p is Tentacle t) { if (arms == 0) spec.arm = t.spec; arms++; }   // every arm the same (Validate)
@@ -263,6 +266,7 @@ namespace CreatureKit
             var body = (SpineBody)Body;
             dst.spacing = body.spacing; dst.joints = body.BuildJoints(); dst.headCapLength = body.headCapLength; dst.tailTipLength = body.tailTipLength;
             dst.ringSegments = body.ringSegments; dst.ringsPerSegment = body.ringsPerSegment;
+            dst.rigidHeadJoints = body.RigidHeadJoints;   // a spine body's head is rigid unless set to 0 (auto: its profile's head)
             dst.legs = new LegSpec[Limbs.Count];
             for (int i = 0; i < Limbs.Count; i++) dst.legs[i] = Limbs[i].ToLegSpec();
             Walk walk = Module<Walk>();
