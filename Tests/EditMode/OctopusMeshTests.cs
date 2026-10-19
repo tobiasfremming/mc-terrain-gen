@@ -14,10 +14,17 @@ namespace TerrainGen.Tests
 
         // The exact skin: (1 - e2 - e3) (w0 M0 + w1 M1) + e2 M2 + e3 M3 (uv3 carries the web's extra bones).
         // twoBone: what a shader that ignores uv3 draws.
-        internal static Vector3 Skin(OctopusMeshBuilder.Data d, Matrix4x4[] skin, int i, bool twoBone = false)
+        // bind given: arm tube vertices take the curve skin as the octopus shader draws them (OctopusArmSkin).
+        internal static Vector3 Skin(OctopusMeshBuilder.Data d, Matrix4x4[] skin, int i, bool twoBone = false, Matrix4x4[] bind = null)
         {
             Vector4 s = d.uv2[i], e = d.uv3[i];
             Vector3 p = d.pos[i];
+            if (bind != null && !twoBone && OctopusArmSkin.Takes(d.uv1[i], s, e))
+            {
+                int be = (int)Mathf.Min(s.x, s.y), bl = (int)Mathf.Max(s.x, s.y);
+                float t = bl == (int)s.x ? s.z : s.w;
+                return OctopusArmSkin.Skin(skin[be], skin[bl], bind[be], bind[bl], p, d.nrm[i], t, e.x, out _);
+            }
             Vector3 two = OctoMath.MulPoint(skin[(int)s.x], p) * s.z + OctoMath.MulPoint(skin[(int)s.y], p) * s.w;
             if (twoBone || (e.z == 0f && e.w == 0f)) return two;
             return two * (1f - e.z - e.w) + OctoMath.MulPoint(skin[(int)e.x], p) * e.z + OctoMath.MulPoint(skin[(int)e.y], p) * e.w;
@@ -149,7 +156,7 @@ namespace TerrainGen.Tests
             for (int i = 0; i < d.pos.Count; i++)
             {
                 Vector3 want = at + OctoMath.Rotate(rot, d.pos[i] * scale);
-                worst = Mathf.Max(worst, (Skin(d, skin, i) - want).magnitude);
+                worst = Mathf.Max(worst, (Skin(d, skin, i, false, bind) - want).magnitude);
             }
             TestContext.Out.WriteLine($"worst rigid-pose skin error {worst * 1e3f:F3} mm");
             Assert.Less(worst, 1e-3f * scale);
@@ -212,7 +219,7 @@ namespace TerrainGen.Tests
         internal static int CountInverted(OctopusMeshBuilder.Data d, Matrix4x4[] skin, Matrix4x4[] bind, out string first, out int[] perPart, bool twoBone = false)
         {
             var pos = new Vector3[d.pos.Count];
-            for (int i = 0; i < pos.Length; i++) pos[i] = Skin(d, skin, i, twoBone);
+            for (int i = 0; i < pos.Length; i++) pos[i] = Skin(d, skin, i, twoBone, bind);
             int inverted = 0; first = "none";
             perPart = new int[8];
             for (int k = 0; k < d.tris.Count; k += 3)

@@ -6,14 +6,17 @@ using UnityEngine;
 
 namespace TerrainGen.Tests
 {
-    // Arm tube skinning in real poses (swing, grip, wrap, strike) of the tree octopus and the swinger.
+    // Arm tube skinning in real poses (swing, grip, wrap, strike) of the tree octopus and the swinger: the arm is
+    // drawn from its display chain (TentacleChain.DisplayX: the particles with every joint and segment kept
+    // drawable) with the curve skin (OctopusArmSkin, the shader's arm curve).
     public class OctopusArmSkinTests
     {
         const float Dt = 1f / 60f;
 
         internal struct Sweep
         {
-            public int frames, badFrames, worst, worstAt; public float maxBend, maxBendBad; public int jointsOver; public string first; public float mismatch;
+            public int frames, badFrames, worst, worstAt, total; public float maxBend, maxBendBad; public int jointsOver; public string first;
+            public float mismatch, displayMismatch, displayOffsetMax; public double displayOffsetSum; public int displayOffsetN, displayOffsetFar;
         }
 
         // A pose scenario: species, size, seed; ticked `seconds` x sqrt(s), sampled every 10 frames.
@@ -72,11 +75,23 @@ namespace TerrainGen.Tests
                         mis = Mathf.Max(mis, Vector3.Angle(OctoMath.Rotate(body.Arms[a].Frames[k], Vector3.forward), body.Arms[a].X[k + 1] - body.Arms[a].X[k]));
                 w.mismatch = Mathf.Max(w.mismatch, mis);
                 body.WriteBoneWorld(world, 0);
+                for (int a = 0; a < body.ArmCount; a++)
+                {
+                    TentacleChain ch = body.Arms[a];
+                    for (int k = 0; k < ch.N; k++)
+                    {
+                        if (k < ch.N - 1) w.displayMismatch = Mathf.Max(w.displayMismatch, Vector3.Angle(OctoMath.Rotate(ch.DisplayFrames[k], Vector3.forward), ch.DisplayX[k + 1] - ch.DisplayX[k]));
+                        float off = (ch.DisplayX[k] - ch.X[k]).magnitude / ch.Spacing;
+                        w.displayOffsetMax = Mathf.Max(w.displayOffsetMax, off); w.displayOffsetSum += off; w.displayOffsetN++;
+                        if (off > 0.5f) w.displayOffsetFar++;
+                    }
+                }
                 for (int b = 0; b < world.Length; b++) skin[b] = OctoMath.MulAffine(world[b], bind[b]);
                 OctopusMeshTests.CountInverted(d, skin, bind, out string fi, out int[] per);
                 int inv = per[OctopusMeshBuilder.PartArm];
                 float mb = MaxBend(body, out int over, limit);
                 w.frames++; w.maxBend = Mathf.Max(w.maxBend, mb); w.jointsOver = Mathf.Max(w.jointsOver, over);
+                w.total += inv;
                 if (inv > 0) { w.badFrames++; w.maxBendBad = Mathf.Max(w.maxBendBad, mb); }
                 if (inv > w.worst) { w.worst = inv; w.worstAt = f; w.first = fi + "\n" + Bends(body, c); }
             }
@@ -117,19 +132,10 @@ namespace TerrainGen.Tests
 
         // In real poses - two-arm hand-over-hand along bars and feeding, brachiation across a grove (grip, wrap,
         // swing, transfer), a strike from a canopy - of the tree octopus and the swinger, at two sizes and two
-        // seeds, sampled every 10 frames: no arm tube triangle inverts (CPU skinning as the shader does it).
-        // The log reports the largest joint angle the chain shows and how far the bone frames lag the particles.
-        // OPEN (2026-10-19): the bones now follow the arms (below), but the arm CHAIN itself still folds in these
-        // poses - joints at 90-140 deg, segments torn to 0.1-3.9 x spacing - and no skinning can draw a fold like
-        // that: the skinning holds clean coils to ~70 deg per joint (measured). Sources, measured stage by stage
-        // through OctopusController.Tick: (1) ApplyPlanes projects each arm particle alone, after the solve, up to
-        // 1.5-4 spacings (a plane or fitted cylinder claiming air the muscles keep pulling the particle into) -
-        // the main one; (2) eased pins slide straight to their goals at their own pace, so neighbouring pins bunch
-        // to 0.06 spacings and fold to 176 deg mid-way (their goals are >= 0.82 spacings apart). Limiting or
-        // smoothing the contact push after the solve fixed the folds but left draped arms 40-90 cm inside a log
-        // (Body_NoPenetration) and tipped the tug-of-war runs: arm contacts belong inside the solve. Measured
-        // after the frame fix: worst 82 inverted triangles per frame (was 288), sum over the runs 619 (was 1284).
-        // Until that is done this test reports (Ignored with the numbers) instead of failing the branch.
+        // seeds, sampled every 10 frames: no arm tube triangle inverts (CPU skinning as the shader does it). RED
+        // 2026-10-19: 20-288 per frame. The log reports the largest joint angle the simulated chain shows - it still
+        // folds (a contact pass after the solve, tethers, eased pins on their way) - and how far the drawn arm keeps
+        // from the particles. Measured 2026-10-19 over 72 such runs (seeds 1-6): 0 inverted triangles.
         [Test] public void ArmTubes_RealPoses_NoInvertedTris()
         {
             var log = new StringBuilder(); int worst = 0; string first = "none";
@@ -141,27 +147,64 @@ namespace TerrainGen.Tests
                         {
                             Sweep w = Measure(spec, scen, s, seed, scen == "strike" ? 8f : 20f);
                             if (w.worst > worst) { worst = w.worst; first = $"{name} {scen} s {s} seed {seed} frame {w.worstAt}: {w.first}"; }
-                            log.AppendLine($"{name,-11} {scen,-6} s {s:F1} seed {seed}: inverted arm tris worst {w.worst,3} (frames {w.badFrames}/{w.frames}), max bend {w.maxBend:F0} deg (in bad frames {w.maxBendBad:F0}), joints past the {spec.arm.BendLimitDeg:F0} deg limit {w.jointsOver}, frame/segment mismatch {w.mismatch:F0} deg");
+                            log.AppendLine($"{name,-11} {scen,-6} s {s:F1} seed {seed}: inverted arm tris worst {w.worst,3} (frames {w.badFrames}/{w.frames}), simulated chain: max bend {w.maxBend:F0} deg, joints past the {spec.arm.BendLimitDeg:F0} deg limit {w.jointsOver}; drawn arm off the particles mean {w.displayOffsetSum / Mathf.Max(1, w.displayOffsetN):F3}, max {w.displayOffsetMax:F2} spacings");
                         }
             TestContext.Out.WriteLine(log.ToString());
-            if (worst > 0) Assert.Ignore($"OPEN - arm chain folds in contact: worst {worst} inverted arm triangles per frame; worst {first}");
+            Assert.AreEqual(0, worst, "inverted arm triangles; worst " + first);
         }
 
-        // Every arm bone points along its own segment at render time: the controller's contact passes move arm
-        // particles after the body took its frames, and the frames are re-taken after them. Before, a bone pointed
-        // up to 168 deg away from its segment and the tube between two such bones turned inside out.
+        // Every arm frame points along its own segment after the tick (the controller's contact passes move arm
+        // particles after the body took its frames, and the frames are re-taken after them; before, a frame pointed
+        // up to 168 deg away from its segment), and every drawn bone along its display segment. The drawn arm keeps
+        // to the particles: on average within 0.05 spacings, rarely (under 1.5 % of the particle samples) more than half
+        // a spacing off - where the simulated chain is torn (measured 2026-10-19: mean 0.00-0.04, 0.9 % over half a
+        // spacing, at most 4.5 spacings: a torn tail drawn at the arm's length).
         [Test] public void ArmBones_FollowTheirSegments_AfterContact()
         {
-            var log = new StringBuilder(); float worst = 0f;
+            var log = new StringBuilder(); float worst = 0f, worstDisplay = 0f; double offSum = 0; int offN = 0, far = 0;
             foreach (var (name, spec) in new (string, CephalopodSpec)[] { ("TreeOctopus", CephalopodSpec.Default), ("Swinger", OctopusSwingerTests.Spec()) })
                 foreach (string scen in new[] { "bars", "grove", "strike" })
                 {
                     Sweep w = Measure(spec, scen, 1f, 3, scen == "strike" ? 8f : 20f);
-                    worst = Mathf.Max(worst, w.mismatch);
-                    log.AppendLine($"{name,-11} {scen,-6}: bone / segment angle at most {w.mismatch:F2} deg; inverted arm tris worst {w.worst}");
+                    worst = Mathf.Max(worst, w.mismatch); worstDisplay = Mathf.Max(worstDisplay, w.displayMismatch);
+                    offSum += w.displayOffsetSum; offN += w.displayOffsetN; far += w.displayOffsetFar;
+                    log.AppendLine($"{name,-11} {scen,-6}: frame / segment angle at most {w.mismatch:F2} deg, drawn bone / display segment {w.displayMismatch:F2} deg; drawn arm off the particles mean {w.displayOffsetSum / Mathf.Max(1, w.displayOffsetN):F3}, max {w.displayOffsetMax:F2} spacings, {w.displayOffsetFar} particle samples over 0.5");
                 }
             TestContext.Out.WriteLine(log.ToString());
-            Assert.Less(worst, 1f, "an arm bone does not follow its segment");
+            Assert.Less(worst, 1f, "an arm frame does not follow its segment");
+            Assert.Less(worstDisplay, 1f, "a drawn arm bone does not follow its display segment");
+            Assert.Less(offSum / offN, 0.05, "the drawn arm strays from the particles");
+            Assert.Less(far, 0.015 * offN, "the drawn arm is often far from the particles");
+        }
+
+        // The curve skin draws a tight wrap the linear blend turned inside out: arm 0 held (pinned) round a thin
+        // branch as a helix at 78 deg per joint from its third joint - a wrap the display leaves as it is (pins move
+        // only past PinDisplayConeDeg) - skins with no inverted triangle; the 2-bone linear blend of the same bones
+        // (what a shader ignoring the flag draws) inverts some on the thicker octopus arm.
+        [Test] public void CurveSkin_TightWrap_NoInvertedTris()
+        {
+            int linear = 0;
+            foreach (var (name, spec) in new (string, CephalopodSpec)[] { ("TreeOctopus", CephalopodSpec.Default), ("Swinger", OctopusSwingerTests.Spec()) })
+            {
+                OctopusMeshBuilder.Data d = OctopusMeshBuilder.BuildData(spec);
+                Matrix4x4[] bind = OctopusRestPose.BindPoses(spec);
+                var body = OctopusRestPose.Body(spec);
+                TentacleChain arm = body.Arms[0];
+                OctopusMeshTests.PoseHelix(arm, 3, 78f * Mathf.Deg2Rad, 6f * Mathf.Deg2Rad, out float radius);
+                for (int k = 3; k < arm.N; k++) arm.Pin(k, arm.X[k], Vector3.up);
+                var world = new Matrix4x4[body.BoneCount]; var skin = new Matrix4x4[body.BoneCount];
+                body.WriteBoneWorld(world, 0);
+                float moved = 0f;
+                for (int k = 3; k < arm.N; k++) moved = Mathf.Max(moved, (arm.DisplayX[k] - arm.X[k]).magnitude);   // the held run
+                for (int b = 0; b < world.Length; b++) skin[b] = OctoMath.MulAffine(world[b], bind[b]);
+                int curve = OctopusMeshTests.CountInverted(d, skin, bind, out string first, out int[] per) > 0 ? per[OctopusMeshBuilder.PartArm] : 0;
+                OctopusMeshTests.CountInverted(d, skin, bind, out _, out int[] perLinear, true);
+                TestContext.Out.WriteLine($"{name}: helix radius {radius:F3} m, display moved the held run {moved * 1000f:F2} mm; inverted arm triangles: curve {curve}, linear blend {perLinear[OctopusMeshBuilder.PartArm]}");
+                Assert.Less(moved, 1e-4f, "the display moved a legal wrap");
+                Assert.AreEqual(0, curve, "the curve skin inverts a tight wrap; " + first);
+                linear += perLinear[OctopusMeshBuilder.PartArm];
+            }
+            Assert.Greater(linear, 0, "the wrap is not tight enough to bite (the thicker octopus arm's linear blend inverts)");
         }
     }
 }

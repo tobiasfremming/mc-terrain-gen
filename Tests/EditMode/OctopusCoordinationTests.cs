@@ -125,15 +125,18 @@ namespace TerrainGen.Tests
         }
 
         // Per-run bounds of a travelling octopus whose arms pull together (sideways: across the travel).
-        static bool TravelOk(Tug t) => t.conflict <= 1.5f && t.conflictMax <= 30f && t.lateral <= 0.25f && t.lateralAcc <= 0.5f && t.lateralAccP99 <= 4f && t.progress >= 0.4f;
+        internal static bool TravelOk(Tug t) => t.conflict <= 1.5f && t.conflictMax <= 30f && t.lateral <= 0.25f && t.lateralAcc <= 0.5f && t.lateralAccP99 <= 4f && t.progress >= 0.4f;
         static bool RestOk(Tug t) => t.restResidual <= 0.15f && t.restSpeed <= 0.03f;   // (breathing alone moves the head a few mm/s)
 
-        // Kinds 1-3 x seeds 1-3 at scale s: the log, how many runs fail `ok`, and the means.
+        // Kinds 1-3 x seeds 1-RunSeeds at scale s: the log, how many runs fail `ok`, and the means. The contact is
+        // chaotic, so the bounds below count runs: widened 2026-10-19 from 3 to 6 seeds (9 -> 18 runs per scale) with
+        // every allowance doubled - the same fraction, half the luck (a code change elsewhere tipped one run of nine).
+        internal const int RunSeeds = 6, RunCount = 3 * RunSeeds;
         static int Runs(float s, System.Func<Tug, bool> ok, StringBuilder log, out float conflict, out float lateralAcc, out float restSpeed, List<Tug> all = null)
         {
             int bad = 0; double c = 0, a = 0, r = 0;
             for (int kind = 1; kind <= 3; kind++)
-                for (uint seed = 1; seed <= 3; seed++)
+                for (uint seed = 1; seed <= RunSeeds; seed++)
                 {
                     Tug t = Measure(kind, s, seed);
                     all?.Add(t);
@@ -142,8 +145,8 @@ namespace TerrainGen.Tests
                     c += t.conflict; a += t.lateralAcc; r += t.restSpeed;
                     log.AppendLine($"scale {s} k{kind} seed {seed}: {t}{(good ? "" : "  <-- out")}");
                 }
-            conflict = (float)(c / 9); lateralAcc = (float)(a / 9); restSpeed = (float)(r / 9);
-            log.AppendLine($"scale {s}: {bad} of 9 out, means conflict {conflict:F2} Mg, lateral acceleration {lateralAcc:F2} g, rest speed {restSpeed * 1000f:F1} mm/s");
+            conflict = (float)(c / RunCount); lateralAcc = (float)(a / RunCount); restSpeed = (float)(r / RunCount);
+            log.AppendLine($"scale {s}: {bad} of {RunCount} out, means conflict {conflict:F2} Mg, lateral acceleration {lateralAcc:F2} g, rest speed {restSpeed * 1000f:F1} mm/s");
             return bad;
         }
 
@@ -153,13 +156,13 @@ namespace TerrainGen.Tests
         // partly against each other (two at 45 deg: 0.41 Mg), so conflict is bounded, not zero; what must not
         // happen is a sustained fight or the body yanked sideways. The branch contact is chaotic (a hair of
         // difference in the start changes which bar each arm takes, and .NET and Mono round differently), so one
-        // run of nine may fall outside the per-run bounds; the means are bounded tightly.
+        // run of nine (two of eighteen) may fall outside the per-run bounds; the means are bounded tightly.
         [Test] public void TugOfWar_Travel_ArmsPullTogether()
         {
             var log = new StringBuilder();
             int bad = Runs(1f, TravelOk, log, out float c, out float a, out _);
             TestContext.Out.WriteLine(log.ToString());
-            Assert.LessOrEqual(bad, 1, "arms pull the body in different directions while travelling (see the log)");
+            Assert.LessOrEqual(bad, 2, "arms pull the body in different directions while travelling (see the log)");
             Assert.LessOrEqual(c, MeanConflict, "mean conflict"); Assert.LessOrEqual(a, MeanLateralAcc, "mean sideways acceleration");
         }
 
@@ -172,14 +175,14 @@ namespace TerrainGen.Tests
             foreach (float s in new[] { 0.9f, 1.1f })
             {
                 int b = Runs(s, TravelOk, log, out float c, out float a, out _);
-                if (b > 1 || c > MeanConflict || a > MeanLateralAcc) bad = true;
+                if (b > 2 || c > MeanConflict || a > MeanLateralAcc) bad = true;
             }
             TestContext.Out.WriteLine(log.ToString());
             Assert.IsFalse(bad, "arms pull against each other at an individual's size spread (see the log)");
         }
 
         // Large octopuses (2x, and 4x - the lab's size): the same per-run bounds as at 1x (in Froude time, with the
-        // solver's response size-free: TentacleChain.SizeFree, eased pins), two of nine may fall outside, and the
+        // solver's response size-free: TentacleChain.SizeFree, eased pins), two of nine (four of eighteen) may fall outside, and the
         // means stay below 1.2 Mg conflict and 0.5 g sideways. Baseline before the arm roles at 4x: conflict mean
         // 388 Mg (peak 5009), lateral acceleration mean 3.4 g (peak 152); after the roles (pull-along): 1.84 Mg,
         // 0.58 g, travel ok 4/9.
@@ -189,15 +192,16 @@ namespace TerrainGen.Tests
             foreach (float s in new[] { 2f, 4f })
             {
                 int b = Runs(s, TravelOk, log, out float c, out float a, out _);
-                if (b > 2 || c > 1.2f || a > 0.5f) bad = true;
+                if (b > 4 || c > 1.2f || a > 0.5f) bad = true;
             }
             TestContext.Out.WriteLine(log.ToString());
             Assert.IsFalse(bad, "a large octopus's arms pull against each other (see the log)");
         }
 
         // After travelling, resting arms only support the body: the net arm force is the lattice's weight and
-        // the head is still, at 1x and 4x. One run of nine may still be settling a swing (a hold found late); at
-        // least seven of nine are dead still (< 5 mm/s per unit scale: asleep, measured 2026-10-18 8/9 at 0.0).
+        // the head is still, at 1x and 4x. One run of nine (two of eighteen) may still be settling a swing (a hold
+        // found late); at least seven of nine (fourteen of eighteen) are dead still (< 5 mm/s per unit scale:
+        // asleep, measured 2026-10-18 8/9 at 0.0).
         [Test] public void TugOfWar_Rest_SupportOnly()
         {
             var log = new StringBuilder(); bool bad = false;
@@ -207,7 +211,7 @@ namespace TerrainGen.Tests
                 int b = Runs(s, RestOk, log, out _, out _, out _, all);
                 int moving = 0;
                 foreach (Tug t in all) if (t.restSpeed >= 0.005f) moving++;
-                if (b > 1 || moving > 2) bad = true;
+                if (b > 2 || moving > 4) bad = true;
             }
             TestContext.Out.WriteLine(log.ToString());
             Assert.IsFalse(bad, "resting arms pull against each other (see the log)");

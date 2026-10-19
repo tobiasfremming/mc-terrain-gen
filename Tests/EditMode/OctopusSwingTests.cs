@@ -181,11 +181,13 @@ namespace TerrainGen.Tests
         // Energy stays bounded: in every grove traverse the body hanging under its holds swings past 75 deg less than
         // 8 % of the time and averages below 35 deg (the pump stops at 50 deg, the swing is calmed above 58 deg; measured
         // 2026-10-18: 1x 0-1.5 %, mean 19-31 deg; 4x 3-5.4 %, mean 24-33 deg - the large octopus swings a little wider).
+        // (6 layouts per scale since 2026-10-19, 3 before: the same bound over more of the chaotic traverses)
+        internal const int EnergyLayouts = 6;
         [Test] public void Swing_EnergyBounded()
         {
             var log = new StringBuilder(); int bad = 0;
             foreach (float s in new[] { 1f, 4f })
-                for (int layout = 1; layout <= 3; layout++)
+                for (int layout = 1; layout <= EnergyLayouts; layout++)
                 {
                     OctopusController c = InGrove(s, layout, true, out OctopusBody body, out _);
                     Trip t = Travel(c, body, new Vector3(3f * 2.6f, 2.4f, 0f) * s, 25f);
@@ -200,17 +202,19 @@ namespace TerrainGen.Tests
         // ------------------------------------------------------------------ the route
 
         // Purposeful: given a goal in the far tree of a row of four (three crowns to cross), the octopus plans a
-        // route over the branch hints and swings it waypoint by waypoint. In 6 layouts x (1x, 4x): at least 5 of 6
-        // per scale arrive within 25 s x sqrt(s); the holds it swings onto lie at the planned waypoints (>= 80 %
+        // route over the branch hints and swings it waypoint by waypoint. In 12 layouts x (1x, 4x) (6 until
+        // 2026-10-19: the same fraction over more of the chaotic traverses): at least 10 of 12 per scale arrive
+        // within 25 s x sqrt(s); the holds it swings onto lie at the planned waypoints (>= 80 %
         // within 0.7 L); it never hangs about without progress (no 10 s window short of 0.5 L progress); no arm
         // stays strained past the strain limit longer than the release takes.
+        internal const int RouteLayouts = 12;
         [Test] public void Route_ReachesGoal_AcrossTrees_FollowsPlan()
         {
             var log = new StringBuilder(); bool bad = false;
             foreach (float s in new[] { 1f, 4f })
             {
                 int arrived = 0, near = 0, catches = 0, stalled = 0; float strain = 0f;
-                for (int layout = 1; layout <= 6; layout++)
+                for (int layout = 1; layout <= RouteLayouts; layout++)
                 {
                     OctopusController c = InGrove(s, layout, true, out OctopusBody body, out _);
                     Trip t = Travel(c, body, new Vector3(3f * 2.6f, 2.4f, 0f) * s, 25f);
@@ -218,8 +222,8 @@ namespace TerrainGen.Tests
                     near += t.nearCatches; catches += t.catches; stalled += t.stalledWindows; strain = Mathf.Max(strain, t.worstSustainedStrain);
                     log.AppendLine($"scale {s} layout {layout}: {t}");
                 }
-                log.AppendLine($"scale {s}: arrived {arrived}/6, catches at waypoints {near}/{catches}, stalled windows {stalled}, strain over the limit at most {strain:F2} s/ts");
-                if (arrived < 5 || near < 0.8f * catches || stalled > 0 || strain > ArmCoordinator.StrainHoldSeconds + 0.35f) bad = true;
+                log.AppendLine($"scale {s}: arrived {arrived}/{RouteLayouts}, catches at waypoints {near}/{catches}, stalled windows {stalled}, strain over the limit at most {strain:F2} s/ts");
+                if (arrived < RouteLayouts * 5 / 6 || near < 0.8f * catches || stalled > 0 || strain > ArmCoordinator.StrainHoldSeconds + 0.35f) bad = true;
             }
             TestContext.Out.WriteLine(log.ToString());
             Assert.IsFalse(bad, "the octopus does not follow its route to the goal (see the log)");

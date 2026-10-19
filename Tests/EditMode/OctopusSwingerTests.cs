@@ -150,9 +150,15 @@ namespace TerrainGen.Tests
             return (h ^ (uint)d.BoneCount) * 1099511628211UL;
         }
 
-        // The look features are data that default to off: the tree octopus's mesh is byte-identical (the .NET value;
-        // Unity's Mono may round differently - re-pin there, as the goldens are).
-        internal const ulong kOctopusMeshHash = 0xDAA349F53CE930DAUL;
+        // The look features are data that default to off: the tree octopus's mesh is byte-identical. Unity's Mono rounds
+        // differently from the offline .NET harness, so each runtime has its own pin (as the goldens do).
+        // Re-pinned deliberately 2026-10-19: the arm tubes carry the curve-skin flag in uv3 (OctopusArmSkin; positions,
+        // normals and the other channels unchanged). The Unity value is 0 until the Editor reports it.
+#if UNITY_EDITOR
+        internal const ulong kOctopusMeshHash = 0x0UL;                  // Unity 6000.2.6f2 / Mono: re-pin from the Editor
+#else
+        internal const ulong kOctopusMeshHash = 0xAB640B665C01ECDAUL;   // offline .NET
+#endif
         [Test] public void Look_OctopusMeshUnchanged()
         {
             Assert.AreEqual(kOctopusMeshHash.ToString("X16"), MeshHash(OctopusMeshBuilder.BuildData(CephalopodSpec.Default)).ToString("X16"));
@@ -162,9 +168,8 @@ namespace TerrainGen.Tests
         // pear-shaped sac, much wider low on the mantle than mid-way (the octopus's is only a little), a dark beak
         // cone at the oral pole inside the mouth ring, banded arms (look data the shader reads); the mesh winds
         // outward with no degenerate triangle, and in hanging, swinging and feeding poses no triangle of the body,
-        // eyes, stalks, beak or siphon inverts. FINDING (2026-10-19, reported, not pinned): the ARM tubes - the
-        // octopus's own arm skinning - invert 60-90 triangles (~4 %) at joints in two-arm swing poses, with or without
-        // these look features and with the octopus's arm radii too; printed here for the octopus debugging.
+        // eyes, stalks, beak, siphon - or arm tube (since the display chain and curve skin, 2026-10-19; before, the
+        // arms inverted 60-90 triangles at joints in these two-arm swing poses) - inverts.
         [Test] public void Look_StrangerFeatures_NoInvertedTris()
         {
             CephalopodSpec sp = Spec(), oct = CephalopodSpec.Default;
@@ -210,8 +215,9 @@ namespace TerrainGen.Tests
                 if (rest > worst) { worst = rest; first = fi; }
                 if (arm > worstArm) { worstArm = arm; firstArm = fi; }
             }
-            TestContext.Out.WriteLine($"worst inverted outside the arms {worst} {first}; arms (finding) {worstArm} {firstArm}; meals {brain.Meals}");
+            TestContext.Out.WriteLine($"worst inverted outside the arms {worst} {first}; arms {worstArm} {firstArm}; meals {brain.Meals}");
             Assert.AreEqual(0, worst, first);
+            Assert.AreEqual(0, worstArm, firstArm);
         }
 
         // ------------------------------------------------------------------ the lab

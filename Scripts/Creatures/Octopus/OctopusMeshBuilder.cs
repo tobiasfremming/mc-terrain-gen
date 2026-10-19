@@ -9,7 +9,8 @@ using UnityEngine.Rendering;
 //   uv0 = (arc length along the part in metres, angle / 2pi)
 //   uv1 = (part id, dorsal coordinate -1 .. +1)
 //   uv2 = (bone0, bone1, w0, w1), w0 + w1 = 1, bone0 the heavier
-//   uv3 = (bone2, bone3, e2, e3): extra influences (web only; zero elsewhere). The exact skin is
+//   uv3 = (bone2, bone3, e2, e3): extra influences (web only); on arm tubes past the root (spacing, 0, 0, 0),
+//         the curve-skin flag (OctopusArmSkin). The exact skin is
 //         (1 - e2 - e3) (w0 M0 + w1 M1) + e2 M2 + e3 M3; a 2-bone shader that ignores uv3 still gets a
 //         valid (normalised top-2) blend.
 // Parts (uv1.x): PartEye 3 (as CreatureMeshBuilder), PartArm 4, PartWeb 5, PartMantle 6, PartSiphon 7.
@@ -229,7 +230,8 @@ public static class OctopusMeshBuilder
                  (s, phi) => ArmPoint(a, s, phi),
                  (float s, float phi, Vector3 p, Vector3 nn, out Vector4 skin, out Vector4 skin2, out Vector2 uv, out float dorsal) =>
                  {
-                     skin2 = default;
+                     // past the root's blend with the web the arm takes the curve skin (OctopusArmSkin)
+                     skin2 = s >= 0.5f * arm.Spacing ? new Vector4(arm.Spacing, 0f, 0f, 0f) : default;
                      if (s != skinS) { skinS = s; skinCache = ArmSkin(a, s); }
                      skin = skinCache;
                      uv = new Vector2(s, phi / (2f * Mathf.PI));
@@ -297,7 +299,7 @@ public static class OctopusMeshBuilder
             Grid(us.ToArray(), Range(0f, 2f * Mathf.PI, ArmRing), Point,
                  (float s, float phi, Vector3 p, Vector3 nn, out Vector4 skin, out Vector4 skin2, out Vector2 uv, out float dorsal) =>
                  {
-                     skin2 = default;
+                     skin2 = s >= 0.5f * sp0 ? new Vector4(sp0, 0f, 0f, 0f) : default;
                      skin = Skin(s);
                      uv = new Vector2(s, phi / (2f * Mathf.PI));
                      dorsal = Mathf.Sin(phi - 0.5f * Mathf.PI);

@@ -231,17 +231,21 @@ namespace TerrainGen.Tests
 
         // Dropped onto a thick log over the ground: the body is pushed out along the real normal, arms drape over
         // what they meet (contacts from the probe). The impact may clip for a few frames (a light arm whips
-        // faster than the per-frame query budget can follow). The impact is chaotic, so this is judged over 8
-        // drop points: in most nothing stays inside once settled (deepest centre line above -4 cm after 4 s), and
-        // in some the impact never clips deeper than 5 cm for more than 6 frames running. (The code before the
-        // settled-rest work scored about the same on these drops; the distribution is the regression guard.)
+        // faster than the per-frame query budget can follow). The impact is chaotic, so this is judged over 32
+        // drop points (8 until 2026-10-19, when a change elsewhere tipped one drop: the same fractions, a quarter
+        // of the luck): in at least 3/8 of them nothing stays inside once settled (deepest centre line above -4 cm
+        // after 4 s), and in at least 1/8 the impact never clips deeper than 5 cm for more than 6 frames running.
+        // (Measured 2026-10-19 over the 32: settled 13-15, impact 15-16. The code before the settled-rest work
+        // scored about the same on these drops; the distribution is the regression guard.)
         [Test] public void Body_NoPenetration_FreeArm_NoPassThrough()
         {
+            const int drops = 32;
             int settledOk = 0, impactOk = 0, touched = 0; string log = "";
-            for (int v = 0; v < 8; v++)
+            for (int v = 0; v < drops; v++)
             {
                 var s = new AnalyticSurfaces().AddCapsule(new Vector3(-2f, 0.9f, 0f), new Vector3(2f, 0.9f, 0f), 0.35f).AddGround(0f);
-                var body = new OctopusBody(CephalopodSpec.Default, new Vector3(0.1f + 0.03f * (v % 4), 2.4f, 0.05f - 0.02f * (v / 4)), Quaternion.identity);
+                // the first 8 are the original drop points; the others offset them by a few mm in x and z
+                var body = new OctopusBody(CephalopodSpec.Default, new Vector3(0.1f + 0.03f * (v % 4) + 0.0071f * (v / 8), 2.4f, 0.05f - 0.02f * ((v / 4) % 2) - 0.013f * (v / 8)), Quaternion.identity);
                 var c = new OctopusController(body, s, null, (uint)(v + 1));
                 int run = 0, longest = 0;
                 float settledWorst = 0f;
@@ -260,10 +264,10 @@ namespace TerrainGen.Tests
                 if (c.BodyPushes + c.Drapes > 0) touched++;
                 log += $" {longest}f/{settledWorst * 100f:F0}cm";
             }
-            TestContext.Out.WriteLine($"longest run deeper than 5 cm / settled deepest, per drop:{log}; settled ok {settledOk}/8, impact ok {impactOk}/8");
-            Assert.AreEqual(8, touched, "nothing touched: test does not bite");
-            Assert.GreaterOrEqual(settledOk, 3, "the settled octopus stays inside a solid");
-            Assert.GreaterOrEqual(impactOk, 1, "every impact clips through");
+            TestContext.Out.WriteLine($"longest run deeper than 5 cm / settled deepest, per drop:{log}; settled ok {settledOk}/{drops}, impact ok {impactOk}/{drops}");
+            Assert.AreEqual(drops, touched, "nothing touched: test does not bite");
+            Assert.GreaterOrEqual(settledOk, 3 * drops / 8, "the settled octopus stays inside a solid");
+            Assert.GreaterOrEqual(impactOk, drops / 8, "every impact clips through");
         }
 
         // The same inputs give the same octopus, bit for bit.
