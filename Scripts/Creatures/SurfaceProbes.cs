@@ -437,6 +437,15 @@ public static class SurfaceMath
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Vector3 Cross(Vector3 a, Vector3 b) => new Vector3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
 
+    // v / |v|, bit for bit what Vector3.normalized gives wherever that is a unit vector (|v| > 1e-5); unlike it, a short
+    // v (1e-6 < |v| <= 1e-5, which .normalized turns into zero) still comes back unit, and only a vanishing one
+    // (|v| <= 1e-6, the old sqrMagnitude > 1e-12 test) takes the (unit) fallback. Never returns zero.
+    public static Vector3 Unit(Vector3 v, Vector3 fallback)
+    {
+        float m = v.magnitude;
+        return m > 1e-6f ? v / m : fallback;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Vector3 Norm(Vector3 v, Vector3 fallback)
     {

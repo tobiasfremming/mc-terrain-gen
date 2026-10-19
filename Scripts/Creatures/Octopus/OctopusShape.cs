@@ -74,9 +74,18 @@ internal static class OctopusShape
         0.5f * (2f * p1 + (p2 - p0) * t + (2f * p0 - 5f * p1 + 4f * p2 - p3) * t * t + (3f * p1 - p0 - 3f * p2 + p3) * t * t * t);
 
     // Radius keys at t = i / 8 (head radius units up to the neck, mantle radius units beyond).
+    // A pear-shaped sac (cephalopod.mantlePear): narrow under the neck, widest low down, a full round end.
+    static readonly float[] kPearKeys = { 0.62f, 0.85f, 1.05f, 1.12f, 0.95f };
+
     static float Key(in CephalopodSpec sp, int i)
     {
         float rh = sp.HeadRadius, rm = sp.MantleRadius;
+        if (sp.mantlePear > 0f && i >= 4)
+        {
+            float k = Mathf.Clamp(i, 4, 8) - 4, w = Mathf.Min(sp.mantlePear, 1f);
+            float old = k == 0 ? 0.84f : k == 1 ? 0.98f : k == 2 ? 1.0f : k == 3 ? 0.9f : 0.7f;
+            return Mathf.Lerp(old, kPearKeys[(int)k], w) * rm;
+        }
         switch (Mathf.Clamp(i, 0, 8))
         {
             case 0: return 0.95f * rh;
@@ -203,6 +212,22 @@ internal static class OctopusShape
 
     public static Quaternion ArmRot(in CephalopodSpec sp, int a) => OctoMath.Look(ArmDir(sp, a), Vector3.up);
 
+    // Mouth tentacle m: a ring of MouthRing radius around the oral pole (just inside the shell below the arm
+    // crown), pointing down and out; the dorsal side faces out of the ring, so the rest curl turns the tips in
+    // toward the beak.
+    public static Vector3 MouthRadial(in CephalopodSpec sp, int m)
+    {
+        float phi = 2f * Mathf.PI * m / Mathf.Max(1, sp.MouthCount);
+        return new Vector3(Mathf.Sin(phi), 0f, Mathf.Cos(phi));
+    }
+
+    public static Vector3 MouthRoot(in CephalopodSpec sp, int m) =>
+        MouthRadial(sp, m) * sp.MouthRing + new Vector3(0f, -0.3f * sp.HeadRadius, 0.05f * sp.HeadRadius);
+
+    public static Vector3 MouthDir(in CephalopodSpec sp, int m) => OctoMath.Norm(MouthRadial(sp, m) * 0.55f + Vector3.down, Vector3.down);
+
+    public static Quaternion MouthRot(in CephalopodSpec sp, int m) => OctoMath.Look(MouthDir(sp, m), MouthRadial(sp, m));
+
     // Eye e (0 left, 1 right): centre sunk into the bulge by 35% of its radius; +Z = gaze.
     public static void Eye(in CephalopodSpec sp, int e, out Vector3 centre, out Quaternion rot)
     {
@@ -210,8 +235,25 @@ internal static class OctopusShape
         Vector3 surf = ShellPoint(sp, EyeT, phi);
         Vector3 c = Axis(sp, EyeT);
         Vector3 outDir = OctoMath.Norm(surf - c, Vector3.forward);
+        if (sp.eyeStalk > 0f)
+        {
+            // on a stalk: out from the head and toward the oral side (up, when the body hangs under its arms)
+            Vector3 dir = EyeStalkDir(sp, e);
+            centre = surf + dir * sp.eyeStalk;
+            rot = OctoMath.Look(dir, Vector3.up);
+            return;
+        }
         centre = surf - outDir * (0.35f * sp.EyeRadius);
         rot = OctoMath.Look(outDir, Vector3.up);
+    }
+
+    // Eye e's stalk: its root on the head shell and its direction (unit).
+    public static Vector3 EyeStalkRoot(in CephalopodSpec sp, int e) => ShellPoint(sp, EyeT, (e == 0 ? -EyePhiDeg : EyePhiDeg) * Mathf.Deg2Rad);
+
+    public static Vector3 EyeStalkDir(in CephalopodSpec sp, int e)
+    {
+        Vector3 surf = EyeStalkRoot(sp, e), c = Axis(sp, EyeT);
+        return OctoMath.Norm(OctoMath.Norm(surf - c, Vector3.forward) + new Vector3(0f, -0.35f, 0f), Vector3.forward);
     }
 
     // Siphon: a short funnel on the left side under the mantle opening; +Z = out along the funnel.

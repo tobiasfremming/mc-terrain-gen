@@ -23,6 +23,20 @@ public sealed class CreatureLabRoster : ScriptableObject
 
     public List<Entry> entries = new List<Entry>();
 
+    // The enclosure entries (in roster order) and EVERY grove species (in roster order): each grove animal gets an
+    // OctopusLab - a grove - of its own (the tree octopus, the two-armed swinger).
+    public void SplitGroves(out List<Entry> enclosures, out List<CreatureSpecies> groves)
+    {
+        enclosures = new List<Entry>();
+        groves = new List<CreatureSpecies>();
+        foreach (Entry e in entries)
+        {
+            if (e.species == null) continue;
+            if (CreatureKit.LabHabitat.For(e.species) == CreatureKit.Habitat.Grove) groves.Add(e.species);
+            else enclosures.Add(e);
+        }
+    }
+
     // The entries a habitat is placed for (in roster order), and the first of another.
     public void Split(out List<Entry> enclosures, out CreatureSpecies grove)
     {

@@ -241,6 +241,7 @@ public sealed class CreatureSim
     // The walking sub-step (every mode but the air ones; launch and touchdown blend it with the air chain).
     internal void GroundSubStep(float dt, Vector3 target)
     {
+        subDt = dt;
         var sp = Species;
         float maxSpeed = sp.speed * TimeScale;
         float window = kGroundWindow * SizeScale;
@@ -504,6 +505,19 @@ public sealed class CreatureSim
         Array.Copy(Path, headTarget, headK);
         Vector3 up = HeadPathUp();
         Vector3 back = Path[headK - 1];
+        if (!climbing && headK < n)
+        {
+            // over a rim (out of a hole, over a brink) the head's chord and the neck's first segment part sharply, and a
+            // head laid flat along its own chord folded the whole bend into its neck end: past kHeadBaseLo the head takes
+            // up to kHeadBaseShare of that bend as a whole-head pitch toward the neck (eased in over kHeadBaseTau)
+            Vector3 c1 = SurfaceMath.Norm(Path[0] - Path[headK - 1], heading), c2 = SurfaceMath.Norm(Path[headK - 1] - Path[headK], c1);
+            float ang = Mathf.Acos(Mathf.Clamp(SurfaceMath.Dot(c1, c2), -1f, 1f)) * Mathf.Rad2Deg;
+            float w = kHeadBaseShare * SurfaceMath.SmoothStep(kHeadBaseLo, kHeadBaseHi, ang);
+            headBase += (w - headBase) * (1f - Mathf.Exp(-subDt / (kHeadBaseTau * TimeScale)));
+            if (headBase < 1e-4f && w == 0f) headBase = 0f;
+            w = headBase;
+            if (w > 0f) back = Path[0] - SurfaceMath.Slerp(c1, c2, w);
+        }
         rigidHead.Place(Path, rigidHead.Frame(Path[0], back, up, 0f), 0, SizeScale);
         float m = up.magnitude;
         up = m > 1e-9f ? up / m : Vector3.up;
@@ -512,10 +526,21 @@ public sealed class CreatureSim
         if (climbing) up = pathUp[0];
         float lift = 0f;
         for (int i = 1; i < headK; i++) lift = Mathf.Max(lift, Vector3.Dot(headTarget[i] - Path[i], pathUp[i]));
+        if (!climbing)
+        {
+            // walking, the lift that bridges a rim is eased (kHeadLiftTau): re-made from the re-grounded head every
+            // sub-step it jumped as a head joint crossed the rim's edge, and the neck's restore shoved the body behind
+            // it by centimetres (vertical jitter coming out under an overhang's lip, R25)
+            headLift += (lift - headLift) * (1f - Mathf.Exp(-subDt / (kHeadLiftTau * TimeScale)));
+            if (lift == 0f && headLift < 1e-5f) headLift = 0f;
+            lift = headLift;
+        }
         if (lift > 0f)
             for (int i = 0; i < headK; i++) Path[i] += up * lift;
         RestoreLengths(seg, climbing, headK);
     }
+    const float kHeadBaseLo = 20f, kHeadBaseHi = 40f, kHeadBaseShare = 0.35f, kHeadBaseTau = 0.4f, kHeadLiftTau = 0.3f;
+    float headBase, headLift, subDt;
 
     // Climbing's travel limit: joint by joint from the neck, a move from pathStart longer than `bound` is cut to it,
     // then the segment to the joint before is put back to its length along itself. A move out along the joint's up
@@ -641,7 +666,7 @@ public sealed class CreatureSim
         {
             int j = girdles[g];
             Vector3 fwd = j == 0 ? heading : Path[j - 1] - Path[j];
-            fwd = fwd.sqrMagnitude > 1e-12f ? fwd.normalized : heading;
+            fwd = SurfaceMath.Unit(fwd, heading);
             float sumR = 0f, sumL = 0f, roll = 0f; int cR = 0, cL = 0;
             for (int l = 0; l < specs.Length; l++)
             {

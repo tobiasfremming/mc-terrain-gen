@@ -261,14 +261,28 @@ public sealed class CreatureLab : MonoBehaviour
     internal void UseRoster()
     {
         if (roster == null || roster.entries == null || roster.entries.Count == 0) return;
-        roster.Split(out List<CreatureLabRoster.Entry> list, out CreatureSpecies grove);
+        roster.SplitGroves(out List<CreatureLabRoster.Entry> list, out List<CreatureSpecies> groves);
         species = new CreatureSpecies[list.Count];
         scaleOverrides = new float[list.Count];
         for (int k = 0; k < list.Count; k++) { species[k] = list[k].species; scaleOverrides[k] = list[k].scaleOverride; }
-        if (grove != null)
+        // every grove species to an OctopusLab of its own, in roster order (the scene builder makes one per grove
+        // with its trees and prey; a grove added to the roster since then borrows the first one's trees, no prey)
+        OctopusLab[] labs = GetComponents<OctopusLab>();
+        for (int g = 0; g < groves.Count; g++)
         {
-            OctopusLab ol = GetComponent<OctopusLab>();
-            if (ol != null && ol.octopus == null) ol.octopus = grove;
+            bool has = false;
+            foreach (OctopusLab l in labs) if (l.octopus == groves[g]) has = true;
+            if (has) continue;
+            OctopusLab free = null;
+            foreach (OctopusLab l in labs) if (l.octopus == null) { free = l; break; }
+            if (free == null && labs.Length > 0)
+            {
+                free = gameObject.AddComponent<OctopusLab>();
+                free.groveSets = labs[0].groveSets; free.treeScale = labs[0].treeScale; free.borderMaterial = labs[0].borderMaterial;
+                Debug.LogWarning($"[CreatureLab] {groves[g].name}: a grove without its own settings (no prey) - Marching Cubes / Rebuild Creature Lab gives it its own");
+                labs = GetComponents<OctopusLab>();
+            }
+            if (free != null) free.octopus = groves[g];
         }
     }
 

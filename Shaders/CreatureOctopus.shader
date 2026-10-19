@@ -70,6 +70,7 @@ Shader "MarchingCubes/CreatureOctopus"
         float4 _OctoSubsurface; // light-through colour
         float4 _OctoParams;     // chromatophores per metre, papillae, sucker size (x arm radius), cloud speed
         float4 _OctoParams2;    // wetness, cloak glint, arm root radius, arm length
+        float4 _OctoParams3;    // arm bands per metre (0 = none: the octopus), band contrast, 0, 0
         ENDHLSL
 
         Pass
@@ -200,6 +201,13 @@ Shader "MarchingCubes/CreatureOctopus"
                 float cloud = smoothstep(0.55, 1.0, band) * saturate(chroma * 1.5) * 0.55;
                 float darkness = saturate(cellSpot * (0.35 + 0.65 * chroma) + 0.6 * mottle + cloud);
                 float3 albedo = lerp(base, _PatternColor.rgb, darkness * saturate(0.35 + 0.65 * (dorsal * 0.5 + 0.5)));
+                // banded arms (a relative's look: the swinger's ribbon arms; the octopus has none)
+                if (arm && _OctoParams3.x > 0.0)
+                {
+                    float bandPos = frac(uv0.x * _OctoParams3.x + 0.15 * CreatureValueNoise(P * 3.0, 0x68E31DA4u));
+                    float stripe = smoothstep(0.08, 0.16, bandPos) * (1.0 - smoothstep(0.38, 0.46, bandPos));
+                    albedo = lerp(albedo, _PatternColor.rgb, _OctoParams3.y * stripe * saturate(0.5 + 0.5 * dorsal + 0.3));
+                }
                 // fine speckle
                 albedo *= 1.0 + 0.06 * (CreatureValueNoise(P * 160.0, 0x27D4EB2Fu) - 0.5) * 2.0;
 

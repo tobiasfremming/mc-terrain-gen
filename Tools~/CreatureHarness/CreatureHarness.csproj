@@ -68,6 +68,7 @@
          assets, Perf assembly) or non-creature runtime code. Everything else matching the include globs runs. -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\ClimbTestMeshes.cs" />            <!-- GameObject + MeshCollider fixtures -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureClimbTests.cs" />         <!-- ClimbTestMeshes, physics -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureTreeSpiderClimbTests.cs" /><!-- ClimbTestMeshes, physics (the swinger's prey) -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureContainmentTests.cs" />   <!-- obstacles via CreatureLab -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureEnclosureTests.cs" />     <!-- curb meshes, lab GameObjects -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureGroundProbeTests.cs" />   <!-- physics + world config assets -->

@@ -64,10 +64,14 @@ public static class OctopusMeshBuilder
     {
         var b = new Builder(sp);
         for (int a = 0; a < sp.ArmCount; a++) b.Arm(a);
-        for (int a = 0; a < sp.ArmCount; a++) b.Web(a, (a + 1) % sp.ArmCount);
+        // (two arms leave from opposite sides: no web between them - it would be a sheet across the body)
+        if (sp.ArmCount > 2) for (int a = 0; a < sp.ArmCount; a++) b.Web(a, (a + 1) % sp.ArmCount);
+        for (int m = 0; m < sp.MouthCount; m++) b.Mouth(m);
         b.Shell();
         b.Eyes();
         b.SiphonTube();
+        if (sp.eyeStalk > 0f) b.EyeStalks();
+        if (sp.beakLength > 0f) b.Beak();
         b.data.BoneCount = b.body.BoneCount;
         return b.data;
     }
@@ -242,6 +246,63 @@ public static class OctopusMeshBuilder
             Vector3 nn = Vector3.Cross(ArmPoint(a, s, phi + h) - ArmPoint(a, s, phi - h), ArmPoint(a, s + h, phi) - ArmPoint(a, s - h, phi));
             Vector3 c = OctopusShape.ArmRoot(sp, a) + OctopusShape.ArmDir(sp, a) * s;
             return Vector3.Dot(nn, p - c) < 0f;
+        }
+
+        // ---------------------------------------------------------------- mouth tentacles
+
+        // Mouth tentacle m (cephalopod.mouthCount): the arm's tube (round buried root, tapered, pointed tip, flat
+        // ventral half) along its rest direction, in the frame of OctopusShape.MouthRot (dorsal = its +Y), skinned
+        // to its own bones (joints 50/50) and the buried root to the web. Drawn as an arm (PartArm: suckers).
+        public void Mouth(int m)
+        {
+            TentacleSpec ms = sp.mouth;
+            int nm = ms.Segments;
+            float L = ms.Length, r0 = ms.RootRadius, rt = ms.TipRadius, blob = kRootBlob * r0, tip = kTipLength * rt, sp0 = ms.Spacing;
+            Vector3 root = OctopusShape.MouthRoot(sp, m);
+            Quaternion q = OctopusShape.MouthRot(sp, m);
+            Vector3 d = OctoMath.Rotate(q, Vector3.forward), up = OctoMath.Rotate(q, Vector3.up), side = OctoMath.Rotate(q, Vector3.right);
+            int web = body.SoftBone(OctopusShape.ClusterWeb);
+            float Rad(float s)
+            {
+                if (s < 0f) { float k = s / blob; return r0 * Mathf.Sqrt(Mathf.Max(0f, 1f - k * k)); }
+                if (s > L) { float k = Mathf.Clamp01((s - L) / tip); return rt * Mathf.Pow(1f - k, 0.6f) * Mathf.Sqrt(Mathf.Max(0f, 1f - k * k * k * k)); }
+                return ms.RadiusAt(s);
+            }
+            Vector3 Point(float s, float phi)
+            {
+                float r = Rad(s), cs = MathF.Sin(phi), sn = -MathF.Cos(phi);
+                float half = sn > 0f ? r : r * ms.Flatten;
+                return root + d * s + side * (r * cs) + up * (half * sn);
+            }
+            Vector4 Skin(float s)
+            {
+                int b0 = body.MouthBone(m, 0);
+                if (s <= 0f) return Blend(web, b0, 0.5f);
+                if (s < 0.5f * sp0) return Blend(web, b0, 0.5f + s / sp0);
+                if (s >= L) return Blend(body.MouthBone(m, nm - 2), body.MouthBone(m, nm - 1), Mathf.Min(1f, 0.5f + (s - L) / sp0));
+                float f = s / sp0;
+                int k = Mathf.Min((int)f, nm - 2);
+                float fr = f - k;
+                if (fr < 0.5f) return Blend(body.MouthBone(m, Mathf.Max(0, k - 1)), body.MouthBone(m, k), 0.5f + fr);
+                return Blend(body.MouthBone(m, k), body.MouthBone(m, k + 1), fr - 0.5f);
+            }
+            var us = new List<float> { -blob, -blob * Mathf.Sin(60f * Mathf.Deg2Rad), -blob * Mathf.Sin(30f * Mathf.Deg2Rad) };
+            int rings = (nm - 1) * RingsPerSegment;
+            for (int i = 0; i <= rings; i++) us.Add(L * i / rings);
+            us.Add(L + tip * 0.3f); us.Add(L + tip * 0.6f); us.Add(L + tip * 0.85f); us.Add(L + tip);
+            // the grid's raw normal orientation from a side sample
+            float hs = 0.5f * L, hp = 0.5f * Mathf.PI, h = 1e-3f;
+            Vector3 nn0 = Vector3.Cross(Point(hs, hp + h) - Point(hs, hp - h), Point(hs + h, hp) - Point(hs - h, hp));
+            bool flip = Vector3.Dot(nn0, Point(hs, hp) - (root + d * hs)) < 0f;
+            Grid(us.ToArray(), Range(0f, 2f * Mathf.PI, ArmRing), Point,
+                 (float s, float phi, Vector3 p, Vector3 nn, out Vector4 skin, out Vector4 skin2, out Vector2 uv, out float dorsal) =>
+                 {
+                     skin2 = default;
+                     skin = Skin(s);
+                     uv = new Vector2(s, phi / (2f * Mathf.PI));
+                     dorsal = Mathf.Sin(phi - 0.5f * Mathf.PI);
+                 },
+                 PartArm, flip, true, -d, true, d);
         }
 
         // ---------------------------------------------------------------- web
@@ -437,6 +498,57 @@ public static class OctopusMeshBuilder
                      dorsal = nn.y;
                  },
                  PartSiphon, SiphonFlip(f, basePt, axis), true, -axis, true, axis);
+        }
+
+        // A tube along `axis` from basePt - axis buried to basePt + axis len, radius R(s), rigid to one bone
+        // (round closed ends from R going to zero). Eye stalks and the beak (cephalopod.eyeStalk / beakLength).
+        void RigidTube(Vector3 basePt, Vector3 axis, float buried, float len, Func<float, float> R, int bone, int part, int rows, int around)
+        {
+            Quaternion q = OctoMath.Look(axis, Mathf.Abs(axis.y) < 0.95f ? Vector3.up : Vector3.right);
+            Surface f = (s, ph) => basePt + OctoMath.Rotate(q, new Vector3(Mathf.Cos(ph) * R(s), Mathf.Sin(ph) * R(s), s));
+            var us = new List<float> { -buried };
+            for (int i = 1; i < rows; i++) us.Add(Mathf.Lerp(-buried, len, (float)i / rows));
+            us.Add(len);
+            Grid(us.ToArray(), Range(0f, 2f * Mathf.PI, around), f,
+                 (float s, float ph, Vector3 p, Vector3 nn, out Vector4 skin, out Vector4 skin2, out Vector2 uv, out float dorsal) =>
+                 {
+                     skin2 = default;
+                     skin = new Vector4(bone, bone, 1f, 0f);
+                     uv = new Vector2(s + buried, ph / (2f * Mathf.PI));
+                     dorsal = nn.y;
+                 },
+                 part, SiphonFlip(f, basePt, axis), true, -axis, true, axis);
+        }
+
+        // Eyes on stalks: a tapering stalk from inside the head to the eye ball, rigid to the eye's bone (drawn as
+        // skin: PartMantle).
+        public void EyeStalks()
+        {
+            float r0 = 0.42f * sp.EyeRadius, r1 = 0.3f * sp.EyeRadius, len = sp.eyeStalk, buried = 0.6f * r0 + 0.3f * sp.HeadRadius;
+            for (int e = 0; e < 2; e++)
+            {
+                Vector3 root = OctopusShape.EyeStalkRoot(sp, e), dir = OctopusShape.EyeStalkDir(sp, e);
+                float R(float s)
+                {
+                    if (s < -buried + r0) { float k = (s + buried) / r0; return r0 * Mathf.Sqrt(Mathf.Clamp01(k * (2f - k))); }
+                    return Mathf.Lerp(r0, r1, Mathf.Clamp01(s / len));
+                }
+                RigidTube(root, dir, buried, len, R, body.EyeBone(e), PartMantle, 8, 10);
+            }
+        }
+
+        // The beak: a dark horny cone at the oral pole, pointing out of the mouth ring, rigid to the web (PartSiphon).
+        public void Beak()
+        {
+            float len = sp.beakLength, rb = 0.45f * len, buried = 0.5f * len;
+            Vector3 axis = -OctopusShape.AxisTangent(sp, 0f), basePt = OctopusShape.Axis(sp, 0f);
+            float R(float s)
+            {
+                if (s < -buried + rb) { float k = (s + buried) / rb; return rb * Mathf.Sqrt(Mathf.Clamp01(k * (2f - k))); }
+                float t = Mathf.Clamp01(s / len);
+                return rb * Mathf.Pow(1f - t, 0.8f) * Mathf.Sqrt(Mathf.Clamp01(1f - t * t * t * t)) + 1e-4f;
+            }
+            RigidTube(basePt, axis, buried, len, R, body.SoftBone(OctopusShape.ClusterWeb), PartSiphon, 8, 10);
         }
 
         static bool SiphonFlip(Surface f, Vector3 basePt, Vector3 axis)

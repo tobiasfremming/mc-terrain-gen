@@ -33,6 +33,13 @@ public sealed class OctopusBody
     public readonly TentacleChain[] Arms;
     public readonly int ArmCount, Segments;
     public float Time { get; private set; }
+    // Mouth tentacles (spec.mouthCount; none on the octopus): short chains rooted in the web around the beak that
+    // only feed (MouthFeeder). One-way coupled: their roots ride the web cluster, they put nothing back on the body
+    // (a few grams against the body's weight). Bones: after the 6 soft bones, before the eyes.
+    public readonly TentacleChain[] Mouth;
+    public readonly int MouthCount, MouthSegments;
+    readonly float[] mouthW;
+    readonly Quaternion[] mouthRestRot;
 
     readonly int[] web;                 // embedding particles (EmbedCluster)
     public static int EmbedCluster = OctopusShape.ClusterHead; // tuning: which cluster carries the arm roots
@@ -91,12 +98,24 @@ public sealed class OctopusBody
             Arms[a].Iterations = iterations;
         }
 
+        MouthCount = spec.MouthCount; MouthSegments = MouthCount > 0 ? spec.mouth.Segments : 0;
+        Mouth = new TentacleChain[MouthCount];
+        mouthW = new float[MouthCount * nw]; mouthRestRot = new Quaternion[MouthCount];
+        for (int m = 0; m < MouthCount; m++)
+        {
+            Vector3 r = OctopusShape.MouthRoot(spec, m) * SizeScale;
+            mouthRestRot[m] = OctopusShape.MouthRot(spec, m);
+            Embed(r, mouthW, m * nw);
+            Mouth[m] = new TentacleChain(spec.mouth, position + rotation * r, rotation * mouthRestRot[m], SizeScale) { Iterations = iterations };
+        }
+
         eyeRest = new Vector3[2]; eyeRot = new Quaternion[2];
         for (int e = 0; e < 2; e++) OctopusShape.Eye(spec, e, out eyeRest[e], out eyeRot[e]);
         OctopusShape.Siphon(spec, out siphonRest, out siphonRot);
 
         Lattice.FitAll();
         for (int a = 0; a < ArmCount; a++) { SyncRoot(a); Arms[a].UpdateFrames(0f); }
+        for (int m = 0; m < MouthCount; m++) { SyncMouth(m); Mouth[m].UpdateFrames(0f); }
     }
 
     // Least-norm weights w over the web cluster with sum w = 1 and sum w q = p (rest, body space x scale).
@@ -117,14 +136,14 @@ public sealed class OctopusBody
     public Vector3 Gravity
     {
         get => gravity;
-        set { gravity = value; Lattice.Gravity = value; for (int a = 0; a < ArmCount; a++) Arms[a].Gravity = value; }
+        set { gravity = value; Lattice.Gravity = value; for (int a = 0; a < ArmCount; a++) Arms[a].Gravity = value; for (int m = 0; m < MouthCount; m++) Mouth[m].Gravity = value; }
     }
 
     // Absolute velocity damping on everything, 1/s (settling in tests and the lab; 0 in normal play).
     public float ExtraDamping
     {
         get => extraDamping;
-        set { extraDamping = value; Lattice.ExtraDamping = value; for (int a = 0; a < ArmCount; a++) Arms[a].ExtraDamping = value; }
+        set { extraDamping = value; Lattice.ExtraDamping = value; for (int a = 0; a < ArmCount; a++) Arms[a].ExtraDamping = value; for (int m = 0; m < MouthCount; m++) Mouth[m].ExtraDamping = value; }
     }
 
     public void SetAllLimp(bool limp) { for (int a = 0; a < ArmCount; a++) Arms[a].SetLimp(limp); }
@@ -207,6 +226,7 @@ public sealed class OctopusBody
         for (int a = 0; a < ArmCount; a++) ArmForce[a] = OctoMath.V(armImpulse[a].x * idt, armImpulse[a].y * idt, armImpulse[a].z * idt);
         Lattice.FitAll();
         for (int a = 0; a < ArmCount; a++) Arms[a].UpdateFrames(dt);
+        for (int m = 0; m < MouthCount; m++) Mouth[m].UpdateFrames(dt);
         UpdateSleep(dt);
     }
 
@@ -345,10 +365,19 @@ public sealed class OctopusBody
 
     float lastSubStep;
 
+    // The swing's energy governor (ArmCoordinator.SwingGovernor, 1/s): absolute velocity damping on the whole
+    // animal - lattice and every arm particle - while it is above zero. (Damping the lattice alone, half the
+    // animal's mass, let a wide swing ring on in the arms.)
+    public float SwingGovernor;
+    // The pump's push (ArmCoordinator.SwingPush, m/s^2): a uniform acceleration of every free particle.
+    public Vector3 SwingPush;
+
     void SubStep(float h)
     {
         Time += h;
         lastSubStep = h;
+        if (SwingGovernor > 0f) Govern(Mathf.Exp(-SwingGovernor * h));
+        if (SwingPush.x != 0f || SwingPush.y != 0f || SwingPush.z != 0f) Push(SwingPush * (h * h));
         Vector3 refVel = Velocity(h);
         Lattice.Integrate(h, refVel);
         // Free arm segments relax their twist to the transported frame (the oral side stays oral, so an arm
@@ -379,6 +408,63 @@ public sealed class OctopusBody
             if (ReleaseOverloadedPins && ch.Overload > OverloadRelease && ch.OverloadedPin > 0) { ch.Unpin(ch.OverloadedPin); OverloadReleases++; }
             SyncRoot(a);
             ch.EndSubStep(h);
+        }
+        // the mouth tentacles: kinematic roots on the web, their own solve (nothing handed back to the lattice)
+        for (int m = 0; m < MouthCount; m++)
+        {
+            TentacleChain ch = Mouth[m];
+            SyncMouth(m);
+            ch.Integrate(h, refVel);
+            for (int it = 0; it < iterations; it++) ch.SolveIteration(h);
+            SyncMouth(m);
+            ch.EndSubStep(h);
+        }
+    }
+
+    // Mouth tentacle m's root: the embedded point on the web cluster, kinematic (inverse mass 0, its back point
+    // along the root frame).
+    void SyncMouth(int m)
+    {
+        TentacleChain ch = Mouth[m];
+        int nw = web.Length, o = m * nw;
+        float rx = 0f, ry = 0f, rz = 0f;
+        Vector3[] lx = Lattice.X;
+        for (int j = 0; j < nw; j++) { Vector3 x = lx[web[j]]; float u = mouthW[o + j]; rx += x.x * u; ry += x.y * u; rz += x.z * u; }
+        ch.X[0].x = rx; ch.X[0].y = ry; ch.X[0].z = rz;
+        ch.Prev[0] = ch.X[0];
+        ch.InvMass[0] = 0f; ch.BackInvMass = 0f;
+        ch.RootFrame = OctoMath.Mul(Lattice.ClusterRotation[OctopusShape.ClusterWeb], mouthRestRot[m]);
+        Vector3 f = OctoMath.Rotate(ch.RootFrame, 0f, 0f, 1f);
+        ch.Back.x = rx - f.x * ch.Spacing; ch.Back.y = ry - f.y * ch.Spacing; ch.Back.z = rz - f.z * ch.Spacing;
+    }
+
+    // Every free particle's velocity + d / h (d = a h^2).
+    void Push(Vector3 d)
+    {
+        Vector3[] lp = Lattice.Prev;
+        for (int i = 0; i < SoftLattice.Count; i++) { lp[i].x -= d.x; lp[i].y -= d.y; lp[i].z -= d.z; }
+        for (int a = 0; a < ArmCount; a++)
+        {
+            Vector3[] p = Arms[a].Prev; float[] im = Arms[a].InvMass;
+            for (int k = 1; k < Segments; k++) if (im[k] > 0f) { p[k].x -= d.x; p[k].y -= d.y; p[k].z -= d.z; }
+        }
+    }
+
+    // Every particle's velocity (X - Prev) x f.
+    void Govern(float f)
+    {
+        Vector3[] lx = Lattice.X, lp = Lattice.Prev;
+        for (int i = 0; i < SoftLattice.Count; i++)
+        {
+            lp[i].x = lx[i].x - (lx[i].x - lp[i].x) * f; lp[i].y = lx[i].y - (lx[i].y - lp[i].y) * f; lp[i].z = lx[i].z - (lx[i].z - lp[i].z) * f;
+        }
+        for (int a = 0; a < ArmCount; a++)
+        {
+            Vector3[] x = Arms[a].X, p = Arms[a].Prev;
+            for (int k = 1; k < Segments; k++)
+            {
+                p[k].x = x[k].x - (x[k].x - p[k].x) * f; p[k].y = x[k].y - (x[k].y - p[k].y) * f; p[k].z = x[k].z - (x[k].z - p[k].z) * f;
+            }
         }
     }
 
@@ -421,20 +507,31 @@ public sealed class OctopusBody
 
     // ------------------------------------------------------------------ bones
 
-    public static int BoneCountFor(in CephalopodSpec sp) => sp.ArmCount * sp.arm.Segments + SoftBoneCount + 3;
-    public int BoneCount => ArmCount * Segments + SoftBoneCount + 3;
+    public static int MouthBonesFor(in CephalopodSpec sp) => sp.MouthCount > 0 ? sp.MouthCount * sp.mouth.Segments : 0;
+    public static int BoneCountFor(in CephalopodSpec sp) => sp.ArmCount * sp.arm.Segments + SoftBoneCount + MouthBonesFor(sp) + 3;
+    public int BoneCount => ArmCount * Segments + SoftBoneCount + MouthCount * MouthSegments + 3;
     public int ArmBone(int arm, int k) => arm * Segments + k;
     public int SoftBone(int c) => ArmCount * Segments + c;
-    public int EyeBone(int e) => ArmCount * Segments + SoftBoneCount + e;
-    public int SiphonBone => ArmCount * Segments + SoftBoneCount + 2;
+    public int MouthBone(int m, int k) => ArmCount * Segments + SoftBoneCount + m * MouthSegments + k;
+    public int EyeBone(int e) => ArmCount * Segments + SoftBoneCount + MouthCount * MouthSegments + e;
+    public int SiphonBone => ArmCount * Segments + SoftBoneCount + MouthCount * MouthSegments + 2;
 
     // Rest-space pivot of soft bone c (its bind pose is translate(-pivot / sizeScale) at scale 1).
     public Vector3 SoftBonePivot(int c) =>
         c < SoftLattice.ClusterCount ? Lattice.ClusterRestCentre[c] : Lattice.Rest[OctopusShape.Apex];
 
+    // Frames and stretch re-taken from the particles as they are now, twist kept (no rate step): for a pass outside
+    // the solve that moved particles after Tick took the frames (the controller's contacts).
+    public void RefreshArmFrames()
+    {
+        for (int a = 0; a < ArmCount; a++) Arms[a].UpdateFrames(0f);
+        for (int m = 0; m < MouthCount; m++) Mouth[m].UpdateFrames(0f);
+    }
+
     public void WriteBoneWorld(Matrix4x4[] dst, int offset)
     {
         for (int a = 0; a < ArmCount; a++) Arms[a].WriteBones(dst, offset + a * Segments);
+        for (int m = 0; m < MouthCount; m++) Mouth[m].WriteBones(dst, offset + MouthBone(m, 0));
         // the cluster goals act on rest offsets in sizeScale units: the mesh (scale 1) needs x sizeScale
         float s = SizeScale;
         for (int c = 0; c < SoftLattice.ClusterCount; c++)
@@ -462,5 +559,6 @@ public sealed class OctopusBody
     {
         for (int i = 0; i < SoftLattice.Count; i++) { lo = Vector3.Min(lo, Lattice.X[i]); hi = Vector3.Max(hi, Lattice.X[i]); }
         for (int a = 0; a < ArmCount; a++) Arms[a].Encapsulate(ref lo, ref hi);
+        for (int m = 0; m < MouthCount; m++) Mouth[m].Encapsulate(ref lo, ref hi);
     }
 }

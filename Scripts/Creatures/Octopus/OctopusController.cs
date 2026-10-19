@@ -33,6 +33,7 @@ public sealed class OctopusController
     public IBranchHints Hints;
     public OctopusBrain Brain;
     public readonly ArmCoordinator Coordinator;   // decides what each arm is for (ticked after the brain)
+    public readonly MouthFeeder Feeder;           // the mouth tentacles (null: none - the octopus)
     public OctoIntent Intent;                 // set by the brain, or by a test directly
     public Func<Vector3, Vector3> UpAt;
     public int RestAnchors = 4;               // at rest, free arms keep feeling until this many hold on
@@ -68,12 +69,13 @@ public sealed class OctopusController
     public OctopusController(OctopusBody body, ISurfaceProbe probe, Func<Vector3, Vector3> upAt = null, uint seed = 1, int slotBase = 0)
     {
         Body = body; SurfaceProbe = probe; UpAt = upAt; this.slotBase = slotBase;
-        Board = new ArmBlackboard(body.ArmCount);
+        Board = new ArmBlackboard(body.ArmCount) { MinAnchorsHanging = body.Spec.MinHolds };
         Agents = new TentacleAgent[body.ArmCount];
         for (int a = 0; a < body.ArmCount; a++)
             Agents[a] = new TentacleAgent(a, body.Arms[a], OctopusShape.ArmDir(body.Spec, a), seed);
         Intent = new OctoIntent { mode = OctoMode.Rest, goal = body.HeadCentre };
         Coordinator = new ArmCoordinator(body, seed);
+        if (body.MouthCount > 0) Feeder = new MouthFeeder(body);
     }
 
     public int SlotOf(int arm) => slotBase + arm;
@@ -147,6 +149,7 @@ public sealed class OctopusController
         Brain?.Tick(dt, this);
         Coordinator.Tick(dt, this);
         for (int a = 0; a < Agents.Length; a++) Agents[a].Tick(dt, this);
+        Feeder?.Tick(dt, this);
         RestRelax();
         bool wasAsleep = Body.Asleep;
         Body.Tick(dt);
@@ -165,6 +168,10 @@ public sealed class OctopusController
             ApplyPlanes();
             // a grooming arm's tip rests on the skin, not in it (after the solve, like the contact planes)
             for (int a = 0; a < Agents.Length; a++) Agents[a].KeepOffShell(this);
+            // the contact passes above moved arm particles after the body took its frames: re-take them, so the
+            // bones (and the next solve's frames) follow the arms as they are. Stale, a bone pointed up to 170 deg
+            // away from its own segment and the arm tube between two such bones turned inside out.
+            Body.RefreshArmFrames();
             // fell asleep this tick: the pose to hold is the one after contact (the body's sleep snapshot is
             // taken before it; holding that one would leave a part resting on a surface where the solver had it,
             // inside the surface, and show as a jump the moment the octopus falls asleep)
@@ -205,6 +212,8 @@ public sealed class OctopusController
         // a swing past its comfortable amplitude is calmed (the arms brace; the energy bound of the pumping)
         if (Coordinator.SwingDamping > body) body = Coordinator.SwingDamping;
         if (Body.Lattice.ExtraDamping != body) Body.Lattice.ExtraDamping = body;
+        Body.SwingGovernor = Coordinator.SwingGovernor;
+        Body.SwingPush = Coordinator.SwingPush;
         for (int a = 0; a < Agents.Length; a++)
             if (Agents[a].Mode == TentacleAgent.State.Anchored)
             {
@@ -247,6 +256,7 @@ public sealed class OctopusController
 
     internal void NotifyGrab(IPreyTarget prey) { Brain?.OnGrab(prey); Events.RaiseGrabbed(prey); prey.OnGrabbed(); }
     internal void NotifyRelease(IPreyTarget prey) { Brain?.OnRelease(prey); Events.RaiseReleased(prey); prey.OnReleased(); }
+    internal void NotifyEaten(IPreyTarget prey) { Brain?.OnEaten(prey); Events.RaiseEaten(prey); }
 
     // ------------------------------------------------------------------ contact
 
