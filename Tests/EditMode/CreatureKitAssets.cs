@@ -99,6 +99,16 @@ namespace TerrainGen.Tests
             return null;
         }
 
+        // Why a legacy-equivalence test (the kit path vs the frozen pre-kit code) does not apply: the species uses
+        // a kit-only part or module (no legacy form: [Part/Module(KitOnly = true)]). null = it has a legacy form.
+        public static string KitOnlyReason(CreatureSpecies sp)
+        {
+            CreatureSpecies r = sp.Compiled.Runtime;
+            foreach (CreatureKit.CreaturePart p in CreatureKit.KitView.Parts(r)) if (p.Meta.KitOnly) return $"kit-only part {p.Meta.Name} ({p.id}): no legacy form";
+            foreach (CreatureKit.CreatureModule m in CreatureKit.KitView.Modules(r)) if (m.Meta.KitOnly) return $"kit-only module {m.Meta.Name}: no legacy form";
+            return null;
+        }
+
         // ------------------------------------------------------------ the species' renderer mesh and skin
 
         // The mesh the renderer draws for the species (CreatureRenderer's choice).

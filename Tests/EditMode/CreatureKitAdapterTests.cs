@@ -74,6 +74,8 @@ namespace TerrainGen.Tests
             CreatureSpecies sp = CreatureKitAssets.Load(name);
             CompiledSpecies c = sp.Compiled;
             Assert.IsNull(c.Error, name + ": " + c.Error);
+            string why = CreatureKitAssets.KitOnlyReason(sp);
+            if (why != null) Assert.Ignore(why);
             Assert.AreSame(sp, c.Runtime, "a legacy asset is its own runtime view (the same objects)");
             if (sp.bodyPlan == CreatureBodyPlan.Spine)
             {

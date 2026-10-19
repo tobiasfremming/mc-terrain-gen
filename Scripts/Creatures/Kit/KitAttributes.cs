@@ -63,6 +63,9 @@ namespace CreatureKit
         public string Summary = "", System = "", Status = "exists", Branch = "", UseWhen = "";
         public string Bones = "0";           // how many bones it takes, for the catalogue ("= joints", "3", ...)
         public int[] MaterialLayers = new int[0];
+        // no legacy CreatureSpecies form (it exists only in kit assets): legacy-equivalence tests skip a species
+        // that uses it (CreatureKitAssets.KitOnlyReason)
+        public bool KitOnly;
         public PartAttribute(string name, PartKind kind) { Name = name; Kind = kind; }
     }
 
@@ -72,6 +75,7 @@ namespace CreatureKit
     {
         public readonly string Name, Category;
         public string Summary = "", Status = "exists", Needs = "", Branch = "";
+        public bool KitOnly;   // no legacy form (see PartAttribute.KitOnly)
         public ModuleAttribute(string name, string category) { Name = name; Category = category; }
     }
 

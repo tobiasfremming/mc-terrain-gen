@@ -46,7 +46,7 @@ namespace CreatureKit
 
     [Serializable]
     [Module("Flee", CreatureModule.Behaviour, Summary = "Runs straight away from the nearest threat (CreatureThreats: the viewer in play mode) once it comes within the alarm radius, sliding along the enclosure wall when cornered; calms down after it leaves. Gives the species a ModularBrain (with Wander as the idle default).",
-            Needs = "Walk")]
+            Needs = "Walk", KitOnly = true)]
     public sealed class Flee : CreatureModule
     {
         [Param(ParamUnit.Metres, "alarm radius: a threat closer than this (planar) starts the flight", Example = "sand eel 1.2")] public float radius = 1.2f;

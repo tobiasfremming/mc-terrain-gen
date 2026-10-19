@@ -52,6 +52,11 @@ sealed class CreatureLegs
     // girdle and half of all feet stay planted.
     const float kGripSteep = 0.5f;
     const float kTrunkSameFace = 0.8f; // climbing: trunk keep-out only from spine segments whose up is within ~35 deg
+    // Climbing: a planted foot stretched past this fraction of its reach steps at once, whatever the gait groups
+    // and the grip rule say - waiting for the other group (or for a girdle partner on the bark) the body's turn onto
+    // and off the trunk stretched it on past its reach, and the IK dragged it; lifted, it at least swings.
+    const float kClimbUrgent = 0.97f;
+    const float kClimbRestReach = 0.85f; // climbing: a rest point never further from the shoulder than this x reach
     const float kClimbJointRelax = 1f; // climbing: share of the joint-range brake removed (the steps remain)
 
     readonly CreatureSpecies sp;
@@ -65,7 +70,7 @@ sealed class CreatureLegs
     public readonly LegState[] State;
     readonly Vector3[] target;     // intended foot position: planted point, or the moving step point
     readonly Vector3[] rest;       // current ground-projected rest point
-    readonly bool[] eligible;
+    readonly bool[] eligible, urgent;
     readonly Vector3[] restUpper;  // rest upper-bone direction in the attach-joint frame
     readonly float[] restKnee;     // rest knee bend, degrees
     readonly float[] fwdLimit, backLimit, kneeRange, kneeFlex; // the species' joint-range limits, degrees
@@ -107,7 +112,15 @@ sealed class CreatureLegs
 
     // 1 = free to walk, 0 = a planted foot is at full stretch and the body must wait for its step.
     public float MaxSpeed { get; private set; } = float.PositiveInfinity;
+    float walkMaxSpeed = float.PositiveInfinity; // StrideLimitedSpeed: MaxSpeed while walking
+    int gaitGroups;                              // distinct gait groups of the walking legs
     public float Throttle { get; private set; } = 1f;
+    // Climbing: the fastest the body may go and still stop (braking at StopDecel) before a planted foot reaches
+    // kStopAt of its reach; +inf while walking. The throttle's ramp alone (kSlowAt..kStopAt) is shorter than the
+    // braking distance of a lab-sized monitor at its stride-limited speed (8 cm of stretch against 9 cm of braking at
+    // 1.3 m/s): the waiting leg was stretched past its reach and the IK dragged the planted foot.
+    public float StopSpeed { get; private set; } = float.PositiveInfinity;
+    public float StopDecel = 0f;
 
     public CreatureLegs(CreatureSpecies sp, IGroundProbe ground, Func<Vector3, Vector3> upAt,
                         Vector3[] joints, Quaternion[] rotations, float scale, float timeScale = 1f, CreatureClimb climb = null)
@@ -118,7 +131,7 @@ sealed class CreatureLegs
         specs = sp.legs ?? new LegSpec[0];
         int c = specs.Length;
         Droop = new float[joints.Length]; DroopSpread = new float[joints.Length];
-        State = new LegState[c]; target = new Vector3[c]; rest = new Vector3[c]; eligible = new bool[c];
+        State = new LegState[c]; target = new Vector3[c]; rest = new Vector3[c]; eligible = new bool[c]; urgent = new bool[c];
         restUpper = new Vector3[c]; restKnee = new float[c]; minReach = new float[c];
         stepOver = new float[c]; jointLimited = new bool[c]; restReach = new float[c];
         prevSwing = new float[c]; prevKnee = new float[c];
@@ -208,7 +221,7 @@ sealed class CreatureLegs
             State[l].stepFromNormal = State[l].stepToNormal = State[l].footNormal;
         }
         SolveIK(0f);
-        MaxSpeed = StrideLimitedSpeed();
+        MaxSpeed = walkMaxSpeed = StrideLimitedSpeed();
     }
 
     // Puts every foot down on its rest point under the current body (a flying creature touching down:
@@ -246,6 +259,7 @@ sealed class CreatureLegs
             int bit = 1 << (specs[l].gaitGroup & 31);
             if ((seen & bit) == 0) { seen |= bit; groups++; }
         }
+        gaitGroups = groups;
         float best = float.PositiveInfinity;
         for (int l = 0; l < c; l++)
         {
@@ -266,6 +280,30 @@ sealed class CreatureLegs
         // never a standstill for a stance the reach cannot cover; the throttle handles real ground
         best = Mathf.Max(best, 0.05f);
         return best;
+    }
+
+    // StrideLimitedSpeed while climbing: a leg waits out the other group's step, which takes longer on a steep surface
+    // (StepTimeFactor), and the stride it can take is what its reach leaves beside its rest point now - on a trunk
+    // the stance's rest points lie further out across the body (they curve round it) than on flat ground. With the
+    // walking cap the body outran a waiting leg (1.2 x its reach at 1.3 m/s, the head back on the ground while the
+    // hips were still on the bark) and the IK dragged its planted foot.
+    float ClimbStrideSpeed()
+    {
+        float best = walkMaxSpeed;
+        for (int l = 0; l < specs.Length; l++)
+        {
+            LegSpec s = specs[l];
+            if (s.feeler) continue;
+            Vector3 fwd = rotations[s.attachJoint] * Vector3.forward;
+            Vector3 v = rest[l] - State[l].shoulder;
+            float along = Vector3.Dot(v, fwd);
+            float perp2 = Mathf.Max(0f, v.sqrMagnitude - along * along);
+            float reach = kStrideReach * reachLen[l] * scale;
+            float half = Mathf.Sqrt(Mathf.Max(0f, reach * reach - perp2));
+            float cycle = Mathf.Max(2, gaitGroups) * Mathf.Max(1e-3f, s.stepDuration * timeScale * Factor(sp.climb.StepTimeFactor, Steep(l)));
+            best = Mathf.Min(best, kStrideUse * 2f * half / cycle);
+        }
+        return Mathf.Max(best, 0.05f);
     }
 
     public Vector3 RestPoint(int l) => rest[l];
@@ -368,7 +406,7 @@ sealed class CreatureLegs
                 float len = d.magnitude;
                 if (len > 1e-5f && climb.Surface.Cast(near, d / len, 1.5f * len, out SurfaceHit wh))
                 {
-                    p = wh.point; footSource[l] = wh.source; got = true;
+                    p = wh.point; pn = wh.normal; footSource[l] = wh.source; got = true;
                 }
             }
             if (!got) continue; // hold the last rest
@@ -392,8 +430,16 @@ sealed class CreatureLegs
                     p = pq;
                 }
             }
+            // Climbing, the stance's rest point can lie out of the leg's reach (a trunk curving away under the
+            // wide stance, the ground far below a hip in the corner at the trunk's foot): no step could then cure
+            // the stretch, the throttle ignored it and the body dragged the planted foot. Slide it in along the
+            // surface toward the shoulder until it is within kClimbRestReach of the reach.
+            if (Climbing) p = WithinReach(l, p, pn, sh, u);
             rest[l] = p;
         }
+
+        // climbing, the stride-limited speed of the stance the legs have now (MaxSpeed, read by the next sub-step)
+        MaxSpeed = Climbing ? ClimbStrideSpeed() : walkMaxSpeed;
 
         UpdateDroop(dt);
 
@@ -459,6 +505,9 @@ sealed class CreatureLegs
             bool overFlexed = !State[l].stepping && jointLimited[l]; // from the last IK solve
             bool underTrunk = !State[l].stepping && TrunkLimited(l, trunkTravel);
             eligible[l] = !State[l].stepping && (dist > thr || stretched || overFlexed || underTrunk || (idle && dist > kIdleTidyFraction * thr));
+            // climbing, a planted foot about to be dragged out of its reach steps now, out of turn (see kClimbUrgent)
+            urgent[l] = Climbing && eligible[l] && now > kClimbUrgent / kOverextend * reach
+                     && (rest[l] - State[l].shoulder).magnitude < now - kStepGain * scale;
         }
 
         // start steps
@@ -474,15 +523,15 @@ sealed class CreatureLegs
                 if (State[m].stepping) blocked = true;
                 if (eligible[m] && !State[m].stepping) otherEligible = true;
             }
-            if (blocked) continue;
+            if (blocked && !urgent[l]) continue;
             // Alternate groups. Legs of a group that became eligible together start together, and a leg
             // may join its own group's step while that step is less than half done. Otherwise it waits
             // its turn: joining late would let one group hog the gait and starve the other.
             bool joinable = false;
             for (int m = 0; m < c; m++)
                 if (m != l && specs[m].gaitGroup == g && State[m].stepping && State[m].stepT < 0.5f) joinable = true;
-            if (lastGroup == g && otherEligible && startedGroup != g && !joinable) continue;
-            if (Climbing && Steep(l) > kGripSteep && !GripHolds(l)) continue;
+            if (!urgent[l] && lastGroup == g && otherEligible && startedGroup != g && !joinable) continue;
+            if (!urgent[l] && Climbing && Steep(l) > kGripSteep && !GripHolds(l)) continue;
             StartStep(l, speed);
             lastGroup = g; startedGroup = g;
             started++;
@@ -490,6 +539,27 @@ sealed class CreatureLegs
 
         SolveIK(dt);
         return started;
+    }
+
+    // A climbing rest point p (surface normal pn) slid along the surface toward the shoulder until it is within
+    // kClimbRestReach of the leg's reach (kRestSlideIters probes at most; a miss keeps the last point found).
+    Vector3 WithinReach(int l, Vector3 p, Vector3 pn, Vector3 sh, Vector3 u)
+    {
+        float maxR = kClimbRestReach * reachLen[l] * scale;
+        for (int k = 0; k < kRestSlideIters; k++)
+        {
+            Vector3 v = p - sh;
+            float d = v.magnitude;
+            if (d <= maxR) break;
+            // the stretch's part along the surface: moving the point back along it by s shortens d by ~ s |vt| / d
+            Vector3 vt = v - pn * Vector3.Dot(v, pn);
+            float vt2 = vt.sqrMagnitude;
+            if (vt2 < 1e-10f) break;
+            Vector3 q = p - vt * Mathf.Min(1f, (d - maxR) * d / vt2);
+            if (!FootProbe(l, 1, q, u, out Vector3 pq, out Vector3 nq)) break;
+            p = pq; pn = nq;
+        }
+        return p;
     }
 
     // Lower the body on a joint while one of its legs has to reach too far for its rest point; raise it
@@ -569,7 +639,17 @@ sealed class CreatureLegs
         Vector3 fwd = rotations[s.attachJoint] * Vector3.forward;
         float travel = Mathf.Max(0f, speed) * s.stepDuration * timeScale * remaining;
         if (Climbing) travel *= Factor(sp.climb.StepTimeFactor, Steep(l));
-        Vector3 goal = rest[l] + fwd * (travel + stepOver[l]);
+        float over = stepOver[l];
+        if (Climbing)
+        {
+            // the overshoot trimmed (as at lift-off) to the rest point it has now: on a trunk the rest point moves
+            // about under the turning stance, and a landing past the reach left the planted foot dragged by the IK
+            float maxDist = kLandReach * reachLen[l] * scale;
+            for (int i = 0; i < 6 && over > 1e-4f && (rest[l] + fwd * over - State[l].shoulder).sqrMagnitude > maxDist * maxDist; i++)
+                over *= 0.6f;
+            if ((rest[l] + fwd * over - State[l].shoulder).sqrMagnitude > maxDist * maxDist) over = 0f;
+        }
+        Vector3 goal = rest[l] + fwd * (travel + over);
         Vector3 u = Up(l);
         Vector3 p = goal, n = u;
         if (!FootProbe(l, 2, goal, u, out p, out n)) { p = goal; n = State[l].stepToNormal.sqrMagnitude > 0.5f ? State[l].stepToNormal : State[l].footNormal; }
@@ -717,7 +797,7 @@ sealed class CreatureLegs
 
     void UpdateThrottle(float dt)
     {
-        float worst = 0f, jointThrottle = 1f;
+        float worst = 0f, jointThrottle = 1f, margin = float.PositiveInfinity;
         for (int l = 0; l < specs.Length; l++)
         {
             jointLimited[l] = false;
@@ -744,8 +824,10 @@ sealed class CreatureLegs
             // a stretch no step can cure (rest point itself out of reach) must not stop the body for good
             if ((rest[l] - State[l].shoulder).magnitude >= now - kStepGain * scale) continue;
             worst = Mathf.Max(worst, now / reach);
+            if (Climbing) margin = Mathf.Min(margin, kStopAt * reach - now);
         }
         Throttle = Mathf.Min(jointThrottle, Mathf.Clamp01((kStopAt - worst) / (kStopAt - kSlowAt)));
+        StopSpeed = Climbing && StopDecel > 0f ? Mathf.Sqrt(2f * StopDecel * Mathf.Max(0f, margin)) : float.PositiveInfinity;
     }
 
     // Swing of the upper bone from its rest direction and knee-bend deviation from rest, in degrees, and

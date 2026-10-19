@@ -15,7 +15,7 @@ namespace CreatureKit
 {
     [Serializable]
     [Part("Flapper", PartKind.Fin, Bones = "= segments (1-3)", Summary = "A fin or flap on 1-3 bones that beats with the body wave: frequency = the undulation x beatsPerWave (idleHz without Slither), phase locked to the head's wave (a pair beats in phase), a root-to-tip ripple (waveLag), amplitude fading with speed to idleAmplitude. Double-sided veined membrane paddle.",
-          System = "FlapperRuntime (part runtime, stage Late) + Flapper.EmitMesh", MaterialLayers = new[] { 8 },
+          System = "FlapperRuntime (part runtime, stage Late) + Flapper.EmitMesh", MaterialLayers = new[] { 8 }, KitOnly = true,
           UseWhen = "pectoral fins, ear flaps, frills, small paddles that beat or flutter (not wings that fly: Wing)")]
     public sealed class Flapper : CreaturePart
     {

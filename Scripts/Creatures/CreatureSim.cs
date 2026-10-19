@@ -27,7 +27,8 @@ public sealed class CreatureSim
     // tight-turn wander reaches it on ~10 sub-steps a minute (its own, milder whip).
     const float kSwingTravel = 2f, kSwingCreep = 0.1f;
     const int kSwingTries = 4;
-    const float kRunLo = 0.25f, kRunHi = 0.6f; // climbing: segment run/length below which its plane direction fades out
+    const float kFrameAcrossLo = 0.3f, kFrameAcrossHi = 0.6f; // climbing: a frame normal's across-segment part below which the joint's up takes over
+    const float kClimbTravel = 1.1f, kClimbCreep = 0.02f; // climbing: a joint moves at most this x the head's travel + this x size per second
     const int kPitchPasses = 4;     // pitch-fold limiter passes (each followed by a length restore)
 
     public readonly CreatureSpecies Species;
@@ -156,6 +157,7 @@ public sealed class CreatureSim
         else { Up = pathUp; ClimbWeight = new float[n]; Source = new int[n]; }
         UpdateFrames();
         legs = new CreatureLegs(sp, ground, upAt, Joints, Rotations, sizeScale, TimeScale, climb);
+        legs.StopDecel = 3f * sp.accel; // the gait's braking (GroundSubStep)
         Legs = legs.State;
         Supported = new bool[n];
         if (sp.CanFly) ProbedGround = new Vector3[n];
@@ -279,6 +281,8 @@ public sealed class CreatureSim
         // A creature cannot outrun its legs: the gait caps the speed, and slows it when a planted foot
         // nears full stretch. The cap is approached with accel-limited easing (braking 3x harder).
         float cap = Mathf.Min(maxSpeed * legs.Throttle, legs.MaxSpeed);
+        // climbing, also slow enough to stop before a planted foot runs out of reach (CreatureLegs.StopSpeed)
+        if (climbing) cap = Mathf.Min(cap, legs.StopSpeed);
         float goal = Mathf.Max(0f, want);
         float rate = sp.accel;
         if (cap < goal) { goal = cap; if (goal < commanded) rate = 3f * sp.accel; }
@@ -295,7 +299,7 @@ public sealed class CreatureSim
         float seg = sp.spacing * SizeScale;
         SpineJoint[] js = sp.joints;
         bool guard = !climbing && girdles.Length > 0;
-        if (guard) Array.Copy(Path, pathStart, n);
+        if (guard || climbing) Array.Copy(Path, pathStart, n);
         Chain(seg, climbing);
         if (guard)
         {
@@ -355,14 +359,18 @@ public sealed class CreatureSim
             float lift = clear - droop[i];
             if (bobOn) lift += bobY;
             Path[i] = new Vector3(g.x + u.x * lift, g.y + u.y * lift, g.z + u.z * lift);
+            if (climbing) climb.AboveTerrain(i, ref Path[i], clear, window);
         }
-        RestoreLengths(seg);
+        RestoreLengths(seg, climbing);
         // a flyer perched on a branch or a rock: joints past the end of their support hang
         if (flight != null && flight.Drape(dt, Path, pathUp, groundPoint, seg)) RestoreLengths(seg);
         // climbing, the body never folds sharply in pitch (ground -> wall, over an edge): lift the fold (only while
         // climbing: walking stays exactly the walking code - the limiter's on/off at its threshold jittered R25's holes)
         if (climbing)
-            for (int pass = 0; pass < kPitchPasses && CreatureClimb.LimitPitch(Path, pathUp, seg, sp.climb.PitchLimitDeg, pitchLift); pass++) RestoreLengths(seg);
+            for (int pass = 0; pass < kPitchPasses && CreatureClimb.LimitPitch(Path, pathUp, seg, sp.climb.PitchLimitDeg, pitchLift); pass++) RestoreLengths(seg, true);
+        // climbing, the body follows its head: no joint moves further in a sub-step than the swing guard lets a
+        // walking girdle (the last safety net under the climbing stages' frames - a whip there swung the tail metres)
+        if (climbing) LimitTravel(seg, (kClimbTravel * Speed + kClimbCreep * SizeScale) * dt);
         // the up field follows the new ground normals (the next sub-step's chain step and grounding use it)
         if (climbing) climb.UpdateUpField(dt, Path, GroundNormals, pathUp, upAt);
         if (afterGround.Length != 0) RunStage(afterGround, dt);
@@ -438,8 +446,7 @@ public sealed class CreatureSim
                 // can bend) has no reliable direction in the joint's plane - keep the previous one there
                 if (climbing)
                 {
-                    float steepness = run / Mathf.Max(1e-6f, Mathf.Sqrt(run * run + rise * rise));
-                    float trust = SurfaceMath.SmoothStep(kRunLo, kRunHi, steepness);
+                    float trust = CreatureClimb.RunTrust(run, rise);
                     if (trust < 1f) d = Norm(pb + (d - pb) * trust, pb);
                 }
                 // the bend cone: only a direction past the limit is turned back onto it
@@ -451,6 +458,27 @@ public sealed class CreatureSim
             float sp1 = len > 1e-6f ? rise / len : 0f, cp = len > 1e-6f ? run / len : 1f;
             Path[i] = new Vector3(a.x + (d.x * cp + u.x * sp1) * seg, a.y + (d.y * cp + u.y * sp1) * seg, a.z + (d.z * cp + u.z * sp1) * seg);
             prevBack = d;
+        }
+    }
+
+    // Climbing's travel limit: joint by joint from the neck, a move from pathStart longer than `bound` is cut to it,
+    // then the segment to the joint before is put back to its length along itself. A move out along the joint's up
+    // (the grounding lifting it out of the surface) is not counted: cut as well, it held a tail tip that the chain
+    // step had pulled into a trunk there (its way out limited to ~1 cm a tick, the sinking faster).
+    void LimitTravel(float seg, float bound)
+    {
+        float b2 = bound * bound;
+        for (int i = 1; i < n; i++)
+        {
+            Vector3 m = Path[i] - pathStart[i], u = pathUp[i];
+            float out_ = Mathf.Max(0f, m.x * u.x + m.y * u.y + m.z * u.z);
+            var mc = new Vector3(m.x - u.x * out_, m.y - u.y * out_, m.z - u.z * out_);
+            float d2 = mc.sqrMagnitude;
+            if (!(d2 > b2)) continue;
+            Vector3 p = pathStart[i] + u * out_ + mc * (bound / Mathf.Sqrt(d2));
+            Vector3 v = p - Path[i - 1];
+            float l = v.magnitude;
+            Path[i] = l > 1e-6f ? Path[i - 1] + v * (seg / l) : p;
         }
     }
 
@@ -478,7 +506,17 @@ public sealed class CreatureSim
                 f = Norm(new Vector3(a.x - b.x, a.y - b.y, a.z - b.z), Vector3.forward);
             }
             Vector3 g = GroundNormals[i];
-            if (climb != null && climb.Active) g = SurfaceMath.Slerp(g, climb.Up[i], climb.Weight[i]);
+            if (climb != null && climb.Active)
+            {
+                g = SurfaceMath.Slerp(g, climb.Up[i], climb.Weight[i]);
+                // a ground normal nearly along the segment (a joint at the trunk's foot, its body up the bark, the
+                // sand under it) leaves no roll: the frame spun about the segment and swung the hip's legs off their
+                // planted feet. There the joint's up (kept across the body, CreatureClimb.AcrossBody) takes over.
+                float along = g.x * f.x + g.y * f.y + g.z * f.z;
+                float across = Mathf.Sqrt(Mathf.Max(0f, 1f - along * along));
+                float keep = SurfaceMath.SmoothStep(kFrameAcrossLo, kFrameAcrossHi, across);
+                if (keep < 1f) g = SurfaceMath.Slerp(climb.Up[i], g, keep);
+            }
             float gf = g.x * f.x + g.y * f.y + g.z * f.z;
             var u = new Vector3(g.x - f.x * gf, g.y - f.y * gf, g.z - f.z * gf);
             if (u.sqrMagnitude < 1e-8f) u = Vector3.ProjectOnPlane(Vector3.up, f);
@@ -608,7 +646,10 @@ public sealed class CreatureSim
     // itself (follow the leader once more: a joint the ground dropped away from stays nearer its
     // predecessor, the body drapes); a shortened one is let out along the ground, keeping the joint's
     // grounded height (along itself it would push a down-sloping tail into the sand).
-    void RestoreLengths(float seg)
+    // climbing: a short segment nearly along its joint's up (CreatureClimb.RunTrust) is lengthened along itself -
+    // keeping its rise would stretch a tiny, arbitrary run to most of a segment and shove the joint sideways (into
+    // the bark, or reversed in its plane, which the next chain step's bend cone then swung the whole body back from)
+    void RestoreLengths(float seg, bool climbing = false)
     {
         for (int i = 1; i < n; i++)
         {
@@ -627,6 +668,19 @@ public sealed class CreatureSim
             float run2 = hv.x * hv.x + hv.y * hv.y + hv.z * hv.z;
             if (!(run2 > 1e-18f)) continue;
             float g = Mathf.Sqrt(Mathf.Max(0f, seg * seg - rise * rise) / run2);
+            if (climbing)
+            {
+                float trust = CreatureClimb.RunTrust(Mathf.Sqrt(run2), rise);
+                if (trust < 1f)
+                {
+                    var keep = new Vector3(hv.x * g + u.x * rise, hv.y * g + u.y * rise, hv.z * g + u.z * rise);
+                    float f = seg / Mathf.Sqrt(m2);
+                    var straight = new Vector3(v.x * f, v.y * f, v.z * f);
+                    Vector3 dir = Norm(straight + (keep - straight) * trust, straight);
+                    Path[i] = new Vector3(a.x + dir.x * seg, a.y + dir.y * seg, a.z + dir.z * seg);
+                    continue;
+                }
+            }
             Path[i] = new Vector3(a.x + hv.x * g + u.x * rise, a.y + hv.y * g + u.y * rise, a.z + hv.z * g + u.z * rise);
         }
     }

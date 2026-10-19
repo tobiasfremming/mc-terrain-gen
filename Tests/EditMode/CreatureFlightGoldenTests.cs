@@ -20,13 +20,13 @@ namespace TerrainGen.Tests
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
             { "WingedSerpent", 0xF1C5AD8CA7563215UL },
-            { "SkyDragon", 0x29E499FA9EE623D6UL },
+            { "SkyDragon", 0UL },   // 2026-10-19 deep downstroke + head (feat/dragon-head-wings): re-pin in Unity (was 0x29E499FA9EE623D6UL)
         };
 #else
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
             { "WingedSerpent", 0xCBCDCC3065F639EDUL },
-            { "SkyDragon", 0xEF27A79A9CD7F5A9UL },
+            { "SkyDragon", 0xA0C0649A80B127F1UL },   // 2026-10-19 deep downstroke + girdle bob + head (antennae roots moved; was 0xEF27A79A9CD7F5A9UL)
         };
 #endif
 
@@ -93,13 +93,13 @@ namespace TerrainGen.Tests
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
             { "DesertBeetle", 0x0D320E205C37F22BUL }, { "DaddyLongLegs", 0x546C444ADD9D7F16UL }, { "Tarantula", 0x5BDB2CBEB8CE0B7CUL },
-            { "WingedSerpent", 0x2D19B03A345A8A3AUL }, { "SkyDragon", 0x9F7240888C3A4B45UL }, { "KitMonitor", 0x5CA3EBE4BA35469AUL },
+            { "WingedSerpent", 0x2D19B03A345A8A3AUL }, { "SkyDragon", 0UL /* 2026-10-19 head profile + whisker/barbel roots: re-pin in Unity (was 0x9F7240888C3A4B45UL) */ }, { "KitMonitor", 0x5CA3EBE4BA35469AUL },
         };
 #else
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
             { "DesertBeetle", 0x1EA0C97520747EE5UL }, { "DaddyLongLegs", 0x575349E45CB83CE9UL }, { "Tarantula", 0x03EC33CC22FCFA8AUL },
-            { "WingedSerpent", 0x725173037414F8EAUL }, { "SkyDragon", 0xB86BDAF4AECA355CUL }, { "KitMonitor", 0x53B537BC3A04F006UL },
+            { "WingedSerpent", 0x725173037414F8EAUL }, { "SkyDragon", 0x78C97545F691E5C3UL /* 2026-10-19 head (was 0xB86BDAF4AECA355CUL) */ }, { "KitMonitor", 0x53B537BC3A04F006UL },
         };
 #endif
 

@@ -28,7 +28,6 @@ MonoBehaviour:
   - rid: 1010
   - rid: 1011
   - rid: 1012
-  modules:
   - rid: 1013
   - rid: 1014
   - rid: 1015
@@ -37,6 +36,16 @@ MonoBehaviour:
   - rid: 1018
   - rid: 1019
   - rid: 1020
+  - rid: 1021
+  modules:
+  - rid: 1022
+  - rid: 1023
+  - rid: 1024
+  - rid: 1025
+  - rid: 1026
+  - rid: 1027
+  - rid: 1028
+  - rid: 1029
   references:
     version: 2
     RefIds:
@@ -51,18 +60,18 @@ MonoBehaviour:
           slot: 0
         mirror: 0
         spacing: 0.042
-        headCapLength: 0.12
+        headCapLength: 0.06
         tailTipLength: 0.07
         joints: []
         profile:
         - t: 0
-          halfWidth: 0.048
-          halfHeight: 0.04
+          halfWidth: 0.03
+          halfHeight: 0.026
           clearance: 0.095
           bendLimitDeg: 14
         - t: 0.014
-          halfWidth: 0.054
-          halfHeight: 0.046
+          halfWidth: 0.05
+          halfHeight: 0.042
           clearance: 0.098
           bendLimitDeg: 14
         - t: 0.045
@@ -201,7 +210,7 @@ MonoBehaviour:
           leg: 0
           restTip: {x: 0.7, y: 0.07, z: 0.04}
           comfortUp: 0.48
-          comfortDown: 0.48
+          comfortDown: 0.7
           strokePlaneDeg: 10
           pronationDeg: 18
           overshootUp: 0.08
@@ -241,10 +250,10 @@ MonoBehaviour:
         at:
           joint: 1
           side: 0
-          offset: {x: 0.034, y: 0.024, z: 0.03}
+          offset: {x: 0.05, y: 0.022, z: 0.03}
           slot: 0
         mirror: 0
-        radius: 0.011
+        radius: 0.012
         cluster: []
     - rid: 1006
       type: {class: RigidCone, ns: CreatureKit, asm: TerrainGen.Runtime}
@@ -253,13 +262,13 @@ MonoBehaviour:
         at:
           joint: 1
           side: 0
-          offset: {x: 0.02, y: 0.036, z: -0.012}
+          offset: {x: 0.022, y: 0.046, z: -0.035}
           slot: 0
         mirror: 1
-        direction: {x: 0.32, y: 0.62, z: -0.72}
-        length: 0.15
-        radiusStart: 0.009
-        radiusEnd: 0.0018
+        direction: {x: 0.3, y: 0.6, z: -0.74}
+        length: 0.17
+        radiusStart: 0.01
+        radiusEnd: 0.002
         curveDeg: -22
         fangLength: 0
         ownBone: 0
@@ -270,17 +279,51 @@ MonoBehaviour:
         at:
           joint: 1
           side: 0
-          offset: {x: 0.032, y: 0.074, z: -0.052}
+          offset: {x: 0.04, y: 0.082, z: -0.079}
           slot: 0
         mirror: 1
         direction: {x: 0.45, y: 0.85, z: 0.28}
-        length: 0.055
-        radiusStart: 0.005
+        length: 0.06
+        radiusStart: 0.0055
         radiusEnd: 0.0012
         curveDeg: -10
         fangLength: 0
         ownBone: 0
     - rid: 1008
+      type: {class: RigidCone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: antlerTine2
+        at:
+          joint: 1
+          side: 0
+          offset: {x: 0.053, y: 0.109, z: -0.113}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.5, y: 0.82, z: 0.12}
+        length: 0.04
+        radiusStart: 0.004
+        radiusEnd: 0.001
+        curveDeg: -8
+        fangLength: 0
+        ownBone: 0
+    - rid: 1009
+      type: {class: RigidCone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: fang
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0.022, y: -0.012, z: 0.105}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.05, y: -1, z: 0.25}
+        length: 0.026
+        radiusStart: 0.0045
+        radiusEnd: 0.0004
+        curveDeg: 10
+        fangLength: 0
+        ownBone: 0
+    - rid: 1010
       type: {class: FinStrip, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: mane
@@ -300,7 +343,7 @@ MonoBehaviour:
         inset: 0.15
         aroundDeg: 0
         columnsPerJoint: 6
-    - rid: 1009
+    - rid: 1011
       type: {class: FinStrip, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: crest
@@ -320,7 +363,7 @@ MonoBehaviour:
         inset: 0.15
         aroundDeg: 0
         columnsPerJoint: 4
-    - rid: 1010
+    - rid: 1012
       type: {class: FinStrip, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: tailTuft
@@ -340,14 +383,54 @@ MonoBehaviour:
         inset: 0.15
         aroundDeg: 0
         columnsPerJoint: 6
-    - rid: 1011
+    - rid: 1013
+      type: {class: FinStrip, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: cheekFrill
+        at:
+          joint: 1
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 1
+        toJoint: 5
+        heightStart: 0.06
+        heightEnd: 0.02
+        leanDeg: 35
+        tufts: 4
+        tuftDepth: 0.55
+        flowJoints: 0.8
+        inset: 0.15
+        aroundDeg: 105
+        columnsPerJoint: 6
+    - rid: 1014
+      type: {class: FinStrip, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: beard
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 0
+        toJoint: 4
+        heightStart: 0.045
+        heightEnd: 0.015
+        leanDeg: 30
+        tufts: 5
+        tuftDepth: 0.6
+        flowJoints: 0.3
+        inset: 0.15
+        aroundDeg: 180
+        columnsPerJoint: 6
+    - rid: 1015
       type: {class: Antenna, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: whisker
         at:
           joint: 0
           side: 0
-          offset: {x: 0.024, y: -0.004, z: 0.085}
+          offset: {x: 0.03, y: 0.002, z: 0.125}
           slot: 0
         mirror: 1
         direction: {x: 0.75, y: -0.05, z: -0.65}
@@ -360,18 +443,18 @@ MonoBehaviour:
         airDrag: 0.8
         droopDeg: 25
         maxBendDeg: 0
-    - rid: 1012
+    - rid: 1016
       type: {class: Antenna, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         id: barbel
         at:
           joint: 0
           side: 0
-          offset: {x: 0.012, y: -0.03, z: 0.03}
+          offset: {x: 0.012, y: -0.048, z: 0.07}
           slot: 0
         mirror: 1
-        direction: {x: 0.2, y: -0.85, z: -0.5}
-        length: 0.14
+        direction: {x: 0.15, y: -0.85, z: -0.5}
+        length: 0.16
         segments: 5
         radiusStart: 0.004
         radiusEnd: 0.001
@@ -380,7 +463,217 @@ MonoBehaviour:
         airDrag: 0.6
         droopDeg: 40
         maxBendDeg: 0
-    - rid: 1013
+    - rid: 1017
+      type: {class: RigidLoft, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: crown
+        at:
+          joint: 1
+          side: 0
+          offset: {x: 0, y: 0.006, z: -0.03}
+          slot: 0
+        mirror: 0
+        direction: {x: 0, y: 0.05, z: 1}
+        length: 0.12
+        keys:
+        - t: 0
+          halfWidth: 0.044
+          halfHeight: 0.036
+          rise: 0
+          squareTop: 2.2
+          squareBottom: 2.2
+        - t: 0.4
+          halfWidth: 0.048
+          halfHeight: 0.042
+          rise: 0.004
+          squareTop: 3
+          squareBottom: 2.4
+        - t: 0.75
+          halfWidth: 0.043
+          halfHeight: 0.037
+          rise: 0.002
+          squareTop: 3.5
+          squareBottom: 2.5
+        - t: 1
+          halfWidth: 0.033
+          halfHeight: 0.028
+          rise: 0
+          squareTop: 3
+          squareBottom: 2.5
+        curveDeg: 0
+        rollDeg: 0
+        shade: 0
+        around: 16
+        rings: 12
+    - rid: 1018
+      type: {class: RigidLoft, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: muzzle
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0.008, z: -0.02}
+          slot: 0
+        mirror: 0
+        direction: {x: 0, y: -0.06, z: 1}
+        length: 0.16
+        keys:
+        - t: 0
+          halfWidth: 0.038
+          halfHeight: 0.03
+          rise: 0
+          squareTop: 2.5
+          squareBottom: 2.5
+        - t: 0.35
+          halfWidth: 0.03
+          halfHeight: 0.022
+          rise: 0.002
+          squareTop: 4.5
+          squareBottom: 3
+        - t: 0.75
+          halfWidth: 0.031
+          halfHeight: 0.021
+          rise: 0
+          squareTop: 4.5
+          squareBottom: 3
+        - t: 0.9
+          halfWidth: 0.034
+          halfHeight: 0.022
+          rise: 0.001
+          squareTop: 4
+          squareBottom: 3
+        - t: 1
+          halfWidth: 0.018
+          halfHeight: 0.012
+          rise: 0
+          squareTop: 3
+          squareBottom: 3
+        curveDeg: 0
+        rollDeg: 0
+        shade: 0
+        around: 16
+        rings: 12
+    - rid: 1019
+      type: {class: RigidLoft, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: jaw
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: -0.022, z: -0.03}
+          slot: 0
+        mirror: 0
+        direction: {x: 0, y: -0.2, z: 1}
+        length: 0.15
+        keys:
+        - t: 0
+          halfWidth: 0.04
+          halfHeight: 0.018
+          rise: 0
+          squareTop: 4
+          squareBottom: 2.5
+        - t: 0.5
+          halfWidth: 0.026
+          halfHeight: 0.011
+          rise: 0
+          squareTop: 5
+          squareBottom: 3
+        - t: 0.9
+          halfWidth: 0.021
+          halfHeight: 0.01
+          rise: 0
+          squareTop: 5
+          squareBottom: 3
+        - t: 1
+          halfWidth: 0.01
+          halfHeight: 0.006
+          rise: 0
+          squareTop: 3
+          squareBottom: 3
+        curveDeg: -6
+        rollDeg: 0
+        shade: 0
+        around: 16
+        rings: 12
+    - rid: 1020
+      type: {class: RigidLoft, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: brow
+        at:
+          joint: 1
+          side: 0
+          offset: {x: 0.036, y: 0.04, z: 0.052}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.15, y: 0.25, z: -1}
+        length: 0.085
+        keys:
+        - t: 0
+          halfWidth: 0.006
+          halfHeight: 0.005
+          rise: 0
+          squareTop: 2
+          squareBottom: 2
+        - t: 0.3
+          halfWidth: 0.016
+          halfHeight: 0.012
+          rise: 0
+          squareTop: 3
+          squareBottom: 2
+        - t: 0.7
+          halfWidth: 0.012
+          halfHeight: 0.01
+          rise: 0
+          squareTop: 3
+          squareBottom: 2
+        - t: 1
+          halfWidth: 0.006
+          halfHeight: 0.005
+          rise: 0
+          squareTop: 2
+          squareBottom: 2
+        curveDeg: 0
+        rollDeg: 15
+        shade: 0
+        around: 12
+        rings: 10
+    - rid: 1021
+      type: {class: RigidLoft, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: nostril
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0.017, y: 0.016, z: 0.118}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.35, y: 0.75, z: 0.55}
+        length: 0.02
+        keys:
+        - t: 0
+          halfWidth: 0.008
+          halfHeight: 0.007
+          rise: 0
+          squareTop: 2
+          squareBottom: 2
+        - t: 0.6
+          halfWidth: 0.01
+          halfHeight: 0.009
+          rise: 0
+          squareTop: 2
+          squareBottom: 2
+        - t: 1
+          halfWidth: 0.005
+          halfHeight: 0.004
+          rise: 0
+          squareTop: 2
+          squareBottom: 2
+        curveDeg: 0
+        rollDeg: 0
+        shade: 0
+        around: 10
+        rings: 6
+    - rid: 1022
       type: {class: Walk, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         speed: 0.55
@@ -396,19 +689,19 @@ MonoBehaviour:
           amplitude: 0
           hz: 0
           damping: 0
-    - rid: 1014
+    - rid: 1023
       type: {class: Slither, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         undulationDeg: 10
         undulationHz: 0.8
-    - rid: 1015
+    - rid: 1024
       type: {class: Fly, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         spec:
           cruiseSpeed: 2.8
           minSpeed: 1.8
           maxSpeed: 5
-          kGrip: 0.73333
+          kGrip: 0.4
           vGripMin: 2.2
           kLift: 0.02
           kDrag: 0.01
@@ -417,20 +710,20 @@ MonoBehaviour:
           climbGain: 0.6
           climbDamping: 0.5
           climbIntegral: 0.8
-          climbIntegralLimit: 0.3
+          climbIntegralLimit: 0.6
           thrustGain: 0.5
           demandFloor: 0.25
           descendCutoff: -0.6
           glideDemand: 0.05
-          amplitudeMin: 0.3
-          strokeRateMin: 2
+          amplitudeMin: 0.75
+          strokeRateMin: 3
           strokeRateMax: 8
           glideRelax: 6
           maxBankDeg: 45
           bankGain: 3
           bankDamping: 0.5
           maxAsymmetry: 0.4
-          rollGain: 0.7
+          rollGain: 1
           rollDamping: 4
           glideAlphaDeg: 6
           flareAlphaDeg: 45
@@ -441,7 +734,7 @@ MonoBehaviour:
           airUndulationDeg: 0
           airUndulationHz: 0
           tailSag: 0
-          headStabilise: 0.25
+          headStabilise: 0.35
           pursuitGain: 2.2
         twist:
           swimAmplitude: 0.11
@@ -460,13 +753,16 @@ MonoBehaviour:
           intervalMin: 3
           intervalMax: 7
           uprightRateDeg: 120
-    - rid: 1016
+          girdleBob: 0.8
+          bobHead: 0.6
+          bobTail: 0.4
+    - rid: 1025
       type: {class: Wander, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
-    - rid: 1017
+    - rid: 1026
       type: {class: FlightExcursion, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
-    - rid: 1018
+    - rid: 1027
       type: {class: Skin, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         dorsal: {r: 0.09, g: 0.34, b: 0.29, a: 1}
@@ -484,14 +780,14 @@ MonoBehaviour:
         sizeJitter: 0.06
         hueJitter: 0.015
         valueJitter: 0.05
-    - rid: 1019
+    - rid: 1028
       type: {class: Membrane, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         colour: {r: 0.88, g: 0.34, b: 0.14, a: 1}
         translucency: 0.85
         veinContrast: 0.25
         rim: 0.35
-    - rid: 1020
+    - rid: 1029
       type: {class: Shimmer, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
         colour: {r: 1, g: 0.82, b: 0.35, a: 1}

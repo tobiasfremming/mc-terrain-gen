@@ -41,6 +41,8 @@ namespace TerrainGen.Tests
         [Test] public void Render_EqualsLegacyRenderer()
         {
             CreatureSpecies sp = CreatureKitAssets.Load(name);
+            string why = CreatureKitAssets.KitOnlyReason(sp);
+            if (why != null) Assert.Ignore(why);
             KitRender rd = KitRender.For(sp);
             try
             {
@@ -72,6 +74,8 @@ namespace TerrainGen.Tests
         {
             CreatureSpecies sp = CreatureKitAssets.Load(name);
             if (sp.bodyPlan == CreatureBodyPlan.Cephalopod) Assert.Ignore("cephalopod: OctopusCreature is a Unity-side body (CreatureOctopusWorldTests)");
+            string why = CreatureKitAssets.KitOnlyReason(sp);
+            if (why != null) Assert.Ignore(why);
             var r = new CreatureRenderer(sp, null);
             try
             {

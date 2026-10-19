@@ -325,9 +325,12 @@ sealed class CreatureClimb
 
     // A joint whose up has turned away from gravity probes only a few clearances along it: across a pit or
     // between a trunk and a branch the walking window (metres) would reach the surface opposite.
-    const float kTiltWindowClearances = 3f;
+    // Never below kTiltWindowSegments of a segment, though: the tail's tip has a 2 cm clearance x scale, and once it
+    // had sunk more than its few clearances into the bark or the sand it found nothing, held its old height and was
+    // dragged along inside.
+    const float kTiltWindowClearances = 3f, kTiltWindowSegments = 1f;
     public float Window(int i, float window, float clear)
-        => Steep[i] > 0f || Weight[i] > 0f ? Mathf.Min(window, kTiltWindowClearances * clear) : window;
+        => Steep[i] > 0f || Weight[i] > 0f ? Mathf.Min(window, Mathf.Max(kTiltWindowClearances * clear, kTiltWindowSegments * sp.spacing * scale)) : window;
 
     // The joint's ground along its up (slot i, preferring what it stood on); past an edge, where nothing is
     // under it, a wrap cast from the joint's centre back under the edge (behind and into the surface).
@@ -347,6 +350,19 @@ sealed class CreatureClimb
         }
         point = near; normal = u;
         return false;
+    }
+
+    // A climbing joint never sinks into the terrain beside it: a trunk standing in a slope meets the sand rising
+    // away from its bark in an acute corner, and the body the bark carries (its clearance out from the bark) reached
+    // into the sand there. Lifts p along gravity to kAboveTerrain x `clear` above the terrain's own answer under it
+    // (every joint alike, so a joint changing source between bark and sand is not lifted by a step).
+    public void AboveTerrain(int i, ref Vector3 p, float clear, float window)
+    {
+        if (terrainSmooth == null) return;
+        Vector3 g = grav[i];
+        if (!terrainSmooth.Probe(p, g, window, out Vector3 tp, out _)) return;
+        float h = SurfaceMath.Dot(p - tp, g), want = kAboveTerrain * clear;
+        if (h < want) p += g * (want - h);
     }
 
     // The walking spine's probe (climbing off): exactly the terrain answer the plain IGroundProbe call gives,
@@ -402,8 +418,18 @@ sealed class CreatureClimb
             Vector3 target = SurfaceMath.Slerp(grav[i], nn, w);
             if (relax) { }
             else if (i <= 1 && AheadWeight > 0f) target = SurfaceMath.Slerp(target, AheadNormal, AheadWeight);
-            else if (i > 1 && TrailUp(path[0], i * seg, out Vector3 tu, out _)) target = SurfaceMath.Slerp(target, tu, kTrailWeight);
+            // the head's up where it was, for a joint whose own ground does not show the climb (at a wall's foot it
+            // probes the ground under it and would never turn); on the wall itself its own ground says more: a tail
+            // cutting inside the head's curve round a trunk is off the trail, and the trail's up leaned 25-30 deg
+            // along the body off the bark under it (its tangent plane cut into the trunk)
+            else if (i > 1 && TrailUp(path[0], i * seg, out Vector3 tu, out _)) target = SurfaceMath.Slerp(target, tu, kTrailWeight * (1f - w));
+            // an up never lies along the body: at a ground <-> wall corner the trail's or gravity's up on a joint
+            // already on the wall ran along its segments (the climbing stages lost the joint's frame there)
+            if (!relax && i > 1) target = AcrossBody(path, i, target, Up[i], i > 0 ? Up[i - 1] : target, kAcrossDeg);
             Up[i] = SurfaceMath.RotateTowards(Up[i], target, maxRad);
+            // the constraint itself is not rate-limited: a joint that reached the wall with its up still along the
+            // body (faster than the up turns) is put across it at once
+            if (!relax && i > 1) Up[i] = AcrossBody(path, i, Up[i], target, Up[i - 1], kSnapDeg);
             float dev = SurfaceMath.AngleDeg(Up[i], grav[i]);
             maxDev = Mathf.Max(maxDev, dev);
             Steep[i] = SurfaceMath.SmoothStep(kSteepLo, kSteepHi, dev);
@@ -414,6 +440,65 @@ sealed class CreatureClimb
         Active = false; Blocked = false; AheadWeight = 0f;
         for (int i = 0; i < n; i++) { Up[i] = grav[i]; pathUp[i] = grav[i]; Weight[i] = 0f; Steep[i] = 0f; Source[i] = 0; }
     }
+
+    // v kept at least kAcrossDeg away from both of joint i's segments: a joint's up may lean along the body (the
+    // fillet across a ground <-> wall corner, the anticipated turn) but never lie along either segment - the
+    // climbing stages read a segment's run in its joint's frame (the frame's forward is the segment ahead, the pitch
+    // limiter and the length restore read both), and a segment along its up has none. Measured against the chord
+    // alone, a joint in the corner itself (its segment ahead up the wall, the one behind on the ground, ~60 deg
+    // apart) kept an up 5 deg from the segment ahead: its frame spun about it and swung the hip's planted legs.
+    // The result is turned away from the chord by kAcrossDeg + half the bend (the chord bisects the two segments),
+    // so it clears both. Nearly along the body, the joint's own last up or its predecessor's gives the direction.
+    static Vector3 AcrossBody(Vector3[] path, int i, Vector3 v, Vector3 alt, Vector3 alt2, float minDeg)
+    {
+        int n = path.Length;
+        Vector3 pa = path[Mathf.Max(0, i - 1)], pi = path[i], pb = path[Mathf.Min(n - 1, i + 1)];
+        Vector3 fa = pa - pi, fb = pi - pb;
+        float la = fa.magnitude, lb = fb.magnitude;
+        if (la > 1e-6f) fa /= la; else fa = Vector3.zero;
+        if (lb > 1e-6f) fb /= lb; else fb = Vector3.zero;
+        // the usual case: clear of both segments, untouched
+        float minCos = Mathf.Cos(minDeg * Mathf.Deg2Rad);
+        if (Mathf.Abs(SurfaceMath.Dot(v, fa)) <= minCos && Mathf.Abs(SurfaceMath.Dot(v, fb)) <= minCos) return v;
+        Vector3 t = fa + fb;
+        float tm = t.magnitude;
+        if (!(tm > 1e-6f)) return v;
+        t /= tm;
+        float c = SurfaceMath.Dot(v, t);
+        Vector3 a = v - t * c;
+        if (i >= 2)
+        {
+            // the predecessor's up carried along the body to this joint's chord: where v says little about the roll
+            // (nearly along the chord), the roll comes from the neighbour - a coherent field down the chain
+            Vector3 tp = path[i - 2] - pi;
+            float tpm = tp.magnitude;
+            if (tpm > 1e-6f)
+            {
+                Vector3 nb = SurfaceMath.Transport(alt2, tp / tpm, t);
+                nb -= t * SurfaceMath.Dot(nb, t);
+                float nbm = nb.magnitude, am = a.magnitude;
+                if (nbm > 1e-6f)
+                {
+                    float wN = Mathf.Clamp01(1f - am / kXportBlend);
+                    a = (am > 1e-6f ? a / am : Vector3.zero) * (1f - wN) + nb / nbm * wN;
+                }
+            }
+        }
+        if (a.sqrMagnitude < kAcrossMin * kAcrossMin) { a = alt - t * SurfaceMath.Dot(alt, t); c = SurfaceMath.Dot(alt, t); }
+        if (a.sqrMagnitude < kAcrossMin * kAcrossMin) { a = alt2 - t * SurfaceMath.Dot(alt2, t); c = SurfaceMath.Dot(alt2, t); }
+        if (a.sqrMagnitude < kAcrossMin * kAcrossMin) return v;
+        a.Normalize();
+        // the across part at sin, the along part at cos of the angle from the chord (same side as v leaned)
+        float half = la > 1e-6f && lb > 1e-6f ? 0.5f * SurfaceMath.AngleDeg(fa, fb) : 0f;
+        float ang = Mathf.Min(90f, minDeg + half) * Mathf.Deg2Rad;
+        float ca = Mathf.Cos(ang), sa = Mathf.Sin(ang);
+        return a * sa + t * (c >= 0f ? ca : -ca);
+    }
+    const float kXportBlend = 0.6f;
+    const float kAcrossDeg = 40f;    // run/length >= sin 40 = 0.64 > the chain's kRunHi: a segment keeps its frame
+    const float kSnapDeg = 15f;      // ... and, unrate-limited, never nearer either segment than this (a bigger snap moved ups 30-50 deg a tick)
+    const float kAboveTerrain = 0.3f; // AboveTerrain: a climbing joint at least this x its clearance above the terrain
+    const float kAcrossMin = 0.2f;   // across-body part below this: that up gives no direction
 
     // Gravity's up at joint i as last measured (valid while active).
     public Vector3 Gravity(int i) => grav[i];
@@ -442,6 +527,19 @@ sealed class CreatureClimb
     // asked of it, then a relaxed share is applied - corrected one at a time, neighbouring folds made each
     // other worse in turn and the body zigzagged. Only ever lifts. Returns whether anything moved; the caller
     // restores the segment lengths after each pass.
+    // How far a segment (run in its joint's tangent plane, rise along its up) can be trusted to have a direction and
+    // a pitch in that joint's frame: 0 nearly along the up, 1 from run/length kRunHi. Every climbing stage that reads a
+    // segment in its joint's frame uses it (the chain step's direction, the pitch limiter, the length restore).
+    internal const float kRunLo = 0.25f, kRunHi = 0.6f;
+    internal static float RunTrust(float run, float rise)
+        => SurfaceMath.SmoothStep(kRunLo, kRunHi, run / Mathf.Max(1e-6f, Mathf.Sqrt(run * run + rise * rise)));
+    static float RunTrust(Vector3 v, Vector3 u)
+    {
+        float rise = SurfaceMath.Dot(v, u);
+        Vector3 hv = v - u * rise;
+        return RunTrust(hv.magnitude, rise);
+    }
+
     public static bool LimitPitch(Vector3[] path, Vector3[] up, float seg, float limitDeg, float[] lift)
     {
         int n = path.Length;
@@ -460,14 +558,17 @@ sealed class CreatureClimb
             float pa = Mathf.Atan2(SurfaceMath.Dot(a, u), SurfaceMath.Dot(a, f));
             float pb = Mathf.Atan2(SurfaceMath.Dot(b, u), SurfaceMath.Dot(b, f));
             float bend = pa - pb;
+            // a segment nearly along this joint's up has no pitch in its frame: its fold is not lifted (lifting along
+            // that up only shortened the segment, and the length restore then shoved the joint sideways)
+            float trust = Mathf.Min(RunTrust(a, u), RunTrust(b, u));
             if (bend > lim)
             {
-                lift[i] = Mathf.Max(lift[i], 0.5f * (bend - lim) * seg);
+                lift[i] = Mathf.Max(lift[i], 0.5f * (bend - lim) * seg * trust);
                 any = true;
             }
             else if (bend < -lim)
             {
-                float d = 0.5f * (-lim - bend) * seg;
+                float d = 0.5f * (-lim - bend) * seg * trust;
                 lift[i - 1] = Mathf.Max(lift[i - 1], d);
                 lift[i + 1] = Mathf.Max(lift[i + 1], d);
                 any = true;

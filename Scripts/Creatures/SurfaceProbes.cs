@@ -170,6 +170,9 @@ public sealed class CompositeSurfaceProbe : ISurfaceProbe, ISurfaceSlots
         {
             SurfaceQueries++;
             sHit = surfaces.Probe(near, u, window, prefer, slot, out sh);
+            // a collider's face under the terrain (a trunk's bark below the sand it stands in) is no ground: a body
+            // that walked down the bark into the sand kept standing on it there, under the ground
+            if (sHit && Buried(sh.point, window, smooth)) sHit = false;
             // still on the surface it stood on, right at near: the terrain cannot be meaningfully nearer, and probing
             // it along a climbing joint's tilted up is the costly part (the density field along up)
             if (sHit && prefer == sh.source && Mathf.Abs(sh.distance) < kTrustSurface * window) { SurfaceWins++; hit = sh; return true; }
@@ -203,6 +206,17 @@ public sealed class CompositeSurfaceProbe : ISurfaceProbe, ISurfaceSlots
     }
 
     // ---- terrain ----
+
+    const float kBuriedTol = 0.05f;    // fraction of the window: a collider point this far under the terrain is buried
+
+    // p lies under the terrain along gravity (the terrain's own vertical answer above it).
+    bool Buried(Vector3 p, float window, bool smooth)
+    {
+        IGroundProbe t = smooth ? terrainSmooth : terrain;
+        Vector3 g = Gravity(p);
+        if (!t.Probe(p, g, window, out Vector3 tp, out _)) return false;
+        return SurfaceMath.Dot(tp - p, g) > kBuriedTol * window;
+    }
 
     Vector3 Gravity(Vector3 p) => gravityUp != null ? SurfaceMath.Norm(gravityUp(p), Vector3.up) : Vector3.up;
 

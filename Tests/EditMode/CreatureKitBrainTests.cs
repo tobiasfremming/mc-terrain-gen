@@ -59,6 +59,8 @@ namespace TerrainGen.Tests
         public void BrainFactory_Legacy_SameTypes(string name)
         {
             CreatureSpecies sp = CreatureKitAssets.Load(name);
+            string why = CreatureKitAssets.KitOnlyReason(sp);
+            if (why != null) Assert.Ignore(why + " (its brain: CreatureFleeTests)");
             if (sp.bodyPlan == CreatureBodyPlan.Cephalopod)
             {
                 Assert.AreEqual(BrainKind.OwnBody, BrainFactory.KindFor(sp, Plain(sp)));

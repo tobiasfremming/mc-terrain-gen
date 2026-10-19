@@ -78,12 +78,18 @@ namespace TerrainGen.Tests
                 if (d.uv1[i].y > 0f) front++; else back++;
                 if (Mathf.Abs(d.uv1[i].y) > 0.9f && Mathf.Max(s.x, s.y) > 0f) trailing++;
             }
-            int expect = 0;
-            foreach (FinStripSpec f in sp.fins) expect += (f.Columns + 1) * (FinStripMesh.Rows + 1) * 2 * (f.mirror && f.aroundDeg != 0f ? 2 : 1);
-            TestContext.WriteLine($"{membrane} fin vertices ({front} front, {back} back), {above} above their joint");
+            int expect = 0, onBack = 0;
+            foreach (FinStripSpec f in sp.fins)
+            {
+                int c = (f.Columns + 1) * (FinStripMesh.Rows + 1) * 2 * (f.mirror && f.aroundDeg != 0f ? 2 : 1);
+                expect += c;
+                if (Mathf.Abs(f.aroundDeg) < 90f) onBack += c;   // the cheek frills (105) and the beard (180) hang below
+            }
+            TestContext.WriteLine($"{membrane} fin vertices ({front} front, {back} back), {above} above their joint ({onBack} on back fins)");
             Assert.AreEqual(expect, membrane, "every fin column and row, two sheets");
             Assert.AreEqual(front, back, "double-sided");
-            Assert.Greater(above, 0.9f * membrane, "on the back");
+            Assert.Greater(above, 0.9f * onBack, "the back fins stand on the back");
+            Assert.Less(above, onBack + 0.1f * (membrane - onBack) + 1, "and the cheek frills and the beard hang below");
             // the top row rides joints further back than the base (flowJoints > 0)
             foreach (FinStripSpec f in sp.fins)
             {

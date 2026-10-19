@@ -2000,6 +2000,213 @@
       ]
     },
     {
+      "name": "RigidLoft",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "0 (rigid to its joint)",
+      "materialLayers": [
+        0,
+        2
+      ],
+      "system": "mesh only (RigidLoft.EmitMesh), rigid to the joint's bone",
+      "useWhen": "head shapes: squared snouts, jaws, brows, nostrils, bosses; any rigid lump on a joint",
+      "summary": "Lofted solid rigid to a spine joint: superellipse cross-sections (round to squared and flat-topped, separate above and below) keyed along a direction, curled and rolled. Snouts, jaws, brow ridges, nostril bumps, cheek plates, skull shapes the spine tube cannot express.",
+      "usedBy": [
+        "SkyDragon"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "direction",
+          "type": "Vector3",
+          "unit": "Direction",
+          "size": "-",
+          "meaning": "the loft's axis in the joint frame (x mirrored by side); its up is the joint's up made perpendicular",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "length",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "length along the axis",
+          "range": "",
+          "example": "dragon muzzle 0.15"
+        },
+        {
+          "name": "keys",
+          "type": "LoftKey[]",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "cross-sections along the loft (monotone cubic between them); >= 2, t = 0 and t = 1 included",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "keys[].t",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "place along the loft, 0 = its start .. 1 = its end",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "keys[].halfWidth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "half width (across, the joint frame's x)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "keys[].halfHeight",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "half height (the loft's up)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "keys[].rise",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "centre line raised (+) or lowered (-) along the loft's up",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "keys[].squareTop",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "superellipse exponent of the upper half: 2 = round, 4 = squared, flat-topped",
+          "range": "1..12",
+          "example": ""
+        },
+        {
+          "name": "keys[].squareBottom",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "superellipse exponent of the lower half",
+          "range": "1..12",
+          "example": ""
+        },
+        {
+          "name": "curveDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the axis curls down (+) or up (-) by this much over the length",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "rollDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "cross-section rolled about the axis (mirrored by side; + turns the top outward)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "shade",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "shading: 0 = skin (the body's), 2 = claw / horn",
+          "range": "0..2",
+          "example": ""
+        },
+        {
+          "name": "around",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: vertices around each section (0 = 16)",
+          "range": "0..48",
+          "example": ""
+        },
+        {
+          "name": "rings",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: sections along the length (0 = 12)",
+          "range": "0..64",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "Repeat",
       "kind": "Sugar",
       "status": "exists",
@@ -2519,6 +2726,33 @@
           "meaning": "how fast the body rights itself onto the banked up (0 = 120)",
           "range": "",
           "example": ""
+        },
+        {
+          "name": "twist.girdleBob",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the wingbeat's shoulder bob on the twisting body: the share of the flight model's bob the girdle joint rides (0 = none: the body follows only the head's path, which never bobs)",
+          "range": "0..1.5",
+          "example": "dragon 0.8"
+        },
+        {
+          "name": "twist.bobHead",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "share of the girdle's bob at the head (the head is stabilised; the neck blends)",
+          "range": "0..1",
+          "example": "dragon 0.3"
+        },
+        {
+          "name": "twist.bobTail",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "share at the tail: behind the girdle the bob travels down the body along the path (each joint bobs as the girdle did where it is now), fading to this",
+          "range": "0..1",
+          "example": "dragon 0.4"
         }
       ]
     },
@@ -3311,13 +3545,24 @@
         "Eyes:eyes",
         "RigidCone:antler",
         "RigidCone:antlerTine",
+        "RigidCone:antlerTine2",
+        "RigidCone:fang",
         "FinStrip:mane",
         "FinStrip:crest",
         "FinStrip:tailTuft",
+        "FinStrip:cheekFrill",
+        "FinStrip:beard",
         "Antenna:whisker.L",
         "Antenna:whisker.R",
         "Antenna:barbel.L",
-        "Antenna:barbel.R"
+        "Antenna:barbel.R",
+        "RigidLoft:crown",
+        "RigidLoft:muzzle",
+        "RigidLoft:jaw",
+        "RigidLoft:brow.L",
+        "RigidLoft:brow.R",
+        "RigidLoft:nostril.L",
+        "RigidLoft:nostril.R"
       ],
       "modules": [
         "Walk",
