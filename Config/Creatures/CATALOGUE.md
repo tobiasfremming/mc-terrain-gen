@@ -62,7 +62,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | DesertSnake | legacy | Spine | SpineBody, Eyes | Walk, Slither, Wander, Skin | 34 |
 | FinnedSandEel | kit | Spine | SpineBody, Eyes, 2x FinStrip, 2x Flapper | Walk (Diagonal), Slither, Wander, Flee, Skin, Membrane | 54 |
 | KitMonitor | kit | Spine | SpineBody, 4x Leg2Bone, Eyes | Walk (Diagonal), Slither, Climb, Wander, ClimbExcursion, Skin | 40 |
-| SkyDragon | kit | Spine | SpineBody, 6x Leg2Bone, 2x Wing, Eyes, 4x RigidCone, 5x FinStrip, 4x Antenna, 7x RigidLoft | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane, Shimmer | 136 |
+| SkyDragon | kit | Spine | SpineBody, 4x Leg2Bone, 2x Wing, Eyes, 4x RigidCone, 5x FinStrip, 4x Antenna, 7x RigidLoft | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane, Shimmer | 144 |
 | Swinger | legacy | Soft | 2x Tentacle, SoftBody, Eyes, RigidCone | Ambush, Skin, Cloak, Chromatophore | 97 |
 | Tarantula | legacy | Spine | SpineBody, 10x ArthropodLeg, Eyes, RigidCone | Walk (Tetrapod), Wander, Skin, Chitin | 75 |
 | TestHexapod | legacy | Spine | SpineBody, 6x Leg2Bone, Eyes | Walk (Tripod), Wander, Skin | 28 |
@@ -473,9 +473,11 @@ Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlig
 | `twist.intervalMin` | float | Seconds | x sqrt(s) | shortest pause between manoeuvres (0 = 4) |  |  |
 | `twist.intervalMax` | float | Seconds | x sqrt(s) | longest pause between manoeuvres (0 = 10) |  |  |
 | `twist.uprightRateDeg` | float | DegPerSecond | / sqrt(s) | how fast the body rights itself onto the banked up (0 = 120) |  |  |
-| `twist.girdleBob` | float | Fraction | - | the wingbeat's shoulder bob on the twisting body: the share of the flight model's bob the girdle joint rides (0 = none: the body follows only the head's path, which never bobs) | 0..1.5 | dragon 0.8 |
+| `twist.girdleBob` | float | Fraction | - | the wingbeat's shoulder bob on the twisting body: the share of the flight model's bob the girdle joint rides (0 = none: the body follows only the head's path, which never bobs; above 1 the body heaves more than the point mass, a stylised beat) | 0..4 | dragon 2.6 |
 | `twist.bobHead` | float | Fraction | - | share of the girdle's bob at the head (the head is stabilised; the neck blends) | 0..1 | dragon 0.3 |
 | `twist.bobTail` | float | Fraction | - | share at the tail: behind the girdle the bob travels down the body along the path (each joint bobs as the girdle did where it is now), fading to this | 0..1 | dragon 0.4 |
+| `twist.bobInPhase` | float | Fraction | - | share of the bob behind the girdle that the body rides in phase with the girdle (the whole trunk heaves with the shoulders) instead of as the wave travelling down the path: a big bob at a fast beat is a short steep wave on its own (wavelength = speed / beat), which the bend cones cannot follow (0 = all travelling) | 0..1 | dragon 0.5 |
+| `twist.bobHighPass` | float | Seconds | x sqrt(s) | the body rides only the beat in the shoulder bob: its slow part (a low-pass of this time constant: the stabilised path lagging a climb or a level-off) is taken out first, so a girdleBob above 1 heaves with the beat and never amplifies an altitude change (0 = the raw bob) | 0..2 | dragon 0.6 |
 
 ### Slither
 

@@ -7,10 +7,10 @@ using UnityEngine.Rendering;
 // emitter (Kit/PartMeshEmitter: every part draws itself; the body, hind legs, eyes, cones, fins and antennae as
 // for any species, on the full species' layout). The kit's Wing part draws its wing here (EmitWing):
 //   wing arms               tubes shoulder -> rounded elbow -> wrist, a wrist knuckle and a thumb claw
-//   fingers                 tapered tubes along the 3 finger bones
-//   membrane (part 8)       double-sided: a fan from the wrist over 5 zones between neighbouring rays
-//                           (finger 1-2, 2-3, finger 3-trailing rib, trailing rib-rear flank rib,
-//                           rear flank rib-forearm), each a 6 x 8 grid skinned to its two rays (weights by
+//   fingers                 tapered tubes along the finger bones (3..5, WingSpec.FingerCount)
+//   membrane (part 8)       double-sided: a fan from the wrist over F + 2 zones between neighbouring rays
+//                           (finger 1-2, .., (F-1)-F, finger F-trailing rib, trailing rib-rear flank rib,
+//                           rear flank rib-forearm; 5 with 3 fingers), each a 6 x 8 grid skinned to its two rays (weights by
 //                           the angular coordinate) and smooth-shaded as one sheet (normals averaged
 //                           across zone borders), then the humerus patch, a fan from the elbow between
 //                           the last zone's far edge and the humerus out to the flank. The free trailing
@@ -26,7 +26,8 @@ public static class WingedMeshBuilder
 {
     // Part ids 4-7 belong to the octopus (arm, web, mantle, siphon); the membrane is 8 (CREATURE_PART_MEMBRANE).
     public const int PartMembrane = 8;
-    public const int MembraneZones = 5, ZoneColumns = 6, ZoneRows = 8;
+    public const int MembraneZones = 5, ZoneColumns = 6, ZoneRows = 8;   // MembraneZones: a 3-finger wing's
+    public static int MembraneZonesFor(WingSpec ws) => WingBoneLayout.FingerCount(ws) + 2;
     // the five fan zones and the humerus patch, two sheets each (the one humerus patch: a zone block, transposed)
     public const int MembraneVerticesPerWing = (MembraneZones + 1) * (ZoneColumns + 1) * (ZoneRows + 1) * 2;
     // columns per flank patch when the humerus patch is split along the flank (WingSpec.flankPatches > 1)
@@ -36,7 +37,7 @@ public static class WingedMeshBuilder
     public static int MembraneVertices(WingSpec ws)
     {
         int P = WingBoneLayout.FlankPatchCount(ws);
-        return MembraneZones * (ZoneColumns + 1) * (ZoneRows + 1) * 2 + P * (ZoneColumns + 1) * (PatchColumnsFor(P) + 1) * 2;
+        return MembraneZonesFor(ws) * (ZoneColumns + 1) * (ZoneRows + 1) * 2 + P * (ZoneColumns + 1) * (PatchColumnsFor(P) + 1) * 2;
     }
 
     const int kTubeSegments = 8, kFingerSegments = 6, kKneeRings = 7;
@@ -246,10 +247,10 @@ public static class WingedMeshBuilder
             WingSpec ws = wings[w];
             WingState st = cw.State[w];
             float r0 = Mathf.Max(1e-4f, ws.fingerRadius);
-            for (int k = 0; k < WingSpec.Fingers; k++)
+            for (int k = 0; k < cw.FingerCount(w); k++)
             {
                 int bone = sp.WingBone(w, k);
-                Vector3 d = cw.FingerDir[w * WingSpec.Fingers + k];
+                Vector3 d = cw.FingerDir[cw.FingerIndex(w, k)];
                 float len = ws.fingerLengths[k];
                 var q = new List<Sample>();
                 Vector4 rig = Rigid(bone);
@@ -271,18 +272,19 @@ public static class WingedMeshBuilder
             WingSpec ws = wings[w];
             WingState st = cw.State[w];
             Vector3 W = st.wrist;
-            // rays in fan order: fingers 0..2 (lengths), ribs 0..2 (to the flank)
-            var ray = new Vector3[WingSpec.Fingers + WingSpec.Ribs];
+            // rays in fan order: fingers 0..F-1 (lengths), ribs 0..2 (to the flank)
+            int F = cw.FingerCount(w), Z = MembraneZonesFor(ws);
+            var ray = new Vector3[F + WingSpec.Ribs];
             var bone = new int[ray.Length];
-            for (int k = 0; k < WingSpec.Fingers; k++)
+            for (int k = 0; k < F; k++)
             {
-                ray[k] = cw.FingerTip[w * WingSpec.Fingers + k] - W;
+                ray[k] = cw.FingerTip[cw.FingerIndex(w, k)] - W;
                 bone[k] = sp.WingBone(w, k);
             }
             for (int k = 0; k < WingSpec.Ribs; k++)
             {
-                ray[WingSpec.Fingers + k] = cw.RibTarget[w * WingSpec.Ribs + k] - W;
-                bone[WingSpec.Fingers + k] = sp.WingBone(w, WingBoneLayout.FirstRib + k);
+                ray[F + k] = cw.RibTarget[w * WingSpec.Ribs + k] - W;
+                bone[F + k] = sp.WingBone(w, WingBoneLayout.FirstRibOf(ws) + k);
             }
             // The last zone runs from the rear flank rib to the forearm (the front flank rib only shapes the
             // fold); its bone is the arm sector.
@@ -290,8 +292,8 @@ public static class WingedMeshBuilder
             // One smooth sheet: each zone's plane normal, averaged onto the rays between zones; a vertex takes
             // its ray normals blended by its angle fraction, so neighbouring zones share the normal where
             // they meet (both border vertices ride the same bone). The ribs' uniform scale keeps it exact.
-            var zn = new Vector3[MembraneZones];
-            for (int z = 0; z < MembraneZones; z++)
+            var zn = new Vector3[Z];
+            for (int z = 0; z < Z; z++)
             {
                 Vector3 c = Vector3.Cross(ray[z], ray[z + 1]);
                 if (Vector3.Dot(c, st.handNormal) < 0f) c = -c;
@@ -299,23 +301,23 @@ public static class WingedMeshBuilder
             }
             // the arm zone (on the arm sector) keeps the sector's normal axis
             Vector3 sectorN = cw.ArmSector(w).MultiplyVector(Vector3.forward).normalized;
-            zn[MembraneZones - 1] = sectorN;
+            zn[Z - 1] = sectorN;
             var rn = new Vector3[ray.Length];
             for (int k = 0; k < ray.Length; k++)
             {
-                Vector3 sum = (k > 0 ? zn[k - 1] : Vector3.zero) + (k < MembraneZones ? zn[k] : Vector3.zero);
+                Vector3 sum = (k > 0 ? zn[k - 1] : Vector3.zero) + (k < Z ? zn[k] : Vector3.zero);
                 rn[k] = sum.sqrMagnitude > 1e-12f ? sum.normalized : st.handNormal;
             }
             var chord = new Vector3[ZoneColumns + 1]; // the arm zone's far edge: rear flank attach -> elbow
             int fr = WingBoneLayout.FanRearRib(ws), fanRear = fr >= 0 ? sp.WingBone(w, fr) : -1;
-            for (int z = 0; z < MembraneZones; z++)
+            for (int z = 0; z < Z; z++)
             {
                 Vector3 A = ray[z], B = ray[z + 1];
                 Vector3 nz = zn[z];
                 // the free trailing edge (fingers to the rear flank attach) is scalloped; the last zone runs from
                 // the rear flank rib to the forearm
-                bool free = z < MembraneZones - 1;
-                bool arm = z == MembraneZones - 1;
+                bool free = z < Z - 1;
+                bool arm = z == Z - 1;
                 // Columns are spaced evenly in angle (slerp between the rays) out to the straight edge A-B, and
                 // weighted by that angle fraction. Evenly spaced columns survive the zone compressing when
                 // the wing folds (two-ray skinning of columns spaced along the chord crowds the columns at
@@ -346,17 +348,17 @@ public static class WingedMeshBuilder
                             // normal it keeps), its seam column the rear flank rib (shared with zone 3).
                             // (groundTallStance: the zone before it rides the fan-side rear rib instead,
                             // WingBoneLayout.FanRearRib: the same frame in the air, rolled with the lifted fan on the ground)
-                            int b1 = z + 2 == MembraneZones && fanRear >= 0 ? fanRear : bone[z + 1];
+                            int b1 = z + 2 == Z && fanRear >= 0 ? fanRear : bone[z + 1];
                             Vector4 skin = !arm ? Blend(bone[z], b1, u) : Rigid(i == 0 ? bone[z] : bone[z + 1]);
                             Vector3 vn = (sg * (arm && i > 0 ? sectorN : Vector3.Lerp(rn[z], rn[z + 1], u))).normalized;
                             // uv1.y: the sheet's sign x (0.1 + 0.9 x radial fraction): the shader's trailing rim
-                            Vertex(p, vn, dist, (z + u) / MembraneZones, PartMembrane, sg * (0.1f + 0.9f * v), skin);
+                            Vertex(p, vn, dist, (z + u) / Z, PartMembrane, sg * (0.1f + 0.9f * v), skin);
                         }
                     }
                     Grid(first, sn);
                 }
             }
-            HumerusPatch(w, st, chord, sp.WingBone(w, WingBoneLayout.HumerusPatch), sectorN);
+            HumerusPatch(w, st, chord, sp.WingBone(w, WingBoneLayout.HumerusPatchOf(ws)), sectorN, Z);
         }
 
         // winding: front faces along sn; row 0 is a pole (one triangle per quad)
@@ -384,7 +386,7 @@ public static class WingedMeshBuilder
         // so patch 0 shares that edge vertex for vertex; columns are spaced evenly in angle. Each patch rides its
         // own affine bone (CreatureWings.FlankPatch), exact on its triangle: the shared edges (elbow -> a node)
         // stay exact on both sides. A seam vertex takes the mean of the two patches' normals.
-        void HumerusPatch(int w, WingState st, Vector3[] chord, int patchBone, Vector3 nz)
+        void HumerusPatch(int w, WingState st, Vector3[] chord, int patchBone, Vector3 nz, int zones)
         {
             Vector3 E = st.elbow, W = st.wrist;
             int P = cw.FlankPatches(w), f0 = cw.FlankStart(w);
@@ -427,7 +429,7 @@ public static class WingedMeshBuilder
                             Vector4 skin = Rigid(patchBone + p); // exact on the elbow, node p, node p + 1 triangle
                             Vector3 vn = i == 0 ? nA : i == cols ? nB : pn[p];
                             float uu = (p + u) / P;
-                            Vertex(q, sg * vn, (q - W).magnitude, (MembraneZones - uu) / MembraneZones, PartMembrane, sg * (0.1f + 0.9f * v), skin);
+                            Vertex(q, sg * vn, (q - W).magnitude, (zones - uu) / zones, PartMembrane, sg * (0.1f + 0.9f * v), skin);
                         }
                     }
                     GridRC(first, sg * pn[p], rows, cols);

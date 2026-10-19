@@ -153,9 +153,9 @@ namespace TerrainGen.Tests
         // The look features are data that default to off: the tree octopus's mesh is byte-identical. Unity's Mono rounds
         // differently from the offline .NET harness, so each runtime has its own pin (as the goldens do).
         // Re-pinned deliberately 2026-10-19: the arm tubes carry the curve-skin flag in uv3 (OctopusArmSkin; positions,
-        // normals and the other channels unchanged). The Unity value is 0 until the Editor reports it.
+        // normals and the other channels unchanged). The Unity value was pinned from the Editor.
 #if UNITY_EDITOR
-        internal const ulong kOctopusMeshHash = 0x0UL;                  // Unity 6000.2.6f2 / Mono: re-pin from the Editor
+        internal const ulong kOctopusMeshHash = 0x4AA0186A87801DE3UL;   // Unity 6000.2.6f2 / Mono (pinned from the Editor 2026-10-19)
 #else
         internal const ulong kOctopusMeshHash = 0xAB640B665C01ECDAUL;   // offline .NET
 #endif

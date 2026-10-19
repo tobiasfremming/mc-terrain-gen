@@ -64,6 +64,9 @@ namespace TerrainGen.Tests
             Assert.Greater(sp.fins.Length, 0, "the dragon has fins");
             MeshData d = Mesh(sp);
             CreatureSim rest = CreatureRestPose.Sim(sp);
+            // the mesh's bind pose: a tall stance (WingSpec.groundTallStance, the dragon's wing-walk since 2026-10-19)
+            // binds on a straight spine, not on the stance's sloping back
+            WingedMeshBuilder.StraightenBind(sp, sp.wings, rest);
             int membrane = 0, above = 0, trailing = 0, front = 0, back = 0;
             float wingReach = 0f;
             foreach (WingSpec w in sp.wings) wingReach = Mathf.Max(wingReach, Mathf.Abs(w.restTip.x));

@@ -24,7 +24,9 @@ public class WingSpec
     [Range(0f, 0.8f)] public float foldReach = 0.3f;  // at full fold the wrist pulls in by this fraction of its reach
     public int beatGroup;                // wings of one group beat together (both wings: 0)
 
-    [Header("Fingers (wrist outward: leading, middle, trailing)")]
+    [Header("Fingers (wrist outward: leading .. trailing)")]
+    // MinFingers..MaxFingers fingers, one entry each in the three finger arrays: 3 (the winged serpent) is the
+    // pterosaur-like hand, 4-5 a bat's (a membrane zone between each pair of neighbouring fingers)
     public float[] fingerLengths = { 0.75f, 0.65f, 0.55f };
     // In the wing plane, from the forearm direction toward the tail. Spread = glide pose, fold = on the ground
     // (folded back along the body: each membrane zone keeps about half its spread angle, since two-ray
@@ -70,19 +72,23 @@ public class WingSpec
     public float area = 1f;              // aerodynamic area factor
     [Range(0f, 0.4f)] public float scallop = 0.12f;     // trailing-edge scallop depth between rays (fraction)
 
+    // Fingers: the default (and the winged serpent's) finger count; a wing has FingerCount (fingerLengths.Length)
     public const int Fingers = 3, Ribs = 3;
+    public const int MinFingers = 3, MaxFingers = 5;
+    public int FingerCount => fingerLengths != null && fingerLengths.Length > 0 ? fingerLengths.Length : Fingers;
 
     // null when valid, else the first problem found.
     public string Validate(CreatureSpecies sp)
     {
         int legs = sp.legs != null ? sp.legs.Length : 0;
         if (leg < 0 || leg >= legs) return $"wing leg {leg} out of range 0..{legs - 1}";
-        if (fingerLengths == null || fingerLengths.Length != Fingers) return "fingerLengths needs 3 entries";
-        if (fingerSpreadDeg == null || fingerSpreadDeg.Length != Fingers) return "fingerSpreadDeg needs 3 entries";
-        if (fingerFoldDeg == null || fingerFoldDeg.Length != Fingers) return "fingerFoldDeg needs 3 entries";
-        for (int k = 0; k < Fingers; k++)
+        int nf = fingerLengths != null ? fingerLengths.Length : 0;
+        if (nf < MinFingers || nf > MaxFingers) return $"fingerLengths needs {MinFingers}..{MaxFingers} entries";
+        if (fingerSpreadDeg == null || fingerSpreadDeg.Length != nf) return "fingerSpreadDeg needs one entry per finger";
+        if (fingerFoldDeg == null || fingerFoldDeg.Length != nf) return "fingerFoldDeg needs one entry per finger";
+        for (int k = 0; k < nf; k++)
             if (!(fingerLengths[k] > 0f)) return "finger lengths must be > 0";
-        for (int k = 1; k < Fingers; k++)
+        for (int k = 1; k < nf; k++)
         {
             if (fingerSpreadDeg[k] - fingerSpreadDeg[k - 1] < fingerMinGapDeg) return "fingerSpreadDeg must increase by >= fingerMinGapDeg";
             if (fingerFoldDeg[k] - fingerFoldDeg[k - 1] < fingerMinGapDeg) return "fingerFoldDeg must increase by >= fingerMinGapDeg";

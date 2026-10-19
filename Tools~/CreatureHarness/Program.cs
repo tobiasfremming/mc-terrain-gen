@@ -40,10 +40,7 @@ public static class Program
         // Seeded samples of chaotic runs: the rigid head moves which seeds land in a failure mode the integration branch
         // has too (measured 2026-10-19 on more seeds, integration 310a026+ vs this branch; findings for their owners)
         // (R38 climbing fix 2026-10-19: CreatureClimbWhipTests.LabCycle_SlopedBuriedFoot_NoWhip passes offline and in Unity again - entry removed)
-        { "CreatureDragonTwistTests.Brain_Manoeuvres_InTheAviary(1,0.94)",
-          "finding: manoeuvres in 3 min are a seeded sample - integration has 2/16 seed x size runs under 3 (s3 x1.06: 2, s4 x1.06: 1), this branch 2/16 (s1 x0.94: 2, s3 x1.06: 2)" },
-        { "CreatureKitTests(SkyDragon).Size",
-          "offline: the dragon's gait is not exactly Froude-similar in floats - before the rigid head too, steps 75..77 over x0.8..x1.2 (x0.9 76, x1.1 75 passed); now x0.9 75, x1.1 77; distance within 0.3 %; recheck in Unity" },
+        // (dragon v3 2026-10-19, four limbs + wing-walk: SkyDragon Size (steps 75 vs 77) and Brain_Manoeuvres(1,0.94) pass offline - entries removed)
         // feat/wyvern-trees (32795f7: racetrack laps green on seeds 1,2); seeds 3,4 still fail offline - findings for the flight owner
         { "WingedSerpentTreeTests.Perch_TreeCrown_Brain(0.9,3)",
           "finding: no perch within 3 minutes at x0.9 seed 3 (approaches rejected 14, room 13, aborted 2, 2 flights); known open on feat/wyvern-trees (32795f7), seen again on merge/next with the rigid head" },

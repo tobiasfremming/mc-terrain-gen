@@ -117,14 +117,21 @@ namespace TerrainGen.Tests
         // rose and fell together by 0.05 x s (the altitude drift), while the flight model bobbed 0.32 x s. Now the
         // girdle rides 0.8 of it, the neck blends to 0.6 at the head, and behind the girdle it travels down the body
         // along the path (mid-body later), fading to 0.4 at the tail.
+        // User feedback 2026-10-19, "it needs to bob way more when flying": the girdle now heaves 3x the flight model's
+        // beat bob (girdleBob 3, its slow part taken out first: bobHighPass 0.6), half of it in phase down the trunk
+        // (bobInPhase 0.5: at the faster beat the wave alone is too short and steep for the bend cones), half travelling;
+        // the head blends to 0.45. Girdle p-p 0.221 x s before -> ~0.455 x s (x2.06; 1.46 m at full size); the model's own
+        // bob shrank with the faster beat (0.316 -> 0.157 x s), so the girdle now rides well above it (bound changed
+        // deliberately: it was "no more than the flight model").
         [TestCase(1f)]
         [TestCase(0.94f)]
         [TestCase(1.06f)]
         public void Flight_GirdleBob_TravelsDownTheBody(float sizeFactor)
         {
             Level L = FlyLevel(sizeFactor);
-            Assert.Greater(L.girdleBob, 0.15f, "the girdle bobs with the beat (x size; 0.05 before: only the drift)");
-            Assert.Less(L.girdleBob, L.modelBob, "no more than the flight model");
+            Assert.Greater(L.girdleBob, 0.42f, "the girdle bobs way more than before (x size; 0.221 in dragon v2, 0.05 before the bob: only the drift)");
+            Assert.Less(L.girdleBob, 0.6f, "but stays a heave, not a fling (x size)");
+            Assert.Greater(L.girdleBob, 2f * L.modelBob, "a stylised beat: the body heaves more than the point mass");
             Assert.Greater(L.midBob, 0.4f * L.girdleBob, "mid-body follows the bob");
             Assert.Less(L.midBob, 1.15f * L.girdleBob, "no more than the shoulders");
             Assert.Less(L.tailBob, L.midBob, "the tail bobs least");
@@ -137,6 +144,10 @@ namespace TerrainGen.Tests
         // nearly straight down, as the wyvern's 1.03 of 1.0), amplitudeMin 0.3 -> 0.75; the deeper beat lifts more, so
         // kGrip 0.733 -> 0.4 (the dragon's three-times membrane grips harder per metre of wing), strokeRateMin 2 -> 3,
         // climbIntegralLimit 0.3 -> 0.6. Before: wrist 0.24 x s (22 deg) at 1.3 Hz (scale 1); after ~0.66 x s (74 deg).
+        // User feedback 2026-10-19, "flap its wings with an even higher frequency": 1.5 -> 2.1 Hz at scale 1 (0.84 -> 1.17 Hz
+        // in the world at 3.2) with the same deep stroke: upstrokeDuration 0.22 -> 0.15, strokeRateMin/Max 3/8 -> 5/13 rad/s,
+        // and kGrip 0.4 -> 0.26 (each faster downstroke grips less, so the beat stays fast at cruise instead of the
+        // controller slowing it back down). Beat bound 1.1..2.0 -> 1.9..2.6 Hz (changed deliberately).
         [TestCase(1f)]
         [TestCase(0.94f)]
         [TestCase(1.06f)]
@@ -148,9 +159,109 @@ namespace TerrainGen.Tests
             Assert.Greater(L.belowGirdle, 0.5f, "well below the belly");
             Assert.GreaterOrEqual(L.deepBeats, L.beats - 1, "every beat is deep");
             Assert.Greater(L.beats, 6);
-            Assert.That(L.beatHz, Is.InRange(1.1f, 2.0f), "the slower, powerful beat (Hz at scale 1; / sqrt(size) in the world)");
+            Assert.That(L.beatHz, Is.InRange(1.9f, 2.6f), "the faster beat, still deep (Hz at scale 1; / sqrt(size) in the world)");
             Assert.AreEqual(6f, L.altMean, 0.05f, "altitude held (x size)");
             Assert.Less(L.altHalf, 0.3f, "altitude wobble, the bob included (x size)");
+        }
+
+        // The faster, lighter-gripping beat still turns: a coordinated banked turn at 0.5 rad/s (scale 1, / sqrt(size) in
+        // the world) for 10 s holds the altitude and the speed and comes round at about the asked rate, at 0.94x and 1.06x
+        // the same in scale-1 units (Froude).
+        [TestCase(0.94f)]
+        [TestCase(1.06f)]
+        public void Flight_BankedTurn_HoldsAltitude(float sizeFactor)
+        {
+            CreatureSpecies sp = CreatureDragonTwistTests.Dragon();
+            AirTwistSpec keep = sp.flight.twist;
+            try
+            {
+                AirTwistSpec t = keep; t.intervalMin = t.intervalMax = 1e6f;
+                sp.flight.twist = t;
+                float s = sp.scale * sizeFactor, T = Mathf.Sqrt(s), alt = 6f * s, rate = 0.5f / T;
+                var sim = CreatureDragonTwistTests.AirborneDragon(sp, s, alt, out _);
+                FlightModel m = sim.Flight.Model;
+                float turned = 0f, altLo = float.MaxValue, altHi = float.MinValue, spd = 0f, bank = 0f;
+                Vector3 prev = m.Forward;
+                int ticks = Mathf.RoundToInt(10f * T / kDt), settle = Mathf.RoundToInt(2f * T / kDt), n = 0;
+                for (int k = 0; k < ticks; k++)
+                {
+                    sim.Flight.SetGoals(alt, sp.flight.cruiseSpeed * T, rate);
+                    sim.Tick(kDt, sim.Joints[0]);
+                    Assert.AreEqual(FlightMode.Air, sim.Mode, "stays in the air");
+                    if (k < settle) { prev = m.Forward; continue; }
+                    turned += Vector3.SignedAngle(prev, m.Forward, Vector3.up) * Mathf.Deg2Rad; prev = m.Forward;
+                    altLo = Mathf.Min(altLo, m.Altitude / s); altHi = Mathf.Max(altHi, m.Altitude / s);
+                    spd += m.HorizontalSpeed / T; bank = Mathf.Max(bank, Mathf.Abs(m.Bank) * Mathf.Rad2Deg); n++;
+                }
+                float got = turned / (n * kDt) * T;
+                TestContext.WriteLine($"x{sizeFactor}: turn {got:F3} rad/s (scale 1; asked 0.5), altitude {altLo:F3}..{altHi:F3} x s, speed {spd / n:F2} (scale 1), bank up to {bank:F0} deg");
+                Assert.AreEqual(0.5f, got, 0.1f, "turns at the asked rate");
+                Assert.Greater(altLo, 5.5f, "holds its altitude in the turn (x size)");
+                Assert.Less(altHi, 6.5f, "holds its altitude in the turn (x size)");
+                Assert.AreEqual(sp.flight.cruiseSpeed, spd / n, 0.4f, "holds its speed (scale 1)");
+            }
+            finally { sp.flight.twist = keep; }
+        }
+
+        // ------------------------------------------------------------------ the bat wing
+
+        // "The wings can actually be more bat-like" (user feedback 2026-10-19): four long fingers per wing (WingSpec 3..5
+        // fingers), the membrane between every pair of neighbouring fingers (a zone skinned to both), a deeply scalloped
+        // trailing edge, and the membrane on to the flank (the flank patches). Every wing membrane vertex is accounted for.
+        [Test] public void Wing_BatLike_FourFingers_MembraneBetween()
+        {
+            CreatureSpecies sp = CreatureDragonTwistTests.Dragon();
+            Mesh mesh = CreatureKitAssets.BuildMesh(sp);
+            var uv1 = new List<Vector2>(); var uv2 = new List<Vector4>();
+            mesh.GetUVs(1, uv1); mesh.GetUVs(2, uv2);
+            Object.DestroyImmediate(mesh);
+            int expect = 0, wingVerts = 0;
+            for (int w = 0; w < sp.WingCount; w++)
+            {
+                WingSpec ws = sp.wings[w];
+                int F = ws.FingerCount;
+                Assert.GreaterOrEqual(F, 4, "a bat's hand: four or more fingers");
+                Assert.GreaterOrEqual(ws.scallop, 0.25f, "a deeply scalloped trailing edge");
+                Assert.Greater(WingBoneLayout.FlankPatchCount(ws), 1, "the membrane follows the flank");
+                expect += WingedMeshBuilder.MembraneVertices(ws);
+                for (int k = 0; k + 1 < F; k++)
+                {
+                    int a = sp.WingBone(w, k), b = sp.WingBone(w, k + 1), between = 0;
+                    for (int i = 0; i < uv2.Count; i++)
+                    {
+                        if (Mathf.RoundToInt(uv1[i].x) != WingedMeshBuilder.PartMembrane) continue;
+                        Vector4 s = uv2[i];
+                        bool pair = ((int)s.x == a && (int)s.y == b) || ((int)s.x == b && (int)s.y == a);
+                        if (pair && s.z > 0.05f && s.w > 0.05f) between++;
+                    }
+                    Assert.Greater(between, 0, $"wing {w}: membrane between fingers {k} and {k + 1}");
+                }
+            }
+            // (the whiskers are membrane-shaded too: only the wing bones count)
+            int lo = sp.WingBone(0, 0), hi = sp.WingBone(sp.WingCount - 1, WingBoneLayout.Bones(sp.wings[sp.WingCount - 1]) - 1);
+            for (int i = 0; i < uv2.Count; i++)
+                if (Mathf.RoundToInt(uv1[i].x) == WingedMeshBuilder.PartMembrane && uv2[i].x >= lo && uv2[i].x <= hi) wingVerts++;
+            TestContext.WriteLine($"{sp.wings[0].FingerCount} fingers, {wingVerts} wing membrane vertices");
+            Assert.AreEqual(expect, wingVerts, "every finger zone and flank patch, two sheets");
+        }
+
+        // WingSpec takes 3..5 fingers (one entry each in the three finger arrays) and the bone layout follows the count.
+        [Test] public void WingSpec_FingerCount_ThreeToFive()
+        {
+            CreatureSpecies sp = CreatureDragonTwistTests.Dragon();
+            WingSpec ws = CreatureKit.KitTypes.Memberwise(sp.wings[0]);
+            float[] L(int n) { var a = new float[n]; for (int k = 0; k < n; k++) a[k] = 0.4f; return a; }
+            float[] D(int n, float from) { var a = new float[n]; for (int k = 0; k < n; k++) a[k] = from + 20f * k; return a; }
+            for (int n = 2; n <= 6; n++)
+            {
+                ws.fingerLengths = L(n); ws.fingerSpreadDeg = D(n, -10f); ws.fingerFoldDeg = D(n, 100f);
+                string err = ws.Validate(sp);
+                if (n >= WingSpec.MinFingers && n <= WingSpec.MaxFingers) Assert.IsNull(err, $"{n} fingers");
+                else Assert.IsNotNull(err, $"{n} fingers rejected");
+                Assert.AreEqual(n + WingSpec.Ribs, WingBoneLayout.HumerusPatchOf(ws), "the bones after the fingers");
+            }
+            ws.fingerLengths = L(4); ws.fingerSpreadDeg = D(3, -10f); ws.fingerFoldDeg = D(4, 100f);
+            Assert.IsNotNull(ws.Validate(sp), "one spread angle per finger");
         }
 
         // ------------------------------------------------------------------ the skinned mesh in flight

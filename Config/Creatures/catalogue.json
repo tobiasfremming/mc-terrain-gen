@@ -2753,9 +2753,9 @@
           "type": "float",
           "unit": "Fraction",
           "size": "-",
-          "meaning": "the wingbeat's shoulder bob on the twisting body: the share of the flight model's bob the girdle joint rides (0 = none: the body follows only the head's path, which never bobs)",
-          "range": "0..1.5",
-          "example": "dragon 0.8"
+          "meaning": "the wingbeat's shoulder bob on the twisting body: the share of the flight model's bob the girdle joint rides (0 = none: the body follows only the head's path, which never bobs; above 1 the body heaves more than the point mass, a stylised beat)",
+          "range": "0..4",
+          "example": "dragon 2.6"
         },
         {
           "name": "twist.bobHead",
@@ -2774,6 +2774,24 @@
           "meaning": "share at the tail: behind the girdle the bob travels down the body along the path (each joint bobs as the girdle did where it is now), fading to this",
           "range": "0..1",
           "example": "dragon 0.4"
+        },
+        {
+          "name": "twist.bobInPhase",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "share of the bob behind the girdle that the body rides in phase with the girdle (the whole trunk heaves with the shoulders) instead of as the wave travelling down the path: a big bob at a fast beat is a short steep wave on its own (wavelength = speed / beat), which the bend cones cannot follow (0 = all travelling)",
+          "range": "0..1",
+          "example": "dragon 0.5"
+        },
+        {
+          "name": "twist.bobHighPass",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "the body rides only the beat in the shoulder bob: its slow part (a low-pass of this time constant: the stabilised path lagging a climb or a level-off) is taken out first, so a girdleBob above 1 heaves with the beat and never amplifies an altitude change (0 = the raw bob)",
+          "range": "0..2",
+          "example": "dragon 0.6"
         }
       ]
     },
@@ -3558,13 +3576,11 @@
       "name": "SkyDragon",
       "kitVersion": 1,
       "plan": "Spine",
-      "bones": 136,
+      "bones": 144,
       "parts": [
         "SpineBody:body",
         "Leg2Bone:arm.L",
         "Leg2Bone:arm.R",
-        "Leg2Bone:fore.L",
-        "Leg2Bone:fore.R",
         "Leg2Bone:hind.L",
         "Leg2Bone:hind.R",
         "Wing:wing.L",
