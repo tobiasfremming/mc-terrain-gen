@@ -5,15 +5,19 @@ using CreatureKit;
 
 namespace TerrainGen.Tests
 {
-    // The kit's posture parts on the RockCrab: Tuck (scared -> halt, crouch, fold the legs, claws and EyeStalks away,
-    // sleep exactly still, peek, unfold, walk on) and EyeStalk (a stalk on its own bone that folds, its eye riding
-    // the tip), and the CreatureSim posture inputs they use (Scare, Halt, Crouch, Asleep: off by default, every other
+    // The kit's posture parts on the RockCrab (a stone crab): Tuck (scared -> halt, crouch, fold the legs and claws
+    // ONTO the shell - legs flat under its margin, claws pressed across the face - and the EyeStalks into their orbits,
+    // sleep exactly still, peek, unfold, walk on) and EyeStalk (a stalk on its own bone that folds, its eye riding the
+    // tip), and the CreatureSim posture inputs they use (Scare, Halt, Crouch, Asleep: off by default, every other
     // species bit-identical - the goldens). Checks: validation; the scare input (weak scares ignored, the hold grows with
     // the intensity); the tucked pose is reached within its time bound; tucked, nothing moves (0 mm/frame, the sim
-    // sleeps); tucked, nothing pokes out of the rock (every leg, claw, stalk and eye vertex inside the lumpy shell or in
-    // the ground); no inverted triangle through a whole tuck; it unfolds and walks on; random scares are staggered
-    // (individuals never tuck in sync); Froude (0.9x / 1.1x tuck in sqrt-scaled time); no GC through a tuck.
-    // RED: the walking pose pokes out (the silhouette check bites); a walking frame moves (the stillness check bites).
+    // sleeps); tucked, the limbs lie on the rock (every folded segment touches the shell or the ground, sinks into the
+    // shell no deeper than a bound and stands off it no farther than a claw's thickness; the stalks and eyes fold away);
+    // the tucked silhouette is jagged (cut in well below its convex hull: teeth, knees, claws), a smooth shell is not;
+    // no inverted triangle through a whole tuck; it unfolds and walks on; random scares are staggered (individuals never
+    // tuck in sync); Froude (0.9x / 1.1x tuck in sqrt-scaled time); no GC through a tuck.
+    // RED: a walking frame moves (the stillness check bites); standing limbs stand far off the rock and the old
+    // fold-into-the-shell sinks them (the fit checks bite); a smooth shell is not jagged (the silhouette check bites).
     public class CreatureTuckTests
     {
         const float kDt = 1f / 60f;
@@ -130,20 +134,122 @@ namespace TerrainGen.Tests
             return excess * s;
         }
 
-        // The limb vertices (legs, claws, stalks, eyes: skinned to any bone past the spine) that poke out of the shell:
-        // the worst excess and its part / bone.
-        static float WorstPoke(CreatureSim sim, Skinner sk, RigidLoft loft, out string where)
+        // Where the tucked limbs lie against the rock, per limb bone: `contact` the smallest distance of its vertices to
+        // the shell or the ground (<= 0: touching), `depth` its deepest vertex inside the shell, `reach` how far its
+        // farthest vertex stands off the shell and the ground. Every ArthropodLeg bone (with what rides it: the claw,
+        // spines, hairs), the eye stalks and the eyes.
+        struct BoneFit { public int bone, leg, seg; public string name; public float contact, depth, reach; }
+
+        static List<BoneFit> LimbFit(CreatureSim sim, Skinner sk, RigidLoft loft)
         {
-            int spine = sim.Species.JointCount;
-            float worst = 0f; where = "none";
-            for (int i = 0; i < sk.pos.Length; i += 1)
+            CreatureSpecies sp = sim.Species;
+            var of = new Dictionary<int, BoneFit>();
+            for (int l = 0; l < sp.legs.Length; l++)
+                for (int s = 0; s < sp.legs[l].SegmentCount; s++)
+                    of[sp.LegBone(l, s)] = new BoneFit { bone = sp.LegBone(l, s), leg = l, seg = s, name = $"leg {l} seg {s}", contact = float.PositiveInfinity, depth = 0f, reach = float.NegativeInfinity };
+            for (int e = 0; e < 2; e++) of[sp.EyeBone(e)] = new BoneFit { bone = sp.EyeBone(e), leg = -1, seg = -1, name = "eye " + e, contact = float.PositiveInfinity, reach = float.NegativeInfinity };
+            foreach (IPartRuntime r in sim.PartRuntimes)
+                if (r is EyeStalkRuntime es) of[es.Bone] = new BoneFit { bone = es.Bone, leg = -1, seg = -2, name = "stalk " + es.Part.id, contact = float.PositiveInfinity, reach = float.NegativeInfinity };
+            for (int i = 0; i < sk.pos.Length; i++)
             {
-                if ((int)sk.uv2[i].x < spine) continue;
-                float e = ShellExcess(sim, loft, sk.pos[i]);
-                if (e > worst) { worst = e; where = $"vertex {i} part {Mathf.RoundToInt(sk.uv1[i].x)} bone {(int)sk.uv2[i].x} at {sk.pos[i]}"; }
+                int b = (int)sk.uv2[i].x;
+                if (!of.TryGetValue(b, out BoneFit f)) continue;
+                Vector3 p = sk.pos[i];
+                float ex = ShellExcess(sim, loft, p);
+                float d = Mathf.Min(ex, p.y);
+                f.contact = Mathf.Min(f.contact, d);
+                f.reach = Mathf.Max(f.reach, d);
+                if (p.y > 0f) f.depth = Mathf.Max(f.depth, -ex);
+                of[b] = f;
             }
-            return worst;
+            var list = new List<BoneFit>(of.Values);
+            list.Sort((x, y) => x.bone.CompareTo(y.bone));
+            return list;
         }
+
+        // How jagged a silhouette is: how deeply its outline cuts in below its convex hull - the valleys between knobs,
+        // teeth, folded knees and a claw block. The outline's radius round the hull's centre (3-degree bins, the
+        // farthest point in each) against the hull's radius on the same ray: the mean shortfall over the mean radius.
+        // Any convex shape - a smooth dome, an oval, an oval cut flat by the ground - scores ~0. Averaged over the top,
+        // front and side views (body frame `frame` at `origin`).
+        internal static float Jaggedness(IList<Vector3> pts, Vector3 origin, Quaternion frame)
+        {
+            Quaternion inv = Quaternion.Inverse(frame);
+            float sum = 0f;
+            for (int view = 0; view < 3; view++)
+            {
+                var q = new List<Vector2>(pts.Count);
+                foreach (Vector3 w in pts)
+                {
+                    Vector3 b = inv * (w - origin);
+                    q.Add(view == 0 ? new Vector2(b.x, b.z) : view == 1 ? new Vector2(b.x, b.y) : new Vector2(b.z, b.y));
+                }
+                List<Vector2> hull = Hull(q);
+                Vector2 c = Vector2.zero;
+                foreach (Vector2 h in hull) c += h;
+                c /= hull.Count;
+                const int kBins = 120;
+                var r = new float[kBins];
+                foreach (Vector2 v in q)
+                {
+                    Vector2 d = v - c;
+                    float a = Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg; if (a < 0f) a += 360f;
+                    int k = Mathf.Min(kBins - 1, (int)(a / 360f * kBins));
+                    r[k] = Mathf.Max(r[k], d.magnitude);
+                }
+                float cut = 0f, mean = 0f;
+                for (int k = 0; k < kBins; k++)
+                {
+                    // the hull's radius at the bin's middle; the outline's: the bin's farthest point
+                    float ang = (k + 0.5f) / kBins * 2f * Mathf.PI;
+                    float rh = RayHull(hull, c, new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)));
+                    cut += Mathf.Max(0f, rh - r[k]); mean += rh;
+                }
+                sum += cut / mean;
+            }
+            return sum / 3f;
+        }
+
+        // Convex hull (Andrew's monotone chain), counter-clockwise.
+        static List<Vector2> Hull(List<Vector2> pts)
+        {
+            var p = new List<Vector2>(pts);
+            p.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y));
+            var h = new List<Vector2>();
+            float Cross(Vector2 o, Vector2 a, Vector2 b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+            for (int pass = 0; pass < 2; pass++)
+            {
+                int start = h.Count;
+                for (int i = 0; i < p.Count; i++)
+                {
+                    Vector2 v = pass == 0 ? p[i] : p[p.Count - 1 - i];
+                    while (h.Count >= start + 2 && Cross(h[h.Count - 2], h[h.Count - 1], v) <= 0f) h.RemoveAt(h.Count - 1);
+                    h.Add(v);
+                }
+                h.RemoveAt(h.Count - 1);
+            }
+            return h;
+        }
+
+        // Distance from c (inside the hull) along unit d to the hull's boundary.
+        static float RayHull(List<Vector2> hull, Vector2 c, Vector2 d)
+        {
+            float best = 0f;
+            for (int i = 0; i < hull.Count; i++)
+            {
+                Vector2 a = hull[i], b = hull[(i + 1) % hull.Count], e = b - a;
+                float den = d.x * e.y - d.y * e.x;
+                if (Mathf.Abs(den) < 1e-12f) continue;
+                Vector2 ac = a - c;
+                float t = (ac.x * e.y - ac.y * e.x) / den, u = (ac.x * d.y - ac.y * d.x) / den;
+                if (t > 0f && u >= -1e-6f && u <= 1f + 1e-6f) best = Mathf.Max(best, t);
+            }
+            return best;
+        }
+
+        // The skinned mesh's points now (every vertex).
+        static List<Vector3> Points(Skinner sk) => new List<Vector3>(sk.pos);
+
 
         // ------------------------------------------------------------ data
 
@@ -283,11 +389,14 @@ namespace TerrainGen.Tests
             Assert.Greater(worst, 1e-4f, "a walking frame moves");
         }
 
-        // Tucked, nothing pokes out of the rock: every vertex of the legs, claws, stalks and eyes lies inside the lumpy
-        // shell (or in the ground), at 0.9x and 1.1x.
+        // Tucked, the limbs lie ON the rock (the user's rule: no hiding inside the shell - the legs and claws fold tight onto
+        // its surface): every folded limb segment past the coxa (buried in the body by design) touches the shell or the
+        // ground (contact <= 1 cm), sinks into the shell no deeper than 1.2 cm, and stands off it no farther than its own
+        // thickness allows (reach <= 12 cm: the crusher claw pressed across the face); the eye stalks and eyes fold into their
+        // orbits (nothing stands out). At 0.9x and 1.1x (bounds x the size).
         [TestCase(0.9f)]
         [TestCase(1.1f)]
-        public void Tuck_Curled_NothingPokesOut(float f)
+        public void Tuck_Curled_LimbsLieOnTheShell(float f)
         {
             CreatureSpecies sp = Crab();
             var sim = Walker(sp, sp.scale * f);
@@ -295,24 +404,88 @@ namespace TerrainGen.Tests
             Assert.Greater(TuckAfterWalk(sim, tk, 1f), 0);
             var sk = new Skinner(sp);
             sk.Skin(sim);
-            RigidLoft shell = Shell(sp);
-            float worst = WorstPoke(sim, sk, shell, out string where);
-            TestContext.Out.WriteLine($"x{f}: worst poke {worst * 1000f:F2} mm ({where})");
-            Assert.LessOrEqual(worst, 1e-3f * sim.SizeScale, "a limb pokes out of the rock: " + where);
+            float s = sim.SizeScale;
+            var folded = new HashSet<int>();
+            for (int k = 0; k < tk.FoldedLegs; k++) folded.Add(tk.LegOf(k));
+            Assert.AreEqual(sp.legs.Length, folded.Count, "every limb folds");
+            var problems = new List<string>();
+            foreach (BoneFit b in LimbFit(sim, sk, Shell(sp)))
+            {
+                TestContext.Out.WriteLine($"x{f} {b.name}: contact {b.contact * 1000f:F1} mm, depth {b.depth * 1000f:F1} mm, reach {b.reach * 1000f:F1} mm");
+                if (b.seg >= 1)
+                {
+                    if (b.contact > kTouch * s) problems.Add($"{b.name} floats {b.contact * 1000f:F1} mm off the rock");
+                    if (b.depth > kSink * s) problems.Add($"{b.name} sinks {b.depth * 1000f:F1} mm into the shell");
+                    if (b.reach > kStandOff * s) problems.Add($"{b.name} stands {b.reach * 1000f:F1} mm off the rock");
+                }
+                else if (b.seg < 0 && b.reach > 4e-3f * s) problems.Add($"{b.name} stands out {b.reach * 1000f:F1} mm");
+            }
+            Assert.IsEmpty(problems, string.Join("; ", problems));
         }
 
-        // RED for the silhouette: standing, the legs reach out past the shell.
-        [Test] public void Red_Standing_PokesOut()
+        const float kTouch = 0.01f, kSink = 0.012f, kStandOff = 0.12f;
+
+        // RED for the fit: walking, the limbs stand far off the rock (the stand-off check bites); with a fold that sinks the
+        // legs into the shell (the old hide-inside fold), the depth check bites.
+        [Test] public void Red_Standing_And_Sunk_Fail()
         {
             CreatureSpecies sp = Crab();
             var sim = Walker(sp, sp.scale);
             for (int t = 0; t < 60; t++) sim.Tick(kDt, Far(sp));
             var sk = new Skinner(sp);
             sk.Skin(sim);
-            float worst = WorstPoke(sim, sk, Shell(sp), out string where);
-            TestContext.Out.WriteLine($"standing: worst poke {worst * 1000f:F1} mm ({where})");
-            Assert.Greater(worst, 0.05f * sp.scale, "the legs stand out of the shell");
+            float worst = 0f;
+            foreach (BoneFit b in LimbFit(sim, sk, Shell(sp))) if (b.seg >= 1) worst = Mathf.Max(worst, b.reach);
+            TestContext.Out.WriteLine($"standing: farthest limb {worst * 1000f:F1} mm off the rock");
+            Assert.Greater(worst, kStandOff * sp.scale, "standing, the legs reach out");
+            // the pre-2026-10-19 fold (legs folded back in, under and into the shell)
+            CreatureSpecies a = CreatureKitAssets.LoadAsset("RockCrab");
+            var k = ScriptableObject.CreateInstance<CreatureSpecies>();
+            k.name = "RockCrab+sunk"; k.scale = a.scale; k.kitVersion = 1;
+            k.parts = new List<CreaturePart>(a.parts); k.modules = new List<CreatureModule>(a.modules);
+            var tuck = (Tuck)k.parts[k.parts.Count - 1].Clone();
+            float[] inside = { 30, 168, 62, -12, -62 };
+            for (int i = 0; i < tuck.legs.Length; i++)
+                if (tuck.legs[i].pitchDeg.Length == inside.Length) { tuck.legs[i].pitchDeg = inside; tuck.legs[i].segmentYawDeg = null; tuck.legs[i].yawDeg = 0f; }
+            k.parts[k.parts.Count - 1] = tuck;
+            CreatureSpecies sunk = k.Compiled.Runtime;
+            var sim2 = Walker(sunk, sunk.scale);
+            Assert.Greater(TuckAfterWalk(sim2, TuckOf(sim2), 1f), 0);
+            sk.Skin(sim2);
+            float deepest = 0f;
+            foreach (BoneFit b in LimbFit(sim2, sk, Shell(sunk))) if (b.seg >= 1) deepest = Mathf.Max(deepest, b.depth);
+            TestContext.Out.WriteLine($"folded into the shell: deepest {deepest * 1000f:F1} mm");
+            Object.DestroyImmediate(k);
+            Assert.Greater(deepest, kSink * sunk.scale, "a fold into the shell is caught");
         }
+
+        // Tucked, the rock is jagged, not a smooth dome: the silhouette's jaggedness (top, front, side) is well above a
+        // smooth shell's - the margin teeth, the lumpy ridged dome, the folded knees and the claw block in front.
+        [Test] public void Tuck_Curled_JaggedSilhouette()
+        {
+            CreatureSpecies sp = Crab();
+            var sim = Walker(sp, sp.scale);
+            Assert.Greater(TuckAfterWalk(sim, TuckOf(sim), 1f), 0);
+            var sk = new Skinner(sp);
+            sk.Skin(sim);
+            int j = Shell(sp).at.joint;
+            float rock = Jaggedness(Points(sk), sim.Joints[j], sim.Rotations[j]);
+            // the smooth shell alone (no lumps, no limbs, no teeth): an oval
+            var smooth = (RigidLoft)Shell(sp).Clone(); smooth.lumpHeight = 0f;
+            var pts = new List<Vector3>();
+            for (int a = 0; a <= 200; a++) for (int b = 0; b < 240; b++)
+            {
+                Vector3 w = sim.Joints[j] + sim.Rotations[j] * (smooth.Surface(a / 200f, 2f * Mathf.PI * b / 240f) * sim.SizeScale);
+                if (w.y >= 0f) pts.Add(w);
+            }
+            float oval = Jaggedness(pts, sim.Joints[j], sim.Rotations[j]);
+            TestContext.Out.WriteLine($"jaggedness: tucked rock {rock:F4}, smooth shell {oval:F4} (min {kJagged})");
+            Assert.Less(oval, kJagged, "RED: a smooth shell is not jagged");
+            Assert.GreaterOrEqual(rock, kJagged, "the tucked crab reads as a jagged rock");
+        }
+
+        const float kJagged = 0.035f;
+
 
         // No inverted triangle anywhere through a whole tuck: walking, curling, tucked, peeking, unfolding, walking on.
         [Test] public void Tuck_WholeCycle_NoInvertedTriangles()

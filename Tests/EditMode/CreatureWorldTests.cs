@@ -147,7 +147,9 @@ namespace TerrainGen.Tests
             var view = go.AddComponent<CreatureDebugView>();
             int n = view.BuildLines();
             int legs = sp.legs.Length, joints = sp.JointCount;
-            Assert.AreEqual(2 * (joints - 1) + 2 * 12 * joints + 8 * legs + 2 * 64, n, "chain + ellipses + legs/rest crosses + safe disc");
+            // per leg 10 vertices: shoulder-knee, knee-ankle, ankle-foot (the leg look's raised ankle, 2026-10-19: was 8
+            // with knee-foot) and the rest cross's two lines
+            Assert.AreEqual(2 * (joints - 1) + 2 * 12 * joints + 10 * legs + 2 * 64, n, "chain + ellipses + legs/rest crosses + safe disc");
             Assert.AreEqual(0, n % 2, "lines are vertex pairs");
             for (int f = 0; f < 5; f++) { w.TickAll(1f / 60f); view.BuildLines(); }
             GcAllocs.AssertCounterWorks();

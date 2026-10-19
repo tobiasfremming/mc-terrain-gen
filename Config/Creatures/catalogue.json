@@ -3503,6 +3503,331 @@
       ]
     },
     {
+      "name": "Chela",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "0 (rigid to its ArthropodLeg's last bone)",
+      "materialLayers": [
+        1,
+        2
+      ],
+      "system": "mesh only (Chela.EmitMesh), rigid to the leg's last bone",
+      "useWhen": "crab and lobster claws (crusher and cutter), scorpion pincers: any heavy chela on an arthropod limb",
+      "summary": "A heavy crab claw on an ArthropodLeg's last segment: bulbous flattened palm, fixed finger and movable finger (held open by openDeg) curling together, blunt teeth (a big molar on a crusher), dark tips, optional palm spines. Rigid to the leg's last bone: it walks, poses and folds (Tuck) with the limb.",
+      "usedBy": [
+        "RockCrab",
+        "TentacleCrab"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "leg",
+          "type": "string",
+          "unit": "PartRef",
+          "size": "-",
+          "meaning": "the ArthropodLeg whose last segment carries the claw; a mirrored chela names the unmirrored id and takes .L / .R",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "palmLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "palm length along the propodus (from its joint)",
+          "range": "",
+          "example": "stone crab crusher 0.11"
+        },
+        {
+          "name": "palmHeight",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "palm half height at its widest (the tall axis)",
+          "range": "",
+          "example": "stone crab crusher 0.05"
+        },
+        {
+          "name": "palmWidth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "palm half thickness at its widest",
+          "range": "",
+          "example": "stone crab crusher 0.034"
+        },
+        {
+          "name": "wrist",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the wrist (palm start) half sizes, fraction of the widest",
+          "range": "0.2..1",
+          "example": "default 0.55"
+        },
+        {
+          "name": "square",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "superellipse exponent of the palm's section: 2 = oval, 3-4 = boxy",
+          "range": "1.5..6",
+          "example": "default 2.2"
+        },
+        {
+          "name": "fingerLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "finger length past the palm's end",
+          "range": "",
+          "example": "stone crab crusher 0.07"
+        },
+        {
+          "name": "fingerHeight",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "finger half height at its root",
+          "range": "",
+          "example": "stone crab crusher 0.02"
+        },
+        {
+          "name": "fingerWidth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "finger half thickness, fraction of its half height",
+          "range": "0.3..1.5",
+          "example": "default 0.8"
+        },
+        {
+          "name": "dactylScale",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the movable finger's length, x the fixed finger's",
+          "range": "0.6..1.5",
+          "example": "default 1.08"
+        },
+        {
+          "name": "openDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the movable finger held open by this much",
+          "range": "0..60",
+          "example": "default 10"
+        },
+        {
+          "name": "curveDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "each finger curls toward the other by this much over its length",
+          "range": "0..80",
+          "example": "default 22"
+        },
+        {
+          "name": "pitchDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the fingers pitched down from the palm's axis",
+          "range": "-40..40",
+          "example": ""
+        },
+        {
+          "name": "rollDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the claw rolled about the propodus (mirrored by side; + turns the top outward)",
+          "range": "-180..180",
+          "example": ""
+        },
+        {
+          "name": "yawDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the claw turned about the up axis at its wrist (mirrored by side; + points the fingers toward the midline): claws held across the face",
+          "range": "-90..90",
+          "example": ""
+        },
+        {
+          "name": "tipRound",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "finger tips: 0 = sharp points, 0.5 = blunt rounded ends",
+          "range": "0..0.7",
+          "example": ""
+        },
+        {
+          "name": "teeth",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "teeth along each finger's biting edge",
+          "range": "0..8",
+          "example": "default 3"
+        },
+        {
+          "name": "toothSize",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "tooth size (height)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "molar",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the first (innermost) tooth x this: a crusher's molar",
+          "range": "0.5..3",
+          "example": "default 1"
+        },
+        {
+          "name": "tipFraction",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "dark tip: this share of each finger's length, in tipLayer",
+          "range": "0..1",
+          "example": "default 0.3"
+        },
+        {
+          "name": "spines",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "spines on the palm's outer and upper faces",
+          "range": "0..40",
+          "example": ""
+        },
+        {
+          "name": "spineLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "palm spine length",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "seed",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "seed of the spines' scatter",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "layer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer of the palm and fingers (1 = the limbs')",
+          "range": "0..15",
+          "example": "default 1"
+        },
+        {
+          "name": "tipLayer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer of the finger tips and teeth (2 = the claw row)",
+          "range": "0..15",
+          "example": "default 2"
+        },
+        {
+          "name": "spineLayer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer of the palm spines",
+          "range": "0..15",
+          "example": "default 1"
+        },
+        {
+          "name": "around",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: vertices around each section (0 = 14)",
+          "range": "0..32",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "EyeStalk",
       "kind": "Rigid",
       "status": "exists",
@@ -4018,6 +4343,224 @@
       ]
     },
     {
+      "name": "LimbSpines",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "0 (rigid to the leg's segment bones)",
+      "materialLayers": [
+        1,
+        2,
+        9
+      ],
+      "system": "mesh only (LimbSpines.EmitMesh), rigid to the leg's bones",
+      "useWhen": "spiny legs (king crab), leg bristles and setae fringes (stone crab, tarantula), raptorial spines",
+      "summary": "Spines or bristles along an ArthropodLeg's segments: perMetre per segment, scattered along and round the tube (aroundDeg +- spreadDeg from the top), raked toward the tip. Long thin ones read as hairs. Deterministic; mirror names the limb's .L / .R.",
+      "usedBy": [
+        "RockCrab",
+        "TentacleCrab"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "leg",
+          "type": "string",
+          "unit": "PartRef",
+          "size": "-",
+          "meaning": "the ArthropodLeg; a mirrored part names the unmirrored id and takes .L / .R",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "fromSegment",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "first segment with spines",
+          "range": "0..6",
+          "example": ""
+        },
+        {
+          "name": "toSegment",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "last segment with spines",
+          "range": "0..6",
+          "example": "default 6"
+        },
+        {
+          "name": "perMetre",
+          "type": "float",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "spines per metre of segment (x 1 / s: the same count at every size)",
+          "range": "0..2000",
+          "example": "king crab 90"
+        },
+        {
+          "name": "aroundDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "round the tube: the band's centre (0 = top, 90 = toward the head, 180 = below)",
+          "range": "-180..180",
+          "example": ""
+        },
+        {
+          "name": "spreadDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "round the tube: +- this about the centre",
+          "range": "0..180",
+          "example": "default 70"
+        },
+        {
+          "name": "length",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "spine length",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "lengthJitter",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "length varies by +- this share",
+          "range": "0..0.9",
+          "example": "default 0.3"
+        },
+        {
+          "name": "baseRatio",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "base radius, x the length",
+          "range": "0.03..1",
+          "example": "default 0.3"
+        },
+        {
+          "name": "tipRatio",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "tip radius, x the base radius (0 = sharp)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "leanDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "raked toward the leg's tip",
+          "range": "-80..85",
+          "example": "default 45"
+        },
+        {
+          "name": "curveDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "each spine curls toward the tip by this much",
+          "range": "-90..90",
+          "example": ""
+        },
+        {
+          "name": "seed",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "seed of the scatter",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "layer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer (1 = the limbs', 2 = the claw row, 9 = the band colour)",
+          "range": "0..15",
+          "example": "default 1"
+        },
+        {
+          "name": "sides",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: sides of each cone (0 = 5)",
+          "range": "0..12",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "Pincer",
       "kind": "Rigid",
       "status": "exists",
@@ -4319,7 +4862,6 @@
       "usedBy": [
         "GiantCentipede",
         "Hexadrake",
-        "RockCrab",
         "SkyDragon",
         "Swinger",
         "Tarantula",
@@ -4691,6 +5233,24 @@
           "size": "-",
           "meaning": "lumps: noise seed (another seed, other lumps)",
           "range": "",
+          "example": ""
+        },
+        {
+          "name": "lumpSymmetric",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "lumps: mirror-symmetric about the loft's midline (a carapace's regions; the left side's lumps the mirror of the right's)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "lumpRidge",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "lumps: 0 = smooth bumps .. 1 = ridged (creases between angular facets: weathered rock, a grooved shell)",
+          "range": "0..1",
           "example": ""
         }
       ]
@@ -5426,6 +5986,259 @@
       ]
     },
     {
+      "name": "SpineField",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "0 (rigid to its loft's joint)",
+      "materialLayers": [
+        0,
+        2
+      ],
+      "system": "mesh only (SpineField.EmitMesh), rigid to the loft's joint",
+      "useWhen": "a spiny carapace (king crab), marginal teeth (stone crab), bosses, a horned crown: anything studding a shell or a head",
+      "summary": "Spines, knobs or teeth on a RigidLoft's surface: scattered over a patch (t along, phi round; min spacing) or an even row (marginal teeth); curved cones along the surface normal raked back, sizes graded along the loft. Deterministic; mirror makes the symmetric pair.",
+      "usedBy": [
+        "RockCrab",
+        "TentacleCrab"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "loft",
+          "type": "string",
+          "unit": "PartRef",
+          "size": "-",
+          "meaning": "the RigidLoft it grows from",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "count",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "spines (a row: per side)",
+          "range": "1..200",
+          "example": ""
+        },
+        {
+          "name": "row",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "an even row along the loft at phiMin (marginal teeth) instead of a scatter",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "tMin",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "patch along the loft: from ..",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "tMax",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": ".. to",
+          "range": "0..1",
+          "example": "default 0.9"
+        },
+        {
+          "name": "phiMinDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "patch round the loft: from (0 = right margin, 90 = top, 180 = left, -90 = belly; mirrored by side)",
+          "range": "-180..270",
+          "example": ""
+        },
+        {
+          "name": "phiMaxDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": ".. to",
+          "range": "-180..270",
+          "example": "default 90"
+        },
+        {
+          "name": "lengthMin",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "shortest spine",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "lengthMax",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "longest spine",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "baseRatio",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "base radius, x the length",
+          "range": "0.05..2",
+          "example": "default 0.35"
+        },
+        {
+          "name": "tipRatio",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "tip radius, x the base radius (0 = sharp, 0.6 = a blunt knob)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "startScale",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "size x this at the loft's start ..",
+          "range": "0..3",
+          "example": "default 1"
+        },
+        {
+          "name": "endScale",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": ".. and x this at its end",
+          "range": "0..3",
+          "example": "default 1"
+        },
+        {
+          "name": "leanDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "raked back toward the loft's start (negative: toward its end)",
+          "range": "-80..80",
+          "example": ""
+        },
+        {
+          "name": "curveDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "each spine curls (toward the rake) by this much",
+          "range": "-90..90",
+          "example": ""
+        },
+        {
+          "name": "spacing",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "scatter: no two bases closer than this (0 = no limit)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "seed",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "seed of the scatter",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "layer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer (0 = the body skin, 2 = the claw row)",
+          "range": "0..15",
+          "example": ""
+        },
+        {
+          "name": "sides",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: sides of each cone (0 = 6)",
+          "range": "0..16",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "Swell",
       "kind": "Rigid",
       "status": "exists",
@@ -5910,6 +6723,15 @@
           "size": "-",
           "meaning": "starts folding this fraction of the curl later (and unfolds that much earlier)",
           "range": "0..0.6",
+          "example": ""
+        },
+        {
+          "name": "legs[].segmentYawDeg",
+          "type": "float[]",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "optional: a fold plane per segment (its yaw, as yawDeg; one per segment), so a limb can fold flat - the merus out, the rest swept back along the body's side; empty = every segment in yawDeg's plane",
+          "range": "",
           "example": ""
         }
       ]
@@ -7584,17 +8406,27 @@
         "ArthropodLeg:leg2.R",
         "ArthropodLeg:leg3.L",
         "ArthropodLeg:leg3.R",
-        "ArthropodLeg:claw.L",
-        "ArthropodLeg:claw.R",
+        "ArthropodLeg:crusher",
+        "ArthropodLeg:cutter",
         "RigidLoft:carapace",
-        "RigidCone:knob0",
-        "RigidCone:knob1",
-        "RigidCone:knob2",
-        "RigidCone:knob3",
-        "RigidCone:knob4",
-        "RigidCone:knob5",
+        "SpineField:marginTeeth.L",
+        "SpineField:marginTeeth.R",
+        "SpineField:frontLobe.L",
+        "SpineField:frontLobe.R",
+        "SpineField:orbitTooth.L",
+        "SpineField:orbitTooth.R",
         "EyeStalk:stalk.L",
         "EyeStalk:stalk.R",
+        "Chela:crusherClaw",
+        "Chela:cutterClaw",
+        "LimbSpines:hair0.L",
+        "LimbSpines:hair0.R",
+        "LimbSpines:hair1.L",
+        "LimbSpines:hair1.R",
+        "LimbSpines:hair2.L",
+        "LimbSpines:hair2.R",
+        "LimbSpines:hair3.L",
+        "LimbSpines:hair3.R",
         "Tuck:tuck"
       ],
       "modules": [
@@ -7771,7 +8603,7 @@
       "name": "TentacleCrab",
       "kitVersion": 1,
       "plan": "Spine",
-      "bones": 96,
+      "bones": 86,
       "parts": [
         "SpineBody:body",
         "Eyes:eyes",
@@ -7781,23 +8613,32 @@
         "ArthropodLeg:leg1.R",
         "ArthropodLeg:leg2.L",
         "ArthropodLeg:leg2.R",
-        "ArthropodLeg:leg3.L",
-        "ArthropodLeg:leg3.R",
-        "ArthropodLeg:claw.L",
-        "ArthropodLeg:claw.R",
+        "ArthropodLeg:crusher",
+        "ArthropodLeg:cutter",
         "RigidLoft:carapace",
         "RigidCone:eyeStalk",
         "RigidCone:rostrum",
-        "RigidCone:rimSpine0",
-        "RigidCone:rimSpine1",
-        "RigidCone:rimSpine2",
-        "RigidCone:tubercle0",
-        "RigidCone:tubercle1",
-        "RigidCone:tubercle2",
+        "RigidCone:rostrumSpine",
         "Tendril:tentacle.L",
         "Tendril:tentacle.R",
         "Tendril:feeler.L",
-        "Tendril:feeler.R"
+        "Tendril:feeler.R",
+        "SpineField:spines.L",
+        "SpineField:spines.R",
+        "SpineField:marginSpines.L",
+        "SpineField:marginSpines.R",
+        "SpineField:midSpines.L",
+        "SpineField:midSpines.R",
+        "Chela:crusherClaw",
+        "Chela:cutterClaw",
+        "LimbSpines:legSpines0.L",
+        "LimbSpines:legSpines0.R",
+        "LimbSpines:legSpines1.L",
+        "LimbSpines:legSpines1.R",
+        "LimbSpines:legSpines2.L",
+        "LimbSpines:legSpines2.R",
+        "LimbSpines:crusherSpines",
+        "LimbSpines:cutterSpines"
       ],
       "modules": [
         "Walk",

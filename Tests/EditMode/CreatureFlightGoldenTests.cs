@@ -26,7 +26,7 @@ namespace TerrainGen.Tests
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
             { "WingedSerpent", 0xC092C897D583E807UL },   // thumb-claw stance 2026-10-20: the hand flexes, the wrist raised; was 0xFC0434CD8302994FUL
-            { "SkyDragon", 0xD32C1E5807E2E967UL },       // dragon v5 2026-10-20: digitigrade dragon legs, muscled wing arms, leg wings, thumb-claw stance; was 0xFD3F02670DCD9A0FUL
+            { "SkyDragon", 0x5DE91393106DD3CBUL },       // dragon v5 + AirTwist cone renormalised 2026-10-20 (was 0xD32C1E5807E2E967UL): digitigrade dragon legs, muscled wing arms, leg wings, thumb-claw stance; was 0xFD3F02670DCD9A0FUL
         };
 #endif
 

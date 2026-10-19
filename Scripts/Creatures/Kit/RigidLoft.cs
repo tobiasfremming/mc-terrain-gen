@@ -42,6 +42,8 @@ namespace CreatureKit
         [Param(ParamUnit.Metres, "lumps: the surface pushed in and out by up to this much (smooth noise; 0 = smooth). A boulder, a knobbly shell", Example = "rock crab 0.012")] public float lumpHeight;
         [Param(ParamUnit.Metres, "lumps: their size (noise feature size)", Example = "rock crab 0.06")] public float lumpSize;
         [Param(ParamUnit.Count, "lumps: noise seed (another seed, other lumps)")] public int lumpSeed;
+        [Param(ParamUnit.Flag, "lumps: mirror-symmetric about the loft's midline (a carapace's regions; the left side's lumps the mirror of the right's)")] public bool lumpSymmetric;
+        [Param(ParamUnit.Fraction, "lumps: 0 = smooth bumps .. 1 = ridged (creases between angular facets: weathered rock, a grooved shell)", Min = 0, Max = 1)] public float lumpRidge;
 
         public override int BoneCount(in SpeciesCtx c) => 0;
         protected override void CopyArrays() { keys = (LoftKey[])keys?.Clone(); }
@@ -171,7 +173,10 @@ namespace CreatureKit
             float env = Mathf.Clamp01(Mathf.Min(q.a, q.b) / (3f * lumpHeight));
             float below = Mathf.Sin(phi) < 0f ? 0.5f + 0.5f * (1f + Mathf.Sin(phi)) : 1f;
             Vector3 x = p / lumpSize;
+            if (lumpSymmetric) x.x = Mathf.Abs(x.x);   // the joint frame's x: across the body (a midline loft)
             float n = Noise(x, lumpSeed) + 0.45f * Noise(x * 2.13f + new Vector3(5.2f, 1.3f, 7.7f), lumpSeed + 101);
+            // ridged: 1 - 2|n| folds the noise into sharp creases (valleys) between flat-topped facets, same range
+            if (lumpRidge > 0f) n = Mathf.Lerp(n, 1.45f - 2f * Mathf.Abs(n), lumpRidge);
             return p + radial * (lumpHeight * env * below * n / 1.45f / rl);
         }
 

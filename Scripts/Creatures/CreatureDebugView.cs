@@ -202,7 +202,8 @@ public sealed class CreatureDebugView : MonoBehaviour
     static int VerticesFor(CreatureSim sim)
     {
         int n = sim.Joints.Length, legs = sim.Legs.Length;
-        return 2 * (n - 1) + 2 * kEllipseSegments * n + legs * (4 + 4) + (sim.Bounds.HasValue ? 2 * kDiscSegments : 0)
+        // per leg: shoulder-knee-ankle-foot (3 lines; the ankle since the leg look) and the rest cross (2)
+        return 2 * (n - 1) + 2 * kEllipseSegments * n + legs * (6 + 4) + (sim.Bounds.HasValue ? 2 * kDiscSegments : 0)
              + (sim.CanClimb ? 2 * n + 4 : 0) + 6
              + (sim.Flight != null ? 2 * sim.Flight.Wings.Count * 8 + 2 * n + 12 : 0);
     }

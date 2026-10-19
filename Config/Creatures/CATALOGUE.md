@@ -32,14 +32,17 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | **Flapper** | Fin | exists | = segments (1-3) | 8 | pectoral fins, ear flaps, frills, small paddles that beat or flutter (not wings that fly: Wing) | FinnedSandEel |
 | **LegFin** | Fin | exists | 2 (thigh wing, shin wing) | 1, 8 | winged or finned legs: Microraptor hind wings, Caraxes-like leg membranes, any ribbed flap that rides a limb and spreads in flight | SkyDragon |
 | **ArmourPlates** | Rigid | exists | 0 (each plate rigid to its joint) | 10 | segmented armour: centipede / millipede tergites, woodlice, trilobites, armadillo bands, ankylosaur back plates | Scolopendra |
+| **Chela** | Rigid | exists | 0 (rigid to its ArthropodLeg's last bone) | 1, 2 | crab and lobster claws (crusher and cutter), scorpion pincers: any heavy chela on an arthropod limb | RockCrab, TentacleCrab |
 | **EyeStalk** | Rigid | exists | 1 | 1, 2, 9 | crab and snail eye stalks, periscopes, anything on a stalk that folds away | RockCrab |
 | **Jaw** | Rigid | exists | 1 | 0, 2, 13 | a mouth that opens: a crocodile basking agape (opensUp), a yawn, a threat gape, a snapping beak | Crocodile |
+| **LimbSpines** | Rigid | exists | 0 (rigid to the leg's segment bones) | 1, 2, 9 | spiny legs (king crab), leg bristles and setae fringes (stone crab, tarantula), raptorial spines | RockCrab, TentacleCrab |
 | **Pincer** | Rigid | exists | = segments (1-4) | 11, 9 | forcipules, mandibles, chelicera fangs, pincers, earwig forceps, centipede ultimate legs - any jointed appendage that opens and closes | Scolopendra |
-| **RigidCone** | Rigid | exists | 0 (1 with ownBone) | 2 | horns, spikes, fangs, mandibles, chelicerae | GiantCentipede, Hexadrake, RockCrab, SkyDragon, Swinger, Tarantula, TentacleCrab, TreeOctopus, TreeSpider |
+| **RigidCone** | Rigid | exists | 0 (1 with ownBone) | 2 | horns, spikes, fangs, mandibles, chelicerae | GiantCentipede, Hexadrake, SkyDragon, Swinger, Tarantula, TentacleCrab, TreeOctopus, TreeSpider |
 | **RigidLoft** | Rigid | exists | 0 (rigid to its joint) | 0, 2 | head shapes: squared snouts, jaws, brows, nostrils, bosses; any rigid lump on a joint | GiantCentipede, Hexadrake, RockCrab, Scolopendra, SkyDragon, TentacleCrab |
 | **Sculpt** | Rigid | exists | 0 (rigid to its joint, or rides a Jaw's bone) | 0, 2, 13 | realistic heads and skulls: brows over recessed eye sockets, jowls, lip lines, nostrils, skull tables, a lower jaw on a Jaw; any rigid organic solid a loft cannot express | Crocodile, KomodoDragon |
 | **ScuteRow** | Rigid | exists | 0 (skinned to the spine) | 12, 0 | crocodile and alligator armour, a tail's double crest, a stegosaur-like row of plates, spiny lizard backs | Crocodile |
 | **SkinFolds** | Rigid | exists | 0 (skinned to the spine) | 0 | neck and throat folds of monitor lizards, a dewlap, wrinkled elbows of skin, the gular folds of iguanas | KomodoDragon |
+| **SpineField** | Rigid | exists | 0 (rigid to its loft's joint) | 0, 2 | a spiny carapace (king crab), marginal teeth (stone crab), bosses, a horned crown: anything studding a shell or a head | RockCrab, TentacleCrab |
 | **Swell** | Rigid | exists | 0 (skinned to the spine) | 0 | a deep chest with flight muscles at the wing roots, shoulders, haunches, a belly - any bulk the body's elliptical profile cannot give | KomodoDragon, SkyDragon |
 | **ThreatDisplay** | Rigid | exists | 0 (sets the sim's posture inputs) |  | a predator that threatens when it stops: centipedes, scorpions, mantises, cobras rearing, a crab raising its claws | Scolopendra |
 | **Tuck** | Rigid | exists | 0 (poses the others' bones) |  | a creature that hides by folding up: rock crabs, box crabs, armadillos, pill bugs, tortoises | RockCrab |
@@ -80,12 +83,12 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | Hexadrake | kit | Spine | SpineBody, 6x Leg2Bone, 2x Wing, Eyes, 5x RigidLoft, 3x RigidCone, 2x FinStrip | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane, Layers | 78 |
 | KitMonitor | kit | Spine | SpineBody, 4x Leg2Bone, Eyes | Walk (Diagonal), Slither, Climb, Wander, ClimbExcursion, Skin | 40 |
 | KomodoDragon | kit | Spine | SpineBody, 4x SprawlLeg, Eyes, 2x Sculpt, Tongue, 3x SkinFolds, 3x Swell | Walk (Diagonal), Slither, Wander, Skin, Layers | 53 |
-| RockCrab | kit | Spine | SpineBody, Eyes, 10x ArthropodLeg, RigidLoft, 6x RigidCone, 2x EyeStalk, Tuck | Walk (Tetrapod), Wander, Skin, Chitin, Layers | 57 |
+| RockCrab | kit | Spine | SpineBody, Eyes, 10x ArthropodLeg, RigidLoft, 6x SpineField, 2x EyeStalk, 2x Chela, 8x LimbSpines, Tuck | Walk (Tetrapod), Wander, Skin, Chitin, Layers | 57 |
 | Scolopendra | kit | Spine | SpineBody, Eyes, RigidLoft, 2x Antenna, 40x ArthropodLeg, ArmourPlates, 4x Pincer, ThreatDisplay | Walk (Wave), Slither, Wander, Skin, Chitin, Layers | 245 |
 | SkyDragon | kit | Spine | SpineBody, 4x Leg2Bone, 2x LegFin, 2x Wing, Eyes, 4x RigidCone, 5x FinStrip, 4x Antenna, Swell, 7x RigidLoft | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane, Shimmer | 148 |
 | Swinger | legacy | Soft | 2x Tentacle, SoftBody, Eyes, RigidCone | Ambush, Skin, Cloak, Chromatophore | 97 |
 | Tarantula | legacy | Spine | SpineBody, 10x ArthropodLeg, Eyes, RigidCone | Walk (Tetrapod), Wander, Skin, Chitin | 75 |
-| TentacleCrab | kit | Spine | SpineBody, Eyes, 10x ArthropodLeg, RigidLoft, 8x RigidCone, 4x Tendril | Walk (Tetrapod), Wander, Skin, Chitin, Layers | 96 |
+| TentacleCrab | kit | Spine | SpineBody, Eyes, 8x ArthropodLeg, RigidLoft, 3x RigidCone, 4x Tendril, 6x SpineField, 2x Chela, 8x LimbSpines | Walk (Tripod), Wander, Skin, Chitin, Layers | 86 |
 | TestHexapod | legacy | Spine | SpineBody, 6x Leg2Bone, Eyes | Walk (Tripod), Wander, Skin | 28 |
 | TestSnake | legacy | Spine | SpineBody, Eyes | Walk, Slither, Wander, Skin | 42 |
 | TreeOctopus | legacy | Soft | 8x Tentacle, SoftBody, Eyes, RigidCone | Ambush, Skin, Cloak, Chromatophore | 201 |
@@ -552,6 +555,47 @@ A row of hard shingled dorsal plates over a spine body, one every `step` joints:
 | `across` | int | Count | - | mesh: vertices across a plate | 6..40 | default 18 |
 | `along` | int | Count | - | mesh: rows along a plate | 3..24 | default 8 |
 
+### Chela
+
+A heavy crab claw on an ArthropodLeg's last segment: bulbous flattened palm, fixed finger and movable finger (held open by openDeg) curling together, blunt teeth (a big molar on a crusher), dark tips, optional palm spines. Rigid to the leg's last bone: it walks, poses and folds (Tuck) with the limb. System: mesh only (Chela.EmitMesh), rigid to the leg's last bone.
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `leg` | string | PartRef | - | the ArthropodLeg whose last segment carries the claw; a mirrored chela names the unmirrored id and takes .L / .R |  |  |
+| `palmLength` | float | Metres | x s | palm length along the propodus (from its joint) |  | stone crab crusher 0.11 |
+| `palmHeight` | float | Metres | x s | palm half height at its widest (the tall axis) |  | stone crab crusher 0.05 |
+| `palmWidth` | float | Metres | x s | palm half thickness at its widest |  | stone crab crusher 0.034 |
+| `wrist` | float | Fraction | - | the wrist (palm start) half sizes, fraction of the widest | 0.2..1 | default 0.55 |
+| `square` | float | Fraction | - | superellipse exponent of the palm's section: 2 = oval, 3-4 = boxy | 1.5..6 | default 2.2 |
+| `fingerLength` | float | Metres | x s | finger length past the palm's end |  | stone crab crusher 0.07 |
+| `fingerHeight` | float | Metres | x s | finger half height at its root |  | stone crab crusher 0.02 |
+| `fingerWidth` | float | Fraction | - | finger half thickness, fraction of its half height | 0.3..1.5 | default 0.8 |
+| `dactylScale` | float | Fraction | - | the movable finger's length, x the fixed finger's | 0.6..1.5 | default 1.08 |
+| `openDeg` | float | Degrees | - | the movable finger held open by this much | 0..60 | default 10 |
+| `curveDeg` | float | Degrees | - | each finger curls toward the other by this much over its length | 0..80 | default 22 |
+| `pitchDeg` | float | Degrees | - | the fingers pitched down from the palm's axis | -40..40 |  |
+| `rollDeg` | float | Degrees | - | the claw rolled about the propodus (mirrored by side; + turns the top outward) | -180..180 |  |
+| `yawDeg` | float | Degrees | - | the claw turned about the up axis at its wrist (mirrored by side; + points the fingers toward the midline): claws held across the face | -90..90 |  |
+| `tipRound` | float | Fraction | - | finger tips: 0 = sharp points, 0.5 = blunt rounded ends | 0..0.7 |  |
+| `teeth` | int | Count | - | teeth along each finger's biting edge | 0..8 | default 3 |
+| `toothSize` | float | Metres | x s | tooth size (height) |  |  |
+| `molar` | float | Fraction | - | the first (innermost) tooth x this: a crusher's molar | 0.5..3 | default 1 |
+| `tipFraction` | float | Fraction | - | dark tip: this share of each finger's length, in tipLayer | 0..1 | default 0.3 |
+| `spines` | int | Count | - | spines on the palm's outer and upper faces | 0..40 |  |
+| `spineLength` | float | Metres | x s | palm spine length |  |  |
+| `seed` | int | Count | - | seed of the spines' scatter |  |  |
+| `layer` | int | Count | - | material layer of the palm and fingers (1 = the limbs') | 0..15 | default 1 |
+| `tipLayer` | int | Count | - | material layer of the finger tips and teeth (2 = the claw row) | 0..15 | default 2 |
+| `spineLayer` | int | Count | - | material layer of the palm spines | 0..15 | default 1 |
+| `around` | int | Count | - | mesh: vertices around each section (0 = 14) | 0..32 |  |
+
 ### EyeStalk
 
 A rigid stalk on a bone of its own rooted on a spine joint (a crab's eye stalk): rigid to its joint at rest; a posture part (Tuck) swings it about its root to tuckDirection, and the eye of its side rides its tip (carriesEye). Tapered tube, rounded tip. System: EyeStalkRuntime (part runtime, bones only) + EyeStalk.EmitMesh; folded by TuckRuntime.
@@ -618,6 +662,35 @@ A hinged jaw on its own bone: a lofted solid (RigidLoft sections) with a tooth r
 | `rings` | int | Count | - | mesh: sections along the length (0 = 16) | 0..64 |  |
 | `hideLoft` | bool | Flag | - | draws no loft (its keys still bound it): a Sculpt that follows this jaw draws it |  |  |
 | `headLiftDeg` | float | Degrees | - | as it gapes the head lifts too: the rigid head's bones and the eyes turn up about the hinge by this much at full gape, the jaw opening gapeDeg from the lifted head (a crocodile: the skull rises as the lower jaw drops). Put the Jaw after the Eyes | 0..60 | crocodile 24 |
+
+### LimbSpines
+
+Spines or bristles along an ArthropodLeg's segments: perMetre per segment, scattered along and round the tube (aroundDeg +- spreadDeg from the top), raked toward the tip. Long thin ones read as hairs. Deterministic; mirror names the limb's .L / .R. System: mesh only (LimbSpines.EmitMesh), rigid to the leg's bones.
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `leg` | string | PartRef | - | the ArthropodLeg; a mirrored part names the unmirrored id and takes .L / .R |  |  |
+| `fromSegment` | int | Count | - | first segment with spines | 0..6 |  |
+| `toSegment` | int | Count | - | last segment with spines | 0..6 | default 6 |
+| `perMetre` | float | Count | - | spines per metre of segment (x 1 / s: the same count at every size) | 0..2000 | king crab 90 |
+| `aroundDeg` | float | Degrees | - | round the tube: the band's centre (0 = top, 90 = toward the head, 180 = below) | -180..180 |  |
+| `spreadDeg` | float | Degrees | - | round the tube: +- this about the centre | 0..180 | default 70 |
+| `length` | float | Metres | x s | spine length |  |  |
+| `lengthJitter` | float | Fraction | - | length varies by +- this share | 0..0.9 | default 0.3 |
+| `baseRatio` | float | Fraction | - | base radius, x the length | 0.03..1 | default 0.3 |
+| `tipRatio` | float | Fraction | - | tip radius, x the base radius (0 = sharp) | 0..1 |  |
+| `leanDeg` | float | Degrees | - | raked toward the leg's tip | -80..85 | default 45 |
+| `curveDeg` | float | Degrees | - | each spine curls toward the tip by this much | -90..90 |  |
+| `seed` | int | Count | - | seed of the scatter |  |  |
+| `layer` | int | Count | - | material layer (1 = the limbs', 2 = the claw row, 9 = the band colour) | 0..15 | default 1 |
+| `sides` | int | Count | - | mesh: sides of each cone (0 = 5) | 0..12 |  |
 
 ### Pincer
 
@@ -707,6 +780,8 @@ Lofted solid rigid to a spine joint: superellipse cross-sections (round to squar
 | `lumpHeight` | float | Metres | x s | lumps: the surface pushed in and out by up to this much (smooth noise; 0 = smooth). A boulder, a knobbly shell |  | rock crab 0.012 |
 | `lumpSize` | float | Metres | x s | lumps: their size (noise feature size) |  | rock crab 0.06 |
 | `lumpSeed` | int | Count | - | lumps: noise seed (another seed, other lumps) |  |  |
+| `lumpSymmetric` | bool | Flag | - | lumps: mirror-symmetric about the loft's midline (a carapace's regions; the left side's lumps the mirror of the right's) |  |  |
+| `lumpRidge` | float | Fraction | - | lumps: 0 = smooth bumps .. 1 = ridged (creases between angular facets: weathered rock, a grooved shell) | 0..1 |  |
 
 ### Sculpt
 
@@ -804,6 +879,39 @@ Loose skin over a stretch of the spine: transverse folds round the body on an an
 | `ringsPerJoint` | int | Count | - | mesh: rings per spine segment (0 = 8) | 0..16 |  |
 | `around` | int | Count | - | mesh: vertices round each ring (0 = 32) | 0..64 |  |
 
+### SpineField
+
+Spines, knobs or teeth on a RigidLoft's surface: scattered over a patch (t along, phi round; min spacing) or an even row (marginal teeth); curved cones along the surface normal raked back, sizes graded along the loft. Deterministic; mirror makes the symmetric pair. System: mesh only (SpineField.EmitMesh), rigid to the loft's joint.
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `loft` | string | PartRef | - | the RigidLoft it grows from |  |  |
+| `count` | int | Count | - | spines (a row: per side) | 1..200 |  |
+| `row` | bool | Flag | - | an even row along the loft at phiMin (marginal teeth) instead of a scatter |  |  |
+| `tMin` | float | Fraction | - | patch along the loft: from .. | 0..1 |  |
+| `tMax` | float | Fraction | - | .. to | 0..1 | default 0.9 |
+| `phiMinDeg` | float | Degrees | - | patch round the loft: from (0 = right margin, 90 = top, 180 = left, -90 = belly; mirrored by side) | -180..270 |  |
+| `phiMaxDeg` | float | Degrees | - | .. to | -180..270 | default 90 |
+| `lengthMin` | float | Metres | x s | shortest spine |  |  |
+| `lengthMax` | float | Metres | x s | longest spine |  |  |
+| `baseRatio` | float | Fraction | - | base radius, x the length | 0.05..2 | default 0.35 |
+| `tipRatio` | float | Fraction | - | tip radius, x the base radius (0 = sharp, 0.6 = a blunt knob) | 0..1 |  |
+| `startScale` | float | Fraction | - | size x this at the loft's start .. | 0..3 | default 1 |
+| `endScale` | float | Fraction | - | .. and x this at its end | 0..3 | default 1 |
+| `leanDeg` | float | Degrees | - | raked back toward the loft's start (negative: toward its end) | -80..80 |  |
+| `curveDeg` | float | Degrees | - | each spine curls (toward the rake) by this much | -90..90 |  |
+| `spacing` | float | Metres | x s | scatter: no two bases closer than this (0 = no limit) |  |  |
+| `seed` | int | Count | - | seed of the scatter |  |  |
+| `layer` | int | Count | - | material layer (0 = the body skin, 2 = the claw row) | 0..15 |  |
+| `sides` | int | Count | - | mesh: sides of each cone (0 = 6) | 0..16 |  |
+
 ### Swell
 
 A muscle mass lofted round the spine over a stretch of joints: keel below (a sternum ridge), breadth at the sides (pectorals, haunches), hump above (withers), fading into the body at both ends. Skinned to the spine like the body rings, shaded as the body. System: mesh only (Swell.EmitMesh), skinned to the spine bones.
@@ -873,6 +981,7 @@ Posture: when scared (CreatureSim.Scare, or a random timer per individual) it st
 | `legs[].yawDeg` | float | Degrees | - | the fold plane: 0 = straight out sideways, + swept toward the tail, - toward the head (mirrored by side) | -90..90 |  |
 | `legs[].pitchDeg` | float[] | Degrees | - | each segment's pitch in the fold plane (body out): 0 = out level, 90 = up, 180 = back in level, -90 = down; one per segment |  |  |
 | `legs[].lag` | float | Fraction | - | starts folding this fraction of the curl later (and unfolds that much earlier) | 0..0.6 |  |
+| `legs[].segmentYawDeg` | float[] | Degrees | - | optional: a fold plane per segment (its yaw, as yawDeg; one per segment), so a limb can fold flat - the merus out, the rest swept back along the body's side; empty = every segment in yawDeg's plane |  |  |
 
 ### Repeat
 

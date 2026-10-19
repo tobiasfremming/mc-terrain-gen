@@ -46,6 +46,11 @@ public static class Program
           "finding: no perch within 3 minutes at x0.9 seed 3 (approaches rejected 14, room 13, aborted 2, 2 flights); known open on feat/wyvern-trees (32795f7), seen again on merge/next with the rigid head" },
         { "WingedSerpentTreeTests.Perch_TreeCrown_Brain(1.1,4)",
           "finding: x1.1 seed 4 puts a joint 6 cm into the bark on the way (bound 5.5 mm); known open on feat/wyvern-trees (32795f7), seen again on merge/next with the rigid head" },
+        // (2026-10-20, king crab look: tripod walk on three long leg pairs) the hanging tentacle tip after 3 s of walking is
+        // 1.6 cm apart (body units) at 0.9x vs 1.1x; a scan of the tentacle length 0.19..0.26 passes only at 0.24 - a
+        // lucky point, so the length stays 0.18 and this is recorded: the instantaneous hang is chaos-sensitive to the walk
+        { "CreatureTendrilTests.Tendril_Size_FroudeSimilar",
+          "finding: TentacleCrab (king crab, 2026-10-20) hanging tip 0.016 vs bound 0.009 body units at one instant of a walk; the touch timing is Froude-equal (3.95 s both) - for the Tendril owner: compare a time-averaged hang" },
         { "CreatureKitTests(TestHexapod).Size",
           "finding: stop-go walk (throttle 0 on 27 % of a straight walk): 0.9x/1.1x distance 1.4 % apart (test fixture, Task 10); fails in Unity 2026-10-18 too (5.1733 vs 5.3894, 4.2 % apart)" },
     };

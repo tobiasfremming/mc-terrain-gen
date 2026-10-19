@@ -594,19 +594,27 @@ public sealed class AirTwist
 
     static Vector3 Rotate(Vector3 v, Vector3 a, float rad) => CreatureWings.Rotate(v, a, rad);
 
-    // d limited to the cone of half-angle acos(c) around the unit axis a (AirChain's rule).
+    // d limited to the cone of half-angle acos(c) around the unit axis a (AirChain's rule, with its fix). A path
+    // folded back on itself (the head pressed along the aviary wall) gives a nearly antiparallel d: perp is then
+    // rounding noise, not perpendicular to a, and a * c + perp * (s / m) was no unit vector - the segment came out
+    // longer, the next joint's cone axis with it, and the tail was flung metres out of the aviary for a tick
+    // (SkyDragon Wander, Unity seed 1 t=244.4; Flight_Twist_SegmentLengthsExact). Pick a true perpendicular
+    // below 1e-4 and renormalise a result that is not unit (a normal one keeps its bits: the flight goldens).
     static Vector3 Cone(Vector3 a, Vector3 d, float c, float s)
     {
         float ca = Vector3.Dot(a, d);
         if (ca >= c) return d;
         Vector3 perp = d - a * ca;
         float m = perp.magnitude;
-        if (m < 1e-9f)
+        if (m < 1e-4f)
         {
             perp = Vector3.Cross(a, Mathf.Abs(a.y) < 0.9f ? Vector3.up : Vector3.right);
             m = perp.magnitude;
         }
-        return a * c + perp * (s / m);
+        Vector3 r = a * c + perp * (s / m);
+        float r2 = r.sqrMagnitude;
+        if (Mathf.Abs(r2 - 1f) > 1e-5f) r = r2 > 1e-12f ? r / Mathf.Sqrt(r2) : a;
+        return r;
     }
 
     static Vector3 Ortho(Vector3 u, Vector3 f, Vector3 fallback)

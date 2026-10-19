@@ -22,7 +22,7 @@ namespace TerrainGen.Tests
 
         static ArmourPlates Plates(CreatureSpecies sp)
         {
-            foreach (CreaturePart p in sp.Compiled.Parts) if (p is ArmourPlates a) return a;
+            foreach (CreaturePart p in sp.Compiled.Parts) if (p is ArmourPlates a && !a.ventral) return a;
             return null;
         }
 
@@ -87,6 +87,21 @@ namespace TerrainGen.Tests
                     Assert.Greater(a.TopY(p, u, 0.5f), body + 0.1f * p.hh, $"plate {k} above the body's back at u {u:F2}");
                 }
             }
+        }
+
+        // ventral: the same row mirrored top to bottom (every vertex), its dome facing the ground
+        [Test] public void Plates_Ventral_MirrorsTheRow()
+        {
+            var up = new ArmourPlates { id = "t", toJoint = 4, keel = 0.2f, cornerSpike = 0.3f };
+            var down = (ArmourPlates)up.Clone(); down.ventral = true;
+            ArmourPlates.Plate p = up.PlateAt(0, 0.0055f, 0.01f, 0.006f);
+            for (float s = 0f; s <= 1f; s += 0.25f)
+                for (float u = -1f; u <= 1f; u += 0.25f)
+                {
+                    Vector3 a = up.Top(p, u, s), b = down.Top(p, u, s), c = up.Bottom(p, u, s), d = down.Bottom(p, u, s);
+                    Assert.AreEqual(new Vector3(a.x, -a.y, a.z), b, $"top mirrored at u {u} s {s}");
+                    Assert.AreEqual(new Vector3(c.x, -c.y, c.z), d, $"underside mirrored at u {u} s {s}");
+                }
         }
 
         // ------------------------------------------------------------ shingling

@@ -8,7 +8,9 @@
 // bends, the plates slide over each other on the inside of the curve and part on the outside, showing the softer
 // body between them (rigid plates cannot crease or invert). Optional, for a more aggressive armour (0 = off,
 // bit-identical): `keel`, a sharp ridge along each plate's midline; `cornerSpike`, the back corners drawn out sideways
-// and backward into upturned points, so the plate margins read as a row of thorns.
+// and backward into upturned points, so the plate margins read as a row of thorns; `ventral`, the row mirrored under
+// the body (a centipede's sternites, a woodlouse's or a crocodile's belly plates): every height measured downward from
+// the joint centre, the dome facing the ground.
 // Mesh only, no bones: every vertex of a plate is rigid to its joint's spine bone. Material layer 10 (armour plate,
 // Chitin by default; `layer` picks another). Author at scale 1 (the body's joints are).
 using System;
@@ -20,7 +22,7 @@ namespace CreatureKit
     [Serializable]
     [Part("ArmourPlates", PartKind.Rigid, Bones = "0 (each plate rigid to its joint)", Summary = "A row of hard shingled dorsal plates over a spine body, one every `step` joints: sized from the body's cross-section (width x half width, heights x half height), domed, rounded corners, a raised rim along the back and side margins, longitudinal sutures; each tucks under the plate before it, so the seams show as steps; they slide over each other and part on a bend.",
           System = "mesh only (ArmourPlates.EmitMesh), each plate rigid to its joint's bone", MaterialLayers = new[] { 10 }, KitOnly = true,
-          UseWhen = "segmented armour: centipede / millipede tergites, woodlice, trilobites, armadillo bands, ankylosaur back plates")]
+          UseWhen = "segmented armour: centipede / millipede tergites, woodlice, trilobites, armadillo bands, ankylosaur back plates; ventral = true: sternites, belly plates")]
     public sealed class ArmourPlates : CreaturePart
     {
         [Param(ParamUnit.Joint, "the last plate's joint (the first is at.joint)")] public int toJoint;
@@ -39,6 +41,7 @@ namespace CreatureKit
         [Param(ParamUnit.Fraction, "a sharp ridge along each plate's midline, x half height (0 = none)", Min = 0, Max = 1)] public float keel;
         [Param(ParamUnit.Fraction, "the back corners drawn out sideways (x the plate's half width) and backward into upturned points (0 = none)", Min = 0, Max = 0.6f)] public float cornerSpike;
         [Param(ParamUnit.Fraction, "front plate: x the plate pitch it reaches forward (a head shield's collar); 0 = like the others", Min = 0, Max = 2)] public float firstReach;
+        [Param(ParamUnit.Flag, "under the body instead of over it (sternites, belly plates): the row mirrored top to bottom, every height measured downward, the dome facing the ground")] public bool ventral;
         [Param(ParamUnit.Count, "material layer (part id): 10 = armour plate; 0 body, 2 claw", Min = 0, Max = 15, Default = "10")] public int layer = PartMeshEmitter.PartPlate;
         [Param(ParamUnit.Count, "mesh: vertices across a plate", Min = 6, Max = 40, Default = "18")] public int across = 18;
         [Param(ParamUnit.Count, "mesh: rows along a plate", Min = 3, Max = 24, Default = "8")] public int along = 8;
@@ -152,8 +155,10 @@ namespace CreatureKit
             return z;
         }
 
-        public Vector3 Top(in Plate p, float u, float s) => new Vector3(u * HalfWidthAt(p, s), TopY(p, u, s), Z(p, u, s));
-        public Vector3 Bottom(in Plate p, float u, float s) => new Vector3(u * HalfWidthAt(p, s), BottomY(p, u, s), Z(p, u, s));
+        // +1 over the body, -1 under it (ventral): TopY / BottomY are heights away from the body's middle on its side.
+        public float Side => ventral ? -1f : 1f;
+        public Vector3 Top(in Plate p, float u, float s) => new Vector3(u * HalfWidthAt(p, s), Side * TopY(p, u, s), Z(p, u, s));
+        public Vector3 Bottom(in Plate p, float u, float s) => new Vector3(u * HalfWidthAt(p, s), Side * BottomY(p, u, s), Z(p, u, s));
 
         // ---------------------------------------------------------------- the mesh
 
@@ -178,7 +183,8 @@ namespace CreatureKit
         void EmitPlate(PartMeshEmitter m, in Plate p, Vector3 jp, Quaternion jr, float uBase, int nu, int ns)
         {
             Vector4 skin = PartMeshEmitter.Rigid(p.joint);
-            Vector3 jUp = jr * Vector3.up;
+            float side = Side;
+            Vector3 jUp = jr * Vector3.up, jOut = side * jUp;   // away from the body's middle
             int part = layer;
             float len = p.zFront - p.zBack;
 
@@ -195,23 +201,23 @@ namespace CreatureKit
                     Vector3 du = tp[r * c + Mathf.Min(i + 1, nu)] - tp[r * c + Mathf.Max(i - 1, 0)];
                     Vector3 ds = tp[Mathf.Max(r - 1, 0) * c + i] - tp[Mathf.Min(r + 1, ns) * c + i];   // toward the front
                     Vector3 nl = Vector3.Cross(ds, du);
-                    if (nl.y < 0f) nl = -nl;
-                    Vector3 wn = PartMeshEmitter.Unit(jr * nl, jUp);
+                    if (side * nl.y < 0f) nl = -nl;
+                    Vector3 wn = PartMeshEmitter.Unit(jr * nl, jOut);
                     m.Vertex(jp + jr * q, wn, uBase - q.z, (U(i, nu) + 1f) * 0.25f, part, Vector3.Dot(wn, jUp), skin);
                 }
-            FixGrid(m, top, ns, nu, jUp);
+            FixGrid(m, top, ns, nu, jOut);
 
-            // underside (faces down)
+            // underside (faces into the body)
             int bot = m.VertexCount;
             for (int r = 0; r <= ns; r++)
                 for (int i = 0; i <= nu; i++)
                 {
                     float u = U(i, nu), s = S(r, ns);
                     Vector3 q = Bottom(p, u, s);
-                    Vector3 wn = -jUp;
-                    m.Vertex(jp + jr * q, wn, uBase - q.z, (u + 1f) * 0.25f, part, -1f, skin);
+                    Vector3 wn = -jOut;
+                    m.Vertex(jp + jr * q, wn, uBase - q.z, (u + 1f) * 0.25f, part, -side, skin);
                 }
-            FixGrid(m, bot, ns, nu, -jUp);
+            FixGrid(m, bot, ns, nu, -jOut);
 
             // the edge wall round the boundary: front (s = 0, u -1..1), right side (u = 1), back (s = 1), left side
             // (grid column i, row r) of each boundary point, so the wall reuses the top's positions
@@ -238,7 +244,7 @@ namespace CreatureKit
                 Vector3 pb = Bottom(p, U(a % c, nu), S(a / c, ns));
                 float arc = (float)k / n;
                 m.Vertex(jp + jr * pa, wn, uBase - pa.z, arc, part, 0f, skin);
-                m.Vertex(jp + jr * pb, wn, uBase - pb.z, arc, part, -0.5f, skin);
+                m.Vertex(jp + jr * pb, wn, uBase - pb.z, arc, part, -0.5f * side, skin);
             }
             for (int k = 0; k < n; k++)
             {
