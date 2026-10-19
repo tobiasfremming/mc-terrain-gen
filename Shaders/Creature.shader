@@ -9,6 +9,11 @@
 // with a warm terminator, GGX specular, SH ambient, rim, received shadows, SSAO and fog
 // (Creature/CreatureLighting.hlsl). Eyes are black and glossy.
 //
+// Look layers (creature kit T4.1, Creature/CreatureLayers.hlsl): a fragment's part id (uv1.x) picks its row of
+// the species' _PartLayers table, and the row's SHADING MODEL (Skin, Chitin, Membrane, Eye, Claw) + layer flags
+// (pattern, scale grain, sheen, shimmer) + tint decide how it is shaded - never the id itself. A new part takes
+// the next free id and a row in Kit/PartLayers.cs; no edit here. Legacy ids 0-9 keep their former shading.
+//
 // The material's properties are look-tuning constants shared by all species; per-species values
 // live in CreatureSpecies.look.
 Shader "MarchingCubes/Creature"
@@ -97,6 +102,7 @@ Shader "MarchingCubes/Creature"
             #include "Creature/CreatureLighting.hlsl"
             #include "Creature/CreatureCloak.hlsl"
             #include "Creature/CreatureMembrane.hlsl"
+            #include "Creature/CreatureLayers.hlsl"
 
             struct Varyings
             {
@@ -136,7 +142,8 @@ Shader "MarchingCubes/Creature"
             {
                 float2 uv0 = i.uv.xy, uv1 = i.uv.zw;
                 int part = (int)(uv1.x + 0.5);
-                bool eye = part == CREATURE_PART_EYE;
+                CreatureLayer layer = CreatureLayerOf(part, _PatternColor.rgb, _BandColor.rgb, _Dorsal.rgb, _Belly.rgb, _MembraneColor.rgb);
+                bool eye = layer.model == CREATURE_MODEL_EYE;
                 float3 posWS = i.positionWS.xyz;
                 float3 n = normalize(i.normalWS.xyz);
                 float seed = i.inst.x;
@@ -152,7 +159,7 @@ Shader "MarchingCubes/Creature"
                 float2 screenUV = GetNormalizedScreenSpaceUV(i.positionCS);
 
                 // --- wing membrane: translucent skin with veins and a darker trailing rim (CreatureMembrane.hlsl)
-                if (part == CREATURE_PART_MEMBRANE)
+                if (layer.model == CREATURE_MODEL_MEMBRANE)
                 {
                     half vein = CreatureMembraneVeins(uv0);
                     float edge = saturate((abs(uv1.y) - 0.1) / 0.9);   // radial fraction to the edge
@@ -181,16 +188,16 @@ Shader "MarchingCubes/Creature"
                 base *= 1.0 + _Mottle * (CreatureFbm(P * 22.0, 0x846CA68Bu) - 0.5) * 2.0;
 
                 // --- pattern (dark marks, pale spots)
-                float2 pat = CreaturePattern(uv0, uv1, seed, _PatternType, _PatternParams, i.positionWS.w, _BodyParams);
+                float2 pat = CreaturePatternMode(uv0, uv1, seed, _PatternType, _PatternParams, i.positionWS.w, _BodyParams, CreatureLayerPatternMode(layer));
                 float3 pale = lerp(_Dorsal.rgb, _Belly.rgb, 0.65) * 1.08;
                 float3 albedo = lerp(base, _PatternColor.rgb, pat.x);
                 albedo = lerp(albedo, pale, pat.y);
-                if (part == CREATURE_PART_FOOT) albedo = lerp(albedo, _PatternColor.rgb, 0.3);
-                if (part == CREATURE_PART_BAND) albedo = lerp(albedo, _BandColor.rgb, 0.9);
+                // the row's tint (legacy: feet 0.3 toward the pattern colour, arthropod bands 0.9 toward the band colour)
+                if (layer.tintAmount > 0.0) albedo = lerp(albedo, layer.tint, layer.tintAmount);
 
                 // --- scale grain: per-scale tint, darker grooves, a small bump, rougher grooves
-                float3 g = CreatureScaleGrain(uv0, uv1, _ScaleSize, _ScaleColumns);
-                float vis = eye ? 0.0 : g.z;
+                float3 g = CreatureScaleGrainFine(uv0, uv1, _ScaleSize, _ScaleColumns, CreatureLayerHas(layer, CREATURE_LAYER_FINE_GRAIN));
+                float vis = CreatureLayerNoGrain(layer) ? 0.0 : g.z;
                 albedo *= 1.0 + _ScaleTint * g.x * vis;
                 albedo *= 1.0 - _ScaleGroove * (1.0 - g.y) * vis;
                 float3 nb = PerturbNormal(n, posWS, g.y * _ScaleBump * vis);
@@ -213,11 +220,24 @@ Shader "MarchingCubes/Creature"
                     s.subsurface = 0.0h;
                     s.dorsal = 1.0h;
                 }
+                else if (layer.model == CREATURE_MODEL_CHITIN)
+                {
+                    // hard cuticle: no grain (vis 0 above), glossier, light barely enters
+                    s.smoothness = (half)saturate(_SurfaceParams.x * layer.smoothnessScale);
+                    s.subsurface = (half)(_SurfaceParams.z * 0.3);
+                }
+                else if (layer.model == CREATURE_MODEL_CLAW)
+                {
+                    // keratin (claws, horns, beaks, stingers): the tint carries the colour, glossy, opaque, no belly shade
+                    s.smoothness = (half)saturate(_SurfaceParams.x * layer.smoothnessScale);
+                    s.subsurface = 0.0h;
+                    s.dorsal = 1.0h;
+                }
 
                 half3 rgb = CreatureShade(s, lp, posWS, screenUV);
                 if (glint > 0.0) rgb += (half3)(glint * 0.6 * (SampleSH(n) + 0.3));
                 // velvet sheen (a hairy body seen at grazing angles): a rim lobe in the light's and the sky's colour
-                if (_SheenColor.a > 0.0 && !eye)
+                if (_SheenColor.a > 0.0 && CreatureLayerHas(layer, CREATURE_LAYER_SHEEN))
                 {
                     float3 V = GetWorldSpaceNormalizeViewDir(posWS);
                     Light sun = GetMainLight();
@@ -227,7 +247,7 @@ Shader "MarchingCubes/Creature"
                 }
                 // iridescent shimmer (the dragon): thin-film colour bands travelling head -> tail along the rest arc,
                 // on the back and flanks; the hue slides with the view angle, each band glows faintly
-                if (_ShimmerColor.a > 0.0 && !eye)
+                if (_ShimmerColor.a > 0.0 && CreatureLayerHas(layer, CREATURE_LAYER_SHIMMER))
                 {
                     float3 Vs = GetWorldSpaceNormalizeViewDir(posWS);
                     half ndv = (half)saturate(dot(nb, Vs));

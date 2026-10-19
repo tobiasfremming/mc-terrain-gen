@@ -75,6 +75,7 @@
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreaturePerfTests.cs" />          <!-- Perf assembly, real terrain -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureRendererTests.cs" />      <!-- shader compile, materials, GPU buffers -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureShaderTests.cs" />        <!-- shaders, materials -->
+    <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureShaderLayerTests.cs" />   <!-- GPU draws, ReadPixels (T4.1 pixel guard) -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureWingedEditorTests.cs" />  <!-- CreatureLab / aviary GameObjects -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureWorldTests.cs" />         <!-- CreatureWorld MonoBehaviour -->
     <UnityOnlyTests Include="$(TG)\Tests\EditMode\CreatureKitWorldTests.cs" />      <!-- CreatureWorld MonoBehaviour, ClimbTestMeshes -->

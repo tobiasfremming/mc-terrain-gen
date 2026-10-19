@@ -91,12 +91,13 @@ float3 CreatureSurfacePoint(float2 uv0, float2 uv1, float radius, float seed)
 // params = (scale: bands per metre / feature frequency, contrast, softness: edge width as a fraction
 // of a period, spotScale: spot size relative to the band period).
 // body = _BodyParams (body length, 1 / length, arc length where the tail begins, 0).
-float2 CreaturePattern(float2 uv0, float2 uv1, float seed, float patternType, float4 params,
-                       float radius, float4 body)
+// mode (creature kit T4.1, the part's layer row: CreatureLayerPatternMode): 0 none, 1 the body's pattern, 2 the
+// limbs' (mottle / the species' spots). CreaturePattern below is the part-id form (legacy ids).
+float2 CreaturePatternMode(float2 uv0, float2 uv1, float seed, float patternType, float4 params,
+                           float radius, float4 body, int mode)
 {
     int type = (int)(patternType + 0.5);
-    int part = (int)(uv1.x + 0.5);
-    if (type == CREATURE_PATTERN_NONE || part == CREATURE_PART_EYE || part == CREATURE_PART_FOOT) return 0.0;
+    if (type == CREATURE_PATTERN_NONE || mode == 0) return 0.0;
 
     float s = uv0.x;
     float dorsal = uv1.y;
@@ -111,7 +112,7 @@ float2 CreaturePattern(float2 uv0, float2 uv1, float seed, float patternType, fl
                 + 0.2 * CreatureValueNoise(P * (spotFreq * 2.7), 0x63D83595u);
     float spots = smoothstep(0.64 - 0.12 * soft, 0.64 + 0.12 * soft, spotN);
 
-    if (part == CREATURE_PART_LEG)
+    if (mode == 2)
     {
         // limbs: mottled, with the species' spots where it has them
         float mottle = smoothstep(0.52, 0.78, CreatureFbm(P * (scale * 1.6), 0x1B873593u));
@@ -165,17 +166,28 @@ float2 CreaturePattern(float2 uv0, float2 uv1, float seed, float patternType, fl
     return float2(dark, pale) * contrast;
 }
 
+// The part-id form: eyes and feet plain, limbs the limb pattern, every other id the body's.
+float2 CreaturePattern(float2 uv0, float2 uv1, float seed, float patternType, float4 params,
+                       float radius, float4 body)
+{
+    int part = (int)(uv1.x + 0.5);
+    int mode = (part == CREATURE_PART_EYE || part == CREATURE_PART_FOOT) ? 0 : (part == CREATURE_PART_LEG ? 2 : 1);
+    return CreaturePatternMode(uv0, uv1, seed, patternType, params, radius, body, mode);
+}
+
 // ---------------------------------------------------------------- scale grain
 
 // A grid of small scales in (arc length, angle) space: rows every rowSpacing metres, a constant
 // number of columns around each ring (so scales shrink with the taper, as on a real tail), every
 // other row offset by half a scale (smaller on the limbs). Returns x = per-scale tint (-1..1), y = height (0 in the
 // grooves .. 1 on a scale's crown), z = visibility (fades out once a scale is under ~2 pixels).
-float3 CreatureScaleGrain(float2 uv0, float2 uv1, float rowSpacing, float columns)
+// fine (creature kit T4.1, the layer row's FineGrain): the limbs' smaller scales. CreatureScaleGrain below is
+// the part-id form.
+float3 CreatureScaleGrainFine(float2 uv0, float2 uv1, float rowSpacing, float columns, bool fine)
 {
     // limbs and feet carry smaller scales; the column count stays an integer (closed seam)
     int part = (int)(uv1.x + 0.5);
-    if (part == CREATURE_PART_LEG || part == CREATURE_PART_FOOT) { rowSpacing *= 0.6; columns *= 0.4; }
+    if (fine) { rowSpacing *= 0.6; columns *= 0.4; }
     columns = max(floor(columns + 0.5), 4.0);
     float2 g = float2(uv0.x / max(rowSpacing, 1e-4), uv0.y * columns);
     float2 w = fwidth(g);                             // before the row offset: no spikes at row edges
@@ -190,6 +202,12 @@ float3 CreatureScaleGrain(float2 uv0, float2 uv1, float rowSpacing, float column
     float height = smoothstep(0.0, 0.55, e.x) * smoothstep(0.0, 0.45, e.y);
     float vis = saturate(1.6 - 2.2 * max(w.x, w.y));
     return float3(tint, height, vis);
+}
+
+float3 CreatureScaleGrain(float2 uv0, float2 uv1, float rowSpacing, float columns)
+{
+    int part = (int)(uv1.x + 0.5);
+    return CreatureScaleGrainFine(uv0, uv1, rowSpacing, columns, part == CREATURE_PART_LEG || part == CREATURE_PART_FOOT);
 }
 
 #endif

@@ -44,7 +44,8 @@ public sealed class CreatureRenderer : IDisposable
         kOctoParams = Shader.PropertyToID("_OctoParams"), kOctoParams2 = Shader.PropertyToID("_OctoParams2"),
         kMembraneColor = Shader.PropertyToID("_MembraneColor"), kMembraneParams = Shader.PropertyToID("_MembraneParams"),
         kBandColor = Shader.PropertyToID("_BandColor"), kSheenColor = Shader.PropertyToID("_SheenColor"), // arthropod bands, velvet sheen (alpha = strength)
-        kShimmerColor = Shader.PropertyToID("_ShimmerColor"), kShimmerColor2 = Shader.PropertyToID("_ShimmerColor2"), kShimmerParams = Shader.PropertyToID("_ShimmerParams"); // iridescent shimmer
+        kShimmerColor = Shader.PropertyToID("_ShimmerColor"), kShimmerColor2 = Shader.PropertyToID("_ShimmerColor2"), kShimmerParams = Shader.PropertyToID("_ShimmerParams"), // iridescent shimmer
+        kPartLayers = Shader.PropertyToID(CreatureKit.PartLayers.ShaderProperty);   // creature kit T4.1: the look-layer table
 
     readonly CreatureSpecies sp;
     readonly Material material;
@@ -54,6 +55,9 @@ public sealed class CreatureRenderer : IDisposable
     readonly float reach;
     readonly Vector4 bodyParams;
     readonly bool cephalopod;
+    // creature kit T4.1: the species' part-layer table (Kit/PartLayers.cs), built once; its own colours are
+    // decoded here (SetVectorArray does not decode sRGB). The soft family's shader does not read it.
+    readonly Vector4[] partLayers;
     readonly List<ICreatureBody> bodies = new List<ICreatureBody>();
     readonly MaterialPropertyBlock props = new MaterialPropertyBlock();
     readonly bool gpu;
@@ -71,6 +75,8 @@ public sealed class CreatureRenderer : IDisposable
 
     internal Matrix4x4[] SkinForTest => _skin;
     internal CreatureInstance[] InstancesForTest => instances;
+    internal MaterialPropertyBlock PropsForTest => props;
+    internal Vector4[] PartLayersForTest => partLayers;
     // the world bounds of the last Render (the draw's culling bounds)
     public Bounds LastBounds { get; private set; }
 
@@ -87,6 +93,7 @@ public sealed class CreatureRenderer : IDisposable
         reach = rd.Reach;
         bodyParams = rd.BodyParams;
         boneScratch = new Matrix4x4[bonesPer];
+        partLayers = CreatureKit.PartLayers.Table(sp, QualitySettings.activeColorSpace == ColorSpace.Linear);
 
         // Without a graphics device (batch -nographics) only the CPU side runs.
         gpu = SystemInfo.graphicsDeviceType != GraphicsDeviceType.Null;
@@ -224,10 +231,13 @@ public sealed class CreatureRenderer : IDisposable
             props.SetVector(kOctoParams, new Vector4(ol.ChromaScale, ol.Papillae, ol.SuckerSize, ol.CloudSpeed));
             props.SetVector(kOctoParams2, new Vector4(ol.Wetness, ol.RimGlint, arm.RootRadius, arm.Length));
         }
-        else if (sp.WingCount > 0)
+        else
         {
+            // the membrane colours for every spine species (wings, fins and antennae all use the membrane model;
+            // no part-8 pixel, no effect), then the look-layer table
             props.SetColor(kMembraneColor, look.membrane);
             props.SetVector(kMembraneParams, new Vector4(look.membraneTranslucency, look.veinContrast, look.membraneRim, 0f));
+            props.SetVectorArray(kPartLayers, partLayers);
         }
 
         rp.worldBounds = bounds;

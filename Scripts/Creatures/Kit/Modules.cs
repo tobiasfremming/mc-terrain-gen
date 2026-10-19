@@ -193,7 +193,7 @@ namespace CreatureKit
     }
 
     [Serializable]
-    [Module("Membrane", CreatureModule.Look, Summary = "Translucent veined membrane (part 8, CreatureMembrane.hlsl): wings today, fins next (T5.1).")]
+    [Module("Membrane", CreatureModule.Look, Summary = "Translucent veined membrane (part 8, the Membrane shading model, CreatureMembrane.hlsl): wings, FinStrip fins, antennae - any part whose layer row is Membrane.")]
     public sealed class Membrane : CreatureModule
     {
         [Param(ParamUnit.SrgbColour, "membrane colour")] public Color colour;
