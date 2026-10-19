@@ -46,7 +46,7 @@ public sealed class AirChain
             cosLimit[i] = Mathf.Cos(a); sinLimit[i] = Mathf.Sin(a);
         }
         Up = new Vector3[n]; Forward = new Vector3[n];
-        if (flight.twist.Enabled) Twist = new AirTwist(flight.twist, n, seg, scale, cosLimit, sinLimit);
+        if (flight.twist.Enabled) Twist = new AirTwist(flight.twist, n, seg, scale, cosLimit, sinLimit, girdle);
     }
 
     public float SegmentLength => seg;
@@ -138,6 +138,9 @@ public sealed class AirChain
         Vector3 dir = Norm(smoothVel, Norm(joints[0] - joints[Mathf.Min(1, n - 1)], Vector3.forward));
         Vector3 level = Norm(dir - up * Vector3.Dot(dir, up), Norm(joints[0] - joints[Mathf.Min(1, n - 1)], Vector3.forward));
         Vector3 head = smoothPos + level * (seg * girdle);
+        // the wingbeat's bob: the girdle against its stabilised path (the head path never bobs; AirTwist puts it back
+        // on the body, girdleBob)
+        Twist.ShoulderBob = Vector3.Dot(girdlePos - smoothPos, up);
         HeadTarget = head;
         Twist.Step(h, joints, head, dir, up, bankedUp, smoothVel.magnitude, Forward, Up);
     }

@@ -46,7 +46,7 @@ namespace CreatureKit
 
     [Serializable]
     [Module("Flee", CreatureModule.Behaviour, Summary = "Runs straight away from the nearest threat (CreatureThreats: the viewer in play mode) once it comes within the alarm radius, sliding along the enclosure wall when cornered; calms down after it leaves. Gives the species a ModularBrain (with Wander as the idle default).",
-            Needs = "Walk")]
+            Needs = "Walk", KitOnly = true)]
     public sealed class Flee : CreatureModule
     {
         [Param(ParamUnit.Metres, "alarm radius: a threat closer than this (planar) starts the flight", Example = "sand eel 1.2")] public float radius = 1.2f;
@@ -75,6 +75,10 @@ namespace CreatureKit
 
         public bool Alarmed { get; private set; }
 
+        // The utility with no threat about. Not 0: the idle Wander (0.1) must beat it by ModularBrain's margin (0.1)
+        // to take over again (found by Flee_SwitchesInAndCalmsDown: at 0 the eel fled forever).
+        public const float Calm = -1f;
+
         float Radius(CreatureSim s) => f.radius * s.SizeScale;
 
         public float Utility(in BrainCtx c)
@@ -91,7 +95,8 @@ namespace CreatureKit
             }
             Alarmed = false;
             float calm = f.calmSeconds * s.TimeScale;
-            return c.Time - lastSeen <= calm ? 0.5f * f.utility : 0f;
+            // calm: below any idle behaviour by more than the brain's switch margin, so it hands back at once
+            return c.Time - lastSeen <= calm ? 0.5f * f.utility : Calm;
         }
 
         public void Enter(in BrainCtx c) { slide = 0; }

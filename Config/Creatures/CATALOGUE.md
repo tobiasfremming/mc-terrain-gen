@@ -28,6 +28,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | **FinStrip** | Fin | exists | 0 (skinned to the spine) | 8 | manes, crests, dorsal / anal fins, tail tufts, frills along a body | FinnedSandEel, SkyDragon |
 | **Flapper** | Fin | exists | = segments (1-3) | 8 | pectoral fins, ear flaps, frills, small paddles that beat or flutter (not wings that fly: Wing) | FinnedSandEel |
 | **RigidCone** | Rigid | exists | 0 (1 with ownBone) | 2 | horns, spikes, fangs, mandibles, chelicerae | SkyDragon, Tarantula, TreeOctopus |
+| **RigidLoft** | Rigid | exists | 0 (rigid to its joint) | 0, 2 | head shapes: squared snouts, jaws, brows, nostrils, bosses; any rigid lump on a joint | SkyDragon |
 | **Repeat** | Sugar | exists | = count x template |  | centipede legs, spike rows, many fins | - |
 
 ## Modules
@@ -61,7 +62,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | DesertSnake | legacy | Spine | SpineBody, Eyes | Walk, Slither, Wander, Skin | 34 |
 | FinnedSandEel | kit | Spine | SpineBody, Eyes, 2x FinStrip, 2x Flapper | Walk (Diagonal), Slither, Wander, Flee, Skin, Membrane | 54 |
 | KitMonitor | kit | Spine | SpineBody, 4x Leg2Bone, Eyes | Walk (Diagonal), Slither, Climb, Wander, ClimbExcursion, Skin | 40 |
-| SkyDragon | kit | Spine | SpineBody, 6x Leg2Bone, 2x Wing, Eyes, 2x RigidCone, 3x FinStrip, 4x Antenna | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane, Shimmer | 136 |
+| SkyDragon | kit | Spine | SpineBody, 6x Leg2Bone, 2x Wing, Eyes, 4x RigidCone, 5x FinStrip, 4x Antenna, 7x RigidLoft | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane, Shimmer | 136 |
 | Tarantula | legacy | Spine | SpineBody, 10x ArthropodLeg, Eyes, RigidCone | Walk (Tetrapod), Wander, Skin, Chitin | 75 |
 | TestHexapod | legacy | Spine | SpineBody, 6x Leg2Bone, Eyes | Walk (Tripod), Wander, Skin | 28 |
 | TestSnake | legacy | Spine | SpineBody, Eyes | Walk, Slither, Wander, Skin | 42 |
@@ -344,6 +345,34 @@ Curved cone rigid to a spine joint: horn, spike, claw, chelicera with a fang (Bo
 | `fangLength` | float | Metres | x s | a fang continuing from the tip (0 = none) |  |  |
 | `ownBone` | bool | Flag | - | a bone of its own, posed by its system (the octopus siphon), instead of rigid to the joint |  |  |
 
+### RigidLoft
+
+Lofted solid rigid to a spine joint: superellipse cross-sections (round to squared and flat-topped, separate above and below) keyed along a direction, curled and rolled. Snouts, jaws, brow ridges, nostril bumps, cheek plates, skull shapes the spine tube cannot express. System: mesh only (RigidLoft.EmitMesh), rigid to the joint's bone.
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `direction` | Vector3 | Direction | - | the loft's axis in the joint frame (x mirrored by side); its up is the joint's up made perpendicular |  |  |
+| `length` | float | Metres | x s | length along the axis |  | dragon muzzle 0.15 |
+| `keys` | LoftKey[] | Struct | - | cross-sections along the loft (monotone cubic between them); >= 2, t = 0 and t = 1 included |  |  |
+| `keys[].t` | float | Fraction | - | place along the loft, 0 = its start .. 1 = its end | 0..1 |  |
+| `keys[].halfWidth` | float | Metres | x s | half width (across, the joint frame's x) |  |  |
+| `keys[].halfHeight` | float | Metres | x s | half height (the loft's up) |  |  |
+| `keys[].rise` | float | Metres | x s | centre line raised (+) or lowered (-) along the loft's up |  |  |
+| `keys[].squareTop` | float | Fraction | - | superellipse exponent of the upper half: 2 = round, 4 = squared, flat-topped | 1..12 |  |
+| `keys[].squareBottom` | float | Fraction | - | superellipse exponent of the lower half | 1..12 |  |
+| `curveDeg` | float | Degrees | - | the axis curls down (+) or up (-) by this much over the length |  |  |
+| `rollDeg` | float | Degrees | - | cross-section rolled about the axis (mirrored by side; + turns the top outward) |  |  |
+| `shade` | int | Count | - | shading: 0 = skin (the body's), 2 = claw / horn | 0..2 |  |
+| `around` | int | Count | - | mesh: vertices around each section (0 = 16) | 0..48 |  |
+| `rings` | int | Count | - | mesh: sections along the length (0 = 12) | 0..64 |  |
+
 ### Repeat
 
 Authoring sugar: `count` copies of `template` across joints fromJoint..toJoint (tapered by lastScale, mirrored if the template is). Expanded by compose. System: compose (CompiledSpecies).
@@ -441,6 +470,9 @@ Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlig
 | `twist.intervalMin` | float | Seconds | x sqrt(s) | shortest pause between manoeuvres (0 = 4) |  |  |
 | `twist.intervalMax` | float | Seconds | x sqrt(s) | longest pause between manoeuvres (0 = 10) |  |  |
 | `twist.uprightRateDeg` | float | DegPerSecond | / sqrt(s) | how fast the body rights itself onto the banked up (0 = 120) |  |  |
+| `twist.girdleBob` | float | Fraction | - | the wingbeat's shoulder bob on the twisting body: the share of the flight model's bob the girdle joint rides (0 = none: the body follows only the head's path, which never bobs) | 0..1.5 | dragon 0.8 |
+| `twist.bobHead` | float | Fraction | - | share of the girdle's bob at the head (the head is stabilised; the neck blends) | 0..1 | dragon 0.3 |
+| `twist.bobTail` | float | Fraction | - | share at the tail: behind the girdle the bob travels down the body along the path (each joint bobs as the girdle did where it is now), fading to this | 0..1 | dragon 0.4 |
 
 ### Slither
 

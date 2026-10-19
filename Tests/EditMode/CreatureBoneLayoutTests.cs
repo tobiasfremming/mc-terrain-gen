@@ -75,7 +75,13 @@ namespace TerrainGen.Tests
         }
 
         [TestCaseSource(nameof(SpineAssets))]
-        public void Layout_Legacy_EqualsRegistry_Asset(string name) => AssertLegacy(Spine(name), name);
+        public void Layout_Legacy_EqualsRegistry_Asset(string name)
+        {
+            CreatureSpecies sp = Spine(name);
+            string why = CreatureKitAssets.KitOnlyReason(sp);
+            if (why != null) Assert.Ignore(why);
+            AssertLegacy(sp, name);
+        }
 
         [Test]
         public void Layout_Legacy_EqualsRegistry_Factories()
@@ -119,7 +125,7 @@ namespace TerrainGen.Tests
             Assert.IsNull(layout.Check(), name);
             Assert.AreEqual(PartKind.Body, layout.Ranges[0].Kind, name);
             int last = layout.Ranges.Length - 1;
-            while (last > 0 && layout.Ranges[last].Kind == PartKind.Chain) last--;   // antennae come after the legacy blocks
+            while (last > 0 && layout.Ranges[last].Kind >= PartKind.Chain) last--;   // the new kinds (antennae, flappers) come after the legacy blocks
             Assert.AreEqual(PartKind.Sense, layout.Ranges[last].Kind, name + ": eyes last among the legacy blocks");
         }
 

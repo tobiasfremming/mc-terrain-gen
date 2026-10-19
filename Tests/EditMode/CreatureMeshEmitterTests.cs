@@ -21,8 +21,10 @@ namespace TerrainGen.Tests
             CreatureSpecies sp = CreatureKitAssets.Load(name);
             Assert.IsNotNull(sp, name);
             if (sp.bodyPlan == CreatureBodyPlan.Cephalopod) Assert.Ignore("cephalopod: OctopusMeshBuilder (octopus internals stay until its roles plan lands)");
-            string diff = MeshBytes.Compare(MeshBytes.Legacy(sp), MeshBytes.Current(sp));
-            Assert.IsNull(diff, name + ": the emitted mesh differs from the legacy builder: " + diff);
+            // a kit-only part (MeshOrder 100) appends after every legacy vertex: the legacy mesh is then a byte prefix
+            bool prefix = CreatureKitAssets.KitOnlyReason(sp) != null;
+            string diff = MeshBytes.Compare(MeshBytes.Legacy(sp), MeshBytes.Current(sp), prefix);
+            Assert.IsNull(diff, name + ": the emitted mesh differs from the legacy builder" + (prefix ? " (prefix)" : "") + ": " + diff);
         }
 
         [Test] public void BindPoses_Bytes_EqualLegacy()
@@ -120,12 +122,23 @@ namespace TerrainGen.Tests
 
         static int Bits(float f) => BitConverter.SingleToInt32Bits(f);
 
-        public static string Compare(MeshBytes a, MeshBytes b)
+        // prefix: b may carry more vertices and indices after a's (kit-only parts append, MeshOrder 100), its extra
+        // indices only into its extra vertices; everything a has must be b's, bit for bit
+        public static string Compare(MeshBytes a, MeshBytes b, bool prefix = false)
         {
             if (a.pos.Length == 0) return "the reference mesh is empty";
-            if (a.indexFormat != b.indexFormat) return $"index format {a.indexFormat} vs {b.indexFormat}";
-            if (a.pos.Length != b.pos.Length) return $"vertex count {a.pos.Length} vs {b.pos.Length}";
-            if (a.tris.Length != b.tris.Length) return $"index count {a.tris.Length} vs {b.tris.Length}";
+            if (prefix)
+            {
+                if (b.pos.Length < a.pos.Length || b.tris.Length < a.tris.Length) return $"prefix: {b.pos.Length} vertices / {b.tris.Length} indices, fewer than {a.pos.Length} / {a.tris.Length}";
+                for (int i = a.tris.Length; i < b.tris.Length; i++)
+                    if (b.tris[i] < a.pos.Length) return $"prefix: appended index {i} reaches back into the legacy vertices ({b.tris[i]})";
+            }
+            else
+            {
+                if (a.indexFormat != b.indexFormat) return $"index format {a.indexFormat} vs {b.indexFormat}";
+                if (a.pos.Length != b.pos.Length) return $"vertex count {a.pos.Length} vs {b.pos.Length}";
+                if (a.tris.Length != b.tris.Length) return $"index count {a.tris.Length} vs {b.tris.Length}";
+            }
             for (int i = 0; i < a.pos.Length; i++)
             {
                 if (!Same(a.pos[i], b.pos[i])) return $"position {i}: {a.pos[i]:F6} vs {b.pos[i]:F6}";

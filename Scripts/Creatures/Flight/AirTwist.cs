@@ -42,6 +42,12 @@ public struct AirTwistSpec
     public float intervalMax;
     [Param(ParamUnit.DegPerSecond, "how fast the body rights itself onto the banked up (0 = 120)")]
     public float uprightRateDeg;
+    [Param(ParamUnit.Fraction, "the wingbeat's shoulder bob on the twisting body: the share of the flight model's bob the girdle joint rides (0 = none: the body follows only the head's path, which never bobs)", Min = 0, Max = 1.5f, Example = "dragon 0.8")]
+    public float girdleBob;
+    [Param(ParamUnit.Fraction, "share of the girdle's bob at the head (the head is stabilised; the neck blends)", Min = 0, Max = 1, Example = "dragon 0.3")]
+    public float bobHead;
+    [Param(ParamUnit.Fraction, "share at the tail: behind the girdle the bob travels down the body along the path (each joint bobs as the girdle did where it is now), fading to this", Min = 0, Max = 1, Example = "dragon 0.4")]
+    public float bobTail;
 
     public bool CanCorkscrew => corkscrewAmplitude > 0f && corkscrewHz > 0f;
     public bool CanBarrel => barrelRadius > 0f;
@@ -56,6 +62,7 @@ public struct AirTwistSpec
     public float IntervalMin => intervalMin > 0f ? intervalMin : 4f;
     public float IntervalMax => Mathf.Max(IntervalMin, intervalMax > 0f ? intervalMax : 10f);
     public float UprightRateDeg => uprightRateDeg > 0f ? uprightRateDeg : 120f;
+    public bool Bobs => girdleBob > 0f;
 }
 
 // The twisting air chain (design: the dragon's whole body twists like a Chinese dragon). Instead of a pull
@@ -67,6 +74,13 @@ public struct AirTwistSpec
 // continuous through loops and vertical stretches) and only then rotated by the roll, so frames never flip.
 // The manoeuvre is a kinematic overlay on FlightModel's point (the physics flies on undisturbed); the head's
 // path is kept inside the aviary and above the ground. Segment lengths are exact; bend cones hold.
+// The wingbeat's bob (girdleBob): the head's path is the stabilised flight line, so on its own the body would not
+// bob at all. The girdle joint rides the flight model's bob (AirChain sets ShoulderBob), the neck blends it down to
+// bobHead at the head, and behind the girdle the bob is stamped into the path where the girdle passes: every joint
+// behind bobs as the girdle did at that place (the bob travels down the body at the path speed, the wyvern's
+// lagging wave), fading to bobTail. Along the world up (as the flight model bobs). A manoeuvre takes the body over: the
+// bob fades out while it runs (with it the cone-limited joints snapped, frames turning 20-38 deg in a tick, and a
+// banked bob pushed joints out of the aviary) and back in after.
 // Allocation-free after construction; main thread; deterministic.
 public sealed class AirTwist
 {
@@ -86,6 +100,11 @@ public sealed class AirTwist
     readonly float[] cosLimit, sinLimit;
     readonly float turnPerSeg;           // rad: the head's sharpest path turn per segment length travelled
     readonly Vector3[] pathPos, pathUp;
+    readonly float[] pathBob;            // the girdle's bob where it passed the sample (stamped once)
+    readonly bool[] pathStamped;
+    readonly int girdle;
+    float bobLevel;
+    Vector3 worldUp = Vector3.up;
     int newest = -1, count;
     bool seeded;
 
@@ -112,6 +131,9 @@ public sealed class AirTwist
     public Vector3 Tangent => tangent;
     public bool Busy => Current != TwistManoeuvre.None;
     public AirTwistSpec Spec => t;
+    // The flight model's shoulder bob this sub-step (m along up: the girdle minus its stabilised path), set by
+    // AirChain before Step; used when the spec bobs.
+    public float ShoulderBob;
 
     // Set by CreatureFlight each sub-step: landing / launching (the swim fades out, no manoeuvre starts),
     // the aviary, the ground under the flyer (its height along up and the clearance the head keeps over it).
@@ -121,9 +143,10 @@ public sealed class AirTwist
     Vector3 floorPoint, floorUp;
     float floorClear;
 
-    public AirTwist(AirTwistSpec spec, int joints, float segment, float sizeScale, float[] cosLimit, float[] sinLimit)
+    public AirTwist(AirTwistSpec spec, int joints, float segment, float sizeScale, float[] cosLimit, float[] sinLimit, int girdleJoint = 0)
     {
         t = spec; n = joints; seg = segment;
+        girdle = Mathf.Clamp(girdleJoint, 0, Mathf.Max(0, joints - 1));
         scale = Mathf.Max(1e-3f, sizeScale); T = Mathf.Sqrt(scale);
         this.cosLimit = cosLimit; this.sinLimit = sinLimit;
         // the head's sharpest turn per segment of travel: the neck's tightest bend cone (joints 1..3), 80% of it
@@ -132,6 +155,7 @@ public sealed class AirTwist
         turnPerSeg = 0.8f * (lim < float.MaxValue ? lim : 0.25f);
         cap = 2 * n + 16;
         pathPos = new Vector3[cap]; pathUp = new Vector3[cap];
+        pathBob = new float[cap]; pathStamped = new bool[cap];
         // the base travels about one loop circumference while the head circles (circle speed = LoopSpin x flight)
         capH = t.CanLoop ? Mathf.CeilToInt(1.5f * 2f * Mathf.PI * t.loopRadius * scale / (Mathf.Min(1f, t.LoopSpin) * kSampleSpacing * seg)) + 16 : 0;
         basePos = new Vector3[capH];
@@ -141,7 +165,7 @@ public sealed class AirTwist
     {
         seeded = false; newest = -1; count = 0; newestH = -1; countH = 0;
         Current = TwistManoeuvre.None; mTime = 0f; Roll = 0f;
-        swimLevel = 0f;
+        swimLevel = 0f; bobLevel = 0f; ShoulderBob = 0f;
     }
 
     public void SetFloor(Vector3 point, Vector3 upDir, float clearance)
@@ -239,6 +263,7 @@ public sealed class AirTwist
     {
         if (!(h > 0f)) return;
         Vector3 U = Norm(upDir, Vector3.up);
+        worldUp = U;
         if (!seeded) Seed(joints, U, bankedUp);
         Vector3 F = Norm(fwd - U * Vector3.Dot(fwd, U), tangent);
         Vector3 R = Norm(Vector3.Cross(U, F), Vector3.right);
@@ -337,6 +362,9 @@ public sealed class AirTwist
             up = Ortho(Rotate(up, tn, Mathf.Clamp(ang, -lim, lim)), tn, up);
         }
         Roll = roll;
+        // the bob fades in after the launch and out for the landing, like the swim, and quickly out for a manoeuvre
+        bool busy = Current != TwistManoeuvre.None;
+        bobLevel = Mathf.MoveTowards(bobLevel, Calm || !t.Bobs || busy ? 0f : 1f, h / ((busy ? kLoopSwimFade : kSwimFade) * T));
         leadUp = Ortho(Rotate(up, tn, roll), tn, up);
         lead = next; tangent = tn;
         if ((lead - pathPos[newest]).sqrMagnitude >= kSampleSpacing * kSampleSpacing * seg * seg) Push(lead, leadUp);
@@ -413,6 +441,7 @@ public sealed class AirTwist
         {
             Vector3 f = Norm(joints[i - 1] - joints[i], Vector3.forward);
             Push(joints[i], Ortho(U, f, Vector3.up));
+            pathStamped[newest] = true;   // the seeded body has not bobbed
         }
         lead = joints[0];
         tangent = Norm(joints[0] - joints[n > 1 ? 1 : 0], Vector3.forward);
@@ -425,6 +454,7 @@ public sealed class AirTwist
     {
         newest = (newest + 1) % cap;
         pathPos[newest] = p; pathUp[newest] = u;
+        pathBob[newest] = 0f; pathStamped[newest] = false;
         if (count < cap) count++;
     }
 
@@ -432,10 +462,14 @@ public sealed class AirTwist
     // its up the path's up there made perpendicular to the joint's forward.
     void Place(Vector3[] joints, Vector3[] forward, Vector3[] ups)
     {
-        joints[0] = lead;
+        bool bobs = bobLevel > 0f;
+        float bob = bobs ? bobLevel * t.girdleBob * ShoulderBob : 0f;
+        joints[0] = bobs ? lead + worldUp * (bob * BobShare(0)) : lead;
         Vector3 a = lead, ua = leadUp;
+        float ba = bob;                              // the bob a sample carries (ahead of the girdle: its bob now)
         int k = 0;                                   // path samples used so far (0 = the newest is next)
         Vector3 b = count > 0 ? pathPos[newest] : lead - tangent * seg, ub = count > 0 ? pathUp[newest] : leadUp;
+        float bb = count > 0 ? SampleBob(newest, bob) : bob;
         float acc = 0f, len = (b - a).magnitude;
         Vector3 prevDir = -tangent;
         for (int i = 1; i < n; i++)
@@ -443,22 +477,32 @@ public sealed class AirTwist
             float want = i * seg;
             while (acc + len < want && k + 1 < count)
             {
-                acc += len; a = b; ua = ub; k++;
+                acc += len; a = b; ua = ub; ba = bb; k++;
                 int idx = (newest - k + cap) % cap;
-                b = pathPos[idx]; ub = pathUp[idx];
+                b = pathPos[idx]; ub = pathUp[idx]; bb = SampleBob(idx, bob);
                 len = (b - a).magnitude;
             }
             Vector3 q, uq;
+            float bq;
             if (len > 1e-9f && acc + len >= want)
             {
                 float f = (want - acc) / len;
-                q = a + (b - a) * f; uq = ua + (ub - ua) * f;
+                q = a + (b - a) * f; uq = ua + (ub - ua) * f; bq = ba + (bb - ba) * f;
             }
             else
             {
                 // past the oldest sample (just after a seed): straight on along the last stretch
                 Vector3 dir = len > 1e-9f ? (b - a) / len : prevDir;
-                q = b + dir * (want - acc - len); uq = ub;
+                q = b + dir * (want - acc - len); uq = ub; bq = bb;
+            }
+            if (bobs)
+            {
+                // ahead of the girdle: its bob now, blended to the head's share; behind it: the bob stamped into the
+                // path where the girdle passed (the girdle stamps the samples it has just passed)
+                if (i == girdle && count > 0) { Stamp((newest - k + cap) % cap, bob); bb = SampleBob((newest - k + cap) % cap, bob); }
+                float bi = i <= girdle ? bob : bq;
+
+                q += worldUp * (bi * BobShare(i));
             }
             Vector3 d = Norm(q - joints[i - 1], prevDir);
             d = Cone(prevDir, d, cosLimit[i - 1], sinLimit[i - 1]);
@@ -484,6 +528,27 @@ public sealed class AirTwist
             }
         }
         if (n == 1) { forward[0] = tangent; ups[0] = leadUp; }
+    }
+
+    // Share of the girdle's bob at joint i: bobHead at the head .. 1 at the girdle .. bobTail at the tail.
+    float BobShare(int i)
+    {
+        if (i <= girdle) return girdle > 0 ? Mathf.Lerp(t.bobHead, 1f, i / (float)girdle) : 1f;
+        return n - 1 > girdle ? Mathf.Lerp(1f, t.bobTail, (i - girdle) / (float)(n - 1 - girdle)) : 1f;
+    }
+
+    // A sample's bob: stamped when the girdle passed it, else (still ahead of the girdle) the girdle's now.
+    float SampleBob(int idx, float now) => pathStamped[idx] ? pathBob[idx] : now;
+
+    // The girdle has passed sample idx and everything older that is not stamped yet (a fast stretch may pass several
+    // in one sub-step): they carry the bob it has now.
+    void Stamp(int idx, float bob)
+    {
+        for (int c = 0; c < count && !pathStamped[idx]; c++)
+        {
+            pathBob[idx] = bob; pathStamped[idx] = true;
+            idx = (idx - 1 + cap) % cap;
+        }
     }
 
     // The head's path kept inside the aviary's safe cylinder and its roof, and above the ground.
