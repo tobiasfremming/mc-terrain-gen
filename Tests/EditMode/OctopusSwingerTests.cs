@@ -38,7 +38,7 @@ namespace TerrainGen.Tests
                 c.Tick(Dt);
                 if (!c.Board.Grounded) min = Mathf.Min(min, c.Board.AnchoredCount);
             }
-            transfers = c.Coordinator.Swings;
+            transfers = c.Sequencer != null ? c.Sequencer.Transfers : c.Coordinator.Swings;
             return min;
         }
 
@@ -128,9 +128,10 @@ namespace TerrainGen.Tests
             Assert.IsTrue(slept, "the warm-up rest never slept");
             brain.Prey.Add(prey);
             int allocs = GcAllocs.Count(() => { for (int f = 0; f < 60 * 25; f++) { c.Tick(Dt); body.WriteBoneWorld(bones, 0); } });
-            TestContext.Out.WriteLine($"allocations over 25 s: {allocs}; meals {brain.Meals}, mouth grabs {c.Feeder.Grabs}, swings {c.Coordinator.Swings}");
+            TestContext.Out.WriteLine($"allocations over 25 s: {allocs}; meals {brain.Meals}, mouth grabs {c.Feeder.Grabs}, transfers {c.Sequencer.Transfers}, catches {c.Sequencer.Catches}, hauls {c.Sequencer.Hauls}");
             Assert.AreEqual(0, allocs);
-            Assert.Greater(c.Feeder.Grabs + c.Coordinator.Swings, 0, "the run exercised nothing");
+            Assert.Greater(c.Feeder.Grabs, 0, "the run fed nothing");
+            Assert.Greater(c.Sequencer.Transfers, 0, "the run swung nowhere");
         }
 
         // ------------------------------------------------------------------ the look
@@ -337,7 +338,9 @@ namespace TerrainGen.Tests
         // ------------------------------------------------------------------ the two-arm grip
 
         // Gibbon brachiation over bars an arm's length apart: it lets one arm go only while the other holds - the
-        // hold count never drops to zero while hanging - and it does swing from bar to bar.
+        // hold count never drops to zero while hanging - and it does swing from bar to bar. (Planned body, 2026-10-19:
+        // the spawn takes one hold and hangs from it - gibbon - so AnchorNearby returns 1, not 2; transfers are the
+        // sequencer's.)
         [Test] public void Swinger_TwoArmGrip_NeverZeroHolds()
         {
             var log = new StringBuilder(); bool bad = false;
@@ -346,7 +349,7 @@ namespace TerrainGen.Tests
                 {
                     var surf = OctopusSwingTests.Bars(s, 0.9f, 8);
                     OctopusController c = Rig(Spec(), surf, new Vector3(0.45f + 0.03f * seed, 2.06f, 0.02f), s, seed, out OctopusBody body);
-                    Assert.AreEqual(2, c.AnchorNearby(), "both arms take hold at spawn");
+                    Assert.GreaterOrEqual(c.AnchorNearby(), 1, "takes hold at spawn");
                     for (int f = 0; f < 120; f++) c.Tick(Dt);
                     int min = TravelMinHolds(c, new Vector3(0.9f * 7f, 2f, 0f) * s, 40f, out int transfers);
                     float dx = body.HeadCentre.x / s;
@@ -373,36 +376,7 @@ namespace TerrainGen.Tests
             return c;
         }
 
-        // Purposeful brachiation through a grove: given a goal in the far tree of four, it plans a route over the
-        // branch hints and swings hand over hand to it - at 1x and 1.5x, at least 2 of 3 layouts arrive within
-        // 40 s x sqrt(s), never hanging from nothing.
-        [Test] public void Swinger_Brachiates_AcrossGrove()
-        {
-            var log = new StringBuilder(); bool bad = false;
-            foreach (float s in new[] { 1f, 1.5f })
-            {
-                int arrived = 0;
-                for (int layout = 1; layout <= 3; layout++)
-                {
-                    OctopusController c = InGrove(Spec(), s, layout, out OctopusBody body, out _);
-                    float g = GroveFit * s;
-                    Vector3 goal = new Vector3(3f * 2.6f, 2.4f, 0f) * g;
-                    c.Intent = new OctoIntent { mode = OctoMode.Travel, goal = goal, urgency = 0.6f };
-                    int T = (int)(60 * 40f * body.TimeScale), min = int.MaxValue; float at = -1f;
-                    for (int f = 0; f < T && at < 0f; f++)
-                    {
-                        c.Tick(Dt);
-                        if (!c.Board.Grounded) min = Mathf.Min(min, c.Board.AnchoredCount);
-                        if (c.Coordinator.SwingArrived) at = f * Dt / body.TimeScale;
-                    }
-                    if (at >= 0f) arrived++;
-                    if (min < 1) bad = true;
-                    log.AppendLine($"scale {s} layout {layout}: arrived {(at >= 0f ? at.ToString("F1") + " s/ts" : "never")}, swings {c.Coordinator.Swings} (branch {c.Coordinator.BranchSwings}), fewest holds {min}, x {body.HeadCentre.x / g:F2} of {goal.x / g:F2}");
-                }
-                if (arrived < 2) bad = true;
-            }
-            TestContext.Out.WriteLine(log.ToString());
-            Assert.IsFalse(bad, "the swinger does not brachiate across the grove (see the log)");
-        }
+        // (Swinger_Brachiates_AcrossGrove moved to OctopusSwingerPlannedTests.Brachiates_AcrossGrove with the planned
+        // body, 2026-10-19: it read the ArmCoordinator's swing counters, which the planned swinger no longer runs.)
     }
 }

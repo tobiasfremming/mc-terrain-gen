@@ -84,6 +84,9 @@ public sealed class TentacleChain
     // is damped at CalmDamping 1/s (at scale 1, Froude-slowed) instead of Spec.Damping. 0 = off. Used by the idle
     // mouth tentacles (not coupled back to the body); on the arms it fed the swing (a third of the swinging mass).
     public float CalmDamping;
+    // A passive chain's speed relative to its reference motion (m/s; 0 = off, only the hard kMaxSpeed cap): a coil let
+    // go of springs open at the bend cone within a sub-step, and a planned body's free arm should trail, not whip.
+    public float SpeedCap;
     public Vector3 RefOmega, RefCentre;      // the body's angular velocity and centre (OctopusBody sets them per sub-step)
     // Tip-led reaching: each free particle is pulled toward its place on the last SetTargetShape's FABRIK
     // chain by this fraction per solver iteration, rising from 0 at the root to 1 x at the tip. 0 = off
@@ -346,6 +349,11 @@ public sealed class TentacleChain
                 qx += wy * oz - wz * oy; qy += wz * ox - wx * oz; qz += wx * oy - wy * ox;
             }
             float vx = ((xk.x - pk.x) * inv - qx) * damp + qx, vy = ((xk.y - pk.y) * inv - qy) * damp + qy, vz = ((xk.z - pk.z) * inv - qz) * damp + qz;
+            if (SpeedCap > 0f)
+            {
+                float rx2 = vx - qx, ry2 = vy - qy, rz2 = vz - qz, r2 = rx2 * rx2 + ry2 * ry2 + rz2 * rz2;
+                if (r2 > SpeedCap * SpeedCap) { float f = SpeedCap / MathF.Sqrt(r2); vx = qx + rx2 * f; vy = qy + ry2 * f; vz = qz + rz2 * f; }
+            }
             vx = vx * abs + gx; vy = vy * abs + gy; vz = vz * abs + gz;
             float s2 = vx * vx + vy * vy + vz * vz;
             if (s2 > vmax2) { float f = vmax / MathF.Sqrt(s2); vx *= f; vy *= f; vz *= f; }

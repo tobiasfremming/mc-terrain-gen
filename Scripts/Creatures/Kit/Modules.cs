@@ -13,7 +13,10 @@ namespace CreatureKit
     //   Diagonal / Tripod / Tetrapod: (pair + right) % 2 - opposite corners together (the shipped quadrupeds,
     //            beetles and spiders: one alternating rule, three names for the leg counts it suits).
     //   Alternate: the sides alternate (left 0, right 1): a centipede's two waves, with ArthropodLeg.liftDelay.
-    //   Wave: a metachronal wave over waveGroups groups (needs the T5.8 phase scheduler - not available yet).
+    //   Wave: a metachronal wave over waveGroups groups: left pair p in group p % G, right pair p half a wave
+    //         later ((p + G/2) % G), and the groups step strictly in turn (CreatureSpecies.waveGait, the T5.8
+    //         scheduler in CreatureLegs.StartWave): the lift-offs run head to tail (a centipede's retrograde
+    //         wave), or tail to head with waveTailToHead (a millipede's direct wave).
     //   Explicit: every limb sets gaitGroup itself.
     public enum GaitPattern { Explicit = 0, Diagonal = 1, Tripod = 2, Tetrapod = 3, Alternate = 4, Wave = 5 }
 
@@ -38,13 +41,14 @@ namespace CreatureKit
         [Param(ParamUnit.Degrees, "girdle roll over its planted feet")] public float gaitRollDeg;
         [Param(ParamUnit.Count, "fixed sub-steps per tick (cost!)", Min = 1, Max = 4, Default = "2")] public int subSteps = 2;
         [Param(ParamUnit.Enum, "assigns gaitGroup to walking limbs left at -1")] public GaitPattern pattern = GaitPattern.Diagonal;
-        [Param(ParamUnit.Count, "groups of a Wave pattern", Min = 2, Max = 31)] public int waveGroups = 4;
+        [Param(ParamUnit.Count, "groups of a Wave pattern: legs per side in one wavelength (each foot is in the air 1/waveGroups of the time)", Min = 2, Max = 15, Example = "centipede 5")] public int waveGroups = 4;
+        [Param(ParamUnit.Flag, "Wave: the lift-offs run tail to head (a millipede's direct wave) instead of head to tail (a centipede's retrograde wave)")] public bool waveTailToHead;
         [Param(ParamUnit.Struct, "vertical body bounce kicked by each lift-off")] public GaitBobDef bob;
 
         public override string Validate(in SpeciesCtx c)
         {
             if (c.Soft) return "Walk needs a SpineBody";
-            if (pattern == GaitPattern.Wave) return "Walk.pattern Wave needs the phase gait scheduler (T5.8, not available yet)";
+            if (pattern == GaitPattern.Wave && (waveGroups < 2 || waveGroups > 15)) return "Walk.waveGroups must be 2..15 for the Wave pattern";
             return null;
         }
     }

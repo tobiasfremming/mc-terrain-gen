@@ -156,14 +156,16 @@ namespace CreatureKit
     // ------------------------------------------------------------------ limbs
 
     // Walk: steps in its gait group. Feeler: posed at its rest point, never plants (a pedipalp). WingArm: walks on
-    // the ground, a Wing drives it in the air (set by compose for the arm a Wing names). Folded: held folded at
-    // rest (a wing arm on a six-limbed flyer; needs the T5.4 flag).
+    // the ground, a Wing drives it in the air (set by compose for the arm a Wing names). Folded (T5.4): a Wing's arm
+    // that never walks - on the ground the wrist is held at restOffset (attach frame, not projected to the ground:
+    // the folded wing's wrist up beside the shoulders) and the wing folds on it; in the air the Wing drives it as
+    // ever (a six-limbed flyer: four legs and the wings).
     public enum LimbRole { Walk = 0, Feeler = 1, WingArm = 2, Folded = 3 }
 
     [Serializable]
     public abstract class LimbPart : CreaturePart
     {
-        [Param(ParamUnit.Enum, "Walk steps in its gait group; Feeler is posed, never plants; WingArm is set by compose for a Wing's arm; Folded is planned (T5.4)")]
+        [Param(ParamUnit.Enum, "Walk steps in its gait group; Feeler is posed, never plants; WingArm is set by compose for a Wing's arm; Folded: a Wing's arm held folded on the ground (wrist at restOffset, never plants), flown by the Wing in the air")]
         public LimbRole role;
         [Param(ParamUnit.Count, "gait group (one group steps at a time); -1 = from the Walk module's pattern", Min = -1, Max = 31)]
         public int gaitGroup = -1;
@@ -189,7 +191,7 @@ namespace CreatureKit
             stepThreshold = stepThreshold, stepDuration = stepDuration, stepLift = stepLift, overshoot = overshoot,
             gaitGroup = gaitGroup < 0 ? 0 : gaitGroup, footLength = footLength, toeCount = toeCount,
             forwardSwingLimitDeg = forwardSwingLimitDeg, backSwingLimitDeg = backSwingLimitDeg, kneeRangeDeg = kneeRangeDeg, kneeFlexDeg = kneeFlexDeg,
-            feeler = role == LimbRole.Feeler,
+            feeler = role == LimbRole.Feeler || role == LimbRole.Folded,   // a folded wing arm is posed, never plants
         };
 
         protected void CopyBase(LegSpec l)
@@ -207,7 +209,12 @@ namespace CreatureKit
         {
             if (!c.Soft && (at.joint < 0 || at.joint >= c.Joints)) return $"{id}: attach joint {at.joint} outside 0..{c.Joints - 1}";
             if (at.side != -1 && at.side != 1) return $"{id}: side must be -1 or +1 (or mirror)";
-            if (role == LimbRole.Folded) return $"{id}: role Folded needs the folded-wing flag (T5.4, not available yet)";
+            if (role == LimbRole.Folded)
+            {
+                bool winged = false;
+                for (int i = 0; i < c.Parts.Count; i++) if (c.Parts[i] is Wing w && w.arm == id) winged = true;
+                if (!winged || !(this is Leg2Bone)) return $"{id}: role Folded is a Wing's arm (a Leg2Bone a Wing names)";
+            }
             return null;
         }
     }

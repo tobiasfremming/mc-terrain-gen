@@ -28,6 +28,7 @@ namespace TerrainGen.Tests
                 Assert.IsTrue(seen.Add(e.species.name), e.species.name + " is listed twice");
                 Assert.IsNull(e.species.Validate(), e.species.name);
                 Assert.GreaterOrEqual(e.scaleOverride, 0f, e.species.name);
+                Assert.That(e.count >= 0 && e.count <= 12 && e.rocks >= 0 && e.rocks <= 16, e.species.name + ": count 0..12, rocks 0..16");
                 Assert.IsFalse(CreatureKitAssets.IsTestFixture(e.species.name), e.species.name + " is a test fixture, not a lab animal");
             }
         }
@@ -54,7 +55,8 @@ namespace TerrainGen.Tests
                 { "DesertMonitor", Habitat.Climbable }, { "KitMonitor", Habitat.Climbable }, { "DesertSnake", Habitat.Plain },
                 { "DesertBeetle", Habitat.Plain }, { "DaddyLongLegs", Habitat.Plain }, { "Tarantula", Habitat.Plain },
                 { "WingedSerpent", Habitat.Aviary }, { "SkyDragon", Habitat.Aviary }, { "TreeOctopus", Habitat.Grove },
-                { "FinnedSandEel", Habitat.Plain },
+                { "FinnedSandEel", Habitat.Plain }, { "GiantCentipede", Habitat.Plain }, { "Hexadrake", Habitat.Aviary },
+                { "TentacleCrab", Habitat.Plain }, { "RockCrab", Habitat.Plain },
             };
             foreach (string n in CreatureKitAssets.Species())
             {

@@ -87,7 +87,7 @@
           "type": "CephalopodSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "the octopus body (CephalopodSpec: web, head, mantle, siphon, lattice); its `arm` comes from the Tentacle parts - fields: armCount, arm, bodyMass, webRadius, webDepth, headRadius, mantleRadius, mantleLength, mantleTiltDeg, eyeRadius, siphonLength, siphonRadius, beta, headStiffness, tipStiffness, breathAmp, breathHz, bodyDamping, subSteps, iterations, minHolds, mouthCount, mouth, mouthRing, eyeStalk, mantlePear, beakLength, look, cloakEnabled",
+          "meaning": "the octopus body (CephalopodSpec: web, head, mantle, siphon, lattice); its `arm` comes from the Tentacle parts - fields: armCount, arm, bodyMass, webRadius, webDepth, headRadius, mantleRadius, mantleLength, mantleTiltDeg, eyeRadius, siphonLength, siphonRadius, beta, headStiffness, tipStiffness, breathAmp, breathHz, bodyDamping, subSteps, iterations, minHolds, mouthCount, mouth, mouthRing, eyeStalk, mantlePear, beakLength, locomotion, look, cloakEnabled",
           "range": "",
           "example": ""
         }
@@ -110,9 +110,13 @@
         "DesertMonitor",
         "DesertSnake",
         "FinnedSandEel",
+        "GiantCentipede",
+        "Hexadrake",
         "KitMonitor",
+        "RockCrab",
         "SkyDragon",
         "Tarantula",
+        "TentacleCrab",
         "TestHexapod",
         "TestSnake",
         "TreeSpider",
@@ -380,7 +384,10 @@
       "usedBy": [
         "DaddyLongLegs",
         "DesertBeetle",
+        "GiantCentipede",
+        "RockCrab",
         "Tarantula",
+        "TentacleCrab",
         "TreeSpider"
       ],
       "params": [
@@ -452,7 +459,7 @@
           "type": "Walk / Feeler / WingArm / Folded",
           "unit": "Enum",
           "size": "-",
-          "meaning": "Walk steps in its gait group; Feeler is posed, never plants; WingArm is set by compose for a Wing's arm; Folded is planned (T5.4)",
+          "meaning": "Walk steps in its gait group; Feeler is posed, never plants; WingArm is set by compose for a Wing's arm; Folded: a Wing's arm held folded on the ground (wrist at restOffset, never plants), flown by the Wing in the air",
           "range": "",
           "example": ""
         },
@@ -769,6 +776,7 @@
       "summary": "Vertebrate two-bone limb: TwoBoneIK with a pole, rounded knee blend, swing/knee limits (R16), keep-out (R28). Also the wyvern's wing arm.",
       "usedBy": [
         "DesertMonitor",
+        "Hexadrake",
         "KitMonitor",
         "SkyDragon",
         "TestHexapod",
@@ -843,7 +851,7 @@
           "type": "Walk / Feeler / WingArm / Folded",
           "unit": "Enum",
           "size": "-",
-          "meaning": "Walk steps in its gait group; Feeler is posed, never plants; WingArm is set by compose for a Wing's arm; Folded is planned (T5.4)",
+          "meaning": "Walk steps in its gait group; Feeler is posed, never plants; WingArm is set by compose for a Wing's arm; Folded: a Wing's arm held folded on the ground (wrist at restOffset, never plants), flown by the Wing in the air",
           "range": "",
           "example": ""
         },
@@ -1025,6 +1033,7 @@
       "useWhen": "bats, pterosaurs, dragons; the Fly module makes it fly",
       "summary": "3-finger membrane wing on an arm limb (a Leg2Bone it names); a wingbeat is a step with a vertical comfort band (CreatureWings, FlightModel).",
       "usedBy": [
+        "Hexadrake",
         "SkyDragon",
         "WingedSerpent"
       ],
@@ -1129,10 +1138,14 @@
         "DesertMonitor",
         "DesertSnake",
         "FinnedSandEel",
+        "GiantCentipede",
+        "Hexadrake",
         "KitMonitor",
+        "RockCrab",
         "SkyDragon",
         "Swinger",
         "Tarantula",
+        "TentacleCrab",
         "TestHexapod",
         "TestSnake",
         "TreeOctopus",
@@ -1253,6 +1266,7 @@
       "useWhen": "whiskers, barbels, antennae, feelers, cerci, ribbon-like streamers",
       "summary": "Spring chain rooted on a spine joint: whiskers, barbels, feelers, cerci, streamers. Pulled to its rest curve (stiffer at the root), damped and dragged by the air: it trails a moving body and swings out of turns and rolls. Exact lengths, bend cone.",
       "usedBy": [
+        "GiantCentipede",
         "SkyDragon"
       ],
       "params": [
@@ -1412,6 +1426,231 @@
       ]
     },
     {
+      "name": "Tendril",
+      "kind": "Chain",
+      "status": "exists",
+      "bones": "= segments",
+      "materialLayers": [
+        1,
+        9
+      ],
+      "system": "TendrilRuntime (part runtime, stage Late) + TentacleChain",
+      "useWhen": "tentacles, feeding arms, feelers that touch the ground; on a spine body (soft bodies: Tentacle)",
+      "summary": "Muscular tentacle rooted on a spine joint (TentacleChain physics: gravity, muscle tone toward a rest curl, a travelling writhe, exact length and bend limits). Hangs and swings while the body moves; when it stops, reaches out and holds its tip on the ground ahead (an eased pin: no tremble), feeling about, and lets go when the body walks on.",
+      "usedBy": [
+        "TentacleCrab"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "direction",
+          "type": "Vector3",
+          "unit": "Direction",
+          "size": "-",
+          "meaning": "rest direction at the root in the joint frame (x mirrored by side)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "length",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "length, root to tip",
+          "range": "",
+          "example": "tentacle crab 0.22"
+        },
+        {
+          "name": "segments",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "particles (= bones) along it",
+          "range": "4..24",
+          "example": "default 12"
+        },
+        {
+          "name": "rootRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "radius at the root",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "tipRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "radius at the tip",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "curlDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "rest curl toward the belly side at the tip (rises toward it)",
+          "range": "0..120",
+          "example": ""
+        },
+        {
+          "name": "bendLimitDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "bend cone per joint",
+          "range": "5..60",
+          "example": "default 28"
+        },
+        {
+          "name": "muscle",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "muscle tone: how firmly it holds its curl against gravity",
+          "range": "0.05..1",
+          "example": ""
+        },
+        {
+          "name": "damping",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "velocity damping rate relative to still air (1/s)",
+          "range": "",
+          "example": "1.5"
+        },
+        {
+          "name": "mass",
+          "type": "float",
+          "unit": "Kilograms",
+          "size": "x s^3",
+          "meaning": "mass of the whole tendril",
+          "range": "",
+          "example": "0.02"
+        },
+        {
+          "name": "writheDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "writhe: amplitude of the wave travelling down it",
+          "range": "0..30",
+          "example": ""
+        },
+        {
+          "name": "writheHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "writhe frequency",
+          "range": "",
+          "example": "0.8"
+        },
+        {
+          "name": "reach",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "reach: how far ahead it lays its tip, fraction of its length (0 = never touches down)",
+          "range": "0..0.95",
+          "example": ""
+        },
+        {
+          "name": "holdSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "how long a touch holds before it feels for another spot",
+          "range": "",
+          "example": "2"
+        },
+        {
+          "name": "releaseSpeed",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the body moves faster than this fraction of its walking speed: let go, hang",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "layer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer (part id): 1 the limbs', 9 the band colour's",
+          "range": "1..9",
+          "example": "default 1"
+        }
+      ]
+    },
+    {
       "name": "Tentacle",
       "kind": "Chain",
       "status": "exists",
@@ -1514,6 +1753,7 @@
       "summary": "Double-sided membrane strip along the spine: mane, crest, dorsal or anal fin, tail tuft. Height profile, swept-back curl, scalloped tufts; its upper rows ride the spine flowJoints further back, so it trails and flows as the body bends and twists.",
       "usedBy": [
         "FinnedSandEel",
+        "Hexadrake",
         "SkyDragon"
       ],
       "params": [
@@ -2049,6 +2289,151 @@
       ]
     },
     {
+      "name": "EyeStalk",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "1",
+      "materialLayers": [
+        1,
+        2,
+        9
+      ],
+      "system": "EyeStalkRuntime (part runtime, bones only) + EyeStalk.EmitMesh; folded by TuckRuntime",
+      "useWhen": "crab and snail eye stalks, periscopes, anything on a stalk that folds away",
+      "summary": "A rigid stalk on a bone of its own rooted on a spine joint (a crab's eye stalk): rigid to its joint at rest; a posture part (Tuck) swings it about its root to tuckDirection, and the eye of its side rides its tip (carriesEye). Tapered tube, rounded tip.",
+      "usedBy": [
+        "RockCrab"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "direction",
+          "type": "Vector3",
+          "unit": "Direction",
+          "size": "-",
+          "meaning": "rest direction in the joint frame (x mirrored by side)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "tuckDirection",
+          "type": "Vector3",
+          "unit": "Direction",
+          "size": "-",
+          "meaning": "direction when folded by a Tuck part (x mirrored by side); zero = it never folds",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "length",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "length, root to tip",
+          "range": "",
+          "example": "rock crab 0.045"
+        },
+        {
+          "name": "radiusStart",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "radius at the root",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "radiusEnd",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "radius at the tip",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "carriesEye",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "the eye of this side (Eyes part: eye 0 left, 1 right) rides the tip: place the Eyes' offset at the tip",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "layer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer (part id): 1 the limbs', 2 the claw/cone row, 9 the band colour's",
+          "range": "1..9",
+          "example": "default 1"
+        }
+      ]
+    },
+    {
       "name": "RigidCone",
       "kind": "Rigid",
       "status": "exists",
@@ -2060,9 +2445,13 @@
       "useWhen": "horns, spikes, fangs, mandibles, chelicerae",
       "summary": "Curved cone rigid to a spine joint: horn, spike, claw, chelicera with a fang (BodyAppendage). mirror emits the pair from this one part (no .L/.R: it has no bones). ownBone: the octopus siphon.",
       "usedBy": [
+        "GiantCentipede",
+        "Hexadrake",
+        "RockCrab",
         "SkyDragon",
         "Swinger",
         "Tarantula",
+        "TentacleCrab",
         "TreeOctopus",
         "TreeSpider"
       ],
@@ -2208,7 +2597,11 @@
       "useWhen": "head shapes: squared snouts, jaws, brows, nostrils, bosses; any rigid lump on a joint",
       "summary": "Lofted solid rigid to a spine joint: superellipse cross-sections (round to squared and flat-topped, separate above and below) keyed along a direction, curled and rolled. Snouts, jaws, brow ridges, nostril bumps, cheek plates, skull shapes the spine tube cannot express.",
       "usedBy": [
-        "SkyDragon"
+        "GiantCentipede",
+        "Hexadrake",
+        "RockCrab",
+        "SkyDragon",
+        "TentacleCrab"
       ],
       "params": [
         {
@@ -2399,6 +2792,33 @@
           "meaning": "mesh: sections along the length (0 = 12)",
           "range": "0..64",
           "example": ""
+        },
+        {
+          "name": "lumpHeight",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "lumps: the surface pushed in and out by up to this much (smooth noise; 0 = smooth). A boulder, a knobbly shell",
+          "range": "",
+          "example": "rock crab 0.012"
+        },
+        {
+          "name": "lumpSize",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "lumps: their size (noise feature size)",
+          "range": "",
+          "example": "rock crab 0.06"
+        },
+        {
+          "name": "lumpSeed",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "lumps: noise seed (another seed, other lumps)",
+          "range": "",
+          "example": ""
         }
       ]
     },
@@ -2582,6 +3002,192 @@
       ]
     },
     {
+      "name": "Tuck",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "0 (poses the others' bones)",
+      "materialLayers": [],
+      "system": "TuckRuntime (part runtime, stage Late; the LAST part: blends the other parts' bones) + CreatureSim Halt / Crouch / Asleep",
+      "useWhen": "a creature that hides by folding up: rock crabs, box crabs, armadillos, pill bugs, tortoises",
+      "summary": "Posture: when scared (CreatureSim.Scare, or a random timer per individual) it stops, crouches, folds its ArthropodLegs (LegFold rows: a pitch per segment in a fold plane) and EyeStalks away, sleeps exactly still, then peeks (stalks first), unfolds and walks on. Rock mimicry, playing dead, a pill bug's roll.",
+      "usedBy": [
+        "RockCrab"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "curlSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "time to reach the tucked pose",
+          "range": "",
+          "example": "rock crab 0.45"
+        },
+        {
+          "name": "holdSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "time held tucked after a full scare (x 0.5..1 with the intensity, x 0.7..1.3 per tuck)",
+          "range": "",
+          "example": "4"
+        },
+        {
+          "name": "peekSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "the peek: the stalks rise and look about while the body stays down",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "uncurlSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "time to unfold",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "crouch",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "how far the body crouches (every joint's clearance lowered)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "randomScareSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "random scares: mean time up and about between them (uniform 0.25..1.75 x this, per individual); 0 = only real scares (CreatureSim.Scare)",
+          "range": "",
+          "example": "rock crab 14"
+        },
+        {
+          "name": "minScare",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "a scare weaker than this is ignored",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "legs",
+          "type": "LegFold[]",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "how each folded leg folds (legs not listed keep their IK pose)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "legs[].leg",
+          "type": "string",
+          "unit": "PartRef",
+          "size": "-",
+          "meaning": "the ArthropodLeg it folds; a mirrored leg's id (without .L / .R) folds both",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "legs[].yawDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the fold plane: 0 = straight out sideways, + swept toward the tail, - toward the head (mirrored by side)",
+          "range": "-90..90",
+          "example": ""
+        },
+        {
+          "name": "legs[].pitchDeg",
+          "type": "float[]",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "each segment's pitch in the fold plane (body out): 0 = out level, 90 = up, 180 = back in level, -90 = down; one per segment",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "legs[].lag",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "starts folding this fraction of the curl later (and unfolds that much earlier)",
+          "range": "0..0.6",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "Repeat",
       "kind": "Sugar",
       "status": "exists",
@@ -2590,7 +3196,9 @@
       "system": "compose (CompiledSpecies)",
       "useWhen": "centipede legs, spike rows, many fins",
       "summary": "Authoring sugar: `count` copies of `template` across joints fromJoint..toJoint (tapered by lastScale, mirrored if the template is). Expanded by compose.",
-      "usedBy": [],
+      "usedBy": [
+        "GiantCentipede"
+      ],
       "params": [
         {
           "name": "id",
@@ -2784,6 +3392,7 @@
       "needs": "Fly",
       "summary": "Rest, Face, Patrol, Soar, Landing on perches; predictive wall turn-back (FlightBrain).",
       "usedBy": [
+        "Hexadrake",
         "SkyDragon",
         "WingedSerpent"
       ],
@@ -2801,9 +3410,13 @@
         "DesertMonitor",
         "DesertSnake",
         "FinnedSandEel",
+        "GiantCentipede",
+        "Hexadrake",
         "KitMonitor",
+        "RockCrab",
         "SkyDragon",
         "Tarantula",
+        "TentacleCrab",
         "TestHexapod",
         "TestSnake",
         "TreeSpider",
@@ -2940,6 +3553,7 @@
       "needs": "Wing parts",
       "summary": "Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlight, FlightModel, AirChain). Froude-scaled. twist: the twisting Chinese-dragon air chain (AirTwist).",
       "usedBy": [
+        "Hexadrake",
         "SkyDragon",
         "WingedSerpent"
       ],
@@ -3163,6 +3777,8 @@
         "DesertMonitor",
         "DesertSnake",
         "FinnedSandEel",
+        "GiantCentipede",
+        "Hexadrake",
         "KitMonitor",
         "SkyDragon",
         "TestSnake",
@@ -3201,9 +3817,13 @@
         "DesertMonitor",
         "DesertSnake",
         "FinnedSandEel",
+        "GiantCentipede",
+        "Hexadrake",
         "KitMonitor",
+        "RockCrab",
         "SkyDragon",
         "Tarantula",
+        "TentacleCrab",
         "TestHexapod",
         "TestSnake",
         "TreeSpider",
@@ -3287,8 +3907,17 @@
           "type": "int",
           "unit": "Count",
           "size": "-",
-          "meaning": "groups of a Wave pattern",
-          "range": "2..31",
+          "meaning": "groups of a Wave pattern: legs per side in one wavelength (each foot is in the air 1/waveGroups of the time)",
+          "range": "2..15",
+          "example": "centipede 5"
+        },
+        {
+          "name": "waveTailToHead",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "Wave: the lift-offs run tail to head (a millipede's direct wave) instead of head to tail (a centipede's retrograde wave)",
+          "range": "",
           "example": ""
         },
         {
@@ -3338,7 +3967,10 @@
       "usedBy": [
         "DaddyLongLegs",
         "DesertBeetle",
+        "GiantCentipede",
+        "RockCrab",
         "Tarantula",
+        "TentacleCrab",
         "TreeSpider"
       ],
       "params": [
@@ -3401,7 +4033,12 @@
       "status": "exists",
       "needs": "",
       "summary": "Restyles part ids (material layers) for this species: shading model (Skin, Chitin, Membrane, Eye, Claw), tint, smoothness, and which layers (pattern, scale grain, sheen, shimmer) each has. Rows not listed keep the registry's (Kit/PartLayers.cs). A new part needs a row, never a shader edit.",
-      "usedBy": [],
+      "usedBy": [
+        "GiantCentipede",
+        "Hexadrake",
+        "RockCrab",
+        "TentacleCrab"
+      ],
       "params": [
         {
           "name": "rows",
@@ -3530,6 +4167,7 @@
       "summary": "Translucent veined membrane (part 8, the Membrane shading model, CreatureMembrane.hlsl): wings, FinStrip fins, antennae - any part whose layer row is Membrane.",
       "usedBy": [
         "FinnedSandEel",
+        "Hexadrake",
         "SkyDragon",
         "WingedSerpent"
       ],
@@ -3659,10 +4297,14 @@
         "DesertMonitor",
         "DesertSnake",
         "FinnedSandEel",
+        "GiantCentipede",
+        "Hexadrake",
         "KitMonitor",
+        "RockCrab",
         "SkyDragon",
         "Swinger",
         "Tarantula",
+        "TentacleCrab",
         "TestHexapod",
         "TestSnake",
         "TreeOctopus",
@@ -3918,6 +4560,110 @@
       ]
     },
     {
+      "name": "GiantCentipede",
+      "kitVersion": 1,
+      "plan": "Spine",
+      "bones": 252,
+      "parts": [
+        "SpineBody:body",
+        "Eyes:eyes",
+        "RigidLoft:headPlate",
+        "RigidCone:forcipule",
+        "Antenna:antenna.L",
+        "Antenna:antenna.R",
+        "Antenna:ultimate.L",
+        "Antenna:ultimate.R",
+        "ArthropodLeg:leg0.L",
+        "ArthropodLeg:leg0.R",
+        "ArthropodLeg:leg1.L",
+        "ArthropodLeg:leg1.R",
+        "ArthropodLeg:leg2.L",
+        "ArthropodLeg:leg2.R",
+        "ArthropodLeg:leg3.L",
+        "ArthropodLeg:leg3.R",
+        "ArthropodLeg:leg4.L",
+        "ArthropodLeg:leg4.R",
+        "ArthropodLeg:leg5.L",
+        "ArthropodLeg:leg5.R",
+        "ArthropodLeg:leg6.L",
+        "ArthropodLeg:leg6.R",
+        "ArthropodLeg:leg7.L",
+        "ArthropodLeg:leg7.R",
+        "ArthropodLeg:leg8.L",
+        "ArthropodLeg:leg8.R",
+        "ArthropodLeg:leg9.L",
+        "ArthropodLeg:leg9.R",
+        "ArthropodLeg:leg10.L",
+        "ArthropodLeg:leg10.R",
+        "ArthropodLeg:leg11.L",
+        "ArthropodLeg:leg11.R",
+        "ArthropodLeg:leg12.L",
+        "ArthropodLeg:leg12.R",
+        "ArthropodLeg:leg13.L",
+        "ArthropodLeg:leg13.R",
+        "ArthropodLeg:leg14.L",
+        "ArthropodLeg:leg14.R",
+        "ArthropodLeg:leg15.L",
+        "ArthropodLeg:leg15.R",
+        "ArthropodLeg:leg16.L",
+        "ArthropodLeg:leg16.R",
+        "ArthropodLeg:leg17.L",
+        "ArthropodLeg:leg17.R",
+        "ArthropodLeg:leg18.L",
+        "ArthropodLeg:leg18.R",
+        "ArthropodLeg:leg19.L",
+        "ArthropodLeg:leg19.R",
+        "ArthropodLeg:leg20.L",
+        "ArthropodLeg:leg20.R"
+      ],
+      "modules": [
+        "Walk",
+        "Slither",
+        "Wander",
+        "Skin",
+        "Chitin",
+        "Layers"
+      ]
+    },
+    {
+      "name": "Hexadrake",
+      "kitVersion": 1,
+      "plan": "Spine",
+      "bones": 78,
+      "parts": [
+        "SpineBody:body",
+        "Leg2Bone:wingarm.L",
+        "Leg2Bone:wingarm.R",
+        "Leg2Bone:foreleg.L",
+        "Leg2Bone:foreleg.R",
+        "Leg2Bone:hindleg.L",
+        "Leg2Bone:hindleg.R",
+        "Wing:wing.L",
+        "Wing:wing.R",
+        "Eyes:eyes",
+        "RigidLoft:skull",
+        "RigidLoft:snout",
+        "RigidLoft:jaw",
+        "RigidLoft:brow.L",
+        "RigidLoft:brow.R",
+        "RigidCone:horn",
+        "RigidCone:hornLow",
+        "RigidCone:noseHorn",
+        "FinStrip:crest",
+        "FinStrip:tailFan"
+      ],
+      "modules": [
+        "Walk",
+        "Slither",
+        "Fly",
+        "Wander",
+        "FlightExcursion",
+        "Skin",
+        "Membrane",
+        "Layers"
+      ]
+    },
+    {
       "name": "KitMonitor",
       "kitVersion": 1,
       "plan": "Spine",
@@ -3937,6 +4683,43 @@
         "Wander",
         "ClimbExcursion",
         "Skin"
+      ]
+    },
+    {
+      "name": "RockCrab",
+      "kitVersion": 1,
+      "plan": "Spine",
+      "bones": 57,
+      "parts": [
+        "SpineBody:body",
+        "Eyes:eyes",
+        "ArthropodLeg:leg0.L",
+        "ArthropodLeg:leg0.R",
+        "ArthropodLeg:leg1.L",
+        "ArthropodLeg:leg1.R",
+        "ArthropodLeg:leg2.L",
+        "ArthropodLeg:leg2.R",
+        "ArthropodLeg:leg3.L",
+        "ArthropodLeg:leg3.R",
+        "ArthropodLeg:claw.L",
+        "ArthropodLeg:claw.R",
+        "RigidLoft:carapace",
+        "RigidCone:knob0",
+        "RigidCone:knob1",
+        "RigidCone:knob2",
+        "RigidCone:knob3",
+        "RigidCone:knob4",
+        "RigidCone:knob5",
+        "EyeStalk:stalk.L",
+        "EyeStalk:stalk.R",
+        "Tuck:tuck"
+      ],
+      "modules": [
+        "Walk",
+        "Wander",
+        "Skin",
+        "Chitin",
+        "Layers"
       ]
     },
     {
@@ -4032,6 +4815,46 @@
         "Wander",
         "Skin",
         "Chitin"
+      ]
+    },
+    {
+      "name": "TentacleCrab",
+      "kitVersion": 1,
+      "plan": "Spine",
+      "bones": 96,
+      "parts": [
+        "SpineBody:body",
+        "Eyes:eyes",
+        "ArthropodLeg:leg0.L",
+        "ArthropodLeg:leg0.R",
+        "ArthropodLeg:leg1.L",
+        "ArthropodLeg:leg1.R",
+        "ArthropodLeg:leg2.L",
+        "ArthropodLeg:leg2.R",
+        "ArthropodLeg:leg3.L",
+        "ArthropodLeg:leg3.R",
+        "ArthropodLeg:claw.L",
+        "ArthropodLeg:claw.R",
+        "RigidLoft:carapace",
+        "RigidCone:eyeStalk",
+        "RigidCone:rostrum",
+        "RigidCone:rimSpine0",
+        "RigidCone:rimSpine1",
+        "RigidCone:rimSpine2",
+        "RigidCone:tubercle0",
+        "RigidCone:tubercle1",
+        "RigidCone:tubercle2",
+        "Tendril:tentacle.L",
+        "Tendril:tentacle.R",
+        "Tendril:feeler.L",
+        "Tendril:feeler.R"
+      ],
+      "modules": [
+        "Walk",
+        "Wander",
+        "Skin",
+        "Chitin",
+        "Layers"
       ]
     },
     {

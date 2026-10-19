@@ -12,6 +12,8 @@ public static class LabLayout
     const float kGoldenAngle = 2.39996323f;
     public const float kViewGap = 4f;          // the player starts this far outside the nearest curb, facing it
     public const float kEnclosureGap = 4f;     // free ground between neighbouring curbs
+    // pushes of a crowded slot out of its neighbours (a full roster wraps the arc: one push can land in the next)
+    const int kPushPasses = 16;
 
     // The arc for enclosures of these radii: neighbours a slot apart never closer than two of the largest radii
     // plus the gap, and the arc outside the player's spot.
@@ -84,7 +86,7 @@ public static class LabLayout
         if (found) return bestP;
         // no free candidate answered: push the slot clear of every enclosure it crowds, then ground it
         Vector3 p = slot;
-        for (int pass = 0; pass < 4; pass++)
+        for (int pass = 0; pass < kPushPasses; pass++)
         {
             int k = Crowds(p, up, radius, placed);
             if (k < 0) break;

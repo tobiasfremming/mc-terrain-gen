@@ -1,0 +1,785 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39d3296fcbe55a0429fe582610f52ec3, type: 3}
+  m_Name: Hexadrake
+  m_EditorClassIdentifier: TerrainGen.Runtime::CreatureSpecies
+  scale: 1
+  kitVersion: 1
+  parts:
+  - rid: 1000
+  - rid: 1001
+  - rid: 1002
+  - rid: 1003
+  - rid: 1004
+  - rid: 1005
+  - rid: 1006
+  - rid: 1007
+  - rid: 1008
+  - rid: 1009
+  - rid: 1010
+  - rid: 1011
+  - rid: 1012
+  - rid: 1013
+  - rid: 1014
+  modules:
+  - rid: 1015
+  - rid: 1016
+  - rid: 1017
+  - rid: 1018
+  - rid: 1019
+  - rid: 1020
+  - rid: 1021
+  - rid: 1022
+  references:
+    version: 2
+    RefIds:
+    - rid: 1000
+      type: {class: SpineBody, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: body
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 0
+        spacing: 0.08
+        headCapLength: 0.1
+        tailTipLength: 0.07
+        joints:
+        - halfWidth: 0.05
+          halfHeight: 0.044
+          clearance: 0.62
+          bendLimitDeg: 16
+          rigid: 0
+        - halfWidth: 0.055
+          halfHeight: 0.048
+          clearance: 0.6
+          bendLimitDeg: 16
+          rigid: 0
+        - halfWidth: 0.04
+          halfHeight: 0.036
+          clearance: 0.57
+          bendLimitDeg: 16
+          rigid: 0
+        - halfWidth: 0.044
+          halfHeight: 0.04
+          clearance: 0.53
+          bendLimitDeg: 16
+          rigid: 0
+        - halfWidth: 0.05
+          halfHeight: 0.046
+          clearance: 0.49
+          bendLimitDeg: 15
+          rigid: 0
+        - halfWidth: 0.064
+          halfHeight: 0.058
+          clearance: 0.455
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.085
+          halfHeight: 0.078
+          clearance: 0.42
+          bendLimitDeg: 12
+          rigid: 0
+        - halfWidth: 0.1
+          halfHeight: 0.09
+          clearance: 0.42
+          bendLimitDeg: 12
+          rigid: 0
+        - halfWidth: 0.104
+          halfHeight: 0.094
+          clearance: 0.42
+          bendLimitDeg: 12
+          rigid: 0
+        - halfWidth: 0.102
+          halfHeight: 0.092
+          clearance: 0.42
+          bendLimitDeg: 12
+          rigid: 0
+        - halfWidth: 0.098
+          halfHeight: 0.088
+          clearance: 0.42
+          bendLimitDeg: 12
+          rigid: 0
+        - halfWidth: 0.0952
+          halfHeight: 0.0852
+          clearance: 0.418
+          bendLimitDeg: 12
+          rigid: 0
+        - halfWidth: 0.0924
+          halfHeight: 0.0824
+          clearance: 0.416
+          bendLimitDeg: 12
+          rigid: 0
+        - halfWidth: 0.0896
+          halfHeight: 0.0796
+          clearance: 0.414
+          bendLimitDeg: 12
+          rigid: 0
+        - halfWidth: 0.0868
+          halfHeight: 0.0768
+          clearance: 0.412
+          bendLimitDeg: 12
+          rigid: 0
+        - halfWidth: 0.084
+          halfHeight: 0.074
+          clearance: 0.41
+          bendLimitDeg: 12
+          rigid: 0
+        - halfWidth: 0.07217
+          halfHeight: 0.06294
+          clearance: 0.3577
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.06749
+          halfHeight: 0.05889
+          clearance: 0.3313
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.06317
+          halfHeight: 0.05513
+          clearance: 0.3087
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.05906
+          halfHeight: 0.05157
+          clearance: 0.2883
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.05511
+          halfHeight: 0.04814
+          clearance: 0.2695
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.05127
+          halfHeight: 0.04481
+          clearance: 0.2517
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.04753
+          halfHeight: 0.04156
+          clearance: 0.2348
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.04387
+          halfHeight: 0.03839
+          clearance: 0.2186
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.04027
+          halfHeight: 0.03527
+          clearance: 0.203
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.03674
+          halfHeight: 0.0322
+          clearance: 0.1879
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.03326
+          halfHeight: 0.02918
+          clearance: 0.1733
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.02982
+          halfHeight: 0.0262
+          clearance: 0.1591
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.02643
+          halfHeight: 0.02326
+          clearance: 0.1452
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.02308
+          halfHeight: 0.02035
+          clearance: 0.1316
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.01976
+          halfHeight: 0.01747
+          clearance: 0.1183
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.01648
+          halfHeight: 0.01462
+          clearance: 0.1053
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.01322
+          halfHeight: 0.0118
+          clearance: 0.0926
+          bendLimitDeg: 14
+          rigid: 0
+        - halfWidth: 0.01
+          halfHeight: 0.009
+          clearance: 0.08
+          bendLimitDeg: 14
+          rigid: 0
+        profile: []
+        jointCount: 0
+        rigidHead: 0
+        rigidHeadJoints: -1
+        ringSegments: 18
+        ringsPerSegment: 3
+    - rid: 1001
+      type: {class: Leg2Bone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: wingarm
+        at:
+          joint: 7
+          side: 0
+          offset: {x: 0.05, y: 0.065, z: 0}
+          slot: 0
+        mirror: 1
+        role: 3
+        gaitGroup: -1
+        restOffset: {x: 0.45, y: 0.1, z: 0.3}
+        stepThreshold: 0.16
+        stepDuration: 0.2
+        stepLift: 0.06
+        overshoot: 0.06
+        footLength: 0.06
+        toeCount: 2
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        upperLength: 0.5
+        lowerLength: 0.6
+        upperRadius: 0.034
+        lowerRadius: 0.024
+        pole: {x: 0, y: 0.6, z: -1}
+        kneeBlend: 0
+    - rid: 1002
+      type: {class: Leg2Bone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: foreleg
+        at:
+          joint: 8
+          side: 0
+          offset: {x: 0.075, y: -0.035, z: 0}
+          slot: 0
+        mirror: 1
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 0.17, y: 0, z: 0.07}
+        stepThreshold: 0.13
+        stepDuration: 0.24
+        stepLift: 0.07
+        overshoot: 0.05
+        footLength: 0.075
+        toeCount: 3
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        upperLength: 0.25
+        lowerLength: 0.24
+        upperRadius: 0.036
+        lowerRadius: 0.026
+        pole: {x: 0, y: 0.25, z: -1}
+        kneeBlend: 0
+    - rid: 1003
+      type: {class: Leg2Bone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: hindleg
+        at:
+          joint: 15
+          side: 0
+          offset: {x: 0.07, y: -0.03, z: 0}
+          slot: 0
+        mirror: 1
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 0.18, y: 0, z: -0.02}
+        stepThreshold: 0.13
+        stepDuration: 0.24
+        stepLift: 0.07
+        overshoot: 0.05
+        footLength: 0.085
+        toeCount: 3
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        upperLength: 0.28
+        lowerLength: 0.26
+        upperRadius: 0.042
+        lowerRadius: 0.028
+        pole: {x: 0.25, y: 0.5, z: 1}
+        kneeBlend: 0
+    - rid: 1004
+      type: {class: Wing, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: wing
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 1
+        arm: wingarm
+        spec:
+          leg: 0
+          restTip: {x: 1.06, y: 0.08, z: 0.05}
+          comfortUp: 0.55
+          comfortDown: 1.03
+          strokePlaneDeg: 10
+          pronationDeg: 18
+          overshootUp: 0.08
+          upstrokeDuration: 0.22
+          upstrokeFold: 0.6
+          foldReach: 0.3
+          beatGroup: 0
+          fingerLengths:
+          - 0.8
+          - 0.7
+          - 0.58
+          fingerSpreadDeg:
+          - -12
+          - 30
+          - 78
+          fingerFoldDeg:
+          - 120
+          - 134
+          - 148
+          fingerMinGapDeg: 4
+          fingerFoldGapDeg: 14
+          groundLiftDeg: 35
+          groundTallStance: 0
+          flankPatches: 6
+          groundWristLift: 0
+          groundFlankRise: 0.5
+          fingerRadius: 0.015
+          thumbLength: 0.11
+          membraneRearJoint: 13
+          membraneFrontJoint: 6
+          trailingRib: 0.5
+          membraneInset: 0.8
+          area: 1
+          scallop: 0.16
+    - rid: 1005
+      type: {class: Eyes, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: eyes
+        at:
+          joint: 1
+          side: 0
+          offset: {x: 0.05, y: 0.03, z: 0.05}
+          slot: 0
+        mirror: 0
+        radius: 0.012
+        cluster: []
+    - rid: 1006
+      type: {class: RigidLoft, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: skull
+        at:
+          joint: 1
+          side: 0
+          offset: {x: 0, y: 0.006, z: -0.04}
+          slot: 0
+        mirror: 0
+        direction: {x: 0, y: 0.05, z: 1}
+        length: 0.16
+        keys:
+        - t: 0
+          halfWidth: 0.05
+          halfHeight: 0.042
+          rise: 0
+          squareTop: 2.2
+          squareBottom: 2.2
+        - t: 0.4
+          halfWidth: 0.058
+          halfHeight: 0.05
+          rise: 0.004
+          squareTop: 3
+          squareBottom: 2.4
+        - t: 0.75
+          halfWidth: 0.052
+          halfHeight: 0.044
+          rise: 0.002
+          squareTop: 3.4
+          squareBottom: 2.5
+        - t: 1
+          halfWidth: 0.04
+          halfHeight: 0.034
+          rise: 0
+          squareTop: 3
+          squareBottom: 2.5
+        curveDeg: 0
+        rollDeg: 0
+        shade: 0
+        around: 16
+        rings: 12
+    - rid: 1007
+      type: {class: RigidLoft, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: snout
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0.01, z: -0.02}
+          slot: 0
+        mirror: 0
+        direction: {x: 0, y: -0.07, z: 1}
+        length: 0.2
+        keys:
+        - t: 0
+          halfWidth: 0.044
+          halfHeight: 0.034
+          rise: 0
+          squareTop: 2.5
+          squareBottom: 2.5
+        - t: 0.35
+          halfWidth: 0.034
+          halfHeight: 0.025
+          rise: 0.002
+          squareTop: 4.5
+          squareBottom: 3
+        - t: 0.75
+          halfWidth: 0.033
+          halfHeight: 0.023
+          rise: 0
+          squareTop: 4.5
+          squareBottom: 3
+        - t: 0.92
+          halfWidth: 0.036
+          halfHeight: 0.024
+          rise: 0.002
+          squareTop: 4
+          squareBottom: 3
+        - t: 1
+          halfWidth: 0.02
+          halfHeight: 0.013
+          rise: 0
+          squareTop: 3
+          squareBottom: 3
+        curveDeg: 0
+        rollDeg: 0
+        shade: 0
+        around: 16
+        rings: 12
+    - rid: 1008
+      type: {class: RigidLoft, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: jaw
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: -0.026, z: -0.04}
+          slot: 0
+        mirror: 0
+        direction: {x: 0, y: -0.2, z: 1}
+        length: 0.19
+        keys:
+        - t: 0
+          halfWidth: 0.046
+          halfHeight: 0.02
+          rise: 0
+          squareTop: 4
+          squareBottom: 2.5
+        - t: 0.5
+          halfWidth: 0.03
+          halfHeight: 0.013
+          rise: 0
+          squareTop: 5
+          squareBottom: 3
+        - t: 0.9
+          halfWidth: 0.024
+          halfHeight: 0.011
+          rise: 0
+          squareTop: 5
+          squareBottom: 3
+        - t: 1
+          halfWidth: 0.011
+          halfHeight: 0.007
+          rise: 0
+          squareTop: 3
+          squareBottom: 3
+        curveDeg: -6
+        rollDeg: 0
+        shade: 0
+        around: 16
+        rings: 12
+    - rid: 1009
+      type: {class: RigidLoft, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: brow
+        at:
+          joint: 1
+          side: 0
+          offset: {x: 0.04, y: 0.046, z: 0.075}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.15, y: 0.25, z: -1}
+        length: 0.1
+        keys:
+        - t: 0
+          halfWidth: 0.007
+          halfHeight: 0.006
+          rise: 0
+          squareTop: 2
+          squareBottom: 2
+        - t: 0.3
+          halfWidth: 0.018
+          halfHeight: 0.013
+          rise: 0
+          squareTop: 3
+          squareBottom: 2
+        - t: 0.7
+          halfWidth: 0.013
+          halfHeight: 0.011
+          rise: 0
+          squareTop: 3
+          squareBottom: 2
+        - t: 1
+          halfWidth: 0.006
+          halfHeight: 0.005
+          rise: 0
+          squareTop: 2
+          squareBottom: 2
+        curveDeg: 0
+        rollDeg: 0
+        shade: 0
+        around: 16
+        rings: 12
+    - rid: 1010
+      type: {class: RigidCone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: horn
+        at:
+          joint: 1
+          side: 0
+          offset: {x: 0.032, y: 0.05, z: -0.01}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.32, y: 0.42, z: -0.85}
+        length: 0.26
+        radiusStart: 0.022
+        radiusEnd: 0.003
+        curveDeg: 14
+        fangLength: 0
+        ownBone: 0
+    - rid: 1011
+      type: {class: RigidCone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: hornLow
+        at:
+          joint: 1
+          side: 0
+          offset: {x: 0.046, y: 0.012, z: -0.03}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.6, y: 0.05, z: -0.8}
+        length: 0.12
+        radiusStart: 0.013
+        radiusEnd: 0.002
+        curveDeg: -10
+        fangLength: 0
+        ownBone: 0
+    - rid: 1012
+      type: {class: RigidCone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: noseHorn
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0.034, z: 0.105}
+          slot: 0
+        mirror: 0
+        direction: {x: 0, y: 0.85, z: 0.5}
+        length: 0.05
+        radiusStart: 0.01
+        radiusEnd: 0.0015
+        curveDeg: -25
+        fangLength: 0
+        ownBone: 0
+    - rid: 1013
+      type: {class: FinStrip, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: crest
+        at:
+          joint: 2
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 0
+        toJoint: 32
+        heightStart: 0.07
+        heightEnd: 0.03
+        leanDeg: 30
+        tufts: 31
+        tuftDepth: 0.75
+        flowJoints: 1
+        inset: 0.2
+        aroundDeg: 0
+        columnsPerJoint: 4
+    - rid: 1014
+      type: {class: FinStrip, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: tailFan
+        at:
+          joint: 27
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 1
+        toJoint: 33
+        heightStart: 0.04
+        heightEnd: 0.09
+        leanDeg: 20
+        tufts: 3
+        tuftDepth: 0.4
+        flowJoints: 0.8
+        inset: 0.2
+        aroundDeg: 90
+        columnsPerJoint: 4
+    - rid: 1015
+      type: {class: Walk, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        speed: 0.75
+        turnRateDeg: 110
+        accel: 2.5
+        turnSlowdown: 0.5
+        gaitSwayDeg: 6
+        gaitRollDeg: 3
+        subSteps: 2
+        pattern: 1
+        waveGroups: 4
+        waveTailToHead: 0
+        bob:
+          amplitude: 0
+          hz: 0
+          damping: 0
+    - rid: 1016
+      type: {class: Slither, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        undulationDeg: 8
+        undulationHz: 0.6
+    - rid: 1017
+      type: {class: Fly, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        spec:
+          cruiseSpeed: 5
+          minSpeed: 3
+          maxSpeed: 8
+          kGrip: 0.5
+          vGripMin: 3
+          kLift: 0.02
+          kDrag: 0.01
+          upstrokeArea: 0.15
+          featherDeg: 8.6
+          climbGain: 0.6
+          climbDamping: 0.5
+          climbIntegral: 0.8
+          climbIntegralLimit: 0.6
+          thrustGain: 0.5
+          demandFloor: 0.25
+          descendCutoff: -0.6
+          glideDemand: 0.05
+          amplitudeMin: 0.75
+          strokeRateMin: 3
+          strokeRateMax: 8
+          glideRelax: 6
+          maxBankDeg: 35
+          bankGain: 3
+          bankDamping: 0.5
+          maxAsymmetry: 0.4
+          rollGain: 1
+          rollDamping: 4
+          glideAlphaDeg: 6
+          flareAlphaDeg: 45
+          launchSpeed: 3.5
+          flareDistance: 3
+          minAltitude: 1.5
+          cruiseAltitudeFrac: 0.6
+          airUndulationDeg: 10
+          airUndulationHz: 1
+          tailSag: 0.3
+          headStabilise: 0.35
+          avoidLookahead: 2.4
+          avoidMargin: 0.35
+          perchGrip: 1
+          perchMinRadius: 0.06
+          pursuitGain: 0
+        twist:
+          swimAmplitude: 0
+          swimHz: 0
+          swimVertical: 0
+          swimRollDeg: 0
+          corkscrewAmplitude: 0
+          corkscrewHz: 0
+          corkscrewTurns: 0
+          corkscrewRolls: 0
+          barrelRadius: 0
+          barrelTime: 0
+          loopRadius: 0
+          loopSpin: 0
+          slowRollTime: 0
+          intervalMin: 0
+          intervalMax: 0
+          uprightRateDeg: 0
+          girdleBob: 0
+          bobHead: 0
+          bobTail: 0
+          bobInPhase: 0
+          bobHighPass: 0
+    - rid: 1018
+      type: {class: Wander, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+    - rid: 1019
+      type: {class: FlightExcursion, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+    - rid: 1020
+      type: {class: Skin, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        dorsal: {r: 0.1, g: 0.22, b: 0.21, a: 1}
+        flank: {r: 0.33, g: 0.31, b: 0.19, a: 1}
+        belly: {r: 0.86, g: 0.75, b: 0.52, a: 1}
+        pattern: {r: 0.04, g: 0.08, b: 0.08, a: 1}
+        patternType: 4
+        patternScale: 3.2
+        patternContrast: 0.65
+        patternSoftness: 0.35
+        spotScale: 0.6
+        smoothness: 0.45
+        rimStrength: 0.35
+        subsurface: 0.25
+        sizeJitter: 0.05
+        hueJitter: 0.02
+        valueJitter: 0.06
+    - rid: 1021
+      type: {class: Membrane, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        colour: {r: 0.95, g: 0.52, b: 0.2, a: 1}
+        translucency: 0.85
+        veinContrast: 0.4
+        rim: 0.5
+    - rid: 1022
+      type: {class: Layers, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        rows:
+        - partId: 2
+          model: 4
+          noPattern: 1
+          limbPattern: 0
+          noGrain: 1
+          fineGrain: 0
+          noSheen: 1
+          noShimmer: 1
+          tintSource: 0
+          tint: {r: 0.22, g: 0.17, b: 0.12, a: 1}
+          tintAmount: 0.8
+          smoothnessScale: 0

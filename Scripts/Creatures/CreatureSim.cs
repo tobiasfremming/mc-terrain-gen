@@ -44,6 +44,24 @@ public sealed class CreatureSim
 
     public readonly LegState[] Legs;
     public int StepsTaken;     // cumulative, for tests/stats
+    // The individual's seed (the lab's / the world's spawn seed): per-individual randomness of part runtimes.
+    public readonly int Seed;
+
+    // Creature kit posture inputs (generic; all off by default, so every species without a part that sets them
+    // ticks exactly as before - bit-identical):
+    //   Scare(intensity)  a stimulus 0..1 (a brain behaviour, a threat, a timer) that a posture runtime takes with
+    //                     TakeScare(); the strongest since the last take is kept.
+    //   Halt              the brain's target is ignored: the creature comes to rest where it stands (legs settle).
+    //   Asleep            no sub-steps at all: body, legs and every sub-step stage hold exactly still (zero motion);
+    //                     Late runtimes still step, so the runtime that put it to sleep can wake it.
+    //   Crouch            metres (this individual's) every joint's clearance is lowered by while walking/standing.
+    float scare;
+    public float Scared => scare;
+    public void Scare(float intensity) { if (intensity > scare) scare = Mathf.Min(1f, intensity); }
+    public float TakeScare() { float s = scare; scare = 0f; return s; }
+    public bool Halt;
+    public bool Asleep;
+    public float Crouch;
 
     // Actual head speed (after the Bounds clamp), not the commanded one.
     public float Speed { get; private set; }
@@ -115,7 +133,7 @@ public sealed class CreatureSim
                        Vector3 position, Vector3 forward, float sizeScale = 1f, int seed = 0)
     {
         sp = sp.Compiled.Runtime;   // creature kit: the runtime view (a legacy asset is its own)
-        Species = sp; this.ground = ground; this.upAt = upAt; SizeScale = sizeScale;
+        Species = sp; this.ground = ground; this.upAt = upAt; SizeScale = sizeScale; Seed = seed;
         spineGround = ground is CachedGroundProbe cache ? cache.Smooth
                     : ground is CompositeSurfaceProbe comp ? comp.Smooth : ground;
         TimeScale = Mathf.Sqrt(Mathf.Max(1e-4f, sizeScale));
@@ -217,6 +235,13 @@ public sealed class CreatureSim
     {
         if (!(dt > 0f)) dt = 0f;
         dt = Mathf.Clamp(dt, 0f, kMaxDt);
+        if (Asleep)
+        {
+            // posture sleep (Asleep): nothing moves; the Late runtimes decide when to wake
+            if (dt > 0f && late.Length != 0) RunStage(late, dt);
+            return;
+        }
+        if (Halt) target = Path[0];
         int sub = Mathf.Max(1, Species.subSteps);
         float h = dt / sub;
         // every sub-step ends with fresh frames (the legs read them); only a zero dt needs them here
@@ -338,7 +363,7 @@ public sealed class CreatureSim
             Vector3 p = Path[i];
             Vector3 u = climbing ? climb.Up[i] : Norm(upAt(p), up);
             pathUp[i] = u;
-            float clear = js[i].clearance * SizeScale;
+            float clear = js[i].clearance * SizeScale - Crouch;   // Crouch 0: exactly the clearance
             if (climbing) clear *= climb.ClearanceScale(i);
             var near = new Vector3(p.x - u.x * clear, p.y - u.y * clear, p.z - u.z * clear);
             Vector3 g0 = groundPoint[i];

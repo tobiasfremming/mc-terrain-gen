@@ -34,6 +34,10 @@ public sealed class OctopusController
     public OctopusBrain Brain;
     public readonly ArmCoordinator Coordinator;   // decides what each arm is for (ticked after the brain)
     public readonly MouthFeeder Feeder;           // the mouth tentacles (null: none - the octopus)
+    // A planned body (CephalopodSpec.locomotion 1: the swinger): the locomotion sequencer moves the body and runs the
+    // arms; the coordinator and the arm agents are not ticked. null: the emergent octopus path.
+    public readonly SwingSequencer Sequencer;
+    public BranchRoute Route => Sequencer != null ? Sequencer.Route : Coordinator.Route;
     public OctoIntent Intent;                 // set by the brain, or by a test directly
     public Func<Vector3, Vector3> UpAt;
     public int RestAnchors = 4;               // at rest, free arms keep feeling until this many hold on
@@ -76,6 +80,7 @@ public sealed class OctopusController
         Intent = new OctoIntent { mode = OctoMode.Rest, goal = body.HeadCentre };
         Coordinator = new ArmCoordinator(body, seed);
         if (body.MouthCount > 0) Feeder = new MouthFeeder(body);
+        if (body.Spec.Planned) { body.EnablePlanned(); Sequencer = new SwingSequencer(body, seed); }
     }
 
     public int SlotOf(int arm) => slotBase + arm;
@@ -146,6 +151,28 @@ public sealed class OctopusController
         if (g.x != bg.x || g.y != bg.y || g.z != bg.z) Body.Gravity = g;
 
         gripPlanned = false;
+        if (Sequencer != null)
+        {
+            // the planned body: intent -> the sequencer (body pose, arms) -> the mouths -> the body follows
+            Brain?.Tick(dt, this);
+            Sequencer.Tick(dt, this);
+            Feeder?.Tick(dt, this);
+            Body.Tick(dt);
+            if (!Body.Asleep)
+            {
+                // the free arms meet real surfaces as before (swept segments -> contact planes); the holding arms lie
+                // on the bark by their pins, and the lattice is the planned pose's - neither is pushed (a pushed run
+                // fought its pins at rest, a pushed lattice would flick back the next tick)
+                if (!Far) SweepFreeArms();
+                ApplyPlanes(false);
+                Body.RefreshArmFrames();
+            }
+            RememberMotion();
+            QueriesThisFrame = queries;
+            MaxQueriesPerFrame = Mathf.Max(MaxQueriesPerFrame, queries);
+            TotalQueries += queries;
+            return;
+        }
         Brain?.Tick(dt, this);
         Coordinator.Tick(dt, this);
         for (int a = 0; a < Agents.Length; a++) Agents[a].Tick(dt, this);
@@ -229,6 +256,7 @@ public sealed class OctopusController
     // in reach. Returns how many arms took hold. Meant for placing an octopus in a tree at spawn time.
     public int AnchorNearby(int maxArms = 8)
     {
+        if (Sequencer != null) return Sequencer.AnchorNearby(this);
         int held = 0;
         float L = Body.Arms[0].Length;
         for (int a = 0; a < Agents.Length && held < maxArms; a++)
@@ -434,7 +462,7 @@ public sealed class OctopusController
     }
 
     // Keep every particle near a contact plane on its outer side (skin / arm radius), velocity into it removed.
-    void ApplyPlanes()
+    void ApplyPlanes(bool lattice = true)
     {
         int live = 0;
         for (int i = 0; i < planeCount; i++) if (planes[i].until >= Time) planes[live++] = planes[i];
@@ -443,11 +471,12 @@ public sealed class OctopusController
         for (int i = 0; i < planeCount; i++) planeTouched[i] = false;
         SoftLattice lat = Body.Lattice;
         float skin = Skin;
-        for (int i = 0; i < SoftLattice.Count; i++)
+        for (int i = 0; i < SoftLattice.Count && lattice; i++)
             if (Project(ref lat.X[i], ref lat.Prev[i], skin, i)) BodyPushes++;
         for (int a = 0; a < Agents.Length; a++)
         {
             TentacleChain ch = Body.Arms[a];
+            if (Sequencer != null && Sequencer.Use[a] != SwingSequencer.ArmUse.Free && Sequencer.Use[a] != SwingSequencer.ArmUse.Peel) continue;
             for (int k = 1; k < ch.N; k++)
             {
                 if (ch.Pinned[k]) continue;
@@ -554,7 +583,9 @@ public sealed class OctopusController
         for (int tries = 0; tries < arms && budget > 0; tries++)
         {
             TentacleAgent ag = Agents[sweepArm];
-            if (ag.Mode == TentacleAgent.State.Strike || ag.Mode == TentacleAgent.State.Hold) { sweepArm = (sweepArm + 1) % arms; sweepSeg = 0; continue; }
+            bool skip = Sequencer != null ? Sequencer.Use[sweepArm] != SwingSequencer.ArmUse.Free && Sequencer.Use[sweepArm] != SwingSequencer.ArmUse.Peel
+                                          : ag.Mode == TentacleAgent.State.Strike || ag.Mode == TentacleAgent.State.Hold;
+            if (skip) { sweepArm = (sweepArm + 1) % arms; sweepSeg = 0; continue; }
             TentacleChain ch = ag.Arm;
             while (budget > 0 && sweepSeg < ch.N - 1)
             {

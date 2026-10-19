@@ -130,6 +130,7 @@ MonoBehaviour:
     eyeStalk: 0.05
     mantlePear: 0.8
     beakLength: 0.035
+    locomotion: 1
     look:
       sucker: {r: 0.85, g: 0.95, b: 0.9, a: 1}
       subsurface: {r: 0.35, g: 0.85, b: 0.95, a: 1}

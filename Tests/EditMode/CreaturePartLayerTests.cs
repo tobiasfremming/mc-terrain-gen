@@ -65,6 +65,16 @@ namespace TerrainGen.Tests
             return null;
         }
 
+        // The part ids a species restyles with its Layers look module (the GiantCentipede: a deliberate new look, so
+        // those rows are the module's, not the registry's; every other row still is).
+        static HashSet<int> Restyled(CreatureSpecies sp)
+        {
+            var ids = new HashSet<int>();
+            foreach (CreatureModule m in KitView.Modules(sp.Compiled.Runtime))
+                if (m is Layers l && l.rows != null) foreach (LayerDef d in l.rows) ids.Add(d.partId);
+            return ids;
+        }
+
         static IEnumerable<string> SpineSpecies()
         {
             foreach (string n in CreatureKitAssets.Species())
@@ -86,12 +96,18 @@ namespace TerrainGen.Tests
                 Assert.IsNull(Diff(Old(id), FromRow(PartLayers.LegacyRow(id))), $"part {id}");
             }
             for (int id = 4; id <= 7; id++) Assert.IsTrue(PartLayers.Registry[id].Octopus && PartLayers.LegacyRow(id).Equals(PartLayers.LegacyRow(0)), $"octopus id {id}");
-            // every shipped species gets exactly the registry (none restyles a row)
+            // every shipped species gets exactly the registry, except the rows its Layers module restyles (those are the
+            // module's rows exactly)
             foreach (string n in CreatureKitAssets.Species())
             {
-                PartLayer[] rows = PartLayers.Rows(CreatureKitAssets.Load(n));
+                CreatureSpecies sp = CreatureKitAssets.Load(n);
+                PartLayer[] rows = PartLayers.Rows(sp);
                 Assert.AreEqual(PartLayers.MaxParts, rows.Length);
-                for (int id = 0; id < PartLayers.MaxParts; id++) Assert.IsTrue(rows[id].Equals(PartLayers.LegacyRow(id)), $"{n}: part {id} is {rows[id]}");
+                var own = new Dictionary<int, PartLayer>();
+                foreach (CreatureModule m in KitView.Modules(sp.Compiled.Runtime))
+                    if (m is Layers l && l.rows != null) foreach (LayerDef d in l.rows) own[d.partId] = d.ToRow();
+                for (int id = 0; id < PartLayers.MaxParts; id++)
+                    Assert.IsTrue(rows[id].Equals(own.TryGetValue(id, out PartLayer r) ? r : PartLayers.LegacyRow(id)), $"{n}: part {id} is {rows[id]}");
             }
         }
 
@@ -178,6 +194,7 @@ namespace TerrainGen.Tests
             foreach (string n in SpineSpecies())
             {
                 CreatureSpecies sp = CreatureKitAssets.Load(n);
+                HashSet<int> restyled = Restyled(sp);
                 Vector4[] table = PartLayers.Table(sp, true);
                 CreatureShadeReference.Palette baseP = PaletteOf(sp);
                 var rnd = new System.Random(n.GetHashCode() & 0x7FFF ^ 0x2D1);
@@ -190,6 +207,7 @@ namespace TerrainGen.Tests
                     for (int part = 0; part <= 20; part++)
                     {
                         if (part >= 4 && part <= 7) continue;   // octopus ids never reach this shader
+                        if (restyled.Contains(part)) continue;   // a deliberate new look (Layers module), not the legacy one
                         for (int k = 0; k < 24; k++)
                         {
                             CreatureShadeReference.Fragment f = RandomFragment(rnd, part, p.bodyParams.x);

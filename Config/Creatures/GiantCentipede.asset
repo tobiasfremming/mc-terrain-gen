@@ -1,0 +1,607 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39d3296fcbe55a0429fe582610f52ec3, type: 3}
+  m_Name: GiantCentipede
+  m_EditorClassIdentifier: TerrainGen.Runtime::CreatureSpecies
+  scale: 2.5
+  kitVersion: 1
+  parts:
+  - rid: 1000
+  - rid: 1001
+  - rid: 1002
+  - rid: 1003
+  - rid: 1004
+  - rid: 1005
+  - rid: 1006
+  modules:
+  - rid: 1007
+  - rid: 1008
+  - rid: 1009
+  - rid: 1010
+  - rid: 1011
+  - rid: 1012
+  references:
+    version: 2
+    RefIds:
+    - rid: 1000
+      type: {class: SpineBody, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: body
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 0
+        spacing: 0.0055
+        headCapLength: 0.0045
+        tailTipLength: 0.003
+        joints:
+        - halfWidth: 0.0068
+          halfHeight: 0.0026
+          clearance: 0.0056
+          bendLimitDeg: 10
+          rigid: 0
+        - halfWidth: 0.0076
+          halfHeight: 0.0029
+          clearance: 0.0059
+          bendLimitDeg: 10
+          rigid: 0
+        - halfWidth: 0.006
+          halfHeight: 0.0026
+          clearance: 0.0056
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.008
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.00688
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.008133
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.006995
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.008267
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007109
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.0084
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007224
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.008533
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007339
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.008667
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007453
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.0088
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007568
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.008933
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007683
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.009067
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007797
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.0092
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007912
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.009127
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007849
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.009055
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007787
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.008982
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007724
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.008909
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007662
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.008836
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007599
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.008764
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007537
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.008691
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007474
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.008618
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007412
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.008545
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007349
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.008473
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.007287
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.0084
+          halfHeight: 0.0032
+          clearance: 0.0062
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.005848
+          halfHeight: 0.0028
+          clearance: 0.0058
+          bendLimitDeg: 13
+          rigid: 0
+        - halfWidth: 0.0056
+          halfHeight: 0.0024
+          clearance: 0.0054
+          bendLimitDeg: 16
+          rigid: 0
+        profile: []
+        jointCount: 0
+        rigidHead: 0
+        rigidHeadJoints: 2
+        ringSegments: 14
+        ringsPerSegment: 2
+    - rid: 1001
+      type: {class: Eyes, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: eyes
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0.0055, y: 0.003, z: 0.0018}
+          slot: 0
+        mirror: 0
+        radius: 0.0011
+        cluster:
+        - offset: {x: 0.0004, y: 0.0002, z: -0.0013}
+          radius: 0.0008
+        - offset: {x: -0.0001, y: 0.0004, z: -0.0023}
+          radius: 0.0007
+    - rid: 1002
+      type: {class: RigidLoft, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: headPlate
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0.0004, z: -0.0062}
+          slot: 0
+        mirror: 0
+        direction: {x: 0, y: 0, z: 1}
+        length: 0.0128
+        keys:
+        - t: 0
+          halfWidth: 0.0072
+          halfHeight: 0.0028
+          rise: 0
+          squareTop: 3.2
+          squareBottom: 2.2
+        - t: 0.45
+          halfWidth: 0.0081
+          halfHeight: 0.0032
+          rise: 0.0002
+          squareTop: 3.4
+          squareBottom: 2.4
+        - t: 0.85
+          halfWidth: 0.0068
+          halfHeight: 0.0026
+          rise: 0
+          squareTop: 3
+          squareBottom: 2.2
+        - t: 1
+          halfWidth: 0.004
+          halfHeight: 0.0014
+          rise: -0.0002
+          squareTop: 2.6
+          squareBottom: 2
+        curveDeg: 6
+        rollDeg: 0
+        shade: 2
+        around: 20
+        rings: 12
+    - rid: 1003
+      type: {class: RigidCone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: forcipule
+        at:
+          joint: 1
+          side: 0
+          offset: {x: 0.0034, y: -0.0021, z: 0.0016}
+          slot: 0
+        mirror: 1
+        direction: {x: -0.32, y: -0.12, z: 0.94}
+        length: 0.0075
+        radiusStart: 0.0016
+        radiusEnd: 0.0006
+        curveDeg: 40
+        fangLength: 0.0026
+        ownBone: 0
+    - rid: 1004
+      type: {class: Antenna, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: antenna
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0.0026, y: 0.0012, z: 0.006}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.42, y: 0.16, z: 0.89}
+        length: 0.042
+        segments: 12
+        radiusStart: 0.00075
+        radiusEnd: 0.00025
+        stiffnessHz: 2.4
+        damping: 0.8
+        airDrag: 0.6
+        droopDeg: 20
+        maxBendDeg: 0
+    - rid: 1005
+      type: {class: Antenna, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: ultimate
+        at:
+          joint: 45
+          side: 0
+          offset: {x: 0.004, y: -0.0006, z: -0.001}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.3, y: -0.06, z: -0.95}
+        length: 0.034
+        segments: 6
+        radiusStart: 0.0013
+        radiusEnd: 0.0006
+        stiffnessHz: 3.2
+        damping: 1
+        airDrag: 0.4
+        droopDeg: 4
+        maxBendDeg: 22
+    - rid: 1006
+      type: {class: Repeat, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: leg
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 1
+        count: 21
+        fromJoint: 3
+        toJoint: 43
+        lastScale: 1.3
+        template: {rid: 2000}
+    - rid: 1007
+      type: {class: Walk, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        speed: 0.075
+        turnRateDeg: 75
+        accel: 2.5
+        turnSlowdown: 0.4
+        gaitSwayDeg: 0
+        gaitRollDeg: 0
+        subSteps: 1
+        pattern: 5
+        waveGroups: 5
+        waveTailToHead: 0
+        bob:
+          amplitude: 0
+          hz: 0
+          damping: 0
+    - rid: 1008
+      type: {class: Slither, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        undulationDeg: 6
+        undulationHz: 0.3
+    - rid: 1009
+      type: {class: Wander, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+    - rid: 1010
+      type: {class: Skin, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        dorsal: {r: 0.075, g: 0.085, b: 0.07, a: 1}
+        flank: {r: 0.13, g: 0.12, b: 0.085, a: 1}
+        belly: {r: 0.62, g: 0.45, b: 0.2, a: 1}
+        pattern: {r: 0.03, g: 0.03, b: 0.03, a: 1}
+        patternType: 0
+        patternScale: 0
+        patternContrast: 0
+        patternSoftness: 0.3
+        spotScale: 0
+        smoothness: 0.55
+        rimStrength: 0.45
+        subsurface: 0.05
+        sizeJitter: 0.06
+        hueJitter: 0.015
+        valueJitter: 0.06
+    - rid: 1011
+      type: {class: Chitin, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        bandColor: {r: 0.16, g: 0.06, b: 0.03, a: 1}
+        sheen: 0
+        sheenColor: {r: 0, g: 0, b: 0, a: 1}
+    - rid: 1012
+      type: {class: Layers, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        rows:
+        - partId: 0
+          model: 1
+          noPattern: 0
+          limbPattern: 0
+          noGrain: 1
+          fineGrain: 0
+          noSheen: 1
+          noShimmer: 1
+          tintSource: 0
+          tint: {r: 0, g: 0, b: 0, a: 1}
+          tintAmount: 0
+          smoothnessScale: 1.5
+        - partId: 1
+          model: 1
+          noPattern: 1
+          limbPattern: 0
+          noGrain: 1
+          fineGrain: 0
+          noSheen: 1
+          noShimmer: 1
+          tintSource: 0
+          tint: {r: 0.96, g: 0.64, b: 0.14, a: 1}
+          tintAmount: 0.9
+          smoothnessScale: 1.35
+        - partId: 2
+          model: 4
+          noPattern: 1
+          limbPattern: 0
+          noGrain: 1
+          fineGrain: 0
+          noSheen: 1
+          noShimmer: 1
+          tintSource: 0
+          tint: {r: 0.74, g: 0.17, b: 0.06, a: 1}
+          tintAmount: 0.95
+          smoothnessScale: 0
+        - partId: 8
+          model: 1
+          noPattern: 1
+          limbPattern: 0
+          noGrain: 1
+          fineGrain: 0
+          noSheen: 1
+          noShimmer: 1
+          tintSource: 0
+          tint: {r: 0.93, g: 0.58, b: 0.14, a: 1}
+          tintAmount: 0.9
+          smoothnessScale: 1.3
+        - partId: 9
+          model: 1
+          noPattern: 1
+          limbPattern: 0
+          noGrain: 1
+          fineGrain: 0
+          noSheen: 1
+          noShimmer: 1
+          tintSource: 2
+          tint: {r: 0, g: 0, b: 0, a: 1}
+          tintAmount: 0.9
+          smoothnessScale: 1.4
+    - rid: 2000
+      type: {class: ArthropodLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: leg
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0.0066, y: -0.0014, z: 0}
+          slot: 0
+        mirror: 1
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 0.0215, y: 0, z: -0.0025}
+        stepThreshold: 0.0048
+        stepDuration: 0.042
+        stepLift: 0.0038
+        overshoot: 0.0032
+        footLength: 0.0016
+        toeCount: 1
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segments:
+        - length: 0.0026
+          radiusStart: 0.0017
+          radiusEnd: 0.0015
+          restBendDeg: -5
+          minBendDeg: -30
+          maxBendDeg: 25
+          flexWeight: 0
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 0
+          bandStart: 0
+          bandEnd: 0
+        - length: 0.0088
+          radiusStart: 0.0013
+          radiusEnd: 0.0011
+          restBendDeg: 40
+          minBendDeg: 0
+          maxBendDeg: 85
+          flexWeight: 0.35
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.15
+          bandStart: 0
+          bandEnd: 0
+        - length: 0.0086
+          radiusStart: 0.001
+          radiusEnd: 0.0008
+          restBendDeg: -88
+          minBendDeg: -150
+          maxBendDeg: -30
+          flexWeight: -1
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.15
+          bandStart: 0
+          bandEnd: 0
+        - length: 0.0048
+          radiusStart: 0.0007
+          radiusEnd: 0.0003
+          restBendDeg: 30
+          minBendDeg: -40
+          maxBendDeg: 100
+          flexWeight: 0
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 0
+          bandStart: 0.55
+          bandEnd: 1
+        contactAngleDeg: 30
+        kneeLiftDeg: 0
+        swingRetract: 0.1
+        elevMinDeg: 0
+        elevMaxDeg: 0
+        liftDelay: 0
+        kneeJoint: 0
+        legSides: 6

@@ -254,6 +254,11 @@ public class CreatureSpecies : ScriptableObject
     public WingSpec[] wings;
     public FlightSpec flight;
     public GaitBob gaitBob;
+    // Wave gait (the kit's Walk.pattern Wave, T5.8): the gait groups step strictly in turn, in ascending group id,
+    // the next as soon as the last has landed while any foot wants to step - a metachronal wave down the body
+    // (CreatureLegs.StartWave). false = the event-driven gait every shipped species walks with.
+    [Tooltip("Gait groups step strictly in turn (ascending id): a metachronal wave. Off = the event-driven gait.")]
+    public bool waveGait;
     public EyeSpot[] eyeCluster;
     public BodyAppendage[] appendages;
     // Membrane strips along the spine (the kit's FinStrip: manes, crests, fins), skinned to the spine; empty = none.

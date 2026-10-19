@@ -326,7 +326,23 @@ public sealed class OctopusLab : MonoBehaviour
                 .Append("  role changes/min/arm ").Append((recent / (minutes * n)).ToString("F1")).Append('\n');
         // the intent: where it is going, its route over the branches (waypoint / count), the swing
         ArmCoordinator co = c.Coordinator;
-        BranchRoute route = co.Route;
+        BranchRoute route = c.Route;
+        SwingSequencer q = c.Sequencer;
+        if (q != null)
+        {
+            // the planned body: the sequencer's step, the swing, the plan and the arms' uses
+            roleText.Append("goal ").Append(Octopus.Brain.Goal.ToString("F1")).Append("  trips ").Append(Octopus.Brain.Trips).Append(" arrived ").Append(Octopus.Brain.Arrivals).Append("  route ");
+            if (route.Valid) { roleText.Append(route.Current).Append('/').Append(route.Count); if (!route.ReachesGoal) roleText.Append(" (partial)"); }
+            else roleText.Append('-');
+            roleText.Append('\n').Append("step ").Append(q.Mode).Append("  swing ").Append((q.Swing.Amplitude * Mathf.Rad2Deg).ToString("F0"))
+                    .Append(" / ").Append((q.TargetAmplitude * Mathf.Rad2Deg).ToString("F0")).Append(" deg  next hold ").Append(q.HasNext ? q.NextHold.ToString("F1") : "-");
+            if (q.Mode == SwingSequencer.Step.Pump || q.Mode == SwingSequencer.Step.Reach) roleText.Append("  apex in ").Append(q.PredictedApexTime.ToString("F2")).Append(" s");
+            roleText.Append('\n').Append("transfers ").Append(q.Transfers).Append("  catches ").Append(q.Catches).Append('/').Append(q.CatchAttempts)
+                    .Append("  hauls ").Append(q.Hauls).Append("  falls ").Append(q.Falls).Append("  sleeps ").Append(q.Sleeps).Append(Octopus.Body.Asleep ? "  ASLEEP" : "").Append('\n');
+            for (int a = 0; a < n; a++) roleText.Append(a).Append("  ").Append(q.Use[a]).Append('\n');
+        }
+        else
+        {
         roleText.Append("goal ").Append(Octopus.Brain.Goal.ToString("F1")).Append("  trips ").Append(Octopus.Brain.Trips).Append(" arrived ").Append(Octopus.Brain.Arrivals).Append("  route ");
         if (route.Valid) { roleText.Append(route.Current).Append('/').Append(route.Count); if (!route.ReachesGoal) roleText.Append(" (partial)"); }
         else roleText.Append('-');
@@ -343,6 +359,7 @@ public sealed class OctopusLab : MonoBehaviour
             if (b.Pulling[a]) roleText.Append("  pulls");
             if (b.Anchored[a]) roleText.Append("  holds");
             roleText.Append('\n');
+        }
         }
         // the mouth tentacles (mouth feeders: the swinger): role, what they do, meals
         MouthFeeder fd = c.Feeder;

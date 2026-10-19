@@ -19,6 +19,11 @@ public sealed class CreatureLabRoster : ScriptableObject
         public CreatureSpecies species;
         [Tooltip("Size override for this enclosure's individual (0 = the species' own scale).")]
         public float scaleOverride;
+        [Tooltip("Individuals in this enclosure (0 or 1 = one). A group gets consecutive seeds: its own sizes (look.sizeJitter) and staggered behaviour.")]
+        public int count;
+        [Tooltip("Boulders scattered in the enclosure (0 = none), walked round like the shade tree: the props a rock mimic hides among.")]
+        public int rocks;
+        public int Count => count > 1 ? count : 1;
     }
 
     public List<Entry> entries = new List<Entry>();

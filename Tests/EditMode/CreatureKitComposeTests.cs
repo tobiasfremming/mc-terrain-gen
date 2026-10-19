@@ -80,7 +80,7 @@ namespace TerrainGen.Tests
         // by name only (sources never load assets); legless and soft-plan species are skipped in the test
         static IEnumerable<string> LeggedAssets() => CreatureKitAssets.Species();
 
-        internal static string GaitProblem(CreatureSpecies sp, GaitPattern pattern)
+        internal static string GaitProblem(CreatureSpecies sp, GaitPattern pattern, int waveGroups = 4, bool waveTailToHead = false)
         {
             var parts = new List<CreaturePart> { Body(sp.JointCount), TwoEyes() };
             for (int l = 0; l < sp.legs.Length; l++)
@@ -89,7 +89,7 @@ namespace TerrainGen.Tests
                 p.gaitGroup = -1;
                 parts.Add(p);
             }
-            CompiledSpecies c = CompiledSpecies.Compose(sp.name, parts, new CreatureModule[] { new Walk { pattern = pattern } });
+            CompiledSpecies c = CompiledSpecies.Compose(sp.name, parts, new CreatureModule[] { new Walk { pattern = pattern, waveGroups = waveGroups, waveTailToHead = waveTailToHead } });
             if (c.Error != null) return c.Error;
             for (int l = 0; l < sp.legs.Length; l++)
                 if (c.Limbs[l].gaitGroup != sp.legs[l].gaitGroup) return $"{sp.name} {pattern}: leg {l} group {c.Limbs[l].gaitGroup}, shipped {sp.legs[l].gaitGroup}";
@@ -108,6 +108,9 @@ namespace TerrainGen.Tests
         {
             CreatureSpecies sp = CreatureKitAssets.Load(name);
             if (sp.bodyPlan != CreatureBodyPlan.Spine || sp.legs == null || sp.legs.Length == 0) Assert.Ignore("no legs");
+            // a wave walker (T5.8): its own Wave pattern, with its group count and direction, reproduces its groups
+            Walk w = sp.Compiled.Module<Walk>();
+            if (w != null && w.pattern == GaitPattern.Wave) { Assert.IsNull(GaitProblem(sp, GaitPattern.Wave, w.waveGroups, w.waveTailToHead), name); return; }
             Assert.IsNull(GaitProblem(sp, PatternFor(sp)), name);
         }
 
@@ -147,7 +150,7 @@ namespace TerrainGen.Tests
             StringAssert.Contains("duplicate id", Compose(new List<CreaturePart> { Body(10), Leg("a", 2, false), Leg("a", 3, false), TwoEyes() }, new Walk()).Problems.Find(s => s.Contains("duplicate")) ?? "none");
             StringAssert.Contains("second Body", string.Join("|", Compose(new List<CreaturePart> { Body(10), Body(10), TwoEyes() }).Problems));
             StringAssert.Contains("Eyes", string.Join("|", Compose(new List<CreaturePart> { Body(10) }).Problems));
-            StringAssert.Contains("Wave", string.Join("|", Compose(new List<CreaturePart> { Body(10), TwoEyes() }, new Walk { pattern = GaitPattern.Wave }).Problems));
+            StringAssert.Contains("Wave", string.Join("|", Compose(new List<CreaturePart> { Body(10), TwoEyes() }, new Walk { pattern = GaitPattern.Wave, waveGroups = 1 }).Problems), "a wave needs 2..15 groups");
             StringAssert.Contains("needs Walk", string.Join("|", Compose(new List<CreaturePart> { Body(10), TwoEyes() }, new Slither()).Problems));
         }
 

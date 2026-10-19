@@ -1,0 +1,886 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39d3296fcbe55a0429fe582610f52ec3, type: 3}
+  m_Name: TentacleCrab
+  m_EditorClassIdentifier: TerrainGen.Runtime::CreatureSpecies
+  scale: 1.6
+  kitVersion: 1
+  parts:
+  - rid: 1000
+  - rid: 1001
+  - rid: 1002
+  - rid: 1003
+  - rid: 1004
+  - rid: 1005
+  - rid: 1006
+  - rid: 1007
+  - rid: 1008
+  - rid: 1009
+  - rid: 1010
+  - rid: 1011
+  - rid: 1012
+  - rid: 1013
+  - rid: 1014
+  - rid: 1015
+  - rid: 1016
+  - rid: 1017
+  modules:
+  - rid: 1018
+  - rid: 1019
+  - rid: 1020
+  - rid: 1021
+  - rid: 1022
+  references:
+    version: 2
+    RefIds:
+    - rid: 1000
+      type: {class: SpineBody, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: body
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 0
+        spacing: 0.05
+        headCapLength: 0.03
+        tailTipLength: 0.02
+        joints:
+        - halfWidth: 0.08
+          halfHeight: 0.04
+          clearance: 0.122
+          bendLimitDeg: 8
+          rigid: 0
+        - halfWidth: 0.125
+          halfHeight: 0.055
+          clearance: 0.125
+          bendLimitDeg: 8
+          rigid: 0
+        - halfWidth: 0.14
+          halfHeight: 0.06
+          clearance: 0.125
+          bendLimitDeg: 8
+          rigid: 0
+        - halfWidth: 0.13
+          halfHeight: 0.058
+          clearance: 0.122
+          bendLimitDeg: 8
+          rigid: 0
+        - halfWidth: 0.1
+          halfHeight: 0.05
+          clearance: 0.118
+          bendLimitDeg: 8
+          rigid: 0
+        - halfWidth: 0.055
+          halfHeight: 0.03
+          clearance: 0.11
+          bendLimitDeg: 10
+          rigid: 0
+        profile: []
+        jointCount: 0
+        rigidHead: 0
+        rigidHeadJoints: 5
+        ringSegments: 20
+        ringsPerSegment: 3
+    - rid: 1001
+      type: {class: Eyes, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: eyes
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0.045, y: 0.087, z: 0.047}
+          slot: 0
+        mirror: 0
+        radius: 0.0095
+        cluster: []
+    - rid: 1002
+      type: {class: ArthropodLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: leg0
+        at:
+          joint: 1
+          side: 0
+          offset: {x: 0.11, y: -0.02, z: 0}
+          slot: 0
+        mirror: 1
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 0.3, y: 0, z: 0.13}
+        stepThreshold: 0.0735
+        stepDuration: 0.16
+        stepLift: 0.042
+        overshoot: 0.042
+        footLength: 0
+        toeCount: 0
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segments:
+        - length: 0.02625
+          radiusStart: 0.016395
+          radiusEnd: 0.014346
+          restBendDeg: -5
+          minBendDeg: -30
+          maxBendDeg: 25
+          flexWeight: 0
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 0
+          bandStart: 0
+          bandEnd: 0
+        - length: 0.1365
+          radiusStart: 0.013321
+          radiusEnd: 0.011272
+          restBendDeg: 40
+          minBendDeg: 0
+          maxBendDeg: 85
+          flexWeight: 0.35
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.15
+          bandStart: 0.86
+          bandEnd: 1
+        - length: 0.042
+          radiusStart: 0.011272
+          radiusEnd: 0.010247
+          restBendDeg: -45
+          minBendDeg: -100
+          maxBendDeg: 0
+          flexWeight: -0.5
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.15
+          bandStart: 0
+          bandEnd: 0
+        - length: 0.1155
+          radiusStart: 0.009222
+          radiusEnd: 0.007173
+          restBendDeg: -45
+          minBendDeg: -110
+          maxBendDeg: 0
+          flexWeight: -1
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.1
+          bandStart: 0
+          bandEnd: 0.12
+        - length: 0.0525
+          radiusStart: 0.006148
+          radiusEnd: 0.002254
+          restBendDeg: 20
+          minBendDeg: -40
+          maxBendDeg: 90
+          flexWeight: 0
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 0
+          bandStart: 0
+          bandEnd: 0
+        contactAngleDeg: 35
+        kneeLiftDeg: 0
+        swingRetract: 0.12
+        elevMinDeg: 0
+        elevMaxDeg: 0
+        liftDelay: 0.1
+        kneeJoint: 0
+        legSides: 8
+    - rid: 1003
+      type: {class: ArthropodLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: leg1
+        at:
+          joint: 2
+          side: 0
+          offset: {x: 0.125, y: -0.02, z: 0}
+          slot: 0
+        mirror: 1
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 0.33, y: 0, z: 0.04}
+        stepThreshold: 0.0756
+        stepDuration: 0.16
+        stepLift: 0.0432
+        overshoot: 0.0432
+        footLength: 0
+        toeCount: 0
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segments:
+        - length: 0.027
+          radiusStart: 0.016628
+          radiusEnd: 0.014549
+          restBendDeg: -5
+          minBendDeg: -30
+          maxBendDeg: 25
+          flexWeight: 0
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 0
+          bandStart: 0
+          bandEnd: 0
+        - length: 0.1404
+          radiusStart: 0.01351
+          radiusEnd: 0.011432
+          restBendDeg: 40
+          minBendDeg: 0
+          maxBendDeg: 85
+          flexWeight: 0.35
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.15
+          bandStart: 0.86
+          bandEnd: 1
+        - length: 0.0432
+          radiusStart: 0.011432
+          radiusEnd: 0.010392
+          restBendDeg: -45
+          minBendDeg: -100
+          maxBendDeg: 0
+          flexWeight: -0.5
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.15
+          bandStart: 0
+          bandEnd: 0
+        - length: 0.1188
+          radiusStart: 0.009353
+          radiusEnd: 0.007275
+          restBendDeg: -45
+          minBendDeg: -110
+          maxBendDeg: 0
+          flexWeight: -1
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.1
+          bandStart: 0
+          bandEnd: 0.12
+        - length: 0.054
+          radiusStart: 0.006235
+          radiusEnd: 0.002286
+          restBendDeg: 20
+          minBendDeg: -40
+          maxBendDeg: 90
+          flexWeight: 0
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 0
+          bandStart: 0
+          bandEnd: 0
+        contactAngleDeg: 35
+        kneeLiftDeg: 0
+        swingRetract: 0.12
+        elevMinDeg: 0
+        elevMaxDeg: 0
+        liftDelay: 0.1
+        kneeJoint: 0
+        legSides: 8
+    - rid: 1004
+      type: {class: ArthropodLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: leg2
+        at:
+          joint: 3
+          side: 0
+          offset: {x: 0.115, y: -0.02, z: 0}
+          slot: 0
+        mirror: 1
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 0.31, y: 0, z: -0.05}
+        stepThreshold: 0.07
+        stepDuration: 0.16
+        stepLift: 0.04
+        overshoot: 0.04
+        footLength: 0
+        toeCount: 0
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segments:
+        - length: 0.025
+          radiusStart: 0.016
+          radiusEnd: 0.014
+          restBendDeg: -5
+          minBendDeg: -30
+          maxBendDeg: 25
+          flexWeight: 0
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 0
+          bandStart: 0
+          bandEnd: 0
+        - length: 0.13
+          radiusStart: 0.013
+          radiusEnd: 0.011
+          restBendDeg: 40
+          minBendDeg: 0
+          maxBendDeg: 85
+          flexWeight: 0.35
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.15
+          bandStart: 0.86
+          bandEnd: 1
+        - length: 0.04
+          radiusStart: 0.011
+          radiusEnd: 0.01
+          restBendDeg: -45
+          minBendDeg: -100
+          maxBendDeg: 0
+          flexWeight: -0.5
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.15
+          bandStart: 0
+          bandEnd: 0
+        - length: 0.11
+          radiusStart: 0.009
+          radiusEnd: 0.007
+          restBendDeg: -45
+          minBendDeg: -110
+          maxBendDeg: 0
+          flexWeight: -1
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.1
+          bandStart: 0
+          bandEnd: 0.12
+        - length: 0.05
+          radiusStart: 0.006
+          radiusEnd: 0.0022
+          restBendDeg: 20
+          minBendDeg: -40
+          maxBendDeg: 90
+          flexWeight: 0
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 0
+          bandStart: 0
+          bandEnd: 0
+        contactAngleDeg: 35
+        kneeLiftDeg: 0
+        swingRetract: 0.12
+        elevMinDeg: 0
+        elevMaxDeg: 0
+        liftDelay: 0.1
+        kneeJoint: 0
+        legSides: 8
+    - rid: 1005
+      type: {class: ArthropodLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: leg3
+        at:
+          joint: 4
+          side: 0
+          offset: {x: 0.09, y: -0.02, z: 0}
+          slot: 0
+        mirror: 1
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 0.27, y: 0, z: -0.13}
+        stepThreshold: 0.063
+        stepDuration: 0.16
+        stepLift: 0.036
+        overshoot: 0.036
+        footLength: 0
+        toeCount: 0
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segments:
+        - length: 0.0225
+          radiusStart: 0.015179
+          radiusEnd: 0.013282
+          restBendDeg: -5
+          minBendDeg: -30
+          maxBendDeg: 25
+          flexWeight: 0
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 0
+          bandStart: 0
+          bandEnd: 0
+        - length: 0.117
+          radiusStart: 0.012333
+          radiusEnd: 0.010436
+          restBendDeg: 40
+          minBendDeg: 0
+          maxBendDeg: 85
+          flexWeight: 0.35
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.15
+          bandStart: 0.86
+          bandEnd: 1
+        - length: 0.036
+          radiusStart: 0.010436
+          radiusEnd: 0.009487
+          restBendDeg: -45
+          minBendDeg: -100
+          maxBendDeg: 0
+          flexWeight: -0.5
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.15
+          bandStart: 0
+          bandEnd: 0
+        - length: 0.099
+          radiusStart: 0.008538
+          radiusEnd: 0.006641
+          restBendDeg: -45
+          minBendDeg: -110
+          maxBendDeg: 0
+          flexWeight: -1
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.1
+          bandStart: 0
+          bandEnd: 0.12
+        - length: 0.045
+          radiusStart: 0.005692
+          radiusEnd: 0.002087
+          restBendDeg: 20
+          minBendDeg: -40
+          maxBendDeg: 90
+          flexWeight: 0
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 0
+          bandStart: 0
+          bandEnd: 0
+        contactAngleDeg: 35
+        kneeLiftDeg: 0
+        swingRetract: 0.12
+        elevMinDeg: 0
+        elevMaxDeg: 0
+        liftDelay: 0.1
+        kneeJoint: 0
+        legSides: 8
+    - rid: 1006
+      type: {class: ArthropodLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: claw
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0.07, y: -0.005, z: 0.02}
+          slot: 0
+        mirror: 1
+        role: 1
+        gaitGroup: -1
+        restOffset: {x: 0.12, y: 0.07, z: 0.17}
+        stepThreshold: 0.05
+        stepDuration: 0.2
+        stepLift: 0.03
+        overshoot: 0
+        footLength: 0.05
+        toeCount: 2
+        forwardSwingLimitDeg: 0
+        backSwingLimitDeg: 0
+        kneeRangeDeg: 0
+        kneeFlexDeg: 0
+        segments:
+        - length: 0.02
+          radiusStart: 0.018
+          radiusEnd: 0.017
+          restBendDeg: 10
+          minBendDeg: -30
+          maxBendDeg: 40
+          flexWeight: 0
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 0
+          bandStart: 0
+          bandEnd: 0
+        - length: 0.08
+          radiusStart: 0.017
+          radiusEnd: 0.016
+          restBendDeg: 45
+          minBendDeg: 0
+          maxBendDeg: 90
+          flexWeight: 0.4
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.15
+          bandStart: 0.85
+          bandEnd: 1
+        - length: 0.045
+          radiusStart: 0.016
+          radiusEnd: 0.016
+          restBendDeg: -60
+          minBendDeg: -120
+          maxBendDeg: 0
+          flexWeight: -1
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.2
+          bandStart: 0
+          bandEnd: 0
+        - length: 0.075
+          radiusStart: 0.026
+          radiusEnd: 0.022
+          restBendDeg: -20
+          minBendDeg: -60
+          maxBendDeg: 20
+          flexWeight: -0.3
+          liftWeight: 0
+          axisTiltDeg: 0
+          knuckle: 1.05
+          bandStart: 0
+          bandEnd: 0
+        contactAngleDeg: 0
+        kneeLiftDeg: 14
+        swingRetract: 0
+        elevMinDeg: 0
+        elevMaxDeg: 0
+        liftDelay: 0
+        kneeJoint: 0
+        legSides: 12
+    - rid: 1007
+      type: {class: RigidLoft, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: carapace
+        at:
+          joint: 2
+          side: 0
+          offset: {x: 0, y: 0.012, z: -0.135}
+          slot: 0
+        mirror: 0
+        direction: {x: 0, y: 0, z: 1}
+        length: 0.27
+        keys:
+        - t: 0
+          halfWidth: 0.06
+          halfHeight: 0.03
+          rise: 0
+          squareTop: 2.2
+          squareBottom: 1.8
+        - t: 0.3
+          halfWidth: 0.138
+          halfHeight: 0.062
+          rise: 0.004
+          squareTop: 2.6
+          squareBottom: 1.7
+        - t: 0.6
+          halfWidth: 0.152
+          halfHeight: 0.066
+          rise: 0.004
+          squareTop: 2.8
+          squareBottom: 1.7
+        - t: 0.86
+          halfWidth: 0.12
+          halfHeight: 0.052
+          rise: 0
+          squareTop: 2.6
+          squareBottom: 1.8
+        - t: 1
+          halfWidth: 0.062
+          halfHeight: 0.03
+          rise: -0.004
+          squareTop: 2.2
+          squareBottom: 2
+        curveDeg: 4
+        rollDeg: 0
+        shade: 0
+        around: 28
+        rings: 16
+    - rid: 1008
+      type: {class: RigidCone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: eyeStalk
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0.03, y: 0.035, z: 0.03}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.25, y: 0.92, z: 0.3}
+        length: 0.055
+        radiusStart: 0.007
+        radiusEnd: 0.0055
+        curveDeg: -15
+        fangLength: 0
+        ownBone: 0
+    - rid: 1009
+      type: {class: RigidCone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: rostrum
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0.02, y: 0.03, z: 0.06}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.15, y: 0.22, z: 0.96}
+        length: 0.055
+        radiusStart: 0.008
+        radiusEnd: 0.001
+        curveDeg: -8
+        fangLength: 0
+        ownBone: 0
+    - rid: 1010
+      type: {class: RigidCone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: rimSpine0
+        at:
+          joint: 1
+          side: 0
+          offset: {x: 0.128, y: 0.035, z: 0.01}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.9, y: 0.42, z: 0.2}
+        length: 0.042
+        radiusStart: 0.008
+        radiusEnd: 0.001
+        curveDeg: -12
+        fangLength: 0
+        ownBone: 0
+    - rid: 1011
+      type: {class: RigidCone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: rimSpine1
+        at:
+          joint: 2
+          side: 0
+          offset: {x: 0.142, y: 0.04, z: -0.005}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.95, y: 0.35, z: 0}
+        length: 0.036
+        radiusStart: 0.007
+        radiusEnd: 0.001
+        curveDeg: -12
+        fangLength: 0
+        ownBone: 0
+    - rid: 1012
+      type: {class: RigidCone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: rimSpine2
+        at:
+          joint: 3
+          side: 0
+          offset: {x: 0.125, y: 0.04, z: -0.02}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.9, y: 0.4, z: -0.25}
+        length: 0.028
+        radiusStart: 0.006
+        radiusEnd: 0.001
+        curveDeg: -10
+        fangLength: 0
+        ownBone: 0
+    - rid: 1013
+      type: {class: RigidCone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: tubercle0
+        at:
+          joint: 2
+          side: 0
+          offset: {x: 0.055, y: 0.074, z: 0.02}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.25, y: 1, z: 0.1}
+        length: 0.022
+        radiusStart: 0.009
+        radiusEnd: 0.0015
+        curveDeg: 0
+        fangLength: 0
+        ownBone: 0
+    - rid: 1014
+      type: {class: RigidCone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: tubercle1
+        at:
+          joint: 3
+          side: 0
+          offset: {x: 0.04, y: 0.072, z: -0.02}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.2, y: 1, z: -0.15}
+        length: 0.018
+        radiusStart: 0.008
+        radiusEnd: 0.0015
+        curveDeg: 0
+        fangLength: 0
+        ownBone: 0
+    - rid: 1015
+      type: {class: RigidCone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: tubercle2
+        at:
+          joint: 1
+          side: 0
+          offset: {x: 0.03, y: 0.07, z: 0.025}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.1, y: 1, z: 0.3}
+        length: 0.016
+        radiusStart: 0.007
+        radiusEnd: 0.0015
+        curveDeg: 0
+        fangLength: 0
+        ownBone: 0
+    - rid: 1016
+      type: {class: Tendril, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: tentacle
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0.018, y: -0.03, z: 0.035}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.15, y: -0.55, z: 0.82}
+        length: 0.18
+        segments: 12
+        rootRadius: 0.011
+        tipRadius: 0.0015
+        curlDeg: 112
+        bendLimitDeg: 28
+        muscle: 0.7
+        damping: 6
+        mass: 0.009
+        writheDeg: 10
+        writheHz: 0.7
+        reach: 0.7
+        holdSeconds: 2
+        releaseSpeed: 0.25
+        layer: 9
+    - rid: 1017
+      type: {class: Tendril, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: feeler
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0.042, y: -0.026, z: 0.03}
+          slot: 0
+        mirror: 1
+        direction: {x: 0.5, y: -0.4, z: 0.77}
+        length: 0.12
+        segments: 8
+        rootRadius: 0.007
+        tipRadius: 0.001
+        curlDeg: 96
+        bendLimitDeg: 28
+        muscle: 0.7
+        damping: 6
+        mass: 0.006
+        writheDeg: 14
+        writheHz: 1.1
+        reach: 0
+        holdSeconds: 1.6
+        releaseSpeed: 0.25
+        layer: 9
+    - rid: 1018
+      type: {class: Walk, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        speed: 0.32
+        turnRateDeg: 110
+        accel: 2
+        turnSlowdown: 0.5
+        gaitSwayDeg: 0
+        gaitRollDeg: 2
+        subSteps: 2
+        pattern: 3
+        waveGroups: 4
+        waveTailToHead: 0
+        bob:
+          amplitude: 0.004
+          hz: 3
+          damping: 0.5
+    - rid: 1019
+      type: {class: Wander, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+    - rid: 1020
+      type: {class: Skin, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        dorsal: {r: 0.62, g: 0.12, b: 0.06, a: 1}
+        flank: {r: 0.86, g: 0.36, b: 0.1, a: 1}
+        belly: {r: 0.95, g: 0.86, b: 0.72, a: 1}
+        pattern: {r: 0.98, g: 0.84, b: 0.58, a: 1}
+        patternType: 2
+        patternScale: 18
+        patternContrast: 0.55
+        patternSoftness: 0.35
+        spotScale: 0.45
+        smoothness: 0.55
+        rimStrength: 0.4
+        subsurface: 0.1
+        sizeJitter: 0.07
+        hueJitter: 0.02
+        valueJitter: 0.06
+    - rid: 1021
+      type: {class: Chitin, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        bandColor: {r: 0.4, g: 0.18, b: 0.62, a: 1}
+        sheen: 0
+        sheenColor: {r: 0, g: 0, b: 0, a: 1}
+    - rid: 1022
+      type: {class: Layers, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        rows:
+        - partId: 0
+          model: 1
+          noPattern: 0
+          limbPattern: 0
+          noGrain: 1
+          fineGrain: 0
+          noSheen: 1
+          noShimmer: 1
+          tintSource: 0
+          tint: {r: 0, g: 0, b: 0, a: 1}
+          tintAmount: 0
+          smoothnessScale: 1.4
+        - partId: 1
+          model: 1
+          noPattern: 0
+          limbPattern: 1
+          noGrain: 1
+          fineGrain: 0
+          noSheen: 1
+          noShimmer: 1
+          tintSource: 0
+          tint: {r: 0, g: 0, b: 0, a: 1}
+          tintAmount: 0
+          smoothnessScale: 1.3
+        - partId: 2
+          model: 4
+          noPattern: 1
+          limbPattern: 0
+          noGrain: 1
+          fineGrain: 0
+          noSheen: 1
+          noShimmer: 1
+          tintSource: 0
+          tint: {r: 0.16, g: 0.1, b: 0.12, a: 1}
+          tintAmount: 0.75
+          smoothnessScale: 0
+        - partId: 9
+          model: 0
+          noPattern: 0
+          limbPattern: 1
+          noGrain: 0
+          fineGrain: 1
+          noSheen: 1
+          noShimmer: 1
+          tintSource: 2
+          tint: {r: 0, g: 0, b: 0, a: 1}
+          tintAmount: 0.85
+          smoothnessScale: 0

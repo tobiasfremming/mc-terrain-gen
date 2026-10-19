@@ -33,3 +33,13 @@ MonoBehaviour:
     scaleOverride: 0
   - species: {fileID: 11400000, guid: 0068206ddfce44aaa01e1a380a7d1249, type: 2}
     scaleOverride: 0
+  - species: {fileID: 11400000, guid: 6c34e39c1406473fa392d3096823ce64, type: 2}
+    scaleOverride: 0
+  - species: {fileID: 11400000, guid: a8c28802078246ee81e731a64003fe62, type: 2}
+    scaleOverride: 0
+  - species: {fileID: 11400000, guid: 37dddc3a5d6b4880887c9d42009ac59d, type: 2}
+    scaleOverride: 0
+  - species: {fileID: 11400000, guid: 23fdedb310a5494ca5fe77c0c111e55d, type: 2}
+    scaleOverride: 0
+    count: 5
+    rocks: 6
