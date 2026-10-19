@@ -19,8 +19,8 @@ namespace TerrainGen.Tests
 #if UNITY_EDITOR
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
-            { "WingedSerpent", 0UL },   // rigid head + feat/wyvern-trees data (2026-10-19): recapture (0 = report)
-            { "SkyDragon", 0UL },       // rigid head (2026-10-19): recapture
+            { "WingedSerpent", 0x24CCE26149E5522BUL },   // da59bfc (2026-10-19): rigid head + feat/wyvern-trees data
+            { "SkyDragon", 0xA42AC911278A1FD9UL },       // da59bfc (2026-10-19): rigid head on the RigidLoft head
         };
 #else
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
@@ -92,9 +92,9 @@ namespace TerrainGen.Tests
 #if UNITY_EDITOR
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
-            // rigid head (2026-10-19): every one recaptured (0 = report the value)
-            { "DesertBeetle", 0UL }, { "DaddyLongLegs", 0UL }, { "Tarantula", 0UL },
-            { "WingedSerpent", 0UL /* rigid head + feat/wyvern-trees data */ }, { "SkyDragon", 0UL }, { "KitMonitor", 0UL },
+            // da59bfc (2026-10-19): rigid head (+ feat/wyvern-trees data for the serpent); KitMonitor = DesertMonitor's bones
+            { "DesertBeetle", 0x7EE694A1D6DCC2F6UL }, { "DaddyLongLegs", 0x528567DD58C2C0E5UL }, { "Tarantula", 0x3FFDCDB621DEB7FDUL },
+            { "WingedSerpent", 0x052FEB1EAD20C942UL }, { "SkyDragon", 0x04F9DEE338D332BCUL }, { "KitMonitor", 0x52982D21E9F52F5CUL },
         };
 #else
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>

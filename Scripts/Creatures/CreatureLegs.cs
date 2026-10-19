@@ -139,6 +139,8 @@ sealed class CreatureLegs
     // 1.3 m/s): the waiting leg was stretched past its reach and the IK dragged the planted foot.
     public float StopSpeed { get; private set; } = float.PositiveInfinity;
     public float StopDecel = 0f;
+    float climbStride; bool climbStrideValid;   // ClimbStrideSpeed low-passed (a cap that toggled jerked the body)
+    const float kClimbStrideTau = 0.3f;         // seconds (x sqrt scale)
 
     public CreatureLegs(CreatureSpecies sp, IGroundProbe ground, Func<Vector3, Vector3> upAt,
                         Vector3[] joints, Quaternion[] rotations, float scale, float timeScale = 1f, CreatureClimb climb = null)
@@ -515,7 +517,15 @@ sealed class CreatureLegs
         }
 
         // climbing, the stride-limited speed of the stance the legs have now (MaxSpeed, read by the next sub-step)
-        MaxSpeed = Climbing ? ClimbStrideSpeed() : walkMaxSpeed;
+        if (Climbing)
+        {
+            float cs = ClimbStrideSpeed();
+            if (!climbStrideValid) climbStride = cs;
+            else climbStride += (cs - climbStride) * (1f - Mathf.Exp(-dt / (kClimbStrideTau * timeScale)));
+            climbStrideValid = true;
+            MaxSpeed = climbStride;
+        }
+        else { MaxSpeed = walkMaxSpeed; climbStrideValid = false; }
 
         UpdateDroop(dt);
 

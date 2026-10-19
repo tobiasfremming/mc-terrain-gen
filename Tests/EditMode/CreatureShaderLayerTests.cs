@@ -103,6 +103,98 @@ namespace TerrainGen.Tests
             Assert.IsEmpty(report, string.Join("\n", report));
         }
 
+        // The glowing heads and tails (user bug 2026-10-19, CreatureMeshNormalTests): zero vertex normals on small
+        // fins and the RigidLoft head made NaN pixels, which bloom spread into a white blow-out. The views above are
+        // whole-body, 8-bit and only compare the two shaders, so they missed it. Here every spine species' head, tail
+        // and mid-body are drawn close up into a FLOAT target: no NaN / Inf pixel anywhere, and the ends no brighter
+        // than a sane HDR bound (8 x the brightest mid-body pixel, at least 4).
+        [Test]
+        public void Shader_HeadTail_NoNanOrBlowout()
+        {
+            if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null)
+                Assert.Ignore("needs a graphics device (interactive Editor)");
+            Shader cur = Shader.Find(kShader);
+            Assert.IsNotNull(cur);
+            bool async = ShaderUtil.allowAsyncCompilation;
+            ShaderUtil.allowAsyncCompilation = false;
+            var mat = Keep(new Material(cur));
+            var shipped = AssetDatabase.LoadAssetAtPath<Material>("Assets/TerrainGen/Config/Creatures/Creature.mat");
+            if (shipped != null) mat.CopyPropertiesFromMaterial(shipped);
+            const int k = 256;
+            var rt = new RenderTexture(k, k, 24, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
+            var tex = new Texture2D(k, k, TextureFormat.RGBAFloat, false, true);
+            var report = new List<string>();
+            try
+            {
+                int species = 0;
+                foreach (string name in CreatureKitAssets.Species())
+                {
+                    CreatureSpecies sp = CreatureKitAssets.Load(name);
+                    if (sp == null || sp.bodyPlan == CreatureBodyPlan.Cephalopod) continue;
+                    var r = new CreatureRenderer(sp, mat);
+                    renderers.Add(r);
+                    var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
+                    r.Add(sim, new CreatureInstance { seed = 3.7f, sizeScale = sp.scale });
+                    r.Render();
+                    int n = sim.Joints.Length;
+                    Vector3 head = sim.Joints[0], tail = sim.Joints[n - 1], mid = sim.Joints[n / 2];
+                    float dist = (head - tail).magnitude * 0.12f + 0.05f;
+                    Vector3[] at = { mid, head, tail };
+                    Vector3[] outward = { Vector3.right, (head - mid).normalized, (tail - mid).normalized };
+                    string[] label = { "mid", "head", "tail" };
+                    float midMax = 0f;
+                    for (int t = 0; t < 3; t++)
+                    {
+                        Vector3[] views = { outward[t] + Vector3.up * 0.5f, Vector3.right + outward[t] * 0.3f + Vector3.up * 0.3f,
+                                            -Vector3.right + outward[t] * 0.3f - Vector3.up * 0.3f, Vector3.up };
+                        int nan = 0, covered = 0; float max = 0f;
+                        foreach (Vector3 v in views)
+                        {
+                            Color[] px = DrawFloat(r, mat, at[t] + v.normalized * dist, at[t], dist, rt, tex);
+                            foreach (Color c in px)
+                            {
+                                if (c.a <= 0f) continue;
+                                covered++;
+                                if (float.IsNaN(c.r + c.g + c.b) || float.IsInfinity(c.r + c.g + c.b)) { nan++; continue; }
+                                max = Mathf.Max(max, Mathf.Max(c.r, Mathf.Max(c.g, c.b)));
+                            }
+                        }
+                        if (t == 0) midMax = max;
+                        TestContext.Out.WriteLine($"{name} {label[t]}: {covered} covered, {nan} NaN/Inf, max {max:F3}");
+                        if (nan > 0) report.Add($"{name} {label[t]}: {nan} NaN/Inf pixels");
+                        if (t > 0 && max > Mathf.Max(4f, 8f * midMax)) report.Add($"{name} {label[t]}: max {max:F2} vs mid-body {midMax:F2} (HDR blow-out)");
+                    }
+                    species++;
+                }
+                Assert.Greater(species, 4);
+            }
+            finally
+            {
+                ShaderUtil.allowAsyncCompilation = async;
+                RenderTexture.active = null;
+                rt.Release(); Object.DestroyImmediate(rt); Object.DestroyImmediate(tex);
+            }
+            Assert.IsEmpty(report, string.Join("\n", report));
+        }
+
+        static Color[] DrawFloat(CreatureRenderer r, Material mat, Vector3 eye, Vector3 at, float dist, RenderTexture rt, Texture2D tex)
+        {
+            var cmd = new CommandBuffer { name = "CreatureShaderLayerTests.HeadTail" };
+            cmd.SetRenderTarget(rt);
+            cmd.ClearRenderTarget(true, true, new Color(0f, 0f, 0f, 0f));
+            Vector3 d = (at - eye).normalized;
+            Matrix4x4 view = Matrix4x4.TRS(eye, Quaternion.LookRotation(d, Mathf.Abs(d.y) > 0.95f ? Vector3.forward : Vector3.up), new Vector3(1f, 1f, -1f)).inverse;
+            cmd.SetViewProjectionMatrices(view, Matrix4x4.Perspective(40f, 1f, dist * 0.02f, dist * 10f));
+            cmd.DrawMeshInstancedProcedural(r.Mesh, 0, mat, mat.FindPass("Forward"), 1, r.PropsForTest);
+            Graphics.ExecuteCommandBuffer(cmd);
+            cmd.Release();
+            RenderTexture.active = rt;
+            tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+            tex.Apply();
+            RenderTexture.active = null;
+            return tex.GetPixels();
+        }
+
         // One Forward-pass draw of the renderer's single instance into rt, read back.
         static Color32[] Draw(CreatureRenderer r, Material mat, Vector3 eye, Vector3 at, float dist, RenderTexture rt, Texture2D tex)
         {

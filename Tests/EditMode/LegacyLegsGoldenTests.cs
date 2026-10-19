@@ -22,9 +22,9 @@ namespace TerrainGen.Tests
         // bit-identical is shown by the offline harness constants below, which still match on a6337d5.
         static readonly Dictionary<string, (ulong bones, ulong mesh)> Golden = new Dictionary<string, (ulong, ulong)>
         {
-            { "DesertMonitor", (0UL, 0xE56A6E3CC28CF98AUL) },   // rigid head (2026-10-19): recapture (0 = report)
+            { "DesertMonitor", (0x52982D21E9F52F5CUL, 0xE56A6E3CC28CF98AUL) },   // rigid head (da59bfc, 2026-10-19)
             { "TestHexapod", (0x74CBED3B3EEC2DE0UL, 0xC9E071DE0867056FUL) },
-            { "DesertSnake", (0UL, 0x5022CF597CF3F50CUL) },     // rigid head (2026-10-19): recapture
+            { "DesertSnake", (0xAB4B7C25AE2BFAA9UL, 0x5022CF597CF3F50CUL) },     // rigid head (da59bfc, 2026-10-19)
             { "Lizardish", (0xFD91F9955B3A64A2UL, 0x139A617E5D148B58UL) },
         };
 #else

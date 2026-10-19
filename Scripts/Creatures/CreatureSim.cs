@@ -367,14 +367,29 @@ public sealed class CreatureSim
             Path[i] = new Vector3(g.x + u.x * lift, g.y + u.y * lift, g.z + u.z * lift);
             if (climbing) climb.AboveTerrain(i, ref Path[i], clear, window);
         }
-        // the rigid head grounded as one body, then the lengths from its neck; without one, from joint 1
-        RestoreLengths(seg, climbing);
+        // the rigid head grounded as one body, then the lengths from its neck; without one, from joint 1. Climbing, the
+        // head is one link in every climbing stage (its grounding, the pitch limiter, the length restore)
+        if (rigidHead != null && climbing) GroundHead(seg, true);
+        else RestoreLengths(seg, climbing);
         // a flyer perched on a branch or a rock: joints past the end of their support hang
         if (flight != null && flight.Drape(dt, Path, pathUp, groundPoint, seg)) RestoreLengths(seg);
         // climbing, the body never folds sharply in pitch (ground -> wall, over an edge): lift the fold (only while
         // climbing: walking stays exactly the walking code - the limiter's on/off at its threshold jittered R25's holes)
         if (climbing)
-            for (int pass = 0; pass < kPitchPasses && CreatureClimb.LimitPitch(Path, pathUp, seg, sp.climb.PitchLimitDeg, pitchLift); pass++) RestoreLengths(seg, true);
+            for (int pass = 0; pass < kPitchPasses && CreatureClimb.LimitPitch(Path, pathUp, seg, sp.climb.PitchLimitDeg, pitchLift, rigidHead != null ? headK : 0); pass++)
+            {
+                if (rigidHead != null)
+                {
+                    // the head laid out again from its neck end along the (lifted) link; the limiter lifts it, it never
+                    // pushes it back along its travel (the head leads: pushed back over a brink it never got over)
+                    Vector3 p0 = Path[0];
+                    rigidHead.Place(Path, rigidHead.Frame(Path[0], Path[headK - 1], HeadPathUp(), 0f), headK - 1, SizeScale);
+                    float back = Vector3.Dot(Path[0] - p0, heading);
+                    if (back < 0f) for (int h = 0; h < headK; h++) Path[h] -= heading * back;
+                    RestoreLengths(seg, true, headK);
+                }
+                else RestoreLengths(seg, true);
+            }
         // climbing, the body follows its head: no joint moves further in a sub-step than the swing guard lets a
         // walking girdle (the last safety net under the climbing stages' frames - a whip there swung the tail metres)
         if (climbing) LimitTravel(seg, (kClimbTravel * Speed + kClimbCreep * SizeScale) * dt);
@@ -488,9 +503,13 @@ public sealed class CreatureSim
     {
         Array.Copy(Path, headTarget, headK);
         Vector3 up = HeadPathUp();
-        rigidHead.Place(Path, rigidHead.Frame(Path[0], Path[headK - 1], up, 0f), 0, SizeScale);
+        Vector3 back = Path[headK - 1];
+        rigidHead.Place(Path, rigidHead.Frame(Path[0], back, up, 0f), 0, SizeScale);
         float m = up.magnitude;
         up = m > 1e-9f ? up / m : Vector3.up;
+        // climbing, the head is lifted along the snout's up: the mean up of a head over a brink leaned back off it and
+        // pushed the head back down the wall
+        if (climbing) up = pathUp[0];
         float lift = 0f;
         for (int i = 1; i < headK; i++) lift = Mathf.Max(lift, Vector3.Dot(headTarget[i] - Path[i], pathUp[i]));
         if (lift > 0f)

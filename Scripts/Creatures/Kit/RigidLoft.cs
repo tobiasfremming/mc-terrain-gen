@@ -179,7 +179,7 @@ namespace CreatureKit
             int Pole(float t, Vector3 nLocal)
             {
                 Centre(t, out Vector3 cc, out _, out _);
-                Vector3 p = jp + jr * cc, nn = (jr * nLocal).normalized;
+                Vector3 p = jp + jr * cc, nn = PartMeshEmitter.Unit(jr * nLocal, jr * Vector3.up);
                 float u = Mathf.Max(0f, uBase - Vector3.Dot(p - jp, jF));
                 return m.Pole(p, nn, u, part, Vector3.Dot(nn, jUp), skin, na);
             }
@@ -206,7 +206,7 @@ namespace CreatureKit
                     Vector3 nl = Vector3.Cross(dPhi, dT);
                     if (nl.sqrMagnitude < 1e-14f) nl = p - cc;
                     if (Vector3.Dot(nl, p - cc) < 0f) nl = -nl;
-                    Vector3 wp = jp + jr * p, wn = (jr * nl).normalized;
+                    Vector3 wp = jp + jr * p, wn = PartMeshEmitter.Unit(jr * nl, PartMeshEmitter.Unit(jr * (p - cc), jUp));   // never .normalized (zero below 1e-5)
                     float u = Mathf.Max(0f, uBase - Vector3.Dot(wp - jp, jF));
                     m.Vertex(wp, wn, u, (float)k / na, part, Vector3.Dot(wn, jUp), skin);
                 }

@@ -42,6 +42,8 @@ sealed class CreatureClimb
 
     public readonly Vector3[] Up;       // per joint: the up the joint grounds along (gravity's while inactive)
     public readonly float[] Weight;     // per joint: climb weight 0..1
+    readonly float[] trailFade;         // per joint: share of the head's trail up (1 - Weight, rate-limited)
+    const float kTrailFadeTime = 0.4f;  // seconds (x sqrt scale) for the trail's share to go 0 <-> 1
     public readonly float[] Steep;      // per joint: gait steepness 0..1
     public readonly int[] Source;       // per joint: what it stands on (0 = terrain)
     readonly Vector3[] grav;            // per joint: gravity's up
@@ -94,7 +96,8 @@ sealed class CreatureClimb
         AheadSlot = n + 3 * legs;
         SlotCount = AheadSlot + 1;
         if (ground is ISurfaceSlots slots) slots.EnsureSlots(SlotCount);
-        Up = new Vector3[n]; Weight = new float[n]; Steep = new float[n]; Source = new int[n];
+        Up = new Vector3[n]; Weight = new float[n]; Steep = new float[n]; Source = new int[n]; trailFade = new float[n];
+        for (int i = 0; i < n; i++) trailFade[i] = 1f;
         grav = new Vector3[n]; smoothN = new Vector3[n];
         K = Mathf.Max(1, spec.UpSmoothJoints);
         kernel = new float[2 * K + 1];
@@ -336,7 +339,9 @@ sealed class CreatureClimb
     // under it, a wrap cast from the joint's centre back under the edge (behind and into the surface).
     public bool ProbeJoint(int i, Vector3 near, Vector3 u, float window, Vector3 centre, Vector3 fwd, float clear, out Vector3 point, out Vector3 normal)
     {
-        if (Spine.Probe(near, u, window, Source[i], i, out SurfaceHit h))
+        // (the spine's smooth terrain view rounds a step into an S between its lattice nodes: past a cliff's brink it
+        // answered metres down the wall, outside the window - no ground for a climbing joint)
+        if (Spine.Probe(near, u, window, Source[i], i, out SurfaceHit h) && !(Mathf.Abs(SurfaceMath.Dot(h.point - near, u)) > window))
         {
             Source[i] = h.source; point = h.point; normal = h.normal;
             return true;
@@ -415,6 +420,7 @@ sealed class CreatureClimb
             smoothN[i] = nn;
             float w = relax ? 0f : SurfaceMath.SmoothStep(kWeightLo, kWeightHi, SurfaceMath.AngleDeg(nn, grav[i]));
             Weight[i] = w;
+            trailFade[i] = Mathf.MoveTowards(trailFade[i], 1f - w, dt / (kTrailFadeTime * timeScale));
             Vector3 target = SurfaceMath.Slerp(grav[i], nn, w);
             if (relax) { }
             else if (i <= 1 && AheadWeight > 0f) target = SurfaceMath.Slerp(target, AheadNormal, AheadWeight);
@@ -422,7 +428,8 @@ sealed class CreatureClimb
             // probes the ground under it and would never turn); on the wall itself its own ground says more: a tail
             // cutting inside the head's curve round a trunk is off the trail, and the trail's up leaned 25-30 deg
             // along the body off the bark under it (its tangent plane cut into the trunk)
-            else if (i > 1 && TrailUp(path[0], i * seg, out Vector3 tu, out _)) target = SurfaceMath.Slerp(target, tu, kTrailWeight * (1f - w));
+            // (its share follows 1 - w at a limited rate: w steps as a joint passes a corner, and the up stepped with it)
+            else if (i > 1 && TrailUp(path[0], i * seg, out Vector3 tu, out _)) target = SurfaceMath.Slerp(target, tu, kTrailWeight * trailFade[i]);
             // an up never lies along the body: at a ground <-> wall corner the trail's or gravity's up on a joint
             // already on the wall ran along its segments (the climbing stages lost the joint's frame there)
             if (!relax && i > 1) target = AcrossBody(path, i, target, Up[i], i > 0 ? Up[i - 1] : target, kAcrossDeg);
@@ -540,15 +547,19 @@ sealed class CreatureClimb
         return RunTrust(hv.magnitude, rise);
     }
 
-    public static bool LimitPitch(Vector3[] path, Vector3[] up, float seg, float limitDeg, float[] lift)
+    public static bool LimitPitch(Vector3[] path, Vector3[] up, float seg, float limitDeg, float[] lift, int headK = 0)
     {
         int n = path.Length;
         float lim = limitDeg * Mathf.Deg2Rad;
         bool any = false;
         for (int i = 0; i < n; i++) lift[i] = 0f;
-        for (int i = 1; i < n - 1; i++)
+        // a rigid head (headK >= 2) is one link from the snout joint to its neck end: no fold inside it, and the fold
+        // at its neck end is measured against (and lifts) the snout joint
+        int first = headK >= 2 ? headK - 1 : 1;
+        for (int i = first; i < n - 1; i++)
         {
-            Vector3 a = path[i - 1] - path[i], b = path[i] - path[i + 1];
+            int ip = headK >= 2 && i == headK - 1 ? 0 : i - 1;
+            Vector3 a = path[ip] - path[i], b = path[i] - path[i + 1];
             Vector3 u = up[i];
             Vector3 f = a + b;
             f -= u * SurfaceMath.Dot(f, u);
@@ -569,7 +580,7 @@ sealed class CreatureClimb
             else if (bend < -lim)
             {
                 float d = 0.5f * (-lim - bend) * seg * trust;
-                lift[i - 1] = Mathf.Max(lift[i - 1], d);
+                lift[ip] = Mathf.Max(lift[ip], d);
                 lift[i + 1] = Mathf.Max(lift[i + 1], d);
                 any = true;
             }
