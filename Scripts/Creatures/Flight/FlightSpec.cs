@@ -75,6 +75,17 @@ public class FlightSpec
     public float pursuitGain;
     public float PursuitGain => pursuitGain > 0f ? pursuitGain : 0.9f;
 
+    [Header("Hind legs in the air")]
+    [Tooltip("Tucked hind legs: the foot's direction from the hip in the girdle frame is (out x side, -down, -1); out 0 = 0.25. A larger out spreads the trailing legs into a rear lift surface (Microraptor, the dragon's finned legs).")]
+    public float legTuckOut;
+    [Tooltip("... its downward share (0 = 0.35): small = the legs trail level behind the body.")]
+    public float legTuckDown;
+    [Tooltip("... the foot at this fraction of the leg's reach (0 = 0.8): near 1 = the legs stretched straight back.")]
+    public float legTuckReach;
+    public float LegTuckOut => legTuckOut > 0f ? legTuckOut : 0.25f;
+    public float LegTuckDown => legTuckDown > 0f ? legTuckDown : 0.35f;
+    public float LegTuckReach => legTuckReach > 0f ? legTuckReach : 0.8f;
+
     // Twisting air chain (AirTwist, Chinese-dragon flight): the body follows the head's own path through the
     // air, which swims in 3D S-curves and corkscrews; the roll travels head to tail. Off (all zero) for every
     // species that does not set it (the kit's Fly.twist fills it at compose): the air chain above is unchanged.

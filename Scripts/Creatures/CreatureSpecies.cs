@@ -198,6 +198,9 @@ public struct CreatureLook
     // its veins are (0..1), how dark its trailing rim is (0..1).
     public Color membrane;
     public float membraneTranslucency, veinContrast, membraneRim;
+    // ... and how far it takes on the body's dorsal colour toward its root (the wrist, the body, a fin's base), fading
+    // to its own colour at the edge (0..1; 0 = one colour)
+    public float membraneInner;
     // arthropod knee bands (mesh part 9) and a velvet sheen lobe (0 = none)
     public Color bandColor;
     public float sheen;

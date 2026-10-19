@@ -119,8 +119,8 @@ namespace CreatureKit
         static void Look(in CreatureLook l, List<CreatureModule> modules)
         {
             modules.Add(Skin.From(l));
-            if (Set(l.membrane) || l.membraneTranslucency != 0f || l.veinContrast != 0f || l.membraneRim != 0f)
-                modules.Add(new Membrane { colour = l.membrane, translucency = l.membraneTranslucency, veinContrast = l.veinContrast, rim = l.membraneRim });
+            if (Set(l.membrane) || l.membraneTranslucency != 0f || l.veinContrast != 0f || l.membraneRim != 0f || l.membraneInner != 0f)
+                modules.Add(new Membrane { colour = l.membrane, translucency = l.membraneTranslucency, veinContrast = l.veinContrast, rim = l.membraneRim, inner = l.membraneInner });
             if (Set(l.bandColor) || l.sheen != 0f || Set(l.sheenColor))
                 modules.Add(new Chitin { bandColor = l.bandColor, sheen = l.sheen, sheenColor = l.sheenColor });
             if (l.shimmer != 0f || Set(l.shimmerColor) || Set(l.shimmerColor2) || l.shimmerWavelength != 0f || l.shimmerPeriod != 0f || l.shimmerGlow != 0f)

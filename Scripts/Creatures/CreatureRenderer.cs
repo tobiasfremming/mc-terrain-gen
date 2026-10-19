@@ -238,7 +238,7 @@ public sealed class CreatureRenderer : IDisposable
             // the membrane colours for every spine species (wings, fins and antennae all use the membrane model;
             // no part-8 pixel, no effect), then the look-layer table
             props.SetColor(kMembraneColor, look.membrane);
-            props.SetVector(kMembraneParams, new Vector4(look.membraneTranslucency, look.veinContrast, look.membraneRim, 0f));
+            props.SetVector(kMembraneParams, new Vector4(look.membraneTranslucency, look.veinContrast, look.membraneRim, look.membraneInner));
             props.SetVectorArray(kPartLayers, partLayers);
         }
 

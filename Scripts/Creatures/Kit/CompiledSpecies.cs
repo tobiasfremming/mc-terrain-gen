@@ -243,7 +243,7 @@ namespace CreatureKit
             if (Error != null) throw new InvalidOperationException(Name + ": " + Error);
             var look = new CreatureLook();
             Module<Skin>()?.WriteTo(ref look);
-            if (Module<Membrane>() is Membrane mem) { look.membrane = mem.colour; look.membraneTranslucency = mem.translucency; look.veinContrast = mem.veinContrast; look.membraneRim = mem.rim; }
+            if (Module<Membrane>() is Membrane mem) { look.membrane = mem.colour; look.membraneTranslucency = mem.translucency; look.veinContrast = mem.veinContrast; look.membraneRim = mem.rim; look.membraneInner = mem.inner; }
             if (Module<Chitin>() is Chitin ch) { look.bandColor = ch.bandColor; look.sheen = ch.sheen; look.sheenColor = ch.sheenColor; }
             if (Module<Shimmer>() is Shimmer sh)
             {

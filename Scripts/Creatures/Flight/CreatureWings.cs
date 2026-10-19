@@ -25,8 +25,8 @@ public struct WingState
 // amplitudes (banking) keep them in phase by scaling each wing's downstroke rate with its amplitude.
 //
 // Geometry (Pose): the wrist turns about the stroke axis through the shoulder (girdle forward pitched up
-// by strokePlaneDeg), pulls in with the fold, and TwoBoneIK places the elbow. Fingers fan out from the
-// wrist in the wing plane; ribs run from the wrist to the trailing edge (rib 0, midway from finger 3's tip to
+// by strokePlaneDeg), pulls in with the fold, and TwoBoneIK places the elbow. Fingers (3..5) fan out from the
+// wrist in the wing plane; ribs run from the wrist to the trailing edge (rib 0, midway from the last finger's tip to
 // the rear flank attach) and to the flank (ribs 1, 2), each scaled (uniformly) to its length.
 // Pure C#, allocation-free after construction, main thread.
 public sealed class CreatureWings
@@ -44,7 +44,11 @@ public sealed class CreatureWings
     readonly int[] side, attach;
     readonly bool[] trigger;
     // geometry, per wing: finger directions and tips, rib directions, ups and lengths
+    // (fingers of wing w at FingerIndex(w, 0..FingerCount(w) - 1): FingerStart prefix sums, w x 3 for 3-finger wings)
     public readonly Vector3[] FingerDir, FingerTip, RibDir, RibUp, RibTarget;
+    readonly int[] fingerStart, fingerCount;
+    public int FingerIndex(int w, int k) => fingerStart[w] + k;
+    public int FingerCount(int w) => fingerCount[w];
     public readonly float[] RibLength;     // current, metres
     // the arm membrane, per wing: the normal of the sector between the rear flank rib and the forearm, the
     // normal of the patch between the elbow, the shoulder and the rear flank attach, the rear flank attach
@@ -75,7 +79,10 @@ public sealed class CreatureWings
         shoulderLocal = new Vector3[c]; tipLocal = new Vector3[c]; axisLocal = new Vector3[c]; poleLocal = new Vector3[c];
         reach = new float[c]; dihedral = new float[c]; alphaDown = new float[c]; alphaUp = new float[c];
         side = new int[c]; attach = new int[c]; trigger = new bool[c];
-        FingerDir = new Vector3[c * WingSpec.Fingers]; FingerTip = new Vector3[c * WingSpec.Fingers];
+        fingerStart = new int[c]; fingerCount = new int[c];
+        int fingers = 0;
+        for (int w = 0; w < c; w++) { fingerStart[w] = fingers; fingerCount[w] = WingBoneLayout.FingerCount(specs[w]); fingers += fingerCount[w]; }
+        FingerDir = new Vector3[fingers]; FingerTip = new Vector3[fingers];
         RibDir = new Vector3[c * WingSpec.Ribs]; RibUp = new Vector3[c * WingSpec.Ribs];
         RibTarget = new Vector3[c * WingSpec.Ribs]; RibLength = new float[c * WingSpec.Ribs];
         ribRestLength = new float[c * WingSpec.Ribs];
@@ -454,7 +461,8 @@ public sealed class CreatureWings
         if (lift > 0f)
         {
             Vector3 gu = r * Vector3.up;
-            float a1 = Mathf.Lerp(ws.fingerSpreadDeg[1], ws.fingerFoldDeg[1], st.fold) * Mathf.Deg2Rad;
+            int fm = fingerCount[w] / 2;   // the middle finger (1 of 3)
+            float a1 = Mathf.Lerp(ws.fingerSpreadDeg[fm], ws.fingerFoldDeg[fm], st.fold) * Mathf.Deg2Rad;
             Vector3 d1 = Mathf.Cos(a1) * hOut + Mathf.Sin(a1) * hBack;
             Vector3 q = d1 - rr * Vector3.Dot(d1, rr);  // in the plane, square to the rib, on the fingers' side
             if (q.sqrMagnitude > 1e-6f)
@@ -483,31 +491,32 @@ public sealed class CreatureWings
             st.handOut = hand * Vector3.forward; st.handNormal = hand * Vector3.up;
         }
 
-        // Fingers fan out in the wing plane. Order invariant: finger k stays at least (4 - k) x gap ahead
+        // Fingers fan out in the wing plane. Order invariant: finger k stays at least (nf + 1 - k) x gap ahead
         // of the rear flank rib, the gap growing from fingerMinGapDeg to fingerFoldGapDeg with the fold
         // (folding swings the fingers back toward it; past it the membrane behind finger 3 would turn
         // inside out). The trailing rib lies between the two.
         float ribAngle = Mathf.Atan2(Vector3.Dot(rr, hBack), Vector3.Dot(rr, hOut)) * Mathf.Rad2Deg;
         if (ribAngle < 0f) ribAngle += 360f;
-        for (int k = 0; k < WingSpec.Fingers; k++)
+        int nFing = fingerCount[w];
+        for (int k = 0; k < nFing; k++)
         {
             float deg = Mathf.Lerp(ws.fingerSpreadDeg[k], ws.fingerFoldDeg[k], st.fold);
-            deg = Mathf.Min(deg, ribAngle - (WingSpec.Fingers + 1 - k) * Mathf.Lerp(ws.fingerMinGapDeg, ws.fingerFoldGapDeg, st.fold));
+            deg = Mathf.Min(deg, ribAngle - (nFing + 1 - k) * Mathf.Lerp(ws.fingerMinGapDeg, ws.fingerFoldGapDeg, st.fold));
             float a = deg * Mathf.Deg2Rad;
             Vector3 d = Mathf.Cos(a) * hOut + Mathf.Sin(a) * hBack;
-            int i = w * WingSpec.Fingers + k;
+            int i = fingerStart[w] + k;
             FingerDir[i] = d;
             FingerTip[i] = wrist + d * (ws.fingerLengths[k] * sc);
         }
         // Trailing rib (0): between finger 3 and the rear flank rib, by angle (slerp) and by length, so
         // both of its zones keep a moderate angle and similar ray lengths. Two-ray skinning of a zone whose
         // rays differ much in length folds over when the wing folds (the short ray turns the far points).
-        int f3i = w * WingSpec.Fingers + WingSpec.Fingers - 1, rr1 = w * WingSpec.Ribs + 1;
+        int f3i = fingerStart[w] + nFing - 1, rr1 = w * WingSpec.Ribs + 1;
         Vector3 tdir = Vector3.Slerp(FingerDir[f3i], RibDir[rr1], ws.trailingRib);
         // Its length scales with the square root of the rear flank rib's stretch (rest: the length lerp),
         // halfway between the rigid finger and the stretching rib, so neither of its zones has to absorb
         // the whole length change.
-        float tlen = Mathf.Lerp(ws.fingerLengths[WingSpec.Fingers - 1] * sc, RibLength[rr1], ws.trailingRib);
+        float tlen = Mathf.Lerp(ws.fingerLengths[nFing - 1] * sc, RibLength[rr1], ws.trailingRib);
         float rest0 = ribRestLength[w * WingSpec.Ribs], rest1 = ribRestLength[rr1];
         if (rest0 > 0f && rest1 > 0f) tlen = rest0 * sc * Mathf.Sqrt(RibLength[rr1] / (rest1 * sc));
         SetRib(w * WingSpec.Ribs, wrist, wrist + tdir * tlen, -hOut);
@@ -618,19 +627,20 @@ public sealed class CreatureWings
             dst[offset + sp.LegBone(leg, 0)] = Matrix4x4.TRS(st.shoulder, upper, sc);
             dst[offset + sp.LegBone(leg, 1)] = Matrix4x4.TRS(st.elbow, LowerRot(upper, st.wrist - st.elbow), sc);
             dst[offset + sp.LegBone(leg, 2)] = Matrix4x4.TRS(st.wrist, Look(st.handOut, st.handNormal), sc);
-            for (int k = 0; k < WingSpec.Fingers; k++)
+            for (int k = 0; k < fingerCount[w]; k++)
                 dst[offset + sp.WingBone(w, k)] =
-                    Matrix4x4.TRS(st.wrist, Look(FingerDir[w * WingSpec.Fingers + k], FanNormal[w]), sc);
+                    Matrix4x4.TRS(st.wrist, Look(FingerDir[fingerStart[w] + k], FanNormal[w]), sc);
+            int firstRib = WingBoneLayout.FirstRibOf(specs[w]), armRib = WingBoneLayout.ArmRibOf(specs[w]);
             for (int k = 0; k < WingSpec.Ribs; k++)
             {
                 int i = w * WingSpec.Ribs + k;
-                int b = offset + sp.WingBone(w, WingBoneLayout.FirstRib + k);
-                if (WingBoneLayout.FirstRib + k == WingBoneLayout.ArmRib) { dst[b] = ArmSector(w); continue; }
+                int b = offset + sp.WingBone(w, firstRib + k);
+                if (firstRib + k == armRib) { dst[b] = ArmSector(w); continue; }
                 float stretch = RibLength[i] / Mathf.Max(1e-6f, ribRestLength[i] * scale);
                 dst[b] = Matrix4x4.TRS(st.wrist, Look(RibDir[i], RibUp[i]), Vector3.one * (scale * stretch));
             }
             for (int p = 0; p < flankCount[w]; p++)
-                dst[offset + sp.WingBone(w, WingBoneLayout.HumerusPatch + p)] = FlankPatch(w, p);
+                dst[offset + sp.WingBone(w, WingBoneLayout.HumerusPatchOf(specs[w]) + p)] = FlankPatch(w, p);
             int fr = WingBoneLayout.FanRearRib(specs[w]);
             if (fr >= 0)
             {

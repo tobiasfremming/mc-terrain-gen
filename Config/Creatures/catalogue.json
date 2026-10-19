@@ -1106,7 +1106,7 @@
           "type": "WingSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop",
+          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle",
           "range": "",
           "example": ""
         }
@@ -1870,6 +1870,185 @@
       ]
     },
     {
+      "name": "LegFin",
+      "kind": "Fin",
+      "status": "exists",
+      "bones": "2 (thigh fin, shin fin)",
+      "materialLayers": [
+        8
+      ],
+      "system": "LegFinRuntime (part runtime, stage Late) + LegFin.EmitMesh",
+      "useWhen": "finned or feathered legs: Caraxes-like leg frills, Microraptor leg wings, any flap that rides a limb and spreads in flight",
+      "summary": "Spiny fin frills along the back of a Leg2Bone's thigh and shin (raked spines, scalloped edge): folded flat along the leg on the ground, spread and turned level toward the side in the air - with the hind legs trailing, a rear lift surface.",
+      "usedBy": [
+        "SkyDragon"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "leg",
+          "type": "string",
+          "unit": "PartRef",
+          "size": "-",
+          "meaning": "the Leg2Bone it rides on; a mirrored fin names the unmirrored id and takes .L / .R",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "thighHeight",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "thigh fin: tallest spine",
+          "range": "",
+          "example": "dragon 0.07"
+        },
+        {
+          "name": "shinHeight",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "shin fin: tallest spine",
+          "range": "",
+          "example": "dragon 0.09"
+        },
+        {
+          "name": "rootStart",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the fins' root along each bone: from this fraction ..",
+          "range": "0..0.9",
+          "example": "default 0.12"
+        },
+        {
+          "name": "rootEnd",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": ".. to this fraction",
+          "range": "0.1..1",
+          "example": "default 0.92"
+        },
+        {
+          "name": "spines",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "spines per fin (scallops between them along the free edge)",
+          "range": "1..16",
+          "example": "default 5"
+        },
+        {
+          "name": "spineDepth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "valley depth between spines, fraction of the height",
+          "range": "0..0.9",
+          "example": "default 0.45"
+        },
+        {
+          "name": "rakeDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "spread: the spines rake toward the foot by this much",
+          "range": "0..70",
+          "example": "default 35"
+        },
+        {
+          "name": "groundFold",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "on the ground the fin folds to this fraction of its height (the spines laid back along the leg)",
+          "range": "0.1..1",
+          "example": "default 0.3"
+        },
+        {
+          "name": "airDroopDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "in the air the fin turns below the level by this much (droop; negative: above)",
+          "range": "-45..45",
+          "example": ""
+        },
+        {
+          "name": "foldSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "the ground fold eases in over this time",
+          "range": "0.02..2",
+          "example": "default 0.3"
+        }
+      ]
+    },
+    {
       "name": "RigidCone",
       "kind": "Rigid",
       "status": "exists",
@@ -2218,6 +2397,185 @@
           "unit": "Count",
           "size": "-",
           "meaning": "mesh: sections along the length (0 = 12)",
+          "range": "0..64",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "Swell",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "0 (skinned to the spine)",
+      "materialLayers": [
+        0
+      ],
+      "system": "mesh only (Swell.EmitMesh), skinned to the spine bones",
+      "useWhen": "a deep chest with flight muscles at the wing roots, shoulders, haunches, a belly - any bulk the body's elliptical profile cannot give",
+      "summary": "A muscle mass lofted round the spine over a stretch of joints: keel below (a sternum ridge), breadth at the sides (pectorals, haunches), hump above (withers), fading into the body at both ends. Skinned to the spine like the body rings, shaded as the body.",
+      "usedBy": [
+        "SkyDragon"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "toJoint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "last spine joint of the stretch (the first is at.joint)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "peakAt",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "where along the stretch it is fullest (0 = at.joint .. 1 = toJoint)",
+          "range": "0.05..0.95",
+          "example": "dragon chest 0.35"
+        },
+        {
+          "name": "keel",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "extra depth straight down at the peak (the keel)",
+          "range": "",
+          "example": "dragon chest 0.05"
+        },
+        {
+          "name": "keelSharpness",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "how sharply the keel is drawn to a ridge: 1 = a round belly, 4 = a sternum keel",
+          "range": "1..8",
+          "example": "default 2"
+        },
+        {
+          "name": "breadth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "extra breadth at the sides at the peak (pectorals, haunches)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "breadthAroundDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "where round the body the breadth sits: 90 = the flank, 120 = the lower flank",
+          "range": "0..180",
+          "example": "default 100"
+        },
+        {
+          "name": "breadthWidthDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "angular half width of the breadth bulge",
+          "range": "10..90",
+          "example": "default 40"
+        },
+        {
+          "name": "hump",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "extra height above at the peak (withers, a shoulder hump)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "inset",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "both ends sink this fraction of the body's radius inside the body",
+          "range": "0..0.5",
+          "example": "default 0.08"
+        },
+        {
+          "name": "ringsPerJoint",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: rings per spine segment (0 = 4)",
+          "range": "0..12",
+          "example": ""
+        },
+        {
+          "name": "around",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: vertices round each ring (0 = 32)",
           "range": "0..64",
           "example": ""
         }
@@ -2591,7 +2949,7 @@
           "type": "FlightSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain",
+          "meaning": "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain, legTuckOut, legTuckDown, legTuckReach",
           "range": "",
           "example": ""
         },
@@ -2753,9 +3111,9 @@
           "type": "float",
           "unit": "Fraction",
           "size": "-",
-          "meaning": "the wingbeat's shoulder bob on the twisting body: the share of the flight model's bob the girdle joint rides (0 = none: the body follows only the head's path, which never bobs)",
-          "range": "0..1.5",
-          "example": "dragon 0.8"
+          "meaning": "the wingbeat's shoulder bob on the twisting body: the share of the flight model's bob the girdle joint rides (0 = none: the body follows only the head's path, which never bobs; above 1 the body heaves more than the point mass, a stylised beat)",
+          "range": "0..4",
+          "example": "dragon 2.6"
         },
         {
           "name": "twist.bobHead",
@@ -2774,6 +3132,24 @@
           "meaning": "share at the tail: behind the girdle the bob travels down the body along the path (each joint bobs as the girdle did where it is now), fading to this",
           "range": "0..1",
           "example": "dragon 0.4"
+        },
+        {
+          "name": "twist.bobInPhase",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "share of the bob behind the girdle that the body rides in phase with the girdle (the whole trunk heaves with the shoulders) instead of as the wave travelling down the path: a big bob at a fast beat is a short steep wave on its own (wavelength = speed / beat), which the bend cones cannot follow (0 = all travelling)",
+          "range": "0..1",
+          "example": "dragon 0.5"
+        },
+        {
+          "name": "twist.bobHighPass",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "the body rides only the beat in the shoulder bob: its slow part (a low-pass of this time constant: the stabilised path lagging a climb or a level-off) is taken out first, so a girdleBob above 1 heaves with the beat and never amplifies an altitude change (0 = the raw bob)",
+          "range": "0..2",
+          "example": "dragon 0.6"
         }
       ]
     },
@@ -3193,6 +3569,15 @@
           "meaning": "how dark the trailing rim is",
           "range": "0..1",
           "example": ""
+        },
+        {
+          "name": "inner",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "toward its root (the wrist and the body, a fin's base) the membrane takes on the body's dorsal colour, fading to its own at the edge (0 = one colour)",
+          "range": "0..1",
+          "example": "dragon 0.6"
         }
       ]
     },
@@ -3558,15 +3943,15 @@
       "name": "SkyDragon",
       "kitVersion": 1,
       "plan": "Spine",
-      "bones": 136,
+      "bones": 148,
       "parts": [
         "SpineBody:body",
         "Leg2Bone:arm.L",
         "Leg2Bone:arm.R",
-        "Leg2Bone:fore.L",
-        "Leg2Bone:fore.R",
         "Leg2Bone:hind.L",
         "Leg2Bone:hind.R",
+        "LegFin:legFin.L",
+        "LegFin:legFin.R",
         "Wing:wing.L",
         "Wing:wing.R",
         "Eyes:eyes",
@@ -3583,6 +3968,7 @@
         "Antenna:whisker.R",
         "Antenna:barbel.L",
         "Antenna:barbel.R",
+        "Swell:chest",
         "RigidLoft:crown",
         "RigidLoft:muzzle",
         "RigidLoft:jaw",

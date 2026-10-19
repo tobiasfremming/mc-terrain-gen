@@ -76,7 +76,7 @@ Shader "MarchingCubes/Creature"
         float4 _SurfaceParams;  // smoothness, rim, subsurface, 0
         float4 _BodyParams;     // body length, 1 / length, arc length where the tail begins, 0
         float4 _MembraneColor;  // wing membrane colour (winged species)
-        float4 _MembraneParams; // translucency, vein contrast, trailing rim darkening, 0
+        float4 _MembraneParams; // translucency, vein contrast, trailing rim darkening, inner (body colour toward the root)
         float4 _BandColor;      // arthropod knee bands (part 9)
         float4 _SheenColor;     // velvet sheen colour, alpha = strength (0 = none)
         float4 _ShimmerColor;   // iridescent shimmer: colour facing, alpha = strength (0 = none)
@@ -165,6 +165,8 @@ Shader "MarchingCubes/Creature"
                     float edge = saturate((abs(uv1.y) - 0.1) / 0.9);   // radial fraction to the edge
                     half rimDark = (half)(smoothstep(0.82, 1.0, edge) * _MembraneParams.z);
                     float3 mc = _MembraneColor.rgb * (1.0 + _Mottle * (CreatureFbm(float3(uv0 * float2(6.0, 40.0), seed), 0x846CA68Bu) - 0.5) * 2.0);
+                    // toward the root the membrane takes on the body's dorsal colour (0 = one colour: unchanged)
+                    if (_MembraneParams.w > 0.0) mc = lerp(mc, _Dorsal.rgb, _MembraneParams.w * (1.0 - smoothstep(0.0, 0.75, edge)));
                     mc = CreatureHueShift((half3)mc, (half)i.inst.y) * (1.0 + i.inst.z);
                     CreatureSurface ms;
                     ms.albedo = (half3)saturate(mc * (1.0 - _MembraneParams.y * vein) * (1.0 - rimDark));

@@ -200,6 +200,7 @@ namespace CreatureKit
         [Param(ParamUnit.Fraction, "how much light shines through", Min = 0, Max = 1)] public float translucency;
         [Param(ParamUnit.Fraction, "how dark the veins are", Min = 0, Max = 1)] public float veinContrast;
         [Param(ParamUnit.Fraction, "how dark the trailing rim is", Min = 0, Max = 1)] public float rim;
+        [Param(ParamUnit.Fraction, "toward its root (the wrist and the body, a fin's base) the membrane takes on the body's dorsal colour, fading to its own at the edge (0 = one colour)", Min = 0, Max = 1, Example = "dragon 0.6")] public float inner;
     }
 
     [Serializable]

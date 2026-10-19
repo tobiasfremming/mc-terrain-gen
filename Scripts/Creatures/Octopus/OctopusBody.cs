@@ -379,6 +379,7 @@ public sealed class OctopusBody
         if (SwingGovernor > 0f) Govern(Mathf.Exp(-SwingGovernor * h));
         if (SwingPush.x != 0f || SwingPush.y != 0f || SwingPush.z != 0f) Push(SwingPush * (h * h));
         Vector3 refVel = Velocity(h);
+        if (MouthCount > 0) BodySpin(h);
         Lattice.Integrate(h, refVel);
         // Free arm segments relax their twist to the transported frame (the oral side stays oral, so an arm
         // curls toward its suckers); only pins turn the suckers. A twist target that follows the body axis fed
@@ -448,6 +449,29 @@ public sealed class OctopusBody
             Vector3[] p = Arms[a].Prev; float[] im = Arms[a].InvMass;
             for (int k = 1; k < Segments; k++) if (im[k] > 0f) { p[k].x -= d.x; p[k].y -= d.y; p[k].z -= d.z; }
         }
+    }
+
+    // The head's angular velocity over the last sub-step, handed to every chain with the head centre: the reference
+    // a calm chain is damped toward (TentacleChain.CalmDamping; the idle mouth tentacles). Scalar maths.
+    Quaternion spinPrev; bool spinValid;
+    void BodySpin(float h)
+    {
+        Quaternion q = Orientation;
+        float wx = 0f, wy = 0f, wz = 0f;
+        if (spinValid)
+        {
+            // d = q * conj(prev); omega = 2 d.xyz / h (d.w >= 0)
+            float px = -spinPrev.x, py = -spinPrev.y, pz = -spinPrev.z, pw = spinPrev.w;
+            float dx = q.w * px + q.x * pw + q.y * pz - q.z * py;
+            float dy = q.w * py - q.x * pz + q.y * pw + q.z * px;
+            float dz = q.w * pz + q.x * py - q.y * px + q.z * pw;
+            float dw = q.w * pw - q.x * px - q.y * py - q.z * pz;
+            float k = (dw < 0f ? -2f : 2f) / h;
+            wx = dx * k; wy = dy * k; wz = dz * k;
+        }
+        spinPrev = q; spinValid = true;
+        Vector3 w = new Vector3(wx, wy, wz), c = HeadCentre;
+        for (int m = 0; m < MouthCount; m++) { Mouth[m].RefOmega = w; Mouth[m].RefCentre = c; }
     }
 
     // Every particle's velocity (X - Prev) x f.

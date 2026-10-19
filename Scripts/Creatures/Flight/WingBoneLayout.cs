@@ -3,9 +3,11 @@ using UnityEngine;
 // Bone order of a winged species (design section 2): spine 0..N-1, then 3 per leg (the wing arms are
 // legs: upper = humerus, lower = forearm, foot = wrist/hand), then Bones(spec) per wing (7 with the one
 // humerus patch), then the 2 eyes.
-//   wing bone k: 0..2 fingers (leading, middle, trailing), 3..4 membrane ribs (trailing, rear flank),
-//   5 the arm sector (the front flank rib's slot), 6.. the flank patches (6 alone: the humerus patch;
-//   WingSpec.flankPatches splits it along the flank), then (WingSpec.groundTallStance) the fan-side rear rib
+//   wing bone k: 0..F-1 fingers (leading .. trailing; F = WingSpec.FingerCount, 3 for the winged serpent),
+//   F..F+1 membrane ribs (trailing, rear flank), F+2 the arm sector (the front flank rib's slot), F+3.. the flank
+//   patches (F+3 alone: the humerus patch; WingSpec.flankPatches splits it along the flank), then
+//   (WingSpec.groundTallStance) the fan-side rear rib. The constants below are the 3-finger wing's (F = 3); the
+//   spec overloads (FirstRibOf, ArmRibOf, HumerusPatchOf) count the wing's own fingers.
 // With no wings this is exactly CreatureSpecies' layout (BoneCount, LegBone, EyeBone). Phase B moves
 // CreatureSpecies.EyeBone/BoneCount onto these functions (EyeBone shifts only when WingCount > 0).
 public static class WingBoneLayout
@@ -17,12 +19,16 @@ public static class WingBoneLayout
     // (the winged serpent) follows the body's curve.
     public const int MaxFlankPatches = 8;
     public static int FlankPatchCount(WingSpec ws) => ws != null && ws.flankPatches > 1 ? Mathf.Min(ws.flankPatches, MaxFlankPatches) : 1;
-    public static int Bones(WingSpec ws) => WingSpec.Fingers + WingSpec.Ribs + FlankPatchCount(ws) + (ws != null && ws.groundTallStance ? 1 : 0);
+    public static int FingerCount(WingSpec ws) => ws != null ? ws.FingerCount : WingSpec.Fingers;
+    public static int Bones(WingSpec ws) => FingerCount(ws) + WingSpec.Ribs + FlankPatchCount(ws) + (ws != null && ws.groundTallStance ? 1 : 0);
+    public static int FirstRibOf(WingSpec ws) => FingerCount(ws);
+    public static int ArmRibOf(WingSpec ws) => FirstRibOf(ws) + 2;
+    public static int HumerusPatchOf(WingSpec ws) => FirstRibOf(ws) + WingSpec.Ribs;
     // A tall stance's extra bone after the flank patches: the rear flank rib as the fan beside it sees it
     // (CreatureWings.FanRearUp; -1 without groundTallStance). The zone between the trailing rib and the rear rib
     // rides it, the arm zone the rear rib itself: in the air the two are the same frame (one smooth sheet), on
     // the ground the lifted fan and the arm membrane meet in a crease along the rib.
-    public static int FanRearRib(WingSpec ws) => ws != null && ws.groundTallStance ? HumerusPatch + FlankPatchCount(ws) : -1;
+    public static int FanRearRib(WingSpec ws) => ws != null && ws.groundTallStance ? HumerusPatchOf(ws) + FlankPatchCount(ws) : -1;
     // the bones of a wing with the one humerus patch (the int overloads below assume it)
     public const int BonesPerWing = WingSpec.Fingers + WingSpec.Ribs + 1;
     public const int FirstRib = WingSpec.Fingers;

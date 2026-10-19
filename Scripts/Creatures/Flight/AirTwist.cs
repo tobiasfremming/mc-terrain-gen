@@ -42,12 +42,16 @@ public struct AirTwistSpec
     public float intervalMax;
     [Param(ParamUnit.DegPerSecond, "how fast the body rights itself onto the banked up (0 = 120)")]
     public float uprightRateDeg;
-    [Param(ParamUnit.Fraction, "the wingbeat's shoulder bob on the twisting body: the share of the flight model's bob the girdle joint rides (0 = none: the body follows only the head's path, which never bobs)", Min = 0, Max = 1.5f, Example = "dragon 0.8")]
+    [Param(ParamUnit.Fraction, "the wingbeat's shoulder bob on the twisting body: the share of the flight model's bob the girdle joint rides (0 = none: the body follows only the head's path, which never bobs; above 1 the body heaves more than the point mass, a stylised beat)", Min = 0, Max = 4, Example = "dragon 2.6")]
     public float girdleBob;
     [Param(ParamUnit.Fraction, "share of the girdle's bob at the head (the head is stabilised; the neck blends)", Min = 0, Max = 1, Example = "dragon 0.3")]
     public float bobHead;
     [Param(ParamUnit.Fraction, "share at the tail: behind the girdle the bob travels down the body along the path (each joint bobs as the girdle did where it is now), fading to this", Min = 0, Max = 1, Example = "dragon 0.4")]
     public float bobTail;
+    [Param(ParamUnit.Fraction, "share of the bob behind the girdle that the body rides in phase with the girdle (the whole trunk heaves with the shoulders) instead of as the wave travelling down the path: a big bob at a fast beat is a short steep wave on its own (wavelength = speed / beat), which the bend cones cannot follow (0 = all travelling)", Min = 0, Max = 1, Example = "dragon 0.5")]
+    public float bobInPhase;
+    [Param(ParamUnit.Seconds, "the body rides only the beat in the shoulder bob: its slow part (a low-pass of this time constant: the stabilised path lagging a climb or a level-off) is taken out first, so a girdleBob above 1 heaves with the beat and never amplifies an altitude change (0 = the raw bob)", Min = 0, Max = 2, Example = "dragon 0.6")]
+    public float bobHighPass;
 
     public bool CanCorkscrew => corkscrewAmplitude > 0f && corkscrewHz > 0f;
     public bool CanBarrel => barrelRadius > 0f;
@@ -104,6 +108,7 @@ public sealed class AirTwist
     readonly bool[] pathStamped;
     readonly int girdle;
     float bobLevel;
+    float bobSlow;                       // ShoulderBob's slow part (bobHighPass)
     Vector3 worldUp = Vector3.up;
     int newest = -1, count;
     bool seeded;
@@ -138,6 +143,10 @@ public sealed class AirTwist
     // Set by CreatureFlight each sub-step: landing / launching (the swim fades out, no manoeuvre starts),
     // the aviary, the ground under the flyer (its height along up and the clearance the head keeps over it).
     public bool Calm;
+    // Set by CreatureFlight with Calm: the wingbeat's bob fades out (the flare and touchdown, the landing's final).
+    // Separate from Calm: the whole landing approach is calm (no swim, no manoeuvre), but the wings beat all the
+    // way round it, and a body that stopped heaving there read as no bob at all (user, 2026-10-19).
+    public bool BobCalm;
     public EnclosureArea? Bounds;
     bool floorSet;
     Vector3 floorPoint, floorUp;
@@ -165,7 +174,7 @@ public sealed class AirTwist
     {
         seeded = false; newest = -1; count = 0; newestH = -1; countH = 0;
         Current = TwistManoeuvre.None; mTime = 0f; Roll = 0f;
-        swimLevel = 0f; bobLevel = 0f; ShoulderBob = 0f;
+        swimLevel = 0f; bobLevel = 0f; ShoulderBob = 0f; bobSlow = 0f;
     }
 
     public void SetFloor(Vector3 point, Vector3 upDir, float clearance)
@@ -363,8 +372,10 @@ public sealed class AirTwist
         }
         Roll = roll;
         // the bob fades in after the launch and out for the landing, like the swim, and quickly out for a manoeuvre
-        bool busy = Current != TwistManoeuvre.None;
-        bobLevel = Mathf.MoveTowards(bobLevel, Calm || !t.Bobs || busy ? 0f : 1f, h / ((busy ? kLoopSwimFade : kSwimFade) * T));
+        // (a slow roll keeps it: the path stays the straight flight line, only the up turns, and the bob is along world up)
+        bool busy = Current != TwistManoeuvre.None && Current != TwistManoeuvre.SlowRoll;
+        bobLevel = Mathf.MoveTowards(bobLevel, BobCalm || !t.Bobs || busy ? 0f : 1f, h / ((busy ? kLoopSwimFade : kSwimFade) * T));
+        if (t.bobHighPass > 0f) bobSlow += (ShoulderBob - bobSlow) * Mathf.Min(1f, h / (t.bobHighPass * T));
         leadUp = Ortho(Rotate(up, tn, roll), tn, up);
         lead = next; tangent = tn;
         if ((lead - pathPos[newest]).sqrMagnitude >= kSampleSpacing * kSampleSpacing * seg * seg) Push(lead, leadUp);
@@ -462,8 +473,10 @@ public sealed class AirTwist
     // its up the path's up there made perpendicular to the joint's forward.
     void Place(Vector3[] joints, Vector3[] forward, Vector3[] ups)
     {
-        bool bobs = bobLevel > 0f;
-        float bob = bobs ? bobLevel * t.girdleBob * ShoulderBob : 0f;
+        // (a bobbing spec keeps placing the bob after it has faded to 0: the bob stamped into the path behind the girdle
+        // then runs out along the body instead of vanishing in one tick - a frame jump of ~20 deg at a big bob)
+        bool bobs = bobLevel > 0f || t.Bobs;
+        float bob = bobs ? bobLevel * t.girdleBob * (t.bobHighPass > 0f ? ShoulderBob - bobSlow : ShoulderBob) : 0f;
         joints[0] = bobs ? lead + worldUp * (bob * BobShare(0)) : lead;
         Vector3 a = lead, ua = leadUp;
         float ba = bob;                              // the bob a sample carries (ahead of the girdle: its bob now)
@@ -500,7 +513,7 @@ public sealed class AirTwist
                 // ahead of the girdle: its bob now, blended to the head's share; behind it: the bob stamped into the
                 // path where the girdle passed (the girdle stamps the samples it has just passed)
                 if (i == girdle && count > 0) { Stamp((newest - k + cap) % cap, bob); bb = SampleBob((newest - k + cap) % cap, bob); }
-                float bi = i <= girdle ? bob : bq;
+                float bi = i <= girdle ? bob : t.bobInPhase > 0f ? bq + (bob - bq) * t.bobInPhase : bq;
 
                 q += worldUp * (bi * BobShare(i));
             }
