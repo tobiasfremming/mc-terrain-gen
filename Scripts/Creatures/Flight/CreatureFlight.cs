@@ -904,7 +904,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             }
             // the arm as the renderer's bounds and the debug view see it (on the ground the foot stays the gait's)
             ls.shoulder = sh; ls.elbow = elbow;
-            if (armBlend > 0f) ls.foot = wrist;
+            if (armBlend > 0f) ls.foot = ls.ankle = wrist;
         }
         Wings.WriteBones(dst, offsetIndex);
 
@@ -922,22 +922,25 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             Vector3 shoulder = sim.Joints[s.attachJoint] + ar * (so * scale);
             float reach = (s.upperLength + s.lowerLength) * scale * f.LegTuckReach;
             Vector3 tuckDir = ar * new Vector3(f.LegTuckOut * s.side, -f.LegTuckDown, -1f).normalized;
-            Vector3 foot = Vector3.Lerp(ls.foot, shoulder + tuckDir * reach, w);
+            // the IK end is the ankle (LegState.ankle; the foot hangs below it by the ankle height)
+            float ah = sim.LegsInternal.AnkleHeight(l) * scale;
+            Vector3 foot = Vector3.Lerp(ls.ankle, shoulder + tuckDir * reach, w);
             // touching down on a perch the foot comes down onto the branch from above (a straight blend from the
             // tuck swept the shin through it)
             if (Mode == FlightMode.Touchdown && landSource != 0) foot += (ar * Vector3.up) * (4f * w * (1f - w) * kPerchFootArc * scale);
             Vector3 pole = s.pole; pole.x *= s.side;
             pole = ar * pole;
             Vector3 elbow = TwoBoneIK.Solve(shoulder, foot, s.upperLength * scale, s.lowerLength * scale, pole, out Vector3 ft);
-            Quaternion upper = CreatureWings.BoneRot(elbow - shoulder, pole, ar);
+            Quaternion upper = sim.LegsInternal.UpperRot(l, elbow - shoulder, ar);
             dst[offsetIndex + sp.LegBone(l, 0)] = Matrix4x4.TRS(shoulder, upper, sc);
             dst[offsetIndex + sp.LegBone(l, 1)] = Matrix4x4.TRS(elbow, CreatureWings.LowerRot(upper, ft - elbow), sc);
             Vector3 toe = ft - elbow;
             Vector3 fn = Vector3.Slerp(ls.footNormal.sqrMagnitude > 0.5f ? ls.footNormal : ar * Vector3.up, ar * Vector3.back, w);
             Vector3 ff = Vector3.ProjectOnPlane(toe.sqrMagnitude > 1e-12f ? toe : ar * Vector3.back, fn);
             if (ff.sqrMagnitude < 1e-8f) ff = Vector3.ProjectOnPlane(ar * Vector3.forward, fn);
-            dst[offsetIndex + sp.LegBone(l, 2)] = Matrix4x4.TRS(ft, Quaternion.LookRotation(ff.normalized, fn.normalized), sc);
-            if (Mode != FlightMode.Touchdown) { ls.shoulder = shoulder; ls.elbow = elbow; ls.foot = ft; }
+            Vector3 sole = ft - fn.normalized * ah;
+            dst[offsetIndex + sp.LegBone(l, 2)] = Matrix4x4.TRS(sole, Quaternion.LookRotation(ff.normalized, fn.normalized), sc);
+            if (Mode != FlightMode.Touchdown) { ls.shoulder = shoulder; ls.elbow = elbow; ls.ankle = ls.foot = ft; }
         }
     }
 

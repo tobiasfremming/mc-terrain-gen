@@ -94,9 +94,22 @@ namespace CreatureKit
             new Entry(7, "octopus siphon", new PartLayer(ShadingModel.Skin, kSkinLayers), true),
             new Entry(8, "membrane (wings, fins, antennae)", new PartLayer(ShadingModel.Membrane, LayerFlags.NoPattern | LayerFlags.NoGrain)),
             new Entry(9, "arthropod band", new PartLayer(ShadingModel.Skin, kSkinLayers, TintSource.Band, 0.9f)),
+            new Entry(10, "armour plate (ArmourPlates)", new PartLayer(ShadingModel.Chitin, LayerFlags.NoPattern | LayerFlags.NoGrain)),
+            new Entry(11, "pincer, jaw (Pincer)", new PartLayer(ShadingModel.Claw, LayerFlags.NoPattern | LayerFlags.NoGrain, TintSource.Pattern, 0.3f)),
+            // big lizards (2026-10-19): new parts' own ids, shaded as body skin until a species restyles them with Layers
+            // (the crocodile's dark keeled armour, ivory teeth; the komodo's yellow tongue) - so every shipped species'
+            // table is unchanged
+            new Entry(12, "armour scutes (ScuteRow)", new PartLayer(ShadingModel.Skin, kSkinLayers)),
+            new Entry(13, "teeth (Jaw)", new PartLayer(ShadingModel.Skin, kSkinLayers)),
+            new Entry(14, "tongue (Tongue)", new PartLayer(ShadingModel.Skin, kSkinLayers)),
         };
 
         public static int NextFree => Registry.Length;
+
+        // Ids the pre-table shader knew (0..9): their rows reproduce its branches exactly. Ids from here on belong to
+        // kit part types (ArmourPlates 10, Pincer 11, ...): rows of their own, never emitted by a legacy species.
+        public const int LegacyIds = 10;
+        public static bool IsKitId(int id) => id >= LegacyIds && id < Registry.Length;
 
         // The row a legacy part id had before the table (the shader's old part-id branches). Ids past the registry
         // shade as body skin (what the old shader did with any unknown id).

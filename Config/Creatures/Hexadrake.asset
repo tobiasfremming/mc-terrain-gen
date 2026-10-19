@@ -278,16 +278,16 @@ MonoBehaviour:
         stepDuration: 0.24
         stepLift: 0.07
         overshoot: 0.05
-        footLength: 0.075
-        toeCount: 3
+        footLength: 0.12
+        toeCount: 4
         forwardSwingLimitDeg: 0
         backSwingLimitDeg: 0
         kneeRangeDeg: 0
         kneeFlexDeg: 0
         upperLength: 0.25
         lowerLength: 0.24
-        upperRadius: 0.036
-        lowerRadius: 0.026
+        upperRadius: 0.046
+        lowerRadius: 0.03
         pole: {x: 0, y: 0.25, z: -1}
         kneeBlend: 0
     - rid: 1003
@@ -307,16 +307,16 @@ MonoBehaviour:
         stepDuration: 0.24
         stepLift: 0.07
         overshoot: 0.05
-        footLength: 0.085
-        toeCount: 3
+        footLength: 0.14
+        toeCount: 4
         forwardSwingLimitDeg: 0
         backSwingLimitDeg: 0
         kneeRangeDeg: 0
         kneeFlexDeg: 0
         upperLength: 0.28
         lowerLength: 0.26
-        upperRadius: 0.042
-        lowerRadius: 0.028
+        upperRadius: 0.056
+        lowerRadius: 0.034
         pole: {x: 0.25, y: 0.5, z: 1}
         kneeBlend: 0
     - rid: 1004

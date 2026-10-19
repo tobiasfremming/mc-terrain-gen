@@ -19,14 +19,14 @@ namespace TerrainGen.Tests
 #if UNITY_EDITOR
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
-            { "WingedSerpent", 0x24CCE26149E5522BUL },   // da59bfc (2026-10-19): rigid head + feat/wyvern-trees data
-            { "SkyDragon", 0x0UL },       // capture in Unity: dragon v4: chest, Caraxes legs + leg fins, wing look (2026-10-19)
+            { "WingedSerpent", 0x0UL },   // capture in Unity: leg look 2026-10-19: ankle, swing-only upper bone, toe peel (was 0x24CCE26149E5522B)
+            { "SkyDragon", 0x0UL },       // capture in Unity: dragon v4 + leg look 2026-10-19: ankle, swing-only upper bone, toe peel
         };
 #else
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
-            { "WingedSerpent", 0x7FAAA303233C33ADUL },   // merge/next 2026-10-19: rigid head 2 + tall stance, flank patches, avoidance (rigid head alone 0x852A4AC6FE4DCB92, wyvern-trees alone 0x41E6D8C3D4F1B5E9)
-            { "SkyDragon", 0x530A5EAF772E2602UL },       // dragon v4: chest, Caraxes legs + leg fins, wing look (2026-10-19)
+            { "WingedSerpent", 0xFC0434CD8302994FUL },   // leg look 2026-10-19: ankle, swing-only upper bone, toe peel; was 0x7FAAA303233C33AD: merge/next 2026-10-19: rigid head 2 + tall stance, flank patches, avoidance (rigid head alone 0x852A4AC6FE4DCB92, wyvern-trees alone 0x41E6D8C3D4F1B5E9)
+            { "SkyDragon", 0x8A7C78C28100AB37UL },       // leg look 2026-10-19: ankle, swing-only upper bone, toe peel; was 0x530A5EAF772E2602: dragon v4: chest, Caraxes legs + leg fins, wing look (2026-10-19)
         };
 #endif
 
@@ -93,15 +93,15 @@ namespace TerrainGen.Tests
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
             // da59bfc (2026-10-19): rigid head (+ feat/wyvern-trees data for the serpent); KitMonitor = DesertMonitor's bones
-            { "DesertBeetle", 0x6F8C1E247D6717C9UL /* R38 rigid head over rims; was 0x7EE694A1D6DCC2F6 */ }, { "DaddyLongLegs", 0x528567DD58C2C0E5UL }, { "Tarantula", 0x109D36AB222C53A6UL /* R38; was 0x3FFDCDB621DEB7FD */ },
-            { "WingedSerpent", 0x052FEB1EAD20C942UL }, { "SkyDragon", 0x0UL /* capture in Unity: dragon v4: chest, Caraxes legs + leg fins, wing look (2026-10-19) */ }, { "KitMonitor", 0x90BEBD53968C4A95UL /* R38; was 0x52982D21E9F52F5C */ },
+            { "DesertBeetle", 0x0UL /* capture in Unity: leg look beetle legs (2026-10-19); was 0x6F8C1E247D6717C9 */ }, { "DaddyLongLegs", 0x528567DD58C2C0E5UL }, { "Tarantula", 0x109D36AB222C53A6UL /* R38; was 0x3FFDCDB621DEB7FD */ },
+            { "WingedSerpent", 0x0UL /* capture in Unity: leg look 2026-10-19: ankle, swing-only upper bone, toe peel; was 0x052FEB1EAD20C942 */ }, { "SkyDragon", 0x0UL /* capture in Unity: dragon v4 + leg look 2026-10-19: ankle, swing-only upper bone, toe peel */ }, { "KitMonitor", 0x0UL /* capture in Unity: leg look 2026-10-19: ankle, swing-only upper bone, toe peel; was 0x90BEBD53968C4A95 */ },
         };
 #else
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
             // rigid head (2026-10-19): head joints 2, 2, 3, 2, 2 (auto), 3 (auto, = DesertMonitor's, still bit-identical to it)
-            { "DesertBeetle", 0xF971D4AF2276C7F0UL /* R38 rigid head over rims; was 0xDBB3F2FA6766AC22 */ }, { "DaddyLongLegs", 0xE95F7961F0A7D560UL }, { "Tarantula", 0xC3636620EEAB2695UL /* R38; was 0xF1CB64350C3D6F9D */ },
-            { "WingedSerpent", 0x6F1262984FBBED19UL /* merge/next 2026-10-19: rigid head + tall stance (rigid head alone 0x8A85F58517392C26, wyvern-trees alone 0xF0B147085F1B2FD2) */ }, { "SkyDragon", 0x79804CFF954EA099UL /* dragon v4: chest, Caraxes legs + leg fins, wing look (2026-10-19) */ }, { "KitMonitor", 0x72B52B3229301DDBUL /* R38; was 0x10D774963F4B93DB */ },
+            { "DesertBeetle", 0x544F9C034A2997F0UL /* leg look beetle legs (2026-10-19); was 0xF971D4AF2276C7F0 */ }, { "DaddyLongLegs", 0xE95F7961F0A7D560UL }, { "Tarantula", 0xC3636620EEAB2695UL /* R38; was 0xF1CB64350C3D6F9D */ },
+            { "WingedSerpent", 0x5E5143BC2A6E894FUL /* leg look 2026-10-19: ankle, swing-only upper bone, toe peel; was 0x6F1262984FBBED19: merge/next 2026-10-19: rigid head + tall stance (rigid head alone 0x8A85F58517392C26, wyvern-trees alone 0xF0B147085F1B2FD2) */ }, { "SkyDragon", 0xBB7F5AC4A3E23DA2UL /* leg look 2026-10-19: ankle, swing-only upper bone, toe peel; was 0x79804CFF954EA099 */ }, { "KitMonitor", 0x0413E426BA709E47UL /* leg look 2026-10-19: ankle, swing-only upper bone, toe peel; was 0x72B52B3229301DDB */ },
         };
 #endif
 

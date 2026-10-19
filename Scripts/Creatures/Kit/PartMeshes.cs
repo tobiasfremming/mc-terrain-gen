@@ -130,20 +130,36 @@ namespace CreatureKit
 
     public sealed partial class Leg2Bone
     {
-        const int kLegSegments = 8;
+        // A vertebrate limb (2026-10-19, "the legs look weird"): a muscled limb, not a hose of even width -
+        //   haunch   the root swells to kHaunch x upperRadius and is buried in the body (blended 50/50 with it), so the
+        //            limb grows out of a shoulder/hip instead of a pipe stuck on the flank;
+        //   upper    thigh / upper arm tapering from the haunch to the knee (kKnee x upperRadius, never thinner than
+        //            the shin), the rounded knee blend as before;
+        //   lower    a calf / forearm belly (kCalf) then a slim ankle (kAnkle x lowerRadius), ending in a round
+        //            ankle knob at the lower bone's end - LegSpec.AnkleHeight above the ground, not in it;
+        //   foot     rigid to the foot bone: a lofted foot from the heel under the ankle to the knuckles (a flat
+        //            plantigrade sole for a low ankle, a raised hock for a high one), splayed toes lying on the
+        //            ground with curved claws (part 2). The ankle knob sits inside the foot at any bend.
+        const int kLegSides = 10;
         const int kKneeRings = 7;          // rings along the knee curve, ends included
-        const float kShoulderBlob = 0.6f;  // the shoulder end extends this * upperRadius into the body
-        const float kAnkleCap = 0.6f;      // rounded end past the foot point, * lowerRadius
-        const int kPadBands = 6;
-        const int kToeSegments = 6;
-        const float kToeFanDeg = 40f;
+        const float kHaunch = 1.35f;       // root radius / upperRadius
+        const float kHaunchDepth = 1.1f;   // the root's buried end, x the haunch radius behind the shoulder point
+        const float kRootBody = 0.3f, kRootLimb = 0.5f;   // limb weight of the buried root rings / the shoulder ring
+        const float kKnee = 0.72f;         // knee radius / upperRadius (at least the shin's)
+        const float kCalf = 0.16f;         // calf belly, x lowerRadius, peaking a third down the shin
+        const float kAnkle = 0.66f;        // ankle radius / lowerRadius
+        const float kMuscleDepth = 0.2f;   // thigh / upper arm section: deeper along the bend by this, narrower across
+        const float kCalfBack = 2.5f;      // the calf belly's centre behind the shin axis, x its height
+        const float kHeel = 0.24f;         // heel behind the ankle, x footLength
+        const float kBall = 0.34f;         // the knuckles (toe roots) ahead of the ankle, x footLength
+        const int kToeSides = 6;
+        const int kClawSides = 5;
+        const float kFootYawDeg = 10f;     // the foot turned out from the body's heading (toes splay outward)
 
         public override int MeshOrder => 1;
 
-        struct LegSample { public Vector3 c, t; public float sigma; public Vector4 skin; public bool pole; }
+        struct LegSample { public Vector3 c, t; public float sigma, r, dr; public Vector4 skin; public bool pole; public int frame; }
 
-        // Tube shoulder (a blob buried in the body) -> rounded knee -> ankle cap, then the foot pad and toes. A wing
-        // arm is drawn by its Wing.
         public override void EmitMesh(PartMeshEmitter m, in PartCtx c)
         {
             int l = c.Ordinal;
@@ -154,114 +170,267 @@ namespace CreatureKit
             Matrix4x4[] bones = m.Bones;
             LegState st = m.Rest.Legs[l];
             int attach = s.attachJoint, bu = sp.LegBone(l, 0), bl = sp.LegBone(l, 1), bf = sp.LegBone(l, 2);
-            Vector3 S = st.shoulder, E = st.elbow, F = st.foot;
-            float lu = Mathf.Max(1e-4f, (E - S).magnitude), ll = Mathf.Max(1e-4f, (F - E).magnitude);
+            Vector3 S = st.shoulder, E = st.elbow, A = st.ankle;
+            float lu = Mathf.Max(1e-4f, (E - S).magnitude), ll = Mathf.Max(1e-4f, (A - E).magnitude);
             Vector3 du = bones[bu].rotation * Vector3.forward, dl = bones[bl].rotation * Vector3.forward;
             float ru = Mathf.Max(PartMeshEmitter.MinRadius, s.upperRadius), rl = Mathf.Max(PartMeshEmitter.MinRadius, s.lowerRadius);
-            float blob = kShoulderBlob * ru, ankle = kAnkleCap * rl, total = lu + ll;
+            float rh = kHaunch * ru, rk = Mathf.Max(kKnee * ru, 1.02f * rl), ra = kAnkle * rl;
+            float blob = kHaunchDepth * rh, total = lu + ll;
 
+            // radius along the limb, sigma = arc length from the shoulder point (negative: the buried root)
             float Radius(float sg)
             {
-                if (sg < 0f) { float q = sg / blob; return ru * Mathf.Sqrt(Mathf.Max(0f, 1f - q * q)); }
-                if (sg > total) { float q = (sg - total) / ankle; return rl * Mathf.Sqrt(Mathf.Max(0f, 1f - q * q)); }
-                return Mathf.Lerp(ru, rl, sg / total);
+                if (sg < 0f) { float q = sg / blob; return rh * Mathf.Sqrt(Mathf.Max(0f, 1f - q * q)); }
+                if (sg <= lu)
+                {
+                    float u = sg / lu;   // muscle mass near the body, easing out toward the knee
+                    return rk + (rh - rk) * Mathf.Pow(1f - u, 1.6f);
+                }
+                if (sg <= total)
+                {
+                    float v = (sg - lu) / ll;
+                    float belly = Mathf.Sin(Mathf.PI * Mathf.Clamp01(v / 0.7f));
+                    return Mathf.Lerp(rk, ra, v * v * (3f - 2f * v) * 0.6f + 0.4f * v) + kCalf * rl * belly;
+                }
+                float e = (sg - total) / ra;   // the ankle knob: a hemisphere of radius ra
+                return ra * Mathf.Sqrt(Mathf.Max(0f, 1f - e * e));
             }
 
             var samples = new List<LegSample>();
+            float Slope(float sg) => (Radius(sg + PartMeshEmitter.DiffStep) - Radius(sg - PartMeshEmitter.DiffStep)) / (2f * PartMeshEmitter.DiffStep);
+            // frame: 1 = the upper bone's, 2 = the lower bone's (muscle sections, below), 0 = rotation-minimising
+            int fr = 1;
             void Add(Vector3 cc, Vector3 t, float sigma, Vector4 skin, bool pole = false) =>
-                samples.Add(new LegSample { c = cc, t = t, sigma = sigma, skin = skin, pole = pole });
-
-            // shoulder blob: a rounded end buried in the body; it and the shoulder ring blend 50/50 body/limb
-            Vector4 shoulderSkin = PartMeshEmitter.Blend(attach, bu, 0.5f);
-            Add(S - du * blob, du, -blob, shoulderSkin, true);
-            Add(S - du * (blob * Mathf.Sin(60f * Mathf.Deg2Rad)), du, -blob * Mathf.Sin(60f * Mathf.Deg2Rad), shoulderSkin);
-            Add(S - du * (blob * Mathf.Sin(30f * Mathf.Deg2Rad)), du, -blob * Mathf.Sin(30f * Mathf.Deg2Rad), shoulderSkin);
-            Add(S, du, 0f, shoulderSkin);
-            Add(S + du * (0.4f * lu), du, 0.4f * lu, PartMeshEmitter.Rigid(bu));
-            // knee: the last and first 35% of the bones follow a rounded curve and blend to 50/50 at the elbow
-            float kb = s.KneeBlend; // fraction of each limb bone blended at the knee (LegSpec.kneeBlend)
-            Vector3 k0 = S + du * ((1f - kb) * lu), k2 = E + dl * (kb * ll);
-            for (int i = 0; i < kKneeRings; i++)
+                samples.Add(new LegSample { c = cc, t = t, sigma = sigma, skin = skin, pole = pole, r = Radius(sigma), dr = Slope(sigma), frame = fr });
+            void AddR(Vector3 cc, Vector3 t, float sigma, float r, float dr, Vector4 skin, bool pole = false) =>
+                samples.Add(new LegSample { c = cc, t = t, sigma = sigma, skin = skin, pole = pole, r = r, dr = dr, frame = fr });
+            // a hemispherical cap of radius r on centre cc, facing dir (+1: toward t, -1: against it)
+            void Cap(Vector3 cc, Vector3 t, float sigma, float r, float dir, Vector4 skin)
             {
-                float t = i / (kKneeRings - 1f), w = t * t * (3f - 2f * t);
-                Vector3 cc = (1f - t) * (1f - t) * k0 + 2f * (1f - t) * t * E + t * t * k2;
-                Vector3 tan = 2f * (1f - t) * (E - k0) + 2f * t * (k2 - E);
-                tan = tan.sqrMagnitude > 1e-12f ? tan.normalized : du;
-                Add(cc, tan, Mathf.Lerp((1f - kb) * lu, lu + kb * ll, t), PartMeshEmitter.Blend(bu, bl, w));
+                if (dir < 0f) AddR(cc - t * r, t, sigma - r, 0f, 0f, skin, true);
+                float[] a = dir < 0f ? new[] { 60f, 30f } : new[] { 30f, 60f };
+                foreach (float deg in a)
+                {
+                    float d = r * Mathf.Sin(deg * Mathf.Deg2Rad), rr = r * Mathf.Cos(deg * Mathf.Deg2Rad);
+                    AddR(cc + t * (dir * d), t, sigma + dir * d, rr, -dir * d / rr, skin);
+                }
+                if (dir > 0f) AddR(cc + t * r, t, sigma + r, 0f, 0f, skin, true);
             }
-            Add(E + dl * (0.6f * ll), dl, lu + 0.6f * ll, PartMeshEmitter.Rigid(bl));
-            Add(F, dl, total, PartMeshEmitter.Rigid(bl));
-            // ankle: rounded end past the foot point (inside the pad / under the ground)
-            Add(F + dl * (ankle * Mathf.Sin(30f * Mathf.Deg2Rad)), dl, total + ankle * Mathf.Sin(30f * Mathf.Deg2Rad), PartMeshEmitter.Rigid(bl));
-            Add(F + dl * (ankle * Mathf.Sin(60f * Mathf.Deg2Rad)), dl, total + ankle * Mathf.Sin(60f * Mathf.Deg2Rad), PartMeshEmitter.Rigid(bl));
-            Add(F + dl * ankle, dl, total + ankle, PartMeshEmitter.Rigid(bl), true);
 
-            // rotation-minimising frame transported from the upper bone's frame
+            // the haunch: a rounded root buried in the body; it and the shoulder ring blend 50/50 body/limb
+            // (the buried end leans to the body, the limb's share growing toward the shoulder ring: a long gentle
+            // gradient keeps a far-swung thick root from shearing through itself)
+            Vector4 rootSkin = PartMeshEmitter.Blend(attach, bu, kRootLimb);
+            Add(S - du * blob, du, -blob, PartMeshEmitter.Blend(attach, bu, kRootBody), true);
+            Add(S - du * (blob * 0.866f), du, -blob * 0.866f, PartMeshEmitter.Blend(attach, bu, kRootBody));
+            Add(S - du * (blob * 0.5f), du, -blob * 0.5f, PartMeshEmitter.Blend(attach, bu, 0.5f * (kRootBody + kRootLimb)));
+            Add(S, du, 0f, rootSkin);
+            // (the body/limb blend fades from 50/50 at the shoulder ring to rigid over the haunch, so a limb swung
+            // far from rest bends the thick root smoothly instead of folding it against one rigid ring)
+            bool blendKnee = s.kneeBlend > 0f;   // authored: the pre-2026-10-19 skinned knee curve
+            float kb = blendKnee ? s.KneeBlend : 0f;
+            float upTo = blendKnee ? 1f - kb : 1f;
+            int ups = blendKnee ? 3 : 4;
+            for (int i = 1; i <= ups; i++)
+            {
+                float f = upTo * i / (ups + 1f);
+                float w = blendKnee ? Mathf.Min(1f, 0.5f + 0.5f * f / Mathf.Max(1e-3f, 0.75f * upTo)) : kRootLimb + (1f - kRootLimb) * f;
+                Add(S + du * (f * lu), du, f * lu, w >= 1f ? PartMeshEmitter.Rigid(bu) : PartMeshEmitter.Blend(attach, bu, w));
+            }
+            int lowerStart = -1;
+            if (blendKnee)
+            {
+                fr = 0;
+                // knee: the last and first kb of the bones follow a rounded curve and blend to 50/50 at the elbow
+                Vector3 k0 = S + du * ((1f - kb) * lu), k2 = E + dl * (kb * ll);
+                for (int i = 0; i < kKneeRings; i++)
+                {
+                    float t = i / (kKneeRings - 1f), w = t * t * (3f - 2f * t);
+                    Vector3 cc = (1f - t) * (1f - t) * k0 + 2f * (1f - t) * t * E + t * t * k2;
+                    Vector3 tan = 2f * (1f - t) * (E - k0) + 2f * t * (k2 - E);
+                    tan = tan.sqrMagnitude > 1e-12f ? tan.normalized : du;
+                    // the profile is a function of the bone stations, not of the curve's length
+                    float sg = t < 0.5f ? Mathf.Lerp((1f - kb) * lu, lu, 2f * t) : Mathf.Lerp(lu, lu + kb * ll, 2f * t - 1f);
+                    Add(cc, tan, sg, PartMeshEmitter.Blend(bu, bl, w));
+                }
+            }
+            else
+            {
+                // A ball knee: the upper tube ends in a hemisphere of the knee radius on the knee, rigid to the upper
+                // bone; the lower tube starts in the same sphere, rigid to the lower bone. The two caps are one
+                // sphere at any bend, so the knee never creases or inverts however far it bends (MaxBend), and
+                // the outside of the bend reads as a knee/elbow.
+                AddR(E, du, lu, rk, 0f, PartMeshEmitter.Rigid(bu));
+                Cap(E, du, lu, rk, 1f, PartMeshEmitter.Rigid(bu));
+                lowerStart = samples.Count;
+                fr = 2;
+                Cap(E, dl, lu, rk, -1f, PartMeshEmitter.Rigid(bl));
+                AddR(E, dl, lu, rk, 0f, PartMeshEmitter.Rigid(bl));
+            }
+            // the shin / forearm, then the ankle knob past the lower bone's end
+            fr = 2;
+            for (int i = 1; i <= 4; i++)
+            {
+                float f = kb + (1f - kb) * i / 5f;
+                Add(E + dl * (f * ll), dl, lu + f * ll, PartMeshEmitter.Rigid(bl));
+            }
+            Add(A, dl, total, PartMeshEmitter.Rigid(bl));
+            Cap(A, dl, total, ra, 1f, PartMeshEmitter.Rigid(bl));
+
+            // rotation-minimising frame transported from the upper bone's frame (across the knee break too: the
+            // lower tube's seam stays on the same side)
             Vector3 x = bones[bu].rotation * Vector3.right;
             int prev = -1;
             for (int i = 0; i < samples.Count; i++)
             {
                 LegSample q = samples[i];
-                Vector3 xt = Vector3.ProjectOnPlane(x, q.t);
+                // a muscled limb is not round: in the bone's own frame (+Y the knee's direction) the thigh / upper
+                // arm is deeper along the bend than across it, and the calf / forearm belly sits behind the shin
+                // (kMuscleDepth, kCalfBack); both fade to round at the haunch, knee and ankle
+                Vector3 xs = q.frame == 1 ? bones[bu].rotation * Vector3.right : q.frame == 2 ? bones[bl].rotation * Vector3.right : x;
+                Vector3 xt = Vector3.ProjectOnPlane(xs, q.t);
                 x = xt.sqrMagnitude > 1e-10f ? xt.normalized : x;
                 Vector3 y = Vector3.Cross(q.t, x);
                 float u = q.sigma + blob;
-                int cur;
-                if (q.pole) cur = m.Pole(q.c, i == 0 ? -q.t : q.t, u, PartMeshEmitter.PartLeg, (i == 0 ? -q.t : q.t).y, q.skin, kLegSegments);
-                else
+                bool first = i == 0 || i == lowerStart;
+                float ea = 1f, eb = 1f, ed = 0f;
+                if (q.frame == 1 && q.sigma > 0f && q.sigma < lu)
                 {
-                    float r = Radius(q.sigma);
-                    float dr = (Radius(q.sigma + PartMeshEmitter.DiffStep) - Radius(q.sigma - PartMeshEmitter.DiffStep)) / (2f * PartMeshEmitter.DiffStep);
-                    cur = m.Ring(q.c, x, y, q.t, r, r, 0f, dr, dr, 0f, u, PartMeshEmitter.PartLeg, q.skin, kLegSegments, false);
+                    float w = Mathf.Sin(Mathf.PI * q.sigma / lu);
+                    ea = 1f - 0.5f * kMuscleDepth * w; eb = 1f + kMuscleDepth * w;
                 }
-                if (prev >= 0) m.Stitch(prev, cur, kLegSegments, samples[i - 1].pole, q.pole, false);
+                else if (q.frame == 2 && q.sigma > lu && q.sigma < total)
+                {
+                    float w = Mathf.Sin(Mathf.PI * (q.sigma - lu) / ll);
+                    ea = 1f - 0.3f * kMuscleDepth * w; eb = 1f + 0.5f * kMuscleDepth * w;
+                    ed = -kCalfBack * kCalf * rl * Mathf.Sin(Mathf.PI * Mathf.Clamp01((q.sigma - lu) / (0.7f * ll)));
+                }
+                int cur;
+                if (q.pole) cur = m.Pole(q.c, first ? -q.t : q.t, u, PartMeshEmitter.PartLeg, (first ? -q.t : q.t).y, q.skin, kLegSides);
+                else cur = m.Ring(q.c, x, y, q.t, q.r * ea, q.r * eb, ed, q.dr * ea, q.dr * eb, 0f, u, PartMeshEmitter.PartLeg, q.skin, kLegSides, false);
+                if (prev >= 0 && i != lowerStart) m.Stitch(prev, cur, kLegSides, samples[i - 1].pole, q.pole, false);
                 prev = cur;
             }
 
-            Foot(m, s, bf);
+            Foot(m, s, bf, s.AnkleHeight, ra, total + blob);
         }
 
-        // Flattened ellipsoid pad plus toe nubs, all rigid to the foot bone (authored in its frame).
-        static void Foot(PartMeshEmitter m, LegSpec s, int bf)
+        // The foot in the foot bone's frame (origin: the contact point, +Y the ground normal, +Z the heading),
+        // rigid to it: the ankle is at (0, ankleHeight, 0). Turned out by kFootYawDeg.
+        static void Foot(PartMeshEmitter m, LegSpec s, int bf, float ankleH, float ra, float arc)
         {
-            Matrix4x4 frame = m.Bones[bf];
             float fl = Mathf.Max(1e-3f, s.footLength);
-            float ax = 0.3f * fl, az = 0.5f * fl, ay = Mathf.Max(0.4f * s.lowerRadius, 0.12f * fl);
-            Vector3 pc = new Vector3(0f, 0.6f * ay, 0.15f * fl);
-            m.Ellipsoid(frame, pc, ax, ay, az, kLegSegments, kPadBands, PartMeshEmitter.PartFoot, bf);
-
-            int toes = Mathf.Max(0, s.toeCount);
-            float toeLen = 0.5f * fl, r0 = 0.55f * ay, drop = 0.15f * ay - pc.y;
+            Matrix4x4 frame = m.Bones[bf] * Matrix4x4.TRS(Vector3.zero, Quaternion.AngleAxis(s.side * kFootYawDeg, Vector3.up), Vector3.one);
             Vector4 skin = PartMeshEmitter.Rigid(bf);
+            int toes = Mathf.Max(0, s.toeCount);
+            float h = Mathf.Max(ankleH, 0.5f * ra);
+            float zh = -kHeel * fl, zb = kBall * fl;
+            float rt = Mathf.Max(0.36f * ra, 0.055f * fl);                     // toe root radius
+            float pad = Mathf.Max(1.15f * rt, 0.5f * ra);                         // knuckle thickness (half)
+            float palmW = Mathf.Max(1.05f * ra, 0.6f * rt * Mathf.Max(2, toes)); // half-width at the knuckles
+            float hock = Mathf.Max(0f, h - 2.2f * ra);                            // the heel's sole height: 0 = plantigrade
+
+            // the loft: sections across +Z (planes of x, y), from the heel pole to the front pole
+            float Top(float z) => z <= 0f ? Mathf.Lerp(hock + 1.3f * ra, h + 0.3f * ra, Mathf.SmoothStep(0f, 1f, (z - zh) / -zh))
+                                         : Mathf.Lerp(h + 0.3f * ra, 2f * pad, Mathf.SmoothStep(0f, 1f, z / zb));
+            float Bot(float z) => z <= 0f ? hock : Mathf.Lerp(hock, 0f, Mathf.SmoothStep(0f, 1f, z / zb));
+            float Wid(float z) => z <= 0f ? Mathf.Lerp(0.75f * ra, 1.08f * ra, Mathf.SmoothStep(0f, 1f, (z - zh) / -zh))
+                                         : Mathf.Lerp(1.08f * ra, palmW, Mathf.SmoothStep(0f, 1f, z / zb));
+            float[] zs = { zh + 0.25f * ra, 0.5f * zh, 0f, 0.3f * zb, 0.6f * zb, zb };
+            const float d = 1e-3f;
+            Vector3 X = frame.MultiplyVector(Vector3.right).normalized, Y = frame.MultiplyVector(Vector3.up).normalized, Z = frame.MultiplyVector(Vector3.forward).normalized;
+            int prev = m.Pole(frame.MultiplyPoint3x4(new Vector3(0f, 0.5f * (Top(zh) + Bot(zh)), zh)), -Z, arc, PartMeshEmitter.PartLeg, -Z.y, skin, kLegSides);
+            for (int i = 0; i < zs.Length; i++)
+            {
+                float z = zs[i];
+                float yc = 0.5f * (Top(z) + Bot(z)), b = 0.5f * (Top(z) - Bot(z)), a = Wid(z);
+                float da = (Wid(z + d) - Wid(z - d)) / (2f * d);
+                float db = 0.5f * ((Top(z + d) - Bot(z + d)) - (Top(z - d) - Bot(z - d))) / (2f * d);
+                float dd = 0.5f * ((Top(z + d) + Bot(z + d)) - (Top(z - d) + Bot(z - d))) / (2f * d);
+                int cur = m.Ring(frame.MultiplyPoint3x4(new Vector3(0f, yc, z)), X, Y, Z, a, b, 0f, da, db, dd, arc + z - zh,
+                                 PartMeshEmitter.PartLeg, skin, kLegSides, false);
+                m.Stitch(prev, cur, kLegSides, i == 0, false, false);
+                prev = cur;
+            }
+            int front = m.Pole(frame.MultiplyPoint3x4(new Vector3(0f, pad, zb + 0.6f * pad)), Z, arc + zb - zh + pad, PartMeshEmitter.PartLeg, Z.y, skin, kLegSides);
+            m.Stitch(prev, front, kLegSides, false, true, false);
+
+            // toes: fanned from under the knuckles, arched, lying on the ground; the middle ones longest
+            float fan = Mathf.Min(50f, 12f * (toes - 1));
+            var tipL = new Vector3[toes]; var dirs = new Vector3[toes]; var lens = new float[toes]; var roots = new Vector3[toes];
             for (int i = 0; i < toes; i++)
             {
-                float yaw = toes == 1 ? 0f : Mathf.Lerp(-kToeFanDeg, kToeFanDeg, i / (toes - 1f));
+                float k = toes == 1 ? 0f : i / (toes - 1f) * 2f - 1f;    // -1 .. 1 across the foot
+                float yaw = k * fan;
                 Vector3 dir = Quaternion.AngleAxis(yaw, Vector3.up) * Vector3.forward;
-                float ext = 1f / Mathf.Sqrt(dir.x * dir.x / (ax * ax) + dir.z * dir.z / (az * az));
-                Vector3 st = pc + dir * (0.45f * ext);
-                Vector3 C(float q) => st + dir * (toeLen * q) + Vector3.up * (drop * q * q);
-                Vector3 D(float q) => dir * toeLen + Vector3.up * (2f * drop * q);
-                float R(float q) => r0 * Mathf.Pow(Mathf.Max(0f, 1f - q), 0.6f);
-
-                Vector3 back = frame.MultiplyVector(-dir);
-                int prev = m.Pole(frame.MultiplyPoint3x4(st - dir * (0.6f * r0)), back, 0f, PartMeshEmitter.PartFoot, back.y, skin, kToeSegments);
-                float[] qs = { 0f, 0.35f, 0.7f };
+                float len = (0.62f - 0.2f * k * k) * fl;
+                Vector3 root = new Vector3(k * 0.55f * palmW, rt, zb - 0.6f * pad);
+                float arch = 0.7f * rt;
+                Vector3 C(float q) => root + dir * (len * q) + Vector3.up * (arch * 4f * q * (1f - q) - 0.25f * rt * q);
+                Vector3 D(float q) => dir * len + Vector3.up * (arch * (4f - 8f * q) - 0.25f * rt);
+                float R(float q) => rt * (1f - 0.45f * q);
+                float[] qs = { 0f, 0.3f, 0.6f, 0.85f, 1f };
+                Vector3 back = frame.MultiplyVector(-dir).normalized;
+                int tp = m.Pole(frame.MultiplyPoint3x4(root - dir * rt), back, 0f, PartMeshEmitter.PartLeg, back.y, skin, kToeSides);
+                bool first = true;
                 foreach (float q in qs)
                 {
-                    Vector3 dq = D(q);
-                    Vector3 t = dq.normalized;
-                    Vector3 x = Vector3.Cross(Vector3.up, t).normalized;
-                    Vector3 y = Vector3.Cross(t, x);
-                    float dr = (R(q + PartMeshEmitter.DiffStep) - R(Mathf.Max(0f, q - PartMeshEmitter.DiffStep))) / ((q > 0f ? 2f : 1f) * PartMeshEmitter.DiffStep) / dq.magnitude;
-                    float r = R(q);
-                    int cur = m.Ring(frame.MultiplyPoint3x4(C(q)), frame.MultiplyVector(x), frame.MultiplyVector(y), frame.MultiplyVector(t),
-                                     r, r, 0f, dr, dr, 0f, 0.6f * r0 + toeLen * q, PartMeshEmitter.PartFoot, skin, kToeSegments, false);
-                    m.Stitch(prev, cur, kToeSegments, q == 0f, false, false);
-                    prev = cur;
+                    Vector3 t = D(q).normalized;
+                    Vector3 xx = Vector3.Cross(Vector3.up, t).normalized;
+                    Vector3 yy = Vector3.Cross(t, xx);
+                    float r = R(q), dr = -0.45f * rt / len;
+                    int cur = m.Ring(frame.MultiplyPoint3x4(C(q)), frame.MultiplyVector(xx).normalized, frame.MultiplyVector(yy).normalized,
+                                     frame.MultiplyVector(t).normalized, r, 0.85f * r, 0f, dr, 0.85f * dr, 0f, rt + len * q, PartMeshEmitter.PartLeg, skin, kToeSides, false);
+                    m.Stitch(tp, cur, kToeSides, first, false, false);
+                    tp = cur; first = false;
                 }
-                Vector3 tipT = frame.MultiplyVector(D(1f).normalized);
-                int tip = m.Pole(frame.MultiplyPoint3x4(C(1f)), tipT, 0.6f * r0 + toeLen, PartMeshEmitter.PartFoot, tipT.y, skin, kToeSegments);
-                m.Stitch(prev, tip, kToeSegments, false, true, false);
+                Vector3 tipDir = frame.MultiplyVector(D(1f)).normalized;
+                int tip = m.Pole(frame.MultiplyPoint3x4(C(1f) + D(1f).normalized * (0.55f * rt)), tipDir, rt + len, PartMeshEmitter.PartLeg, tipDir.y, skin, kToeSides);
+                m.Stitch(tp, tip, kToeSides, false, true, false);
+                // the claw: from the toe's tip, curling down onto the ground
+                Vector3 cd = (D(1f).normalized + Vector3.up * 0.35f).normalized;
+                Vector3 cu = Vector3.Cross(cd, Vector3.Cross(Vector3.up, cd));
+                Quaternion cq = Quaternion.LookRotation(frame.MultiplyVector(cd).normalized, frame.MultiplyVector(cu).normalized);
+                float clawLen = s.clawLength > 0f ? s.clawLength : Mathf.Max(0.16f * fl, 2.2f * rt);
+                m.Horn(frame.MultiplyPoint3x4(C(1f) - D(1f).normalized * (0.2f * rt)), cq, 0.62f * R(1f), 0f, clawLen, s.clawCurveDeg > 0f ? s.clawCurveDeg : 75f,
+                       bf, PartMeshEmitter.PartFoot, kClawSides, rt + len, out _, out _);
+                tipL[i] = C(1f); dirs[i] = dir; lens[i] = len; roots[i] = root;
+            }
+
+            // webbing (LegSpec.toeWeb): a thin two-sided membrane between neighbouring toes from their roots to the
+            // web fraction of their length, its free edge scalloped back between the toes; rigid to the foot
+            float web = Mathf.Clamp01(s.toeWeb);
+            if (web <= 0f || toes < 2) return;
+            const int kWebRows = 4;
+            float wy = 0.55f * rt, thick = 0.12f * rt;
+            for (int i = 0; i + 1 < toes; i++)
+            {
+                for (int side = 0; side < 2; side++)
+                {
+                    float up = side == 0 ? 1f : -1f;
+                    Vector3 nrm = frame.MultiplyVector(Vector3.up * up).normalized;
+                    int first = m.Lists.pos.Count;
+                    for (int r = 0; r <= kWebRows; r++)
+                    {
+                        float q = web * r / kWebRows;
+                        Vector3 pa = roots[i] + dirs[i] * (lens[i] * q), pb = roots[i + 1] + dirs[i + 1] * (lens[i + 1] * q);
+                        float scallop = 1f - 0.35f * (r / (float)kWebRows) * (r / (float)kWebRows);
+                        Vector3 pm = Vector3.Lerp(roots[i] + dirs[i] * (lens[i] * q * scallop), roots[i + 1] + dirs[i + 1] * (lens[i + 1] * q * scallop), 0.5f);
+                        foreach (Vector3 pp in new[] { pa, pm, pb })
+                        {
+                            Vector3 lp = new Vector3(pp.x, wy + up * thick, pp.z);
+                            m.Vertex(frame.MultiplyPoint3x4(lp), nrm, rt + lens[i] * q, 0f, PartMeshEmitter.PartLeg, nrm.y, skin);
+                        }
+                    }
+                    for (int r = 0; r < kWebRows; r++)
+                        for (int k = 0; k < 2; k++)
+                        {
+                            int a0 = first + r * 3 + k, a1 = a0 + 1, b0 = a0 + 3, b1 = b0 + 1;
+                            // front faces along nrm: (b0 - a0) x (a1 - a0) is up for rows running +z and columns +x
+                            bool flip = up < 0f;
+                            m.Tri(a0, b0, a1, flip); m.Tri(a1, b0, b1, flip);
+                        }
+                }
             }
         }
     }

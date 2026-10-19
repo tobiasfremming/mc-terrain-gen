@@ -56,7 +56,8 @@ namespace TerrainGen.Tests
                 { "DesertBeetle", Habitat.Plain }, { "DaddyLongLegs", Habitat.Plain }, { "Tarantula", Habitat.Plain },
                 { "WingedSerpent", Habitat.Aviary }, { "SkyDragon", Habitat.Aviary }, { "TreeOctopus", Habitat.Grove },
                 { "FinnedSandEel", Habitat.Plain }, { "GiantCentipede", Habitat.Plain }, { "Hexadrake", Habitat.Aviary },
-                { "TentacleCrab", Habitat.Plain }, { "RockCrab", Habitat.Plain },
+                { "TentacleCrab", Habitat.Plain }, { "RockCrab", Habitat.Plain }, { "Scolopendra", Habitat.Plain },
+                { "Crocodile", Habitat.Plain }, { "KomodoDragon", Habitat.Plain },
             };
             foreach (string n in CreatureKitAssets.Species())
             {

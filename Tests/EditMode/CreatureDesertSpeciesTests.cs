@@ -234,7 +234,7 @@ namespace TerrainGen.Tests
                     float len = ls.TotalLength * sim.SizeScale;
                     Vector3 right = sim.Rotations[ls.attachJoint] * Vector3.right * ls.side;
                     float side = Vector3.Dot(st.foot - st.shoulder, right) / len;
-                    float lean = Vector3.Angle(st.elbow - st.foot, Vector3.up);   // lower leg from vertical
+                    float lean = Vector3.Angle(st.elbow - st.ankle, Vector3.up);   // lower leg from vertical
                     float knee = (st.elbow.y - st.shoulder.y) / len;
                     minSide = Mathf.Min(minSide, side); sumSide += side;
                     minLean = Mathf.Min(minLean, lean); sumLean += lean;

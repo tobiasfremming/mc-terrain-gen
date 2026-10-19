@@ -36,11 +36,25 @@ public class LegSpec
     // a strongly bent rest knee has little flexion left before the skinned knee folds). Past a limit the
     // foot steps; a little further the body slows and stops.
     public float forwardSwingLimitDeg, backSwingLimitDeg, kneeRangeDeg, kneeFlexDeg;
-    // Mesh: fraction of each limb bone blended into the rounded knee (0 = default). A larger blend
-    // spreads a deep knee bend over more of the limb so the skin does not fold.
+    // Mesh: 0 = a ball knee (two rigid tubes meeting in one sphere: never creases at any bend, the default since
+    // 2026-10-19); > 0 = the older skinned knee curve, blending this fraction of each limb bone.
     public float kneeBlend;
 
-    public const float DefaultSwingLimitDeg = 55f, DefaultKneeRangeDeg = 35f, DefaultKneeBlend = 0.45f;
+    // Two-bone limb: height of the ankle (the lower bone's end) above the foot's contact point, metres at
+    // scale 1; the foot (pad, toes) is built from the ankle down to the ground. 0 = auto (DefaultAnkleHeight x
+    // lowerRadius), < 0 = none (the lower bone ends on the ground, the pose before 2026-10-19).
+    [Tooltip("Two-bone limb: ankle height above the foot's contact point, metres (0 = auto 1.2 x lowerRadius, < 0 = none).")]
+    public float ankleHeight;
+    [Tooltip("Two-bone limb: claw length, metres (0 = auto 0.16 x footLength).")]
+    public float clawLength;
+    [Tooltip("Two-bone limb: how far a claw curls down over its length, degrees (0 = 75).")]
+    public float clawCurveDeg;
+    [Tooltip("Two-bone limb: webbing between the toes, fraction of the toe length (0 = none, 1 = to the tips).")]
+    [Range(0f, 1f)] public float toeWeb;
+
+    public const float DefaultSwingLimitDeg = 55f, DefaultKneeRangeDeg = 35f, DefaultKneeBlend = 0.45f, DefaultAnkleHeight = 1.2f;
+    // the ankle height in use, metres at scale 1 (0 for an arthropod leg or a feeler)
+    public float AnkleHeight => IsArthropod || feeler ? 0f : ankleHeight > 0f ? ankleHeight : ankleHeight < 0f ? 0f : DefaultAnkleHeight * lowerRadius;
     public float ForwardSwingLimit => forwardSwingLimitDeg > 0f ? forwardSwingLimitDeg : DefaultSwingLimitDeg;
     public float BackSwingLimit => backSwingLimitDeg > 0f ? backSwingLimitDeg : DefaultSwingLimitDeg;
     public float KneeRange => kneeRangeDeg > 0f ? kneeRangeDeg : DefaultKneeRangeDeg;

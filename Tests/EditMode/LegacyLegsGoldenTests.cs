@@ -22,19 +22,19 @@ namespace TerrainGen.Tests
         // bit-identical is shown by the offline harness constants below, which still match on a6337d5.
         static readonly Dictionary<string, (ulong bones, ulong mesh)> Golden = new Dictionary<string, (ulong, ulong)>
         {
-            { "DesertMonitor", (0x90BEBD53968C4A95UL, 0xE56A6E3CC28CF98AUL) },   // rigid head over rims: eased lift + head pitch share (R38, 2026-10-19; was 0x52982D21E9F52F5C)
-            { "TestHexapod", (0x74CBED3B3EEC2DE0UL, 0xC9E071DE0867056FUL) },
+            { "DesertMonitor", (0x0UL, 0x0UL) },   // capture in Unity: leg look 2026-10-19: ankle, swing-only upper bone, toe peel (was 0x90BEBD53968C4A95, mesh 0xE56A6E3CC28CF98A)
+            { "TestHexapod", (0x0UL, 0x0UL) },   // capture in Unity: leg look 2026-10-19: ankle, swing-only upper bone, toe peel (was 0x74CBED3B3EEC2DE0, mesh 0xC9E071DE0867056F)
             { "DesertSnake", (0x3004A76C9481746FUL, 0x5022CF597CF3F50CUL) },     // rigid head over rims (R38, 2026-10-19; was 0xAB4B7C25AE2BFAA9)
-            { "Lizardish", (0xFD91F9955B3A64A2UL, 0x139A617E5D148B58UL) },
+            { "Lizardish", (0x0UL, 0x0UL) },   // capture in Unity: leg look 2026-10-19: ankle, swing-only upper bone, toe peel (was 0xFD91F9955B3A64A2, mesh 0x139A617E5D148B58)
         };
 #else
         // the offline harness (.NET 8, scratchpad legs_impl), captured on f4bda2a
         static readonly Dictionary<string, (ulong bones, ulong mesh)> Golden = new Dictionary<string, (ulong, ulong)>
         {
-            { "DesertMonitor", (0x72B52B3229301DDBUL, 0xC330116046C3CEECUL) },   // rigid head over rims (R38, 2026-10-19; was 0x10D774963F4B93DB)
-            { "TestHexapod", (0x54A1ED3EDAA99E05UL, 0x026EBCE6D39A2C0EUL) },
+            { "DesertMonitor", (0x0413E426BA709E47UL, 0x5D13E2FAFEDB4D7FUL) },   // leg look 2026-10-19: ankle, swing-only upper bone, toe peel (was 0x72B52B3229301DDB, mesh 0xC330116046C3CEEC)
+            { "TestHexapod", (0x4146114CB4C2F943UL, 0xCC7C12EEA7B28B95UL) },   // leg look 2026-10-19: ankle, swing-only upper bone, toe peel (was 0x54A1ED3EDAA99E05, mesh 0x026EBCE6D39A2C0E)
             { "DesertSnake", (0x421BED59F8301011UL, 0xAA47EE710711F7EAUL) },     // rigid head over rims (R38, 2026-10-19; was 0x5788FB67C4BAF321)
-            { "Lizardish", (0x6CECE9DD201C6DD4UL, 0x54AF3E0105515CDEUL) },
+            { "Lizardish", (0xCCD2DE5C46E2BCB1UL, 0xECFC13A26B122ACEUL) },   // leg look 2026-10-19: ankle, swing-only upper bone, toe peel (was 0x6CECE9DD201C6DD4, mesh 0x54AF3E0105515CDE)
         };
 #endif
 

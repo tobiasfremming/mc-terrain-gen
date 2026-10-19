@@ -148,7 +148,7 @@ namespace TerrainGen.Tests
                     LegSpec ls = s.Species.legs[l];
                     var st = s.Legs[l];
                     Assert.AreEqual(ls.upperLength * s.SizeScale, (st.elbow - st.shoulder).magnitude, 1e-3f);
-                    Assert.LessOrEqual((st.foot - st.elbow).magnitude, ls.lowerLength * s.SizeScale + 1e-3f);
+                    Assert.LessOrEqual((st.ankle - st.elbow).magnitude, ls.lowerLength * s.SizeScale + 1e-3f);
                 }
             });
         }
@@ -257,7 +257,7 @@ namespace TerrainGen.Tests
                 return;
             }
             upperLocal = inv * (st.elbow - st.shoulder).normalized;
-            knee = Vector3.Angle(st.elbow - st.shoulder, st.foot - st.elbow);
+            knee = Vector3.Angle(st.elbow - st.shoulder, st.ankle - st.elbow);
         }
 
         // The spine bend a tight circle must reach for a bend test to bite: 90 % of 20 deg, or of the species'
@@ -339,7 +339,7 @@ namespace TerrainGen.Tests
                 float ghw = sp.joints[ls.attachJoint].halfWidth * sim.SizeScale;
                 for (int k = 0; k <= 4; k++)
                 {
-                    Vector3 p = Vector3.Lerp(st.elbow, st.foot, k / 4f);
+                    Vector3 p = Vector3.Lerp(st.elbow, st.ankle, k / 4f);   // the shank (the foot hangs under the ankle)
                     girdle = Mathf.Min(girdle, (inv * (p - sim.Joints[ls.attachJoint])).x * ls.side - ghw);
                     for (int i = lo; i < hi; i++)
                     {
@@ -413,9 +413,13 @@ namespace TerrainGen.Tests
                 {
                     Quaternion up = w[sp.LegBone(l, 0)].rotation, lo = w[sp.LegBone(l, 1)].rotation;
                     LegState st = sim.Legs[l];
-                    Assert.Less((lo * Vector3.forward - (st.foot - st.elbow).normalized).magnitude, 1e-3f, "lower +Z");
-                    // the hinge axis (+X) is shared: the lower frame is the upper turned about it
-                    Assert.Greater(Vector3.Dot(up * Vector3.right, lo * Vector3.right), 0.99f, $"t={t} leg {l}: lower bone roll flipped");
+                    Assert.Less((lo * Vector3.forward - (st.ankle - st.elbow).normalized).magnitude, 1e-3f, "lower +Z");
+                    // the lower frame is the upper turned by the shortest arc between the bones (CreatureLegs.LowerRot):
+                    // no roll of its own, so it can never flip (the upper bone is swing-only since 2026-10-19, so its
+                    // +X is no longer exactly the knee's hinge)
+                    Vector3 want = Quaternion.FromToRotation(up * Vector3.forward, lo * Vector3.forward) * (up * Vector3.right);
+                    Assert.Less((lo * Vector3.right - want).magnitude, 1e-3f, $"t={t} leg {l}: lower bone roll is not the upper's");
+                    Assert.Greater(Vector3.Dot(up * Vector3.right, lo * Vector3.right), 0f, $"t={t} leg {l}: lower bone roll flipped");
                 }
             }
         }
