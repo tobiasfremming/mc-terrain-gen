@@ -62,6 +62,7 @@
     <UnityOnlySources Include="$(TG)\Scripts\Creatures\Octopus\OctopusCreature.cs" /> <!-- MonoBehaviour wrapper -->
     <UnityOnlySources Include="$(TG)\Scripts\Creatures\Octopus\OctopusPreyAdapters.cs" /> <!-- CreatureWorld prey -->
     <UnityOnlySources Include="$(TG)\Scripts\Creatures\Octopus\BranchHints.cs" />   <!-- PlantWorld skeletons -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\CreatureThreatSource.cs" />  <!-- MonoBehaviour, Camera.main (the viewer as a Flee threat) -->
 
     <!-- EditMode tests that need the Editor (scene objects, physics, shaders, AssetDatabase beyond species
          assets, Perf assembly) or non-creature runtime code. Everything else matching the include globs runs. -->
