@@ -21,7 +21,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | **SpineBody** | Body | exists | = joints | 0 | anything with a backbone or a segmented trunk | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, WingedSerpent |
 | **ArthropodLeg** | Limb | exists | = segments | 1, 2, 9 | insects, spiders, crabs, centipedes; anything with visible segments | DaddyLongLegs, DesertBeetle, Tarantula |
 | **Leg2Bone** | Limb | exists | 3 | 1, 2 | lizards, mammals, birds' legs, wing arms | DesertMonitor, KitMonitor, SkyDragon, TestHexapod, WingedSerpent |
-| **Wing** | Wing | exists | 7 | 8, 1, 2 | bats, pterosaurs, dragons; the Fly module makes it fly | SkyDragon, WingedSerpent |
+| **Wing** | Wing | exists | 6 + max(1, spec.flankPatches), +1 with spec.groundTallStance | 8, 1, 2 | bats, pterosaurs, dragons; the Fly module makes it fly | SkyDragon, WingedSerpent |
 | **Eyes** | Sense | exists | 2 | 3 | always (every shipped species has two eye bones) | DaddyLongLegs, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, KitMonitor, SkyDragon, Tarantula, TestHexapod, TestSnake, TreeOctopus, WingedSerpent |
 | **Antenna** | Chain | exists | = segments | 8 | whiskers, barbels, antennae, feelers, cerci, ribbon-like streamers | SkyDragon |
 | **Tentacle** | Chain | exists | = spec.segments (0 = 24) | 4 | octopus arms; grabbing arms on any body (after T5.9) | TreeOctopus |
@@ -67,13 +67,13 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | TestHexapod | legacy | Spine | SpineBody, 6x Leg2Bone, Eyes | Walk (Tripod), Wander, Skin | 28 |
 | TestSnake | legacy | Spine | SpineBody, Eyes | Walk, Slither, Wander, Skin | 42 |
 | TreeOctopus | legacy | Soft | 8x Tentacle, SoftBody, Eyes, RigidCone | Ambush, Skin, Cloak, Chromatophore | 201 |
-| WingedSerpent | legacy | Spine | SpineBody, 4x Leg2Bone, 2x Wing, Eyes | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane | 61 |
+| WingedSerpent | legacy | Spine | SpineBody, 4x Leg2Bone, 2x Wing, Eyes | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane | 73 |
 
 ## Parameters
 
 ### SoftBody
 
-Shape-matched soft lattice (OctopusBody/SoftLattice: 14 particles, 5 clusters) driven by its Tentacle chains: mantle, head, web. System: OctopusBody (self-ticking ICreatureBody).
+Shape-matched soft lattice (OctopusBody/SoftLattice: 14 particles, 5 clusters) driven by its Tentacle chains: mantle, head, web. Deforms everywhere: never a rigid head. System: OctopusBody (self-ticking ICreatureBody).
 
 | field | type | unit | size | meaning | range | example |
 |---|---|---|---|---|---|---|
@@ -88,7 +88,7 @@ Shape-matched soft lattice (OctopusBody/SoftLattice: 14 particles, 5 clusters) d
 
 ### SpineBody
 
-Bend-limited follow-the-leader chain riding the ground or a climbed surface (CreatureSim). The body of every walker, snake and the wyvern. System: CreatureSim chain + grounding.
+Bend-limited follow-the-leader chain riding the ground or a climbed surface (CreatureSim). The body of every walker, snake and the wyvern. Its head is rigid by default (rigidHeadJoints: auto from the profile; 0 = off). System: CreatureSim chain + grounding.
 
 | field | type | unit | size | meaning | range | example |
 |---|---|---|---|---|---|---|
@@ -116,6 +116,7 @@ Bend-limited follow-the-leader chain riding the ground or a climbed surface (Cre
 | `profile[].bendLimitDeg` | float | Degrees | - | cone half-angle vs the previous segment |  |  |
 | `jointCount` | int | Count | - | joints made from the profile (ignored when joints are written out) | 2..128 |  |
 | `rigidHead` | int | Count | - | profile: joints 1..rigidHead are rigid (neck stiffness) | 0..8 |  |
+| `rigidHeadJoints` | int | Count | - | rigid head: the first N joints move as one rigid body (no bend, draping or twist between them; the neck behind bends). -1 = auto: the joints up to where the body first narrows (in its front half), 0 = off (the body deforms all the way) | -1..16 | default -1 (auto); monitor 3 (auto), snake 2 |
 | `ringSegments` | int | Count | - | mesh: vertices around each ring |  | default 16 |
 | `ringsPerSegment` | int | Count | - | mesh: rings per spine segment |  | default 3 |
 
@@ -214,7 +215,7 @@ Vertebrate two-bone limb: TwoBoneIK with a pole, rounded knee blend, swing/knee 
 | `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
 | `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
 | `arm` | string | PartRef | - | the Leg2Bone this wing rides on (its role becomes WingArm); a mirrored wing names the unmirrored id and gets .L / .R |  |  |
-| `spec` | WingSpec | Spec | - | the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundWristLift, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop |  |  |
+| `spec` | WingSpec | Spec | - | the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop |  |  |
 
 ### Eyes
 
@@ -452,7 +453,7 @@ Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlig
 
 | field | type | unit | size | meaning | range | example |
 |---|---|---|---|---|---|---|
-| `spec` | FlightSpec | Spec | - | flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, pursuitGain |  |  |
+| `spec` | FlightSpec | Spec | - | flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain |  |  |
 | `twist` | AirTwistSpec | Struct | - | twisting flight (AirTwist, Chinese dragon): the body follows the head's path; 3D swimming, corkscrews, barrel rolls, loops, slow rolls that travel head to tail. All 0 = the serpent's trailing air chain |  |  |
 | `twist.swimAmplitude` | float | Metres | x s | always-on swimming: the head's 3D S-curve amplitude (0 = no swimming) |  | dragon 0.12 |
 | `twist.swimHz` | float | Hz | / sqrt(s) | swimming wave frequency; wavelength along the body = speed / Hz |  | dragon 0.9 |

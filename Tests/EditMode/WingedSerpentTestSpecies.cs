@@ -30,7 +30,7 @@ namespace TerrainGen.Tests
                 float hw = HalfWidth(i);
                 sp.joints[i] = new SpineJoint
                 {
-                    halfWidth = hw, halfHeight = 0.85f * hw, clearance = Mathf.Max(0.1f, 1.2f * hw),
+                    halfWidth = hw, halfHeight = 0.85f * hw, clearance = Clearance(i, hw),
                     bendLimitDeg = i < Girdle ? 18f : 14f, rigid = i == 1,
                 };
             }
@@ -68,8 +68,25 @@ namespace TerrainGen.Tests
             // the head is held stiller (headStabilise 0.15 -> 0.35 s) and the roll authority restored (rollGain
             // 0.7 -> 1.0: the lower grip rolled to 30 deg in 1.4 s instead of 1.1, and the wall turn came late)
             sp.wings = wings;
-            sp.flight = new FlightSpec { kGrip = 0.5f, amplitudeMin = 0.75f, strokeRateMin = 3f, climbIntegralLimit = 0.6f, headStabilise = 0.35f, rollGain = 1f };
+            // perched, the long front legs grip the branch (perchGrip, 2026-10-18 tall stance)
+            sp.flight = new FlightSpec { kGrip = 0.5f, amplitudeMin = 0.75f, strokeRateMin = 3f, climbIntegralLimit = 0.6f, headStabilise = 0.35f, rollGain = 1f, perchGrip = true };
             return new Serpent { species = sp, wings = wings, flight = sp.flight };
+        }
+
+        // How high each joint rides on the ground. User request 2026-10-18 (a pterosaur / azhdarchid reference):
+        // a tall quadrupedal stance on the folded wing arms - the shoulders carried high (0.74 m), the neck
+        // raised to the head (0.95 m), the back sloping down to the hips (0.45 m, the hind legs under them) and
+        // the tail trailing down to the ground. Every slope is <= ~0.035 m per 0.08 m segment (26 deg): the
+        // walking spine follows its clearances only that gently (steeper, it buckles). Piecewise linear.
+        // Was max(0.1, 1.2 x halfWidth) everywhere (a low wing-walk).
+        static readonly float[] kStanceJ = { 0f, Girdle, Girdle + 1f, Hips, Hips + 10f };
+        static readonly float[] kStanceH = { 0.95f, 0.74f, 0.73f, 0.45f, 0.1f };
+        static float Clearance(int i, float hw)
+        {
+            float low = Mathf.Max(0.1f, 1.2f * hw);
+            for (int k = 1; k < kStanceJ.Length; k++)
+                if (i <= kStanceJ[k]) return Mathf.Max(low, Mathf.Lerp(kStanceH[k - 1], kStanceH[k], Mathf.InverseLerp(kStanceJ[k - 1], kStanceJ[k], i)));
+            return low;
         }
 
         // monitor-like head, thin neck, widest at the girdle, slim trunk, small hips, long tapering tail
@@ -87,12 +104,14 @@ namespace TerrainGen.Tests
             // on the ground (user feedback 2026-10-18): folded fingers swept back and 30 deg up, the wrist on a
             // longer thumb claw (0.07 -> 0.09), the membrane tucked up the flank and its trailing rib near the flank
             // rib (0.5 -> 0.8: the narrow zone between them no longer sags to the ground when folded)
-            groundLiftDeg = 30f, groundWristLift = 0.1f, groundFlankRise = 0.8f, thumbLength = 0.09f, trailingRib = 0.8f };
+            groundLiftDeg = 50f, groundTallStance = true, flankPatches = 6, fingerFoldDeg = new[] { 120f, 134f, 148f }, groundWristLift = 0.14f, groundFlankRise = 0.8f, thumbLength = 0.12f, trailingRib = 0.8f };
+        // (2026-10-18, tall stance) the arms are near-vertical front legs: the wrist planted under and a little
+        // ahead of the shoulder (restOffset 0.85 m out -> 0.32 m)
 
         static LegSpec Arm(int side, int group) => new LegSpec
         {
             attachJoint = Girdle, side = side,
-            shoulderOffset = new Vector3(0.06f, 0.02f, 0f), restOffset = new Vector3(0.85f, 0f, 0.25f),
+            shoulderOffset = new Vector3(0.06f, 0.02f, 0f), restOffset = new Vector3(0.32f, 0f, 0.3f),
             upperLength = 0.5f, lowerLength = 0.6f, upperRadius = 0.034f, lowerRadius = 0.024f,
             pole = new Vector3(0f, 0.25f, -1f),
             stepThreshold = 0.16f, stepDuration = 0.2f, stepLift = 0.06f, overshoot = 0.06f,
@@ -102,8 +121,9 @@ namespace TerrainGen.Tests
         static LegSpec Hind(int side, int group) => new LegSpec
         {
             attachJoint = Hips, side = side,
-            shoulderOffset = new Vector3(0.04f, -0.01f, 0f), restOffset = new Vector3(0.15f, 0f, -0.02f),
-            upperLength = 0.1f, lowerLength = 0.095f, upperRadius = 0.022f, lowerRadius = 0.015f,
+            // (2026-10-18, tall stance) longer, standing under the hips at 0.45 m (was 0.1 / 0.095, rest 0.15 out)
+            shoulderOffset = new Vector3(0.04f, -0.01f, 0f), restOffset = new Vector3(0.12f, 0f, 0f),
+            upperLength = 0.28f, lowerLength = 0.27f, upperRadius = 0.022f, lowerRadius = 0.015f,
             pole = new Vector3(0.3f, 0.6f, 1f),
             // the arms' cadence (stepDuration 0.2) and an early threshold: the hind legs step with their gait
             // group's arm instead of lagging to full stretch (was 0.09 / 0.16: stop-go)

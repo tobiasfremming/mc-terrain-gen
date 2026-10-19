@@ -11,7 +11,7 @@ namespace TerrainGen.Tests
     public class CreatureBoneLayoutTests
     {
         // The legacy formulas, transcribed from CreatureSpecies / LegBoneLayout / WingBoneLayout before T1.1 (a wing:
-        // WingBoneLayout.BonesPerWing bones, 7 since the humerus patch bone; antennae appended after the eyes).
+        // WingBoneLayout.Bones(spec) bones, 7 since the humerus patch bone, 6 + flankPatches when split; antennae appended after the eyes).
         static int LegacyLegBones(CreatureSpecies sp)
         {
             int c = 0;
@@ -31,10 +31,10 @@ namespace TerrainGen.Tests
             for (int a = 0; a < sp.AntennaCount; a++) c += sp.antennae[a].Segments;
             return c;
         }
-        static int LegacyBoneCount(CreatureSpecies sp) => sp.JointCount + LegacyLegBones(sp) + WingBoneLayout.BonesPerWing * sp.WingCount + 2 + AntennaBones(sp);
+        static int LegacyBoneCount(CreatureSpecies sp) => sp.JointCount + LegacyLegBones(sp) + WingBoneLayout.WingBones(sp, sp.WingCount) + 2 + AntennaBones(sp);
         static int LegacyLegBone(CreatureSpecies sp, int leg, int part) => sp.JointCount + LegacyLegStart(sp, leg) + part;
-        static int LegacyWingBone(CreatureSpecies sp, int w, int k) => sp.JointCount + LegacyLegBones(sp) + WingBoneLayout.BonesPerWing * w + k;
-        static int LegacyEyeBone(CreatureSpecies sp, int e) => sp.JointCount + LegacyLegBones(sp) + WingBoneLayout.BonesPerWing * sp.WingCount + e;
+        static int LegacyWingBone(CreatureSpecies sp, int w, int k) => sp.JointCount + LegacyLegBones(sp) + WingBoneLayout.WingBones(sp, w) + k;
+        static int LegacyEyeBone(CreatureSpecies sp, int e) => sp.JointCount + LegacyLegBones(sp) + WingBoneLayout.WingBones(sp, sp.WingCount) + e;
 
         // null when the layout reproduces every legacy index
         internal static string LegacyProblem(CreatureSpecies sp, CreatureBoneLayout layout)
@@ -45,7 +45,7 @@ namespace TerrainGen.Tests
                 for (int k = 0; k < (sp.legs[l] != null ? sp.legs[l].SegmentCount : 3); k++)
                     if (layout.LegBone(l, k) != LegacyLegBone(sp, l, k)) return $"leg {l} bone {k}: {layout.LegBone(l, k)} != legacy {LegacyLegBone(sp, l, k)}";
             for (int w = 0; w < sp.WingCount; w++)
-                for (int k = 0; k < WingBoneLayout.BonesPerWing; k++)
+                for (int k = 0; k < WingBoneLayout.Bones(sp.wings[w]); k++)
                     if (layout.WingBone(w, k) != LegacyWingBone(sp, w, k)) return $"wing {w} bone {k}: {layout.WingBone(w, k)} != legacy {LegacyWingBone(sp, w, k)}";
             for (int e = 0; e < 2; e++)
                 if (layout.EyeBone(e) != LegacyEyeBone(sp, e)) return $"eye {e}: {layout.EyeBone(e)} != legacy {LegacyEyeBone(sp, e)}";
@@ -111,8 +111,8 @@ namespace TerrainGen.Tests
                 Assert.AreEqual(n + 3, sp.LegBone(1, 0));
                 Assert.AreEqual(n + 6 + 4, sp.LegBone(3, 0));
                 Assert.AreEqual(n + 14, sp.WingBone(0, 0), "wings after the summed leg bones");
-                Assert.AreEqual(n + 14 + 2 * WingBoneLayout.BonesPerWing, sp.EyeBone(0));
-                Assert.AreEqual(n + 14 + 2 * WingBoneLayout.BonesPerWing + 2, sp.BoneCount);
+                Assert.AreEqual(n + 14 + WingBoneLayout.WingBones(sp, 2), sp.EyeBone(0));
+                Assert.AreEqual(n + 14 + WingBoneLayout.WingBones(sp, 2) + 2, sp.BoneCount);
             }
             finally { Object.DestroyImmediate(sp); }
         }

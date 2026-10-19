@@ -33,7 +33,7 @@ namespace CreatureKit
     }
 
     [Serializable]
-    [Part("SpineBody", PartKind.Body, Bones = "= joints", Summary = "Bend-limited follow-the-leader chain riding the ground or a climbed surface (CreatureSim). The body of every walker, snake and the wyvern.",
+    [Part("SpineBody", PartKind.Body, Bones = "= joints", Summary = "Bend-limited follow-the-leader chain riding the ground or a climbed surface (CreatureSim). The body of every walker, snake and the wyvern. Its head is rigid by default (rigidHeadJoints: auto from the profile; 0 = off).",
           System = "CreatureSim chain + grounding", MaterialLayers = new[] { 0 }, UseWhen = "anything with a backbone or a segmented trunk")]
     public sealed partial class SpineBody : CreaturePart
     {
@@ -44,10 +44,26 @@ namespace CreatureKit
         [Param(ParamUnit.Struct, "profile keys (sugar): interpolated to jointCount joints; >= 2 keys, t = 0 and t = 1 included")] public ProfileKey[] profile = new ProfileKey[0];
         [Param(ParamUnit.Count, "joints made from the profile (ignored when joints are written out)", Min = 2, Max = 128)] public int jointCount;
         [Param(ParamUnit.Count, "profile: joints 1..rigidHead are rigid (neck stiffness)", Min = 0, Max = 8)] public int rigidHead;
+        [Param(ParamUnit.Count, "rigid head: the first N joints move as one rigid body (no bend, draping or twist between them; the neck behind bends). -1 = auto: the joints up to where the body first narrows (in its front half), 0 = off (the body deforms all the way)", Min = -1, Max = 16, Default = "-1 (auto)", Example = "monitor 3 (auto), snake 2")] public int rigidHeadJoints = -1;
         [Param(ParamUnit.Count, "mesh: vertices around each ring", Default = "16")] public int ringSegments = 16;
         [Param(ParamUnit.Count, "mesh: rings per spine segment", Default = "3")] public int ringsPerSegment = 3;
 
         public int JointCount => joints != null && joints.Length > 0 ? joints.Length : jointCount;
+        // The rigid head's joint count (rigidHeadJoints resolved: auto from the joints, at most JointCount - 1).
+        public int RigidHeadJoints => rigidHeadJoints >= 0 ? Mathf.Min(rigidHeadJoints, Mathf.Max(0, JointCount - 1)) : AutoHead(BuildJoints());
+
+        // A spine body's head: the joints in front of the neck - the first joint at least kNeckStep narrower than its
+        // predecessor, looked for in the front half (the monitor's snout-skull-jaw 0..2 before the neck at 3, -10 %; a
+        // snake's 0..1, -40 %; the dragon's 0..1). No neck there (a worm, an eel tapering gently into its tail, a body
+        // that only widens), or a head of one joint: 0.
+        const float kNeckStep = 0.05f;
+        public static int AutoHead(SpineJoint[] js)
+        {
+            int n = js != null ? js.Length : 0;
+            for (int i = 1; i <= n / 2; i++)
+                if (js[i].halfWidth < (1f - kNeckStep) * js[i - 1].halfWidth) return i >= 2 ? i : 0;
+            return 0;
+        }
         public float BodyLength => headCapLength + spacing * (JointCount - 1) + tailTipLength;
         public override int BoneCount(in SpeciesCtx c) => JointCount;
         protected override void CopyArrays() { joints = (JointDef[])joints?.Clone(); profile = (ProfileKey[])profile?.Clone(); }
@@ -56,6 +72,7 @@ namespace CreatureKit
         {
             if (JointCount < 2) return $"{id}: needs at least 2 joints (joints, or profile + jointCount)";
             if (!(spacing > 0f)) return $"{id}: spacing must be > 0";
+            if (rigidHeadJoints < -1 || rigidHeadJoints > JointCount - 1) return $"{id}: rigidHeadJoints {rigidHeadJoints} out of range -1..{JointCount - 1}";
             if ((joints == null || joints.Length == 0))
             {
                 if (profile == null || profile.Length < 2) return $"{id}: profile needs >= 2 keys";
@@ -125,7 +142,7 @@ namespace CreatureKit
     }
 
     [Serializable]
-    [Part("SoftBody", PartKind.Body, Bones = "6", Summary = "Shape-matched soft lattice (OctopusBody/SoftLattice: 14 particles, 5 clusters) driven by its Tentacle chains: mantle, head, web.",
+    [Part("SoftBody", PartKind.Body, Bones = "6", Summary = "Shape-matched soft lattice (OctopusBody/SoftLattice: 14 particles, 5 clusters) driven by its Tentacle chains: mantle, head, web. Deforms everywhere: never a rigid head.",
           System = "OctopusBody (self-ticking ICreatureBody)", MaterialLayers = new[] { 5, 6, 7 }, UseWhen = "boneless bodies: octopus, slug, jelly")]
     public sealed class SoftBody : CreaturePart
     {
@@ -317,17 +334,17 @@ namespace CreatureKit
     // ------------------------------------------------------------------ wings, chains
 
     [Serializable]
-    [Part("Wing", PartKind.Wing, Bones = "7", Summary = "3-finger membrane wing on an arm limb (a Leg2Bone it names); a wingbeat is a step with a vertical comfort band (CreatureWings, FlightModel).",
+    [Part("Wing", PartKind.Wing, Bones = "6 + max(1, spec.flankPatches), +1 with spec.groundTallStance", Summary = "3-finger membrane wing on an arm limb (a Leg2Bone it names); a wingbeat is a step with a vertical comfort band (CreatureWings, FlightModel).",
           System = "CreatureFlight + CreatureWings", MaterialLayers = new[] { 8, 1, 2 }, UseWhen = "bats, pterosaurs, dragons; the Fly module makes it fly")]
     public sealed partial class Wing : CreaturePart
     {
-        public const int Bones = WingBoneLayout.BonesPerWing; // 3 fingers, 2 ribs, arm sector, humerus patch
+        // 3 fingers, 2 ribs, arm sector, the humerus patch (or spec.flankPatches flank patches), a tall stance's fan-side rear rib
         [Param(ParamUnit.PartRef, "the Leg2Bone this wing rides on (its role becomes WingArm); a mirrored wing names the unmirrored id and gets .L / .R")]
         public string arm = "";
         [Param(ParamUnit.Spec, "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm`")]
         public WingSpec spec = new WingSpec();
 
-        public override int BoneCount(in SpeciesCtx c) => Bones;
+        public override int BoneCount(in SpeciesCtx c) => WingBoneLayout.Bones(spec);
         public override void CollectReferences(List<string> into) => into.Add(arm);
         protected override void CopyArrays()
         {

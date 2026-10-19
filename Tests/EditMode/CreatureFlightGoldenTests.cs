@@ -19,14 +19,14 @@ namespace TerrainGen.Tests
 #if UNITY_EDITOR
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
-            { "WingedSerpent", 0xF1C5AD8CA7563215UL },
-            { "SkyDragon", 0UL },   // 2026-10-19 deep downstroke + head (feat/dragon-head-wings): re-pin in Unity (was 0x29E499FA9EE623D6UL)
+            { "WingedSerpent", 0UL },   // rigid head + feat/wyvern-trees data (2026-10-19): recapture (0 = report)
+            { "SkyDragon", 0UL },       // rigid head (2026-10-19): recapture
         };
 #else
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
-            { "WingedSerpent", 0xCBCDCC3065F639EDUL },
-            { "SkyDragon", 0xA0C0649A80B127F1UL },   // 2026-10-19 deep downstroke + girdle bob + head (antennae roots moved; was 0xEF27A79A9CD7F5A9UL)
+            { "WingedSerpent", 0x7FAAA303233C33ADUL },   // merge/next 2026-10-19: rigid head 2 + tall stance, flank patches, avoidance (rigid head alone 0x852A4AC6FE4DCB92, wyvern-trees alone 0x41E6D8C3D4F1B5E9)
+            { "SkyDragon", 0x2151D69DB051F65DUL },       // rigid head 2, auto, on the RigidLoft head (2026-10-19; integration had 0xA0C0649A80B127F1)
         };
 #endif
 
@@ -92,14 +92,16 @@ namespace TerrainGen.Tests
 #if UNITY_EDITOR
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
-            { "DesertBeetle", 0x0D320E205C37F22BUL }, { "DaddyLongLegs", 0x546C444ADD9D7F16UL }, { "Tarantula", 0x5BDB2CBEB8CE0B7CUL },
-            { "WingedSerpent", 0x2D19B03A345A8A3AUL }, { "SkyDragon", 0UL /* 2026-10-19 head profile + whisker/barbel roots: re-pin in Unity (was 0x9F7240888C3A4B45UL) */ }, { "KitMonitor", 0x5CA3EBE4BA35469AUL },
+            // rigid head (2026-10-19): every one recaptured (0 = report the value)
+            { "DesertBeetle", 0UL }, { "DaddyLongLegs", 0UL }, { "Tarantula", 0UL },
+            { "WingedSerpent", 0UL /* rigid head + feat/wyvern-trees data */ }, { "SkyDragon", 0UL }, { "KitMonitor", 0UL },
         };
 #else
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
-            { "DesertBeetle", 0x1EA0C97520747EE5UL }, { "DaddyLongLegs", 0x575349E45CB83CE9UL }, { "Tarantula", 0x03EC33CC22FCFA8AUL },
-            { "WingedSerpent", 0x725173037414F8EAUL }, { "SkyDragon", 0x78C97545F691E5C3UL /* 2026-10-19 head (was 0xB86BDAF4AECA355CUL) */ }, { "KitMonitor", 0x53B537BC3A04F006UL },
+            // rigid head (2026-10-19): head joints 2, 2, 3, 2, 2 (auto), 3 (auto, = DesertMonitor's, still bit-identical to it)
+            { "DesertBeetle", 0xDBB3F2FA6766AC22UL }, { "DaddyLongLegs", 0xE95F7961F0A7D560UL }, { "Tarantula", 0xF1CB64350C3D6F9DUL },
+            { "WingedSerpent", 0x6F1262984FBBED19UL /* merge/next 2026-10-19: rigid head + tall stance (rigid head alone 0x8A85F58517392C26, wyvern-trees alone 0xF0B147085F1B2FD2) */ }, { "SkyDragon", 0x443742B5546FE27AUL /* integration 0x78C97545F691E5C3 */ }, { "KitMonitor", 0x10D774963F4B93DBUL },
         };
 #endif
 

@@ -90,6 +90,24 @@ sealed class CreatureLegs
     readonly int[] attachJoints;   // the distinct joints legs attach to
     bool spreadNonZero;
     readonly CreatureClimb climb;  // null: walking only
+
+    // Perched grip (a flyer standing on a branch; set by CreatureFlight, default off = the walking code
+    // unchanged): a rest or landing point whose probe finds nothing near the body's own support (the ground
+    // far below a branch, or a branch flank curving away) is replaced by a cast from it toward the spine's
+    // ground point on the real surface (the wrap cast climbing uses), so the feet close round the branch; the
+    // uphill rest slide is skipped (it would walk the feet off the branch).
+    public bool Grip
+    {
+        get => grip;
+        set { grip = value; for (int k = 0; k < gripValid.Length; k++) gripValid[k] = false; }
+    }
+    bool grip;
+    const float kGripDrop = 0.6f;
+    const float kGripFacing = 0.5f;  // a gripped point faces up at least this much (60 deg from the top of a branch)
+    const int kGripIters = 5;        // the spine's line, then 4 bisection probes
+    const float kGripCacheMove = 0.01f; // m at scale 1 the rest stance may move before the grip point is searched again
+    readonly Vector3[] gripNear, gripP, gripN; // per leg: the cached grip rest point and the stance it was found for
+    readonly bool[] gripValid;  // x the attach joint's clearance: a rest point lower than the spine's ground by this is off the perch
     readonly int[] footSource;     // per leg: what its foot stands on, for the probe's tie preference
 
     // Arthropod legs (LegSpec.segments), solved by ArthropodLegIK; a two-bone leg has a null model and takes the
@@ -136,6 +154,7 @@ sealed class CreatureLegs
         stepOver = new float[c]; jointLimited = new bool[c]; restReach = new float[c];
         prevSwing = new float[c]; prevKnee = new float[c];
         footSource = new int[c];
+        gripNear = new Vector3[c]; gripP = new Vector3[c]; gripN = new Vector3[c]; gripValid = new bool[c];
         fwdLimit = new float[c]; backLimit = new float[c]; kneeRange = new float[c]; kneeFlex = new float[c];
         trunkKeep = new float[c]; trunkStep = new float[c]; trunkLo = new int[c]; trunkHi = new int[c]; trunkSlack = new float[c];
         trunkHalfWidth = new float[c];
@@ -214,7 +233,7 @@ sealed class CreatureLegs
             Vector3 so = Mirror(specs[l].restOffset, l) * scale;
             Vector3 near = joints[specs[l].attachJoint] + rotations[specs[l].attachJoint] * so;
             Vector3 p = near; Vector3 n = u;
-            ground.Probe(near, u, kProbeWindow * scale, out p, out n);
+            ground.Probe(near, u, Window(l), out p, out n);
             rest[l] = p;
             target[l] = p;
             State[l].footNormal = n.sqrMagnitude > 1e-12f ? n.normalized : u;
@@ -233,7 +252,9 @@ sealed class CreatureLegs
             Vector3 u = Up(l);
             Vector3 near = joints[specs[l].attachJoint] + rotations[specs[l].attachJoint] * (Mirror(specs[l].restOffset, l) * scale);
             Vector3 p = near - u * (sp.joints[specs[l].attachJoint].clearance * scale), n = u;
-            if (ground.Probe(near, u, kProbeWindow * scale, out Vector3 gp, out Vector3 gn)) { p = gp; n = gn; }
+            bool got = ground.Probe(near, u, Window(l), out Vector3 gp, out Vector3 gn);
+            if (got) { p = gp; n = gn; }
+            if (Grip) GripPoint(l, near, u, got, ref p, ref n);
             rest[l] = p; target[l] = p;
             State[l].stepping = false; State[l].stepT = 0f;
             State[l].footNormal = n.sqrMagnitude > 1e-12f ? n.normalized : u;
@@ -326,6 +347,15 @@ sealed class CreatureLegs
     // ---- climbing ----
 
     bool Climbing => climb != null && climb.Active;
+    // A walking foot probe's window: kProbeWindow, or (a tall stance: the attach joint's clearance near the window
+    // or deeper) that clearance plus half the window - with the plain window a probe from a shoulder 0.74 m up
+    // missed a window-limited surface (colliders) and the foot stayed in the air. Every species whose clearances
+    // are under 0.9 x the window (all but the winged serpent) probes exactly as before.
+    float Window(int l)
+    {
+        float c = sp.joints[specs[l].attachJoint].clearance;
+        return (c > 0.9f * kProbeWindow ? c + 0.5f * kProbeWindow : kProbeWindow) * scale;
+    }
     // The attach joint's steepness (0 walking, 1 on a vertical surface) and a gait factor lerped by it.
     float Steep(int l) => Climbing ? climb.Steep[specs[l].attachJoint] : 0f;
     static float Factor(float f, float steep) => 1f + (f - 1f) * steep;
@@ -336,9 +366,9 @@ sealed class CreatureLegs
     {
         if (!Climbing)
         {
-            if (climb == null) return ground.Probe(near, u, kProbeWindow * scale, out p, out n);
+            if (climb == null) return ground.Probe(near, u, Window(l), out p, out n);
             // walking near colliders: the same answer as the plain probe, with the leg's slot (cached raycasts)
-            bool ok = climb.Surface.Probe(near, u, kProbeWindow * scale, SurfaceHit.NoSource, climb.LegSlot(l, k), out SurfaceHit wh);
+            bool ok = climb.Surface.Probe(near, u, Window(l), SurfaceHit.NoSource, climb.LegSlot(l, k), out SurfaceHit wh);
             p = wh.point; n = wh.normal;
             return ok;
         }
@@ -350,6 +380,50 @@ sealed class CreatureLegs
         p = near; n = u;
         return false;
     }
+
+    // Grip: the probed point p (got: found) stands if it lies on the body's own support (no lower than
+    // kGripDrop clearances below the spine's ground point) and faces up (kGripFacing). Otherwise the foot
+    // closes in toward the spine: the outermost point between the spine's line and `near` (a few bisection
+    // probes along the leg's lateral offset) that is still on that support - on a branch, its flank on this
+    // side; on a rock's edge, the edge. A probe miss holds the last answer. Rest points are cached while the
+    // stance does not move (cache slot: the leg; -1 = no cache).
+    bool GripPoint(int l, Vector3 near, Vector3 u, bool got, ref Vector3 p, ref Vector3 n, bool cache = false)
+    {
+        int aj = specs[l].attachJoint;
+        float clear = sp.joints[aj].clearance * scale;
+        Vector3 anchor = joints[aj] - u * clear;
+        if (got && OnSupport(p, n, anchor, u, clear)) return true;
+        if (cache && gripValid[l] && (near - gripNear[l]).sqrMagnitude < kGripCacheMove * kGripCacheMove * scale * scale)
+        {
+            p = gripP[l]; n = gripN[l];
+            return true;
+        }
+        Vector3 fwd = rotations[aj] * Vector3.forward;
+        Vector3 basePt = joints[aj] + fwd * Vector3.Dot(near - joints[aj], fwd);
+        float lo = 0f, hi = 1f;
+        bool found = false;
+        Vector3 bp = p, bn = n;
+        for (int it = 0; it < kGripIters; it++)
+        {
+            float f = it == 0 ? 0f : 0.5f * (lo + hi);
+            // probed from just above the support's level (a tall stance's clearance is deeper than the window)
+            Vector3 q = Vector3.Lerp(basePt, near, f) - u * Mathf.Max(0f, clear - 0.5f * kProbeWindow * scale);
+            if (ground.Probe(q, u, kProbeWindow * scale, out Vector3 gp, out Vector3 gn) && OnSupport(gp, gn, anchor, u, clear))
+            {
+                bp = gp; bn = gn; found = true;
+                if (it > 0) lo = f;
+            }
+            else if (it == 0) break; // nothing under the spine itself: no support to grip
+            else hi = f;
+        }
+        if (!found) return got;
+        p = bp; n = bn;
+        if (cache) { gripValid[l] = true; gripNear[l] = near; gripP[l] = p; gripN[l] = n; }
+        return true;
+    }
+
+    bool OnSupport(Vector3 p, Vector3 n, Vector3 anchor, Vector3 u, float clear)
+        => Vector3.Dot(p - anchor, u) > -kGripDrop * clear && Vector3.Dot(n, u) >= kGripFacing;
 
     // A foot may lift on a steep surface only if the creature keeps its grip: one planted foot per girdle and
     // half of all feet.
@@ -409,7 +483,9 @@ sealed class CreatureLegs
                     p = wh.point; pn = wh.normal; footSource[l] = wh.source; got = true;
                 }
             }
+            if (Grip && !Climbing) got = GripPoint(l, near, u, got, ref p, ref pn, true);
             if (!got) continue; // hold the last rest
+            if (Grip && !Climbing) { rest[l] = p; continue; }
             // Uphill (one side of a cross slope) the ground rises toward the shoulder and the rest stance
             // would fold the knee far past its rest bend: slide the rest point outward along the ground
             // until it is as far from the shoulder as on flat ground.
@@ -652,7 +728,9 @@ sealed class CreatureLegs
         Vector3 goal = rest[l] + fwd * (travel + over);
         Vector3 u = Up(l);
         Vector3 p = goal, n = u;
-        if (!FootProbe(l, 2, goal, u, out p, out n)) { p = goal; n = State[l].stepToNormal.sqrMagnitude > 0.5f ? State[l].stepToNormal : State[l].footNormal; }
+        bool landed = FootProbe(l, 2, goal, u, out p, out n);
+        if (Grip && !Climbing) landed = GripPoint(l, goal, u, landed, ref p, ref n);
+        if (!landed) { p = goal; n = State[l].stepToNormal.sqrMagnitude > 0.5f ? State[l].stepToNormal : State[l].footNormal; }
         // a landing point under the trunk (the inner feet of a tight turn) moves out from under it
         Vector3 q = GatedKeepOff(l, p, ref aimSlack[l], ref aimPrev[l]);
         if ((q - p).sqrMagnitude > 1e-12f)
@@ -740,8 +818,9 @@ sealed class CreatureLegs
     // may have used up the slack (clearance beyond the keep-out distance) the last measurement left.
     Vector3 GatedKeepOff(int l, Vector3 p, ref float slack, ref Vector3 prev)
     {
-        // climbing: feet hug the surface the body is on, across corners the plan-view outline means nothing
-        if (Climbing) { prev = p; slack = 0f; return p; }
+        // climbing (and a perched grip): feet hug the surface the body is on, across corners the plan-view
+        // outline means nothing
+        if (Climbing || Grip) { prev = p; slack = 0f; return p; }
         slack -= (p - prev).magnitude + trunkTravel;
         prev = p;
         if (slack > 0f) return p;
@@ -755,7 +834,7 @@ sealed class CreatureLegs
     // joint can have moved since the last call (see kTrunkTravel).
     bool TrunkLimited(int l, float travel)
     {
-        if (Climbing) { trunkSlack[l] = 0f; return false; }
+        if (Climbing || Grip) { trunkSlack[l] = 0f; return false; }
         trunkSlack[l] -= travel;
         if (trunkSlack[l] > 0f) return false;
         float c = TrunkClearance(l, target[l], out _);

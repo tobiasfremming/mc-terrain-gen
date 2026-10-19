@@ -63,7 +63,12 @@ namespace CreatureKit
             WingSpecs = wings ?? new WingSpec[0];
             Rest = CreatureRestPose.Sim(sp);
             Joints = sp.JointCount;
-            if (WingSpecs.Length > 0) Bones = WingedMeshBuilder.RestBoneWorld(sp, WingSpecs, Rest, out Wings);
+            if (WingSpecs.Length > 0)
+            {
+                // a tall stance's bind keeps a straight spine (WingedMeshBuilder.StraightenBind); no-op otherwise
+                WingedMeshBuilder.StraightenBind(sp, WingSpecs, Rest);
+                Bones = WingedMeshBuilder.RestBoneWorld(sp, WingSpecs, Rest, out Wings);
+            }
             else Bones = CreatureRestPose.BoneWorld(Rest);
             pos = Lists.pos; nrm = Lists.nrm; uv0 = Lists.uv0; uv1 = Lists.uv1; uv2 = Lists.uv2; tris = Lists.tris;
         }

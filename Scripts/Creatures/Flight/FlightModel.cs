@@ -44,6 +44,7 @@ public sealed class FlightModel
     public float Thrust { get; private set; }     // -1..1
     public float Demand { get; private set; }     // 0..1
     public float Amplitude { get; private set; }  // fraction of the comfort band
+    public float AmplitudeCap = float.MaxValue;   // set by the flight mode (a branch flare's shallow strokes); none by default
     public float StrokeRate { get; private set; } // downstroke rad/s (scaled)
     public float Asymmetry { get; private set; }  // + = left wing strokes harder (rolls right)
     public bool Gliding { get; private set; }
@@ -119,7 +120,7 @@ public sealed class FlightModel
         float demand = Mathf.Clamp01(Mathf.Max(c, Mathf.Max(0.5f * Mathf.Abs(thr), floor)));
         Climb = c; Thrust = thr; Demand = demand;
         Gliding = demand < f.glideDemand;
-        Amplitude = f.amplitudeMin + (1f - f.amplitudeMin) * demand;
+        Amplitude = Mathf.Min(f.amplitudeMin + (1f - f.amplitudeMin) * demand, AmplitudeCap);
         StrokeRate = (f.strokeRateMin + (f.strokeRateMax - f.strokeRateMin) * demand) / T;
 
         // bank toward the coordinated-turn angle for the turn-rate goal; asymmetry is a PD on the bank

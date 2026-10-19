@@ -64,6 +64,10 @@ public sealed class CreatureSim
     readonly CreatureLegs legs;
     readonly CreatureClimb climb;    // null: this species cannot climb, or the ground is not an ISurfaceProbe
     readonly int n;
+    // The rigid head (species rigidHeadJoints; null = off: every joint grounded and bent on its own, bit-identical).
+    readonly RigidHead rigidHead;
+    readonly int headK;              // its joint count, 0 when off
+    readonly Vector3[] headTarget;   // grounding: each head joint's own grounded position (the lift's floor)
     Vector3 heading;
     Vector3 headUp;                  // the head's up the heading was last made tangent to (parallel transport)
     float commanded;
@@ -156,6 +160,8 @@ public sealed class CreatureSim
         }
         else { Up = pathUp; ClimbWeight = new float[n]; Source = new int[n]; }
         UpdateFrames();
+        // after the first frames: the rest pose (CreatureRestPose, the bind) stays exactly the per-joint one
+        if (sp.RigidHead >= 2) { rigidHead = new RigidHead(sp, sp.RigidHead); headK = rigidHead.K; headTarget = new Vector3[headK]; }
         legs = new CreatureLegs(sp, ground, upAt, Joints, Rotations, sizeScale, TimeScale, climb);
         legs.StopDecel = 3f * sp.accel; // the gait's braking (GroundSubStep)
         Legs = legs.State;
@@ -361,6 +367,7 @@ public sealed class CreatureSim
             Path[i] = new Vector3(g.x + u.x * lift, g.y + u.y * lift, g.z + u.z * lift);
             if (climbing) climb.AboveTerrain(i, ref Path[i], clear, window);
         }
+        // the rigid head grounded as one body, then the lengths from its neck; without one, from joint 1
         RestoreLengths(seg, climbing);
         // a flyer perched on a branch or a rock: joints past the end of their support hang
         if (flight != null && flight.Drape(dt, Path, pathUp, groundPoint, seg)) RestoreLengths(seg);
@@ -371,6 +378,7 @@ public sealed class CreatureSim
         // climbing, the body follows its head: no joint moves further in a sub-step than the swing guard lets a
         // walking girdle (the last safety net under the climbing stages' frames - a whip there swung the tail metres)
         if (climbing) LimitTravel(seg, (kClimbTravel * Speed + kClimbCreep * SizeScale) * dt);
+        if (rigidHead != null) GroundHead(seg, climbing);
         // the up field follows the new ground normals (the next sub-step's chain step and grounding use it)
         if (climbing) climb.UpdateUpField(dt, Path, GroundNormals, pathUp, upAt);
         if (afterGround.Length != 0) RunStage(afterGround, dt);
@@ -438,7 +446,7 @@ public sealed class CreatureSim
                 pb = pu * pu < 1e-10f ? prevBack : Norm(new Vector3(prevBack.x - u.x * pu, prevBack.y - u.y * pu, prevBack.z - u.z * pu), prevBack);
             }
             Vector3 d;
-            if (js[i].rigid || run < 1e-6f) d = pb;
+            if (js[i].rigid || i < headK || run < 1e-6f) d = pb;
             else
             {
                 d = hv / run;
@@ -458,7 +466,36 @@ public sealed class CreatureSim
             float sp1 = len > 1e-6f ? rise / len : 0f, cp = len > 1e-6f ? run / len : 1f;
             Path[i] = new Vector3(a.x + (d.x * cp + u.x * sp1) * seg, a.y + (d.y * cp + u.y * sp1) * seg, a.z + (d.z * cp + u.z * sp1) * seg);
             prevBack = d;
+            // the rigid head: laid out as one body along the chord the chain gave it, before the neck follows
+            if (i == headK - 1) rigidHead.Place(Path, rigidHead.Frame(Path[0], Path[i], HeadPathUp(), 0f), 0, SizeScale);
         }
+    }
+
+    // The rigid head's up on the path: the mean of its joints' grounding ups.
+    Vector3 HeadPathUp()
+    {
+        Vector3 u = Vector3.zero;
+        for (int i = 0; i < headK; i++) u += pathUp[i];
+        return u;
+    }
+
+    // After grounding, in place of its length restore (the drape, the climb's pitch limiter and travel limit follow as
+    // for any body; the frames lay the displayed head out rigidly whatever they did): the head grounded as one body. Each joint's own
+    // grounded position is its floor; the head is laid along the chord from the snout's to the neck end's and lifted
+    // until no head joint is below its floor (on a hump it rests on its highest support, over a hole's rim it bridges
+    // it) - a whole-head pitch, never a bend. The neck behind is put back to its lengths (RestoreLengths).
+    void GroundHead(float seg, bool climbing)
+    {
+        Array.Copy(Path, headTarget, headK);
+        Vector3 up = HeadPathUp();
+        rigidHead.Place(Path, rigidHead.Frame(Path[0], Path[headK - 1], up, 0f), 0, SizeScale);
+        float m = up.magnitude;
+        up = m > 1e-9f ? up / m : Vector3.up;
+        float lift = 0f;
+        for (int i = 1; i < headK; i++) lift = Mathf.Max(lift, Vector3.Dot(headTarget[i] - Path[i], pathUp[i]));
+        if (lift > 0f)
+            for (int i = 0; i < headK; i++) Path[i] += up * lift;
+        RestoreLengths(seg, climbing, headK);
     }
 
     // Climbing's travel limit: joint by joint from the neck, a move from pathStart longer than `bound` is cut to it,
@@ -532,6 +569,34 @@ public sealed class CreatureSim
             }
             Rotations[i] = Basis(f, u);
         }
+        if (rigidHead != null) HeadFrames();
+    }
+
+    // The rigid head's one frame (the mean of its joints' ups and rolls), its layout from the neck end (the neck keeps
+    // its length; joint 0 moves only along the chord, and only when another system laid the head out).
+    void HeadFrames()
+    {
+        Vector3 up = Vector3.zero; float roll = 0f;
+        bool climbing = climb != null && climb.Active;
+        for (int i = 0; i < headK; i++)
+        {
+            Vector3 g = GroundNormals[i];
+            if (climbing) g = SurfaceMath.Slerp(g, climb.Up[i], climb.Weight[i]);
+            up += g;
+            roll += rollDeg[i];
+        }
+        Quaternion q = rigidHead.Frame(Joints[0], Joints[headK - 1], up, roll / headK);
+        rigidHead.Place(Joints, q, headK - 1, SizeScale);
+        rigidHead.WriteFrames(q, Rotations);
+    }
+
+    // Frames another system wrote (the air chain, a twisting launch): the head made one body again with its own mean up.
+    internal void RigidHeadFromRotations()
+    {
+        if (rigidHead == null) return;
+        Quaternion q = rigidHead.Frame(Joints[0], Joints[headK - 1], rigidHead.UpOf(Rotations), 0f);
+        rigidHead.Place(Joints, q, headK - 1, SizeScale);
+        rigidHead.WriteFrames(q, Rotations);
     }
 
     // Gait-coupled spine motion (sprawling-lizard pattern), driven by the feet themselves: each girdle
@@ -612,6 +677,8 @@ public sealed class CreatureSim
             Vector3 v = Path[i] - Path[i - 1];
             float len = v.magnitude;
             Vector3 d = len > 1e-9f ? v / len : prevPath;
+            // the rigid head is not swayed (its girdles' sway starts at the neck)
+            if (i < headK) { Joints[i] = Path[i]; prevPath = d; continue; }
             // moving joint i to the right of joint i-1 turns the backward segment toward -right
             float turn = -Mathf.Rad2Deg * Mathf.Asin(Mathf.Clamp((swayY[i] - swayY[i - 1]) / seg, -0.5f, 0.5f));
             float slack = 0f;
@@ -649,9 +716,9 @@ public sealed class CreatureSim
     // climbing: a short segment nearly along its joint's up (CreatureClimb.RunTrust) is lengthened along itself -
     // keeping its rise would stretch a tiny, arbitrary run to most of a segment and shove the joint sideways (into
     // the bark, or reversed in its plane, which the next chain step's bend cone then swung the whole body back from)
-    void RestoreLengths(float seg, bool climbing = false)
+    void RestoreLengths(float seg, bool climbing = false, int from = 1)
     {
-        for (int i = 1; i < n; i++)
+        for (int i = from; i < n; i++)
         {
             Vector3 a = Path[i - 1], v = Path[i] - a;
             float m2 = v.x * v.x + v.y * v.y + v.z * v.z;
@@ -723,6 +790,9 @@ public sealed class CreatureSim
         UpdateFrames();
         legs.Replant();
     }
+
+    // Perched grip for the legs (CreatureLegs.Grip): the flight sets it on a branch touchdown, clears it at launch.
+    internal void SetGrip(bool on) => legs.Grip = on;
 
     // The air modes report the flight speed.
     internal void SetFlightSpeed(float speed) { Speed = speed; commanded = 0f; }

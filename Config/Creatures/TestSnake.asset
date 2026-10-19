@@ -217,6 +217,7 @@ MonoBehaviour:
     rigid: 0
   headCapLength: 0.035
   tailTipLength: 0.03
+  rigidHeadJoints: 0
   legs: []
   speed: 0.6
   turnRateDeg: 240

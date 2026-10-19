@@ -58,8 +58,8 @@ namespace TerrainGen.Tests
                 }
                 else
                 {
-                    Assert.IsNull(MeshBytes.Compare(MeshBytes.Legacy(sp), MeshBytes.Of(rd.Mesh)), "mesh");
-                    Matrix4x4[] bind = LegacyRestPose.BoneWorld(sp);
+                    Assert.IsNull(MeshBytes.Compare(MeshBytes.Reference(sp), MeshBytes.Of(rd.Mesh)), "mesh");
+                    Matrix4x4[] bind = MeshBytes.ReferenceBoneWorld(sp);
                     for (int i = 0; i < bind.Length; i++) bind[i] = bind[i].inverse;
                     Assert.IsNull(MeshBytes.CompareMatrices(bind, rd.BindPoses), "bind poses");
                 }
@@ -70,6 +70,8 @@ namespace TerrainGen.Tests
         // The renderer's CPU side on a walking individual: skin = bone world x the legacy bind pose, bit for bit;
         // the culling bounds are the pre-kit ones (spine joints, feet, elbows, + 2 x reach x size) grown only by
         // part runtimes' points (antenna strands).
+        static float Ax(Vector3 v, int a) => a == 0 ? v.x : a == 1 ? v.y : v.z;
+
         [Test] public void Renderer_Skin_And_Bounds_EqualLegacy()
         {
             CreatureSpecies sp = CreatureKitAssets.Load(name);
@@ -84,7 +86,7 @@ namespace TerrainGen.Tests
                 for (int t = 0; t < 60; t++) sim.Tick(1f / 60f, sim.Joints[0] + sim.Rotations[0] * Vector3.forward * (2f * s));
                 r.Add(sim, new CreatureInstance { sizeScale = s });
                 r.Render();
-                Matrix4x4[] bind = LegacyRestPose.BoneWorld(sp);
+                Matrix4x4[] bind = MeshBytes.ReferenceBoneWorld(sp);
                 for (int i = 0; i < bind.Length; i++) bind[i] = bind[i].inverse;
                 var world = new Matrix4x4[sp.BoneCount];
                 sim.WriteBoneWorld(world, 0);
@@ -109,7 +111,14 @@ namespace TerrainGen.Tests
                 }
                 else
                 {
-                    Assert.IsTrue(b2.Contains(legacy.min) && b2.Contains(legacy.max), "the strands only grow the bounds");
+                    // Bounds keeps centre + extents: a side the strands did not move can still round by an ulp when
+                    // the opposite side moved (SkyDragon's min z, -13.195978 vs -13.195979), so compare per side within it
+                    for (int a = 0; a < 3; a++)
+                    {
+                        float tol = 1e-6f * (1f + Mathf.Abs(Ax(legacy.min, a)) + Mathf.Abs(Ax(legacy.max, a)));
+                        Assert.LessOrEqual(Ax(b2.min, a), Ax(legacy.min, a) + tol, "the strands only grow the bounds (min, axis " + a + ")");
+                        Assert.GreaterOrEqual(Ax(b2.max, a), Ax(legacy.max, a) - tol, "the strands only grow the bounds (max, axis " + a + ")");
+                    }
                     for (int i = 0; i < sim.Antennae.Points.Length; i++) Assert.IsTrue(b2.Contains(sim.Antennae.Points[i]), "strand point " + i);
                 }
             }

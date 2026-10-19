@@ -58,6 +58,18 @@ public class FlightSpec
     public float tailSag = 0.3f;            // m/s at the tail end (x sqrt(scale)), falls off toward the girdle
     public float headStabilise = 0.15f;     // s: time constant of the head target's 2nd-order low-pass (x sqrt(scale))
 
+    [Header("Obstacle avoidance (FlightAvoidance)")]
+    [Tooltip("s at scale 1: predicted flight paths this far ahead are swept by rays against real geometry (bark, rocks) and the turn is changed early when one is blocked. 0 = off.")]
+    public float avoidLookahead = 0f;
+    [Tooltip("m at scale 1: clearance kept beyond the wing tips.")]
+    public float avoidMargin = 0.35f;
+
+    [Header("Trees (perching, climbing)")]
+    [Tooltip("Perched on a branch or rock top, the feet close round it (CreatureLegs.Grip): rest points that find no support move in toward the spine until they are on the perch. Off = the walking rest points.")]
+    public bool perchGrip = false;
+    [Tooltip("m at scale 1: the thinnest branch chosen as a perch (its curvature radius; obstacle avoidance on).")]
+    public float perchMinRadius = 0.06f;
+
     [Header("Steering")]
     [Tooltip("Turn rate per radian of heading error when steering to a point, / sqrt(scale) (0 = 0.9). A long, slow-rolling flyer needs more to line up a landing in its aviary.")]
     public float pursuitGain;

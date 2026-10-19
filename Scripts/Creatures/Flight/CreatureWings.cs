@@ -50,6 +50,15 @@ public sealed class CreatureWings
     // normal of the patch between the elbow, the shoulder and the rear flank attach, the rear flank attach
     // (fractional joint index)
     public readonly Vector3[] ArmRibUp, PatchUp;
+    readonly Quaternion[] handOnArm;
+    // per wing w, FlankPatches(w) + 1 nodes from FlankStart(w): the flank edge of the membrane between the humerus
+    // and the body (the rear flank attach, points on the flank between it and the girdle, the shoulder)
+    public readonly Vector3[] FlankNode;
+    readonly int[] flankStart, flankCount;
+    public int FlankStart(int w) => flankStart[w];
+    public int FlankPatches(int w) => flankCount[w];
+    public readonly Vector3[] FanNormal;   // per wing: the fingers' plane normal (= handNormal unless groundTallStance)
+    public readonly Vector3[] FanRearUp;   // per wing: the fan-side rear rib's up (WingBoneLayout.FanRearRib)
     public readonly float[] RearJoint;
     readonly float[] armSign, patchSign;
     readonly float[] groundWeight;         // per wing: how far the current pose is the ground pose (groundLiftDeg)
@@ -70,7 +79,11 @@ public sealed class CreatureWings
         RibDir = new Vector3[c * WingSpec.Ribs]; RibUp = new Vector3[c * WingSpec.Ribs];
         RibTarget = new Vector3[c * WingSpec.Ribs]; RibLength = new float[c * WingSpec.Ribs];
         ribRestLength = new float[c * WingSpec.Ribs];
-        ArmRibUp = new Vector3[c]; PatchUp = new Vector3[c]; RearJoint = new float[c];
+        ArmRibUp = new Vector3[c]; PatchUp = new Vector3[c]; RearJoint = new float[c]; FanNormal = new Vector3[c]; FanRearUp = new Vector3[c]; handOnArm = new Quaternion[c];
+        flankStart = new int[c]; flankCount = new int[c];
+        int nodes = 0;
+        for (int w = 0; w < c; w++) { flankStart[w] = nodes; flankCount[w] = WingBoneLayout.FlankPatchCount(specs[w]); nodes += flankCount[w] + 1; }
+        FlankNode = new Vector3[nodes];
         armSign = new float[c]; patchSign = new float[c]; groundWeight = new float[c];
         flankRise = new float[c];
 
@@ -101,19 +114,39 @@ public sealed class CreatureWings
 
         // rib rest lengths: the rest pose is a straight spine along -Z at the joint clearances, scale 1
         var restJ = new Vector3[sp.JointCount];
+        bool straight = StraightBind(sp, specs);  // the bind's straight spine (WingedMeshBuilder.StraightenBind)
+        float lowest = float.MaxValue;
+        for (int l = 0; l < sp.legs.Length; l++) lowest = Mathf.Min(lowest, sp.joints[sp.legs[l].attachJoint].clearance);
         var restR = new Quaternion[sp.JointCount];
         int g0 = c > 0 ? attach[0] : 0;
         for (int i = 0; i < restJ.Length; i++)
         {
-            restJ[i] = new Vector3(0f, sp.joints[i].clearance, -sp.spacing * (i - g0));
+            restJ[i] = new Vector3(0f, straight ? lowest : sp.joints[i].clearance, -sp.spacing * (i - g0));
             restR[i] = Quaternion.identity;
         }
         for (int w = 0; w < c; w++)
         {
             PoseWing(w, restJ, restR, 1f);
             for (int k = 0; k < WingSpec.Ribs; k++) ribRestLength[w * WingSpec.Ribs + k] = RibLength[w * WingSpec.Ribs + k];
+            handOnArm[w] = Quaternion.Inverse(LowerArm(w, restR)) * Look(State[w].handOut, State[w].handNormal);
         }
         Pose();
+    }
+
+    // The forearm bone's rotation (as WriteBones writes it) from the current arm.
+    Quaternion LowerArm(int w, Quaternion[] rs)
+    {
+        ref WingState st = ref State[w];
+        Quaternion ar = rs[attach[w]];
+        return LowerRot(BoneRot(st.elbow - st.shoulder, ar * poleLocal[w], ar), st.wrist - st.elbow);
+    }
+
+    // The bind (rest) pose keeps a straight spine at the lowest leg attach's clearance (WingSpec.groundTallStance).
+    internal static bool StraightBind(CreatureSpecies sp, WingSpec[] wings)
+    {
+        if (wings == null) return false;
+        for (int w = 0; w < wings.Length; w++) if (wings[w] != null && wings[w].groundTallStance) return true;
+        return false;
     }
 
     public int Count => specs.Length;
@@ -336,7 +369,8 @@ public sealed class CreatureWings
         // the rear attach slides back along the flank (up to kRearSlide joints, the same secant step) to keep
         // the rib kArmGapDeg behind the forearm in the arm's plane (the gap closing with the fold, none folded: the folded
         // wing lies along the body); and it never comes within kArmMinGapDeg of the forearm's line.
-        float rearJ = ws.membraneRearJoint;
+        float baseRear = ws.membraneRearJoint;
+        float rearJ = baseRear;
         Vector3 rearT = FlankPoint(w, js, rs, sc, rearJ);
         Vector3 fore = st.elbow - wrist;
         Vector3 armN = Vector3.Cross(fore, st.shoulder - wrist);
@@ -345,14 +379,29 @@ public sealed class CreatureWings
         float gap = kArmGapDeg * (1f - st.fold);
         if (a0 < gap && gap > 0f) // folded (a wing-walk) it never slides: the folded wing lies along the body
         {
-            float far = Mathf.Min(js.Length - 1, ws.membraneRearJoint + kRearSlide);
+            float far = Mathf.Min(js.Length - 1, baseRear + kRearSlide);
             float a1 = BehindArm(FlankPoint(w, js, rs, sc, far) - wrist, fore, armN);
             float f = a1 > a0 + 1e-3f ? Mathf.Clamp01((gap - a0) / (a1 - a0)) : 1f;
-            rearJ = Mathf.Lerp(ws.membraneRearJoint, far, f);
+            rearJ = Mathf.Lerp(baseRear, far, f);
             rearT = FlankPoint(w, js, rs, sc, rearJ);
         }
-        // never in line with the forearm (the arm sector would collapse): turn the rib off it
+        // never in line with the forearm (the arm sector would collapse): slide the attach further back along
+        // the flank until it is not (it stays on the body); only if the flank ends first, turn the rib off it
         float a3 = Vector3.Angle(rearT - wrist, fore);
+        // (nearest first, back toward the tail up to 2 x kRearSlide joints past membraneRearJoint, or forward up
+        // to the front attach's next joint)
+        float lastJ = Mathf.Min(js.Length - 1, baseRear + 2f * kRearSlide), firstJ = ws.membraneFrontJoint + 1f;
+        float rj0 = rearJ;
+        // (only with the flank split into patches, WingSpec.flankPatches: one patch keeps the turned rib below)
+        for (float step = kSlideStep; flankCount[w] > 1 && a3 < kArmMinGapDeg && (rj0 + step <= lastJ || rj0 - step >= firstJ); step += kSlideStep)
+            for (int sgn = 1; sgn >= -1 && a3 < kArmMinGapDeg; sgn -= 2)
+            {
+                float jj = rj0 + sgn * step;
+                if (jj > lastJ || jj < firstJ) continue;
+                Vector3 tj = FlankPoint(w, js, rs, sc, jj);
+                float aj = Vector3.Angle(tj - wrist, fore);
+                if (aj >= kArmMinGapDeg) { rearJ = jj; rearT = tj; a3 = aj; }
+            }
         if (a3 < kArmMinGapDeg)
         {
             Vector3 ax = Vector3.Cross(fore, rearT - wrist);
@@ -361,6 +410,13 @@ public sealed class CreatureWings
         }
         RearJoint[w] = rearJ;
         SetRib(w * WingSpec.Ribs + 1, wrist, rearT, -hOut);
+        // the flank edge's nodes: the rear attach, flank points evenly in joint index toward the girdle, the shoulder
+        {
+            int P = flankCount[w], f0 = flankStart[w];
+            FlankNode[f0] = rearT;
+            for (int k = 1; k < P; k++) FlankNode[f0 + k] = FlankPoint(w, js, rs, sc, Mathf.Lerp(rearJ, attach[w], (float)k / P));
+            FlankNode[f0 + P] = st.shoulder;
+        }
         Vector3 rearD = RibDir[w * WingSpec.Ribs + 1];
         float front = ws.membraneFrontJoint;
         Vector3 frontT = FlankPoint(w, js, rs, sc, front);
@@ -393,6 +449,7 @@ public sealed class CreatureWings
         // the ground pose's lift (WingSpec.groundLiftDeg): the folded fan turns up about the rear flank rib until
         // its middle finger rises liftDeg above the girdle's plane; the rib, the flank and the forearm stay put
         Vector3 nwFlat = nw; // the fan's plane before the lift (the rear flank rib keeps its roll from it)
+        Vector3 hOutArm = hOut;
         float lift = ws.groundLiftDeg * groundWeight[w] * fw;
         if (lift > 0f)
         {
@@ -415,6 +472,16 @@ public sealed class CreatureWings
             }
         }
         st.handOut = hOut; st.handNormal = nw;
+        // WingSpec.groundTallStance: the hand bone stays on the forearm (only the finger fan lifts), so a steep
+        // lift does not kink the wrist (a tall stance on near-vertical arms); the fingers keep the fan's plane
+        FanNormal[w] = nw;
+        if (ws.groundTallStance && lift > 0f)
+        {
+            // the hand keeps its bind-pose relation to the forearm bone (its roll too: a hand rolled against the
+            // forearm twists the wrist ring between the two bones)
+            Quaternion hand = LowerArm(w, rs) * handOnArm[w];
+            st.handOut = hand * Vector3.forward; st.handNormal = hand * Vector3.up;
+        }
 
         // Fingers fan out in the wing plane. Order invariant: finger k stays at least (4 - k) x gap ahead
         // of the rear flank rib, the gap growing from fingerMinGapDeg to fingerFoldGapDeg with the fold
@@ -475,9 +542,31 @@ public sealed class CreatureWings
             Vector3 mid = RibUp[i] + ArmRibUp[w];
             if (mid.sqrMagnitude > 1e-8f) RibUp[i] = mid.normalized;
         }
+        // The rear flank rib as the fan beside it sees it (WingBoneLayout.FanRearRib, WingSpec.groundTallStance):
+        // the rib's own roll in the air, rolled into the lifted fan's plane with the ground lift. The rear rib's
+        // own roll (half way into the arm sector, from the fan before the lift) left the narrow zone between it
+        // and the trailing rib (4-8 deg folded) twisted by 130-150 deg on near-vertical arms with a steep lift:
+        // it collapsed into slivers in the wing-walk. The arm zone keeps the rear rib's own.
+        {
+            int r1 = w * WingSpec.Ribs + 1;
+            FanRearUp[w] = RibUp[r1];
+            float g = ws.groundTallStance ? groundWeight[w] * fw : 0f;
+            if (g > 0f)
+            {
+                Vector3 fu = nw - RibDir[r1] * Vector3.Dot(nw, RibDir[r1]);
+                if (fu.sqrMagnitude > 1e-10f)
+                {
+                    Vector3 u = Vector3.Slerp(RibUp[r1], fu.normalized, g);
+                    u -= RibDir[r1] * Vector3.Dot(u, RibDir[r1]);
+                    if (u.sqrMagnitude > 1e-10f) FanRearUp[w] = u.normalized;
+                }
+            }
+        }
     }
 
     const float kFlankGapDeg = 15f, kFrontSlide = 3f;
+    const float kFlankInside = 0.9f;  // a flank attach stays within this fraction of the body's section
+    const float kSlideStep = 0.5f;    // joints: the rear attach's search step off the forearm's line
     const float kArmGapDeg = 14f, kArmMinGapDeg = 10f, kRearSlide = 6f;
     const float kSectorPatchLean = 0.75f; // ArmSector's normal axis: sector normal + this x patch normal
 
@@ -490,7 +579,11 @@ public sealed class CreatureWings
     {
         int j0 = Mathf.Clamp((int)joint, 0, js.Length - 1), j1 = Mathf.Min(j0 + 1, js.Length - 1);
         float f = Mathf.Clamp01(joint - j0);
-        float inset = specs[w].membraneInset * sc * side[w], rise = flankRise[w] * sc;
+        // risen up the flank (groundFlankRise), the attach moves in so it stays inside the body's elliptical
+        // section (inset^2 + rise^2 <= kFlankInside^2): risen at the full inset it stood off the body
+        float ins = specs[w].membraneInset, ri = flankRise[w];
+        if (flankCount[w] > 1 && ins * ins + ri * ri > kFlankInside * kFlankInside) ins = Mathf.Sqrt(Mathf.Max(0f, kFlankInside * kFlankInside - ri * ri));
+        float inset = ins * sc * side[w], rise = ri * sc;
         Vector3 p0 = js[j0] + rs[j0] * new Vector3(inset * sp.joints[j0].halfWidth, rise * sp.joints[j0].halfHeight, 0f);
         if (f <= 0f) return p0;
         Vector3 p1 = js[j1] + rs[j1] * new Vector3(inset * sp.joints[j1].halfWidth, rise * sp.joints[j1].halfHeight, 0f);
@@ -527,7 +620,7 @@ public sealed class CreatureWings
             dst[offset + sp.LegBone(leg, 2)] = Matrix4x4.TRS(st.wrist, Look(st.handOut, st.handNormal), sc);
             for (int k = 0; k < WingSpec.Fingers; k++)
                 dst[offset + sp.WingBone(w, k)] =
-                    Matrix4x4.TRS(st.wrist, Look(FingerDir[w * WingSpec.Fingers + k], st.handNormal), sc);
+                    Matrix4x4.TRS(st.wrist, Look(FingerDir[w * WingSpec.Fingers + k], FanNormal[w]), sc);
             for (int k = 0; k < WingSpec.Ribs; k++)
             {
                 int i = w * WingSpec.Ribs + k;
@@ -536,7 +629,15 @@ public sealed class CreatureWings
                 float stretch = RibLength[i] / Mathf.Max(1e-6f, ribRestLength[i] * scale);
                 dst[b] = Matrix4x4.TRS(st.wrist, Look(RibDir[i], RibUp[i]), Vector3.one * (scale * stretch));
             }
-            dst[offset + sp.WingBone(w, WingBoneLayout.HumerusPatch)] = HumerusPatch(w);
+            for (int p = 0; p < flankCount[w]; p++)
+                dst[offset + sp.WingBone(w, WingBoneLayout.HumerusPatch + p)] = FlankPatch(w, p);
+            int fr = WingBoneLayout.FanRearRib(specs[w]);
+            if (fr >= 0)
+            {
+                int i = w * WingSpec.Ribs + 1;
+                float stretch = RibLength[i] / Mathf.Max(1e-6f, ribRestLength[i] * scale);
+                dst[offset + sp.WingBone(w, fr)] = Matrix4x4.TRS(st.wrist, Look(RibDir[i], FanRearUp[w]), Vector3.one * (scale * stretch));
+            }
         }
     }
 
@@ -545,10 +646,13 @@ public sealed class CreatureWings
     // attach, shoulder, so it maps exactly onto the current triangle: its edge on the arm sector's crease (the
     // elbow -> rear attach chord, which the sector maps exactly too) and its edge on the humerus. Its normal axis
     // is the triangle's own (the frame's determinant never changes sign): the patch cannot turn inside out.
-    public Matrix4x4 HumerusPatch(int w)
+    // Split along the flank (WingSpec.flankPatches): patch p is the triangle elbow, flank node p, flank
+    // node p + 1; patch 0 starts at the rear attach, the last ends at the shoulder.
+    public Matrix4x4 FlankPatch(int w, int p)
     {
         ref WingState st = ref State[w];
-        Vector3 c0 = RibTarget[w * WingSpec.Ribs + 1] - st.elbow, c1 = st.shoulder - st.elbow;
+        int f0 = flankStart[w] + p;
+        Vector3 c0 = FlankNode[f0] - st.elbow, c1 = FlankNode[f0 + 1] - st.elbow;
         Vector3 cn = Vector3.Cross(c0, c1);
         Vector3 c2 = (cn.sqrMagnitude > 1e-12f ? cn.normalized : -patchSign[w] * PatchUp[w]) * scale;
         Vector3 o = st.elbow;

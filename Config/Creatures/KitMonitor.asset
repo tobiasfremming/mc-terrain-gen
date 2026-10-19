@@ -176,6 +176,7 @@ MonoBehaviour:
         profile: []
         jointCount: 0
         rigidHead: 0
+        rigidHeadJoints: -1
         ringSegments: 16
         ringsPerSegment: 3
     - rid: 1001

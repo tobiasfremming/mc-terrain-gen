@@ -79,10 +79,12 @@ namespace TerrainGen.Tests
                 for (int p = 0; p < 3; p++) Assert.AreEqual(sp.LegBone(l, p), WingBoneLayout.LegBone(sp.JointCount, l, p));
             var s = Serpent();
             int nj = WingedSerpentTestSpecies.Joints;
-            // 7 per wing: 3 fingers, 2 ribs, the arm sector, the humerus patch (was 6 before the patch bone)
-            Assert.AreEqual(nj + 12 + 14 + 2, WingBoneLayout.BoneCount(s.species, 2), "design: joints + 3x4 + 7x2 + 2");
-            Assert.AreEqual(nj + 12 + 14, WingBoneLayout.EyeBone(s.species, 2, 0));
-            Assert.AreEqual(nj + 12 + 7 + 3, WingBoneLayout.WingBone(s.species, 1, WingBoneLayout.FirstRib));
+            // 13 per wing: 3 fingers, 2 ribs, the arm sector, 6 flank patches (flankPatches), the fan-side rear rib
+            // (groundTallStance) (7 with one humerus patch and no tall stance, 6 before the humerus patch)
+            Assert.AreEqual(nj + 12 + 26 + 2, WingBoneLayout.BoneCount(s.species, 2), "design: joints + 3x4 + 13x2 + 2");
+            Assert.AreEqual(nj + 12 + 26, WingBoneLayout.EyeBone(s.species, 2, 0));
+            Assert.AreEqual(nj + 12 + 13 + 3, WingBoneLayout.WingBone(s.species, 1, WingBoneLayout.FirstRib));
+            Assert.AreEqual(WingBoneLayout.HumerusPatch + 6, WingBoneLayout.FanRearRib(s.wings[0]));
             foreach (var w in s.wings) Assert.IsNull(w.Validate(s.species));
         }
 
@@ -95,7 +97,7 @@ namespace TerrainGen.Tests
             Assert.IsNull(sp.Validate());
             Assert.IsTrue(sp.CanFly);
             Assert.AreEqual(2, sp.WingCount);
-            Assert.AreEqual(WingedSerpentTestSpecies.Joints + 28, sp.BoneCount); // 3x4 legs + 7x2 wings + 2 eyes
+            Assert.AreEqual(WingedSerpentTestSpecies.Joints + 40, sp.BoneCount); // 3x4 legs + 13x2 wings + 2 eyes
             Assert.AreEqual(WingBoneLayout.EyeBone(sp, 2, 1), sp.EyeBone(1));
             Assert.AreEqual(WingBoneLayout.WingBone(sp, 1, 5), sp.WingBone(1, 5));
             Assert.Greater(sp.MaxLateralReach, 1.7f, "the spread wing's reach");
@@ -130,7 +132,7 @@ namespace TerrainGen.Tests
                 Assert.AreEqual(1f, d.n[i].magnitude, 1e-3f, "normal length at " + i);
                 if (Part(d, i) == WingedMeshBuilder.PartMembrane) membrane++;
             }
-            Assert.AreEqual(s.wings.Length * WingedMeshBuilder.MembraneVerticesPerWing, membrane, "membrane vertices");
+            Assert.AreEqual(s.wings.Length * WingedMeshBuilder.MembraneVertices(s.wings[0]), membrane, "membrane vertices");
             for (int b = 0; b < bones; b++) Assert.IsTrue(used[b], $"bone {b} skins nothing");
             Assert.AreEqual(0, d.t.Length % 3);
             for (int k = 0; k < d.t.Length; k += 3)
@@ -186,7 +188,7 @@ namespace TerrainGen.Tests
             int n = sp.JointCount, legs = sp.legs.Length;
             var wingBone = new bool[WingBoneLayout.BoneCount(sp, s.wings.Length)];
             foreach (var ws in s.wings) for (int p = 0; p < 3; p++) wingBone[WingBoneLayout.LegBone(n, ws.leg, p)] = true;
-            for (int b = WingBoneLayout.WingBone(n, legs, 0, 0); b < WingBoneLayout.EyeBone(n, legs, s.wings.Length, 0); b++) wingBone[b] = true;
+            for (int b = sp.WingBone(0, 0); b < sp.EyeBone(0); b++) wingBone[b] = true;
             return wingBone;
         }
 
@@ -202,6 +204,7 @@ namespace TerrainGen.Tests
             var rest = WingedMeshBuilder.RestBoneWorld(sp, s.wings);
             var wingBone = WingBones(s);
             CreatureSim sim = CreatureRestPose.Sim(sp);
+            WingedMeshBuilder.StraightenBind(sp, sp.wings, sim); // the bind pose (a tall stance: straight spine)
             var wings = new CreatureWings(sp, s.wings, sim.Joints, sim.Rotations, 1f);
             var world = (Matrix4x4[])rest.Clone();
             int checkedTris = 0; float worst = 1f;
@@ -286,7 +289,7 @@ namespace TerrainGen.Tests
             var hand = new bool[bind.Length];
             for (int w = 0; w < s.wings.Length; w++)
             {
-                for (int k = 0; k < WingSpec.Fingers; k++) finger[WingBoneLayout.WingBone(n, legs, w, k)] = true;
+                for (int k = 0; k < WingSpec.Fingers; k++) finger[sp.WingBone(w, k)] = true;
                 hand[WingBoneLayout.LegBone(n, s.wings[w].leg, 2)] = true;
             }
             var mem = new List<int>(); var fing = new List<int>(); var thumb = new List<int>();
@@ -377,6 +380,7 @@ namespace TerrainGen.Tests
         static LeadingEdge[] LeadingEdges(Data d, WingedSerpentTestSpecies.Serpent s, out float[] coverGap)
         {
             CreatureSim sim = CreatureRestPose.Sim(s.species);
+            WingedMeshBuilder.StraightenBind(s.species, s.wings, sim); // the bind pose (a tall stance: straight spine)
             var cw = new CreatureWings(s.species, s.wings, sim.Joints, sim.Rotations, 1f);
             var edges = new LeadingEdge[s.wings.Length];
             coverGap = new float[s.wings.Length];
@@ -442,6 +446,7 @@ namespace TerrainGen.Tests
 
             // flight: stroke x fold x twist x bank, as Mesh_WingSweep_NoInvertedTris
             CreatureSim sim = CreatureRestPose.Sim(sp);
+            WingedMeshBuilder.StraightenBind(sp, sp.wings, sim); // the bind pose (a tall stance: straight spine)
             var wings = new CreatureWings(sp, s.wings, sim.Joints, sim.Rotations, 1f);
             var world = (Matrix4x4[])rest.Clone();
             float feather = -s.flight.featherDeg * Mathf.Deg2Rad, pron = s.wings[0].pronationDeg * Mathf.Deg2Rad;
@@ -505,6 +510,7 @@ namespace TerrainGen.Tests
             var bind = WingedMeshBuilder.BindPoses(sp, s.wings);
             var world = WingedMeshBuilder.RestBoneWorld(sp, s.wings);
             CreatureSim sim = CreatureRestPose.Sim(sp);
+            WingedMeshBuilder.StraightenBind(sp, sp.wings, sim); // the bind pose (a tall stance: straight spine)
             var wings = new CreatureWings(sp, s.wings, sim.Joints, sim.Rotations, 1f);
             float worst = 1f; int pairs = 0;
             foreach (float fold in new[] { -1f, 0f, 0.6f, 1f }) // -1: the rest mesh itself
@@ -521,8 +527,8 @@ namespace TerrainGen.Tests
                         for (int sheet = 0; sheet < 2; sheet++)
                             for (int j = 1; j <= WingedMeshBuilder.ZoneRows; j++)
                             {
-                                int a = mem[w * WingedMeshBuilder.MembraneVerticesPerWing + (z * 2 + sheet) * block + j * cols + cols - 1];
-                                int b = mem[w * WingedMeshBuilder.MembraneVerticesPerWing + ((z + 1) * 2 + sheet) * block + j * cols];
+                                int a = mem[w * WingedMeshBuilder.MembraneVertices(s.wings[w]) + (z * 2 + sheet) * block + j * cols + cols - 1];
+                                int b = mem[w * WingedMeshBuilder.MembraneVertices(s.wings[w]) + ((z + 1) * 2 + sheet) * block + j * cols];
                                 Vector3 pa = skin == null ? d.v[a] : SkinPos(d, skin, a), pb = skin == null ? d.v[b] : SkinPos(d, skin, b);
                                 Vector3 na = skin == null ? d.n[a] : SkinNormal(d, skin, a), nb = skin == null ? d.n[b] : SkinNormal(d, skin, b);
                                 Assert.Less((pa - pb).magnitude, 1e-4f, $"zones {z}/{z + 1} do not meet (wing {w}, row {j}, fold {fold})");
@@ -556,7 +562,7 @@ namespace TerrainGen.Tests
                 for (int w = 0; w < s.wings.Length; w++)
                     for (int k = 0; k < WingSpec.Ribs; k++)
                     {
-                        int b = WingBoneLayout.WingBone(n, legs, w, WingBoneLayout.FirstRib + k);
+                        int b = sp.WingBone(w, WingBoneLayout.FirstRib + k);
                         float sk = k == 1 ? 1f / stretch : stretch; // neighbouring ribs differently
                         // the arm rib (an affine sector frame: rear flank rib, forearm, normal) stretches with
                         // the rear flank rib along its first axis only, as CreatureWings.ArmSector does
@@ -565,32 +571,42 @@ namespace TerrainGen.Tests
                         else
                             world[b] = rest[b] * Matrix4x4.TRS(Vector3.zero, Quaternion.identity, Vector3.one * sk);
                     }
-                // the humerus patch (affine: elbow -> rear flank attach, elbow -> shoulder, their normal) follows the
-                // rear flank rib's end as CreatureWings.HumerusPatch does
+                // the first flank patch (affine: elbow -> rear flank attach, elbow -> the next flank node, their
+                // normal) follows the rear flank rib's end as CreatureWings.FlankPatch does (the other nodes stay)
+                // (split along the flank: the rear attach's move spreads over the flank nodes, fading to none at the
+                // shoulder, as the attach sliding along the body moves them)
                 for (int w = 0; w < s.wings.Length; w++)
                 {
-                    int pb = WingBoneLayout.WingBone(n, legs, w, WingBoneLayout.HumerusPatch);
-                    int rb = WingBoneLayout.WingBone(n, legs, w, WingBoneLayout.FirstRib + 1);
-                    Vector3 e = rest[pb].GetColumn(3), wr = rest[rb].GetColumn(3);
-                    Vector3 c0 = rest[pb].GetColumn(0), c1 = rest[pb].GetColumn(1);
-                    float c2len = ((Vector3)rest[pb].GetColumn(2)).magnitude;
-                    Vector3 tip = e + c0;
-                    Vector3 c0s = wr + (tip - wr) / stretch - e, c2 = Vector3.Cross(c0s, c1).normalized * c2len;
-                    Matrix4x4 m = rest[pb];
-                    m.SetColumn(0, c0s); m.SetColumn(2, c2);
-                    world[pb] = m;
+                    int pb0 = sp.WingBone(w, WingBoneLayout.HumerusPatch);
+                    int rb = sp.WingBone(w, WingBoneLayout.FirstRib + 1);
+                    Vector3 e = rest[pb0].GetColumn(3), wr = rest[rb].GetColumn(3);
+                    Vector3 tip = e + (Vector3)rest[pb0].GetColumn(0);
+                    Vector3 delta = wr + (tip - wr) / stretch - tip;
+                    int P = WingBoneLayout.FlankPatchCount(s.wings[w]);
+                    for (int p = 0; p < P; p++)
+                    {
+                        int pb = pb0 + p;
+                        Vector3 c0 = (Vector3)rest[pb].GetColumn(0) + delta * (1f - (float)p / P);
+                        Vector3 c1 = (Vector3)rest[pb].GetColumn(1) + delta * (1f - (float)(p + 1) / P);
+                        float c2len = ((Vector3)rest[pb].GetColumn(2)).magnitude;
+                        Vector3 c2 = Vector3.Cross(c0, c1).normalized * c2len;
+                        if (Vector3.Dot(c2, rest[pb].GetColumn(2)) < 0f) c2 = -c2;
+                        Matrix4x4 m = rest[pb];
+                        m.SetColumn(0, c0); m.SetColumn(1, c1); m.SetColumn(2, c2);
+                        world[pb] = m;
+                    }
                 }
                 var skin = Skin(world, bind);
                 var armBone = new bool[world.Length];
                 for (int w = 0; w < s.wings.Length; w++)
                 {
-                    armBone[WingBoneLayout.WingBone(n, legs, w, WingBoneLayout.ArmRib)] = true;
-                    armBone[WingBoneLayout.WingBone(n, legs, w, WingBoneLayout.HumerusPatch)] = true;
+                    armBone[sp.WingBone(w, WingBoneLayout.ArmRib)] = true;
+                    for (int p = 0; p < WingBoneLayout.FlankPatchCount(s.wings[w]); p++) armBone[sp.WingBone(w, WingBoneLayout.HumerusPatch + p)] = true;
                     for (int p = 0; p < 3; p++) armBone[WingBoneLayout.LegBone(n, s.wings[w].leg, p)] = true;
                 }
                 bool OnArm(int i) => (d.uv2[i].z > 0f && armBone[(int)d.uv2[i].x]) || (d.uv2[i].w > 0f && armBone[(int)d.uv2[i].y]);
                 var sectorBone = new bool[world.Length];
-                for (int w = 0; w < s.wings.Length; w++) sectorBone[WingBoneLayout.WingBone(n, legs, w, WingBoneLayout.ArmRib)] = true;
+                for (int w = 0; w < s.wings.Length; w++) sectorBone[sp.WingBone(w, WingBoneLayout.ArmRib)] = true;
                 bool SectorOnly(int i) => d.uv2[i].w <= 0f && sectorBone[(int)d.uv2[i].x];
                 int count = 0;
                 for (int k = 0; k < d.t.Length; k += 3)
@@ -612,6 +628,102 @@ namespace TerrainGen.Tests
                 }
                 Assert.Greater(count, 500);
             }
+        }
+
+        // ------------------------------------------------------------------ the membrane on the body
+
+        // How far p lies outside the body tube (0 inside): the spine polyline's nearest point, the joints' frames
+        // and elliptical sections (halfWidth, halfHeight x size) interpolated there.
+        static float OutsideBody(CreatureSim sim, Vector3 p)
+        {
+            var sp = sim.Species;
+            float best = float.MaxValue, outside = 0f;
+            for (int j = 0; j + 1 < sim.Joints.Length; j++)
+            {
+                Vector3 a = sim.Joints[j], ab = sim.Joints[j + 1] - a;
+                float t = Mathf.Clamp01(Vector3.Dot(p - a, ab) / Mathf.Max(1e-12f, ab.sqrMagnitude));
+                Vector3 c = a + ab * t;
+                float d = (p - c).sqrMagnitude;
+                if (d >= best) continue;
+                best = d;
+                Quaternion r = Quaternion.Slerp(sim.Rotations[j], sim.Rotations[j + 1], t);
+                float hw = Mathf.Lerp(sp.joints[j].halfWidth, sp.joints[j + 1].halfWidth, t) * sim.SizeScale;
+                float hh = Mathf.Lerp(sp.joints[j].halfHeight, sp.joints[j + 1].halfHeight, t) * sim.SizeScale;
+                Vector3 q = p - c;
+                float x = Vector3.Dot(q, r * Vector3.right) / hw, y = Vector3.Dot(q, r * Vector3.up) / hh;
+                float e = Mathf.Sqrt(x * x + y * y);
+                outside = e > 1f ? (e - 1f) * Mathf.Min(hw, hh) * Mathf.Sqrt(x * x * hw * hw + y * y * hh * hh) / (e * Mathf.Min(hw, hh)) : 0f;
+            }
+            return outside;
+        }
+
+        // User feedback 2026-10-18: "make sure the wing stays attached to the body tube" - a straight membrane edge
+        // between two attach points left a gap where the body bends. The flank edge (the flank patches' outer
+        // row, through the flank nodes) stays on the body: in banked turns and beats in the air, and in the folded
+        // wing-walk straight, weaving and in a tight circle, at 0.9, 1 and 1.1x, every flank-edge vertex is at most
+        // 0.5 cm x size outside the body tube.
+        [TestCase(0.9f)] [TestCase(1f)] [TestCase(1.1f)]
+        public void Membrane_FlankEdge_StaysOnTheBody(float size)
+        {
+            var s = Serpent();
+            var d = Build(s);
+            var sp = s.species;
+            var bind = WingedMeshBuilder.BindPoses(sp, s.wings);
+            // the flank-edge vertices: on the bind pose's flank polyline (between consecutive flank nodes)
+            CreatureSim rest = CreatureRestPose.Sim(sp);
+            WingedMeshBuilder.StraightenBind(sp, s.wings, rest);
+            var cw = new CreatureWings(sp, s.wings, rest.Joints, rest.Rotations, 1f);
+            int P = WingBoneLayout.FlankPatchCount(s.wings[0]);
+            Assert.Greater(P, 1, "the serpent's flank is split into patches (WingSpec.flankPatches)");
+            var edge = new List<int>();
+            for (int i = 0; i < d.v.Length; i++)
+            {
+                if (Part(d, i) != WingedMeshBuilder.PartMembrane) continue;
+                for (int w = 0; w < s.wings.Length && !edge.Contains(i); w++)
+                    for (int k = 0; k < P; k++)
+                        if (SegmentDistance(d.v[i], cw.FlankNode[cw.FlankStart(w) + k], cw.FlankNode[cw.FlankStart(w) + k + 1], out _) < 1e-4f) { edge.Add(i); break; }
+            }
+            Assert.Greater(edge.Count, 2 * 2 * P * WingedMeshBuilder.PatchColumns, "flank-edge vertices (both wings, both sheets)");
+            float worst = 0f; string at = "", bad = "";
+            var world = new Matrix4x4[bind.Length];
+            foreach (string run in new[] { "air", "straight", "weave", "circle" })
+            {
+                var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, size);
+                float ts = Mathf.Sqrt(size);
+                if (run == "air") Assert.IsTrue(sim.Flight.Launch(4f * size));
+                for (int t = 0; t < 600; t++)
+                {
+                    Vector3 target;
+                    if (run == "air")
+                    {
+                        // level, then hard turns either way (the air chain bends, the wings beat and bank)
+                        float turn = t < 200 ? 0f : t < 400 ? 1.4f / ts : -1.4f / ts;
+                        if (sim.Flight.Airborne) sim.Flight.SetGoals(4f * size, s.flight.cruiseSpeed * ts, turn);
+                        target = sim.Joints[0];
+                    }
+                    else if (run == "straight") target = new Vector3(0f, 0f, 1000f);
+                    else if (run == "weave")
+                    {
+                        Vector3 fwd = sim.Rotations[0] * Vector3.forward;
+                        target = sim.Joints[0] + Quaternion.AngleAxis(50f * Mathf.Sin(t / 50f), Vector3.up) * fwd * (2f * size);
+                    }
+                    else { float a = t / 60f * 3f / ts; target = new Vector3(0f, 0f, 0.25f * size) + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * (0.12f * size); }
+                    sim.Tick(1f / 60f, target);
+                    if (t < 30 || t % 3 != 0) continue;
+                    sim.WriteBoneWorld(world, 0);
+                    var skin = Skin(world, bind);
+                    float tickWorst = 0f;
+                    foreach (int i in edge) tickWorst = Mathf.Max(tickWorst, OutsideBody(sim, SkinPos(d, skin, i)) / size);
+                    if (tickWorst > 0.005f) bad += $" {run}:{t}({tickWorst * 100f:F1})";
+                    foreach (int i in edge)
+                    {
+                        float o = OutsideBody(sim, SkinPos(d, skin, i)) / size;
+                        if (o > worst) { worst = o; at = $"{run} t={t} mode {sim.Mode} vertex {i} bind {d.v[i]} skin {d.uv2[i]} pos {SkinPos(d, skin, i)} node0 {sim.Flight.Wings.FlankNode[0]} node0b {sim.Flight.Wings.FlankNode[P + 1]} rear {sim.Flight.Wings.RearJoint[1]:F1} girdle {sim.Joints[6]} j20 {sim.Joints[20]} j19 {sim.Joints[19]}"; }
+                    }
+                }
+            }
+            TestContext.WriteLine($"x{size}: {edge.Count} flank-edge vertices, worst {worst * 100f:F2} cm (/size) outside the body ({at}); ticks over 0.5 cm:{bad}");
+            Assert.Less(worst, 0.005f, $"x{size}: the membrane's flank edge leaves the body ({at})");
         }
     }
 }

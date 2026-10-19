@@ -13,7 +13,7 @@
       ],
       "system": "OctopusBody (self-ticking ICreatureBody)",
       "useWhen": "boneless bodies: octopus, slug, jelly",
-      "summary": "Shape-matched soft lattice (OctopusBody/SoftLattice: 14 particles, 5 clusters) driven by its Tentacle chains: mantle, head, web.",
+      "summary": "Shape-matched soft lattice (OctopusBody/SoftLattice: 14 particles, 5 clusters) driven by its Tentacle chains: mantle, head, web. Deforms everywhere: never a rigid head.",
       "usedBy": [
         "TreeOctopus"
       ],
@@ -102,7 +102,7 @@
       ],
       "system": "CreatureSim chain + grounding",
       "useWhen": "anything with a backbone or a segmented trunk",
-      "summary": "Bend-limited follow-the-leader chain riding the ground or a climbed surface (CreatureSim). The body of every walker, snake and the wyvern.",
+      "summary": "Bend-limited follow-the-leader chain riding the ground or a climbed surface (CreatureSim). The body of every walker, snake and the wyvern. Its head is rigid by default (rigidHeadJoints: auto from the profile; 0 = off).",
       "usedBy": [
         "DaddyLongLegs",
         "DesertBeetle",
@@ -332,6 +332,15 @@
           "meaning": "profile: joints 1..rigidHead are rigid (neck stiffness)",
           "range": "0..8",
           "example": ""
+        },
+        {
+          "name": "rigidHeadJoints",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "rigid head: the first N joints move as one rigid body (no bend, draping or twist between them; the neck behind bends). -1 = auto: the joints up to where the body first narrows (in its front half), 0 = off (the body deforms all the way)",
+          "range": "-1..16",
+          "example": "default -1 (auto); monitor 3 (auto), snake 2"
         },
         {
           "name": "ringSegments",
@@ -1003,7 +1012,7 @@
       "name": "Wing",
       "kind": "Wing",
       "status": "exists",
-      "bones": "7",
+      "bones": "6 + max(1, spec.flankPatches), +1 with spec.groundTallStance",
       "materialLayers": [
         8,
         1,
@@ -1094,7 +1103,7 @@
           "type": "WingSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundWristLift, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop",
+          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop",
           "range": "",
           "example": ""
         }
@@ -2570,7 +2579,7 @@
           "type": "FlightSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, pursuitGain",
+          "meaning": "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain",
           "range": "",
           "example": ""
         },
@@ -3668,7 +3677,7 @@
       "name": "WingedSerpent",
       "kitVersion": 0,
       "plan": "Spine",
-      "bones": 61,
+      "bones": 73,
       "parts": [
         "SpineBody:body",
         "Leg2Bone:leg0",
