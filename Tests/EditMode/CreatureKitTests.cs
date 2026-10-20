@@ -390,7 +390,7 @@ namespace TerrainGen.Tests
             var sim = Flat(sp, sp.scale);
             float sc = sp.scale, ts = Mathf.Sqrt(sc);
             Vector3 centre = new Vector3(0f, 0f, 0.25f) * sc;
-            float maxBend = 0f; int frames = 0;
+            float maxBend = 0f, maxLimb = 0f; int frames = 0;
             for (int t = 0; t < (int)(300 * ts); t++)
             {
                 float a = t / 60f * 3f / ts;
@@ -400,6 +400,7 @@ namespace TerrainGen.Tests
                     maxBend = Mathf.Max(maxBend, Vector3.Angle(sim.Joints[i - 1] - sim.Joints[i], sim.Joints[i] - sim.Joints[i + 1]));
                 sim.WriteBoneWorld(world, 0);
                 for (int b = 0; b < skin.Length; b++) skin[b] = world[b] * bind[b];
+                for (int b = 1; b < skin.Length; b++) maxLimb = Mathf.Max(maxLimb, Articulation(world, bind, b));
                 for (int i = 0; i < pos.Length; i++)
                 {
                     Vector4 s = uv2[i];
@@ -417,9 +418,26 @@ namespace TerrainGen.Tests
                 }
                 frames++;
             }
-            TestContext.Out.WriteLine($"{sp.name}: max joint bend {maxBend:F1} deg over {frames} frames");
+            TestContext.Out.WriteLine($"{sp.name}: max joint bend {maxBend:F1} deg, max bone articulation {maxLimb:F1} deg over {frames} frames");
             float bite = CreatureLegTests.BendBite(sp);
-            return maxBend > bite ? null : $"the chain never reached its bend limit ({maxBend:F1} <= {bite:F1} deg): the check does not bite";
+            if (bite > 0f)
+                return maxBend > bite ? null : $"the chain never reached its bend limit ({maxBend:F1} <= {bite:F1} deg): the check does not bite";
+            // Every interior spine joint is rigid (crabs, striders): the spine has no bend limit to reach, and its
+            // bend is float noise (0.0 in Mono, a few hundredths offline). The check then bites on what does move
+            // through the circle - the bones turning against the body (legs, claws, tendrils) - or it fails.
+            TestContext.Out.WriteLine($"{sp.name}: rigid spine - spine bend N/A, inversions checked on the moving bones");
+            return maxLimb > kLimbBite ? null : $"rigid spine and no bone turned more than {kLimbBite:F0} deg against the body ({maxLimb:F1} deg): the check does not bite";
+        }
+
+        // The least articulation (deg, some bone against bone 0, from rest) a rigid-spined species must show in the circle.
+        internal const float kLimbBite = 10f;
+
+        // How far bone b has turned against bone 0 from their rest relation (deg; forward and up axes, scale ignored).
+        static float Articulation(Matrix4x4[] world, Matrix4x4[] bind, int b)
+        {
+            Matrix4x4 now = world[0].inverse * world[b];
+            Matrix4x4 rest = bind[0] * bind[b].inverse;
+            return Mathf.Max(Vector3.Angle(now.GetColumn(2), rest.GetColumn(2)), Vector3.Angle(now.GetColumn(1), rest.GetColumn(1)));
         }
 
         // ------------------------------------------------------------ 6. bounds

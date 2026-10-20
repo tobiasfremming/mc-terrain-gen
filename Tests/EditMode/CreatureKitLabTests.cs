@@ -83,6 +83,7 @@ namespace TerrainGen.Tests
                 { "Delver", Habitat.Plain },
                 { "Pterodactyl", Habitat.Aviary },
                 { "StriderMatriarch", Habitat.Plain },
+                { "Apex", Habitat.Aviary },
             };
             foreach (string n in CreatureKitAssets.Species())
             {

@@ -19,7 +19,7 @@ namespace CreatureKit
           System = "BeakHeadRuntime (part runtime, stage Late: jaw, eye bones) + BeakHead.EmitMesh (SculptMesher pieces)",
           MaterialLayers = new[] { 0, 2 }, KitOnly = true,
           UseWhen = "pterosaurs, birds, herons and storks, beaked dinosaurs, turtles: any head that is mostly beak; with a crest (casque, sail) or without")]
-    public sealed partial class BeakHead : CreaturePart
+    public partial class BeakHead : CreaturePart
     {
         [Param(ParamUnit.PartRef, "the LongNeck whose head bone it rides (empty: rigid to at.joint, at.offset)")] public string follow = "";
         [Param(ParamUnit.Metres, "skull length behind the beak (occiput to the beak's root)", Example = "pterodactyl 0.16")] public float skullLength = 0.16f;
@@ -69,7 +69,10 @@ namespace CreatureKit
             return Mathf.Clamp(at.joint, 0, runtime.JointCount - 1);
         }
 
-        internal Vector3 Hinge => new Vector3(0f, -0.45f * skullHeight, 0.2f * skullLength);
+        // the jaw's hinge in the head frame, and the gape held at rest in degrees (0 = shut between clacks, calls and
+        // strikes); a head type drawn its own way (CasqueHead) places its own
+        internal virtual Vector3 Hinge => new Vector3(0f, -0.45f * skullHeight, 0.2f * skullLength);
+        internal virtual float RestGapeDeg => 0f;
         float BeakRoot => skullLength;   // z of the beak's root (the head bone at z = 0 is the occiput)
 
         public override IPartRuntime CreateRuntime(in PartCtx c)
@@ -235,6 +238,8 @@ namespace CreatureKit
             LongNeckRuntime n = Neck();
             float want = 0f;
             if (n != null) want = Mathf.Max(0.6f * n.Calling, n.Strike > 0.25f ? Mathf.Clamp01((n.Strike - 0.25f) / 0.5f) : 0f);
+            float rest = p.RestGapeDeg;
+            if (rest > 0f && p.gapeDeg > 0f) want = Mathf.Max(want, Mathf.Min(1f, rest / p.gapeDeg));
             if (p.clackInterval > 0f)
             {
                 if (clackLeft > 0f) { clackLeft -= dt; want = Mathf.Max(want, 0.35f); }

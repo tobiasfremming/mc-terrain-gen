@@ -53,6 +53,8 @@ namespace CreatureKit
         [Param(ParamUnit.Fraction, "the wings' fold in the stoop at its steepest", Min = 0.3f, Max = 1)] public float stoopFold = 0.9f;
         [Param(ParamUnit.Flag, "with no prey in its area it stoops at a practice mark on the ground")] public bool practice = true;
         [Param(ParamUnit.Fraction, "utility while hunting (FlightExcursion 0.2, Wander 0.1)", Min = 0.25f, Max = 2)] public float utility = 0.4f;
+        [Param(ParamUnit.Flag, "when it gives up the brain (a bout ends mid-glide, a landing starts) it hands the flight back: the wings free to beat (Model.DemandCap), no dive fold, the trunk's level. Off = shipped: a bout that ended in a held glide left the wings held, and the next landing glided round its point at floor height without a beat until it timed out")]
+        public bool handBack;
 
         public override string Validate(in SpeciesCtx c)
         {
@@ -117,12 +119,26 @@ namespace CreatureKit
             float T = c.Sim.TimeScale;
             // a stoop or its pull-out is never interrupted
             if (Current == Phase.Stoop || Current == Phase.PullUp) return h.utility + 1f;
-            if (!fl.Airborne || fl.Landing) return -1f;
+            if (!fl.Airborne || fl.Landing) return HandBack(fl);
             // bouts on the brain's clock: a bout, then a rest the other flight behaviour flies
-            if (c.Time < restUntil) return -1f;
+            if (c.Time < restUntil) return HandBack(fl);
             if (boutUntil < 0f) boutUntil = c.Time + h.boutSeconds * T;
-            if (c.Time > boutUntil) { boutUntil = -1f; restUntil = c.Time + h.restSeconds * T; return -1f; }
+            if (c.Time > boutUntil) { boutUntil = -1f; restUntil = c.Time + h.restSeconds * T; return HandBack(fl); }
+            holding = true;
             return h.utility;
+        }
+
+        // SkyHunt.handBack: out of the hunt, the flight's inputs it held are released once (-1: no utility)
+        bool holding;
+        float HandBack(CreatureFlight fl)
+        {
+            if (h.handBack && holding)
+            {
+                holding = false;
+                fl.Model.DemandCap = float.MaxValue; fl.DiveFold = 0f;
+                if (defaultLevel >= 0f) fl.Chain.Level = defaultLevel;
+            }
+            return -1f;
         }
 
         public void Enter(in BrainCtx c)

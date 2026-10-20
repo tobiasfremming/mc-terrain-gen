@@ -46,6 +46,7 @@ public sealed class FlightModel
     public float Amplitude { get; private set; }  // fraction of the comfort band
     public float AmplitudeCap = float.MaxValue;   // set by the flight mode (a branch flare's shallow strokes); none by default
     public float DemandCap = float.MaxValue;      // a behaviour holds the wings still (a stoop: 0 glides with no beat); none by default
+    public bool GlideEnergyToGoal;                // the glide's energy gain stops at the speed goal (a landing approach, FlightSpec.approachBleedsSpeed); off by default
     public float StrokeRate { get; private set; } // downstroke rad/s (scaled)
     public float Asymmetry { get; private set; }  // + = left wing strokes harder (rolls right)
     public bool Gliding { get; private set; }
@@ -152,7 +153,12 @@ public sealed class FlightModel
         if (f.glideEnergy && Gliding && spread > 0.5f)
         {
             float down = -Vector3.Dot(Velocity, Up), along = Vector3.Dot(Velocity, Forward);
-            if (along > 0.1f) Velocity += Forward * (Mathf.Clamp(G * GravityScale * down / along * h * spread, -0.5f * along, 0.5f * along));
+            if (along > 0.1f)
+            {
+                float dv = Mathf.Clamp(G * GravityScale * down / along * h * spread, -0.5f * along, 0.5f * along);
+                if (GlideEnergyToGoal && dv > 0f) dv = Mathf.Min(dv, Mathf.Max(0f, SpeedGoal - along));
+                Velocity += Forward * dv;
+            }
         }
 
         // Implicit air plant per wing (the prototype's sequential update): kappa = GripRate, g = kappa h /

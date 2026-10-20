@@ -564,7 +564,8 @@ namespace TerrainGen.Tests
             string p = SchoolProblem(Manta(), 5, 180f, out float nearest, out int manoeuvres);
             TestContext.WriteLine($"closest gap between two mantas {nearest:F2} m, manoeuvres {manoeuvres}");
             Assert.IsNull(p);
-            Assert.Greater(manoeuvres, 0, "rolls and loops happen in the school too");
+            // a manoeuvre the school vetoes waits, then the member peels off for room: about one each, not by luck
+            Assert.GreaterOrEqual(manoeuvres, 5, "rolls and loops happen in the school too");
         }
 
         // RED: without separation (and cohesion pulling them together) the school collides.

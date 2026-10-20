@@ -57,6 +57,7 @@ namespace CreatureKit
     public sealed class SchoolBehaviour : IBehaviour
     {
         public const float BaseUtility = 0.4f;
+        const float kPeel = 1.6f;   // a peeling member widens its separation this much (3 spans -> 4.8, past the manoeuvre gap)
 
         readonly School p;
         readonly CreatureSpecies sp;
@@ -102,7 +103,9 @@ namespace CreatureKit
             Vector3 sep = Vector3.zero, centre = Vector3.zero, heading = Vector3.zero;
             int k = 0;
             float nearest = float.PositiveInfinity, nearNow = float.PositiveInfinity, urgency = 0f;
-            float keep = p.separation * span, horizon = 3f * me.TimeScale;
+            // a member whose roll or loop waits on its neighbours peels off: a wider berth, clear of the manoeuvre gap
+            bool peel = soar != null && soar.WantsRoom;
+            float keep = (peel ? kPeel : 1f) * p.separation * span, horizon = 3f * me.TimeScale;
             Vector3 myV = F * me.Speed;
             for (int i = 0; i < group.Members.Count; i++)
             {
@@ -144,7 +147,7 @@ namespace CreatureKit
                 centre /= k;
                 Vector3 toC = centre - P;
                 float cd = toC.magnitude;
-                if (cd > 3f * span) want += toC / cd * p.cohesion * Mathf.Clamp01((cd - 3f * span) / (4f * span));
+                if (cd > 3f * span && !peel) want += toC / cd * p.cohesion * Mathf.Clamp01((cd - 3f * span) / (4f * span));
                 if (heading.sqrMagnitude > 1e-6f) want += heading.normalized * p.alignment;
                 // the closer a neighbour comes, the less anything else counts
                 want = want * Mathf.Clamp01(1f - 1.4f * urgency) + sep;

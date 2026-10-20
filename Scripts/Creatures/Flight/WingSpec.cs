@@ -55,6 +55,15 @@ public class WingSpec
     // foot point (CreatureWings.HandBoneOut; the wrist cap and knuckle ride the forearm) - the arm is drawn to the raised wrist, the gait's
     // foot point is unchanged. 0 = on the wrist.
     public float groundWristLift = 0f;
+    // With groundWristLift: the thumb claw's tip is put exactly on the foot point (the wrist moved after it in 3D, not
+    // only raised): the drawn claw stays planted while the arm swings over it, instead of skating a few % of the arm
+    // as the hand frame turns (the kit's Gait check on the drawn feet). Off = the vertical lift only (bit-identical).
+    public bool thumbPlant = false;
+    // With groundTallStance: the fan-side rear rib (WingBoneLayout.FanRearRib) rolls with the fan's plane in the air
+    // too, not halfway into the arm sector - for a wing whose arm zone rides the arm sector alone (SailWing), so the
+    // fan-side rib serves only the sail beside it. The halfway roll turned past 90 deg off the fan in hard pull-ups
+    // and flipped the narrow zone between it and the trailing rib inside out. Off = shipped (bit-identical).
+    public bool fanRearRollsWithFan = false;
     // On the ground the membrane's flank attach rises this far up the flank (x the joint's halfHeight): the
     // folded wing tucks up against the body instead of hanging below it. 0 = at mid-flank as in flight.
     [Range(0f, 1.5f)] public float groundFlankRise = 0f;

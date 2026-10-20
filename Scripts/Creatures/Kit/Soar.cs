@@ -116,6 +116,8 @@ namespace CreatureKit
         const int kProbeEvery = 4;
         const float kWindow = 40f;          // m at scale 1: ground search window below the head
         const float kRetry = 2f;            // s at scale 1: a manoeuvre not allowed now is asked again after this
+        const float kPeelAfter = 15f;       // s at scale 1: a manoeuvre overdue this long asks the brain for room
+        const float kRetrySoon = 0.5f;      // s at scale 1: ... sooner when only its own flight (a bout, a bank, a climb) is in the way
 
         readonly CreatureSim sim;
         readonly Soar f;
@@ -140,6 +142,11 @@ namespace CreatureKit
         Vector3 mP0, mF0, mU0, mR0, lastP;
 
         public bool ManoeuvreAllowed = true;  // the brain says no when a neighbour is close
+        // A manoeuvre has been due for kPeelAfter (vetoed by the brain, or no room, or the flight not level): until it
+        // begins, the brain makes room for it (School: the member peels off - a wider berth, no cohesion), so a close
+        // school delays a roll or loop, never cancels it.
+        public bool WantsRoom => overdue > kPeelAfter * T && (f.barrelRadius > 0f || f.loopRadius > 0f);
+        float overdue = -1f;                  // s a manoeuvre has waited since it fell due (< 0: none due)
         public bool Sustain;                  // tests, cinematics: keep beating (a bout never ends)
         public float Urgency;                 // 0..1 from the brain (a neighbour close ahead): steer, bank and climb quicker
         public SoarManoeuvre Manoeuvre { get; private set; }
@@ -341,6 +348,7 @@ namespace CreatureKit
             if (alt < clearance) P += up * (clearance - alt);
             if (area.HasValue) P = Clamp(area.Value, up, P);
 
+            if (overdue >= 0f) overdue += dt;
             manoeuvreLeft -= dt;
             if (manoeuvreLeft <= 0f) TryManoeuvre(up, ceiling);
         }
@@ -386,11 +394,20 @@ namespace CreatureKit
         void TryManoeuvre(Vector3 up, float ceiling)
         {
             manoeuvreLeft = kRetry * T;
-            if (!ManoeuvreAllowed || bout || Mathf.Abs(bank) > 8f * Mathf.Deg2Rad || Mathf.Abs(gamma) > 10f * Mathf.Deg2Rad) return;
+            if (overdue < 0f) overdue = 0f;
+            if (!ManoeuvreAllowed) return;
+            // only its own flight in the way (a bout, a bank, a climb): ask again soon, a glide comes round quickly
+            if (bout || Mathf.Abs(bank) > 8f * Mathf.Deg2Rad || Mathf.Abs(gamma) > 10f * Mathf.Deg2Rad) { manoeuvreLeft = kRetrySoon * T; return; }
             bool barrel = f.barrelRadius > 0f, loop = f.loopRadius > 0f;
             if (!barrel && !loop) { manoeuvreLeft = float.PositiveInfinity; return; }
             SoarManoeuvre kind = barrel && loop ? (Rand() < 0.5f ? SoarManoeuvre.Barrel : SoarManoeuvre.Loop) : barrel ? SoarManoeuvre.Barrel : SoarManoeuvre.Loop;
-            if (!Room(kind, up, ceiling)) return;
+            if (!Room(kind, up, ceiling))
+            {
+                // no room for this one: the other may fit (a roll travels further, a loop rises higher)
+                SoarManoeuvre other = kind == SoarManoeuvre.Loop ? SoarManoeuvre.Barrel : SoarManoeuvre.Loop;
+                if (!(barrel && loop) || !Room(other, up, ceiling)) return;
+                kind = other;
+            }
             Begin(kind);
         }
 
@@ -426,7 +443,7 @@ namespace CreatureKit
 
         void Begin(SoarManoeuvre kind)
         {
-            Manoeuvre = kind; Manoeuvres++;
+            Manoeuvre = kind; Manoeuvres++; overdue = -1f;
             alpha = 0f; mP0 = P; mF0 = F; mU0 = U; mV0 = V; lastP = P;
             mR0 = Vector3.Cross(U, F);
             bank = 0f;

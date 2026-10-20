@@ -273,6 +273,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     const float kFinalYaw = 30f, kFinalCross = 0.4f; // a planned final starts this well lined up (deg) and this near its line (x the turn radius)
     const float kPerchFlare = 0.7f;
     const float kPerchFootArc = 0.15f; // m at scale 1: a hind foot's rise over its touchdown blend onto a perch   // m at scale 1 above the clearance a branch flare holds (kTouchMargin over ground)
+    const int kThumbPlantPasses = 4;   // WingSpec.thumbPlant: wrist corrections per frame (the miss shrinks ~10x a pass)
     const float kLowFinal = 0.8f;
     const float kLaneHigh = 2.5f;     // m at scale 1: the racetrack's lane at most this far over the approach height
     float laneAlt;
@@ -392,6 +393,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             case FlightMode.Flare:
                 ModeTime += dt;
                 Model.AmplitudeCap = float.MaxValue;
+                Model.GlideEnergyToGoal = Landing && f.approachBleedsSpeed;
                 if (Landing) SteerLanding();
                 AirStep(dt);
                 Array.Copy(air, sim.Joints, n);
@@ -934,6 +936,19 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
                 }
                 elbow = TwoBoneIK.Solve(sh, ls.foot + fu * h, arm.upperLength * scale, arm.lowerLength * scale, Wings.ArmPole(w), out wrist);
                 Wings.PoseBetween(w, sh, elbow, wrist, fold, 0f);
+                if (sp.wings[w].thumbPlant)
+                {
+                    // the claw's tip onto the foot point in 3D (WingSpec.thumbPlant): the wrist target moved by the claw's
+                    // miss, a few passes (the hand frame follows the arm a little each time)
+                    Vector3 wt = ls.foot + fu * h;
+                    for (int pass = 0; pass < kThumbPlantPasses; pass++)
+                    {
+                        wt -= Wings.ThumbTip(w) - ls.foot;
+                        elbow = TwoBoneIK.Solve(sh, wt, arm.upperLength * scale, arm.lowerLength * scale, Wings.ArmPole(w), out wrist);
+                        Wings.PoseBetween(w, sh, elbow, wrist, fold, 0f);
+                    }
+                    h = Mathf.Clamp(Vector3.Dot(wrist - ls.foot, fu), 0f, hMax);
+                }
                 wristLift[w] = h;
             }
             // the arm as the renderer's bounds and the debug view see it (on the ground the foot stays the gait's)
