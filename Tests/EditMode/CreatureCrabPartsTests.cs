@@ -245,14 +245,14 @@ namespace TerrainGen.Tests
                 var k = ScriptableObject.CreateInstance<CreatureSpecies>();
                 k.name = "RockCrab-planes"; k.scale = a.scale; k.kitVersion = 1;
                 k.parts = new List<CreaturePart>(a.parts); k.modules = new List<CreatureModule>(a.modules);
-                var t = (Tuck)k.parts[k.parts.Count - 1].Clone();
+                var t = (Tuck)CreatureTuckTests.TuckPart(Load("RockCrab")).Clone();   // the archetype's, overridden explicitly
                 for (int i = 0; i < t.legs.Length; i++)
                 {
                     int n = t.legs[i].pitchDeg.Length;
                     t.legs[i].segmentYawDeg = perSegment ? new float[n] : null;
                     if (perSegment) for (int s = 0; s < n; s++) t.legs[i].segmentYawDeg[s] = t.legs[i].yawDeg;
                 }
-                k.parts[k.parts.Count - 1] = t;
+                k.parts.Add(t);
                 CreatureSpecies sp = k.Compiled.Runtime;
                 var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, sp.scale, 3);
                 for (int f = 0; f < 60; f++) sim.Tick(1f / 60f, new Vector3(0f, 0f, 30f));

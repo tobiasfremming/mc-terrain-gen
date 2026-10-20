@@ -63,6 +63,7 @@
     <UnityOnlySources Include="$(TG)\Scripts\Creatures\Octopus\OctopusPreyAdapters.cs" /> <!-- CreatureWorld prey -->
     <UnityOnlySources Include="$(TG)\Scripts\Creatures\Octopus\BranchHints.cs" />   <!-- PlantWorld skeletons -->
     <UnityOnlySources Include="$(TG)\Scripts\Creatures\CreatureThreatSource.cs" />  <!-- MonoBehaviour, Camera.main (the viewer as a Flee threat) -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\Fur\CreatureFur.cs" />          <!-- ComputeShader, GraphicsBuffer, Camera, Resources: the fur's GPU side (its CPU reference is FurBuilder / FurSim) -->
 
     <!-- EditMode tests that need the Editor (scene objects, physics, shaders, AssetDatabase beyond species
          assets, Perf assembly) or non-creature runtime code. Everything else matching the include globs runs. -->

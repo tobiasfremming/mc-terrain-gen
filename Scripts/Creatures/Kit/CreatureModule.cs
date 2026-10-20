@@ -26,6 +26,11 @@ namespace CreatureKit
         // A behaviour module's behaviour for one individual's ModularBrain (Kit/Brains.cs); null = none here.
         public virtual IBehaviour CreateBehaviour(in BehaviourCtx c) => null;
 
+        // Compose's last step for each module: write runtime settings into the species' legacy-shaped fields the
+        // systems read (a QuadLaunch's crouch into the flight spec, ...). Called after every shipped field is written;
+        // a module that needs none does nothing (the default: every shipped module).
+        public virtual void Configure(CreatureSpecies runtime) { }
+
         static readonly Dictionary<Type, ModuleAttribute> metas = new Dictionary<Type, ModuleAttribute>();
         public static ModuleAttribute MetaOf(Type t)
         {

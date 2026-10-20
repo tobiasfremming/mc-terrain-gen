@@ -223,7 +223,7 @@ namespace TerrainGen.Tests
             for (int w = 0; w < sp.WingCount; w++)
             {
                 if (sp.WingBone(w, 0) != next) return $"wing {w} starts at bone {sp.WingBone(w, 0)}, expected {next}";
-                next += WingBoneLayout.Bones(sp.wings[w]);
+                next += WingBlock(sp, w);
             }
             if (sp.EyeBone(0) != next || sp.EyeBone(1) != next + 1) return $"eyes at bones {sp.EyeBone(0)}, {sp.EyeBone(1)}, expected {next}, {next + 1}";
             next += 2;
@@ -252,11 +252,20 @@ namespace TerrainGen.Tests
             for (int l = 0; l < (sp.legs != null ? sp.legs.Length : 0); l++)
                 for (int k = 0; k < sp.legs[l].SegmentCount; k++) if (!used[sp.LegBone(l, k)]) bare.Add($"leg {l} bone {k}");
             for (int w = 0; w < sp.WingCount; w++)
-                for (int k = 0; k < WingBoneLayout.Bones(sp.wings[w]); k++) if (!used[sp.WingBone(w, k)]) bare.Add($"wing {w} bone {k}");
+                for (int k = 0; k < WingBlock(sp, w); k++) if (!used[sp.WingBone(w, k)]) bare.Add($"wing {w} bone {k}");
             if (sp.eyeRadius > 0f) for (int e = 0; e < 2; e++) if (!used[sp.EyeBone(e)]) bare.Add("eye " + e);
             foreach (CreatureKit.BoneRange r in sp.Layout.Ranges)
                 if (r.Start >= legacyEnd) for (int k = 0; k < r.Count; k++) if (!used[r.Start + k]) bare.Add($"{r.Id} bone {k}");
             return bare.Count > 0 ? "bones with no skinned vertex: " + string.Join(", ", bare) : null;
+        }
+
+        // A wing's block: the flight's bones (WingBoneLayout.Bones) plus a wing type's own after them (PteroWing's
+        // phalanges), as the layout gave the wing part; a legacy species' wings have exactly the flight's.
+        static int WingBlock(CreatureSpecies sp, int w)
+        {
+            int start = sp.WingBone(w, 0);
+            foreach (CreatureKit.BoneRange r in sp.Layout.Ranges) if (r.Start == start && r.Count > 0) return Mathf.Max(r.Count, WingBoneLayout.Bones(sp.wings[w]));
+            return WingBoneLayout.Bones(sp.wings[w]);
         }
 
         // Skin indices within [0, bones) wherever their weight is non-zero (uv3: the octopus's extra influences).

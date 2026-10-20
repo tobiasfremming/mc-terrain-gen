@@ -64,6 +64,12 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     public Vector3 LandPoint { get; private set; }
     public bool Perched { get; private set; } // on the ground after landing on a non-terrain surface
     public int Launches { get; private set; }
+    // A behaviour's fold of the wings in the air, 0..1 (a stoop: folded wings lose their lift and grip and the body falls
+    // along its path); 0 = none. Cleared on landing and launch.
+    public float DiveFold;
+    // FlightSpec.launchCrouch: a quad launch's crouch before the vault is running (the body lowered on its four limbs)
+    public bool Crouching => crouchLeft > 0f;
+    float crouchLeft, crouchAlt;
     public int Landings { get; private set; }
 
     float armBlend;        // 0: arms are legs (wing-walk) .. 1: arms are wings
@@ -106,11 +112,24 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     public bool Launch(float altitudeGoal)
     {
         if (Mode != FlightMode.Ground) return false;
+        // a quad launch (FlightSpec.launchCrouch > 0): crouch on the four limbs first, the vault follows (SubStep)
+        if (f.launchCrouch > 0f)
+        {
+            if (crouchLeft > 0f) return true;
+            crouchLeft = f.launchCrouch * T; crouchAlt = altitudeGoal;
+            return true;
+        }
+        return Vault(altitudeGoal);
+    }
+
+    bool Vault(float altitudeGoal)
+    {
         Vector3 up = Up(sim.Joints[girdle]);
         Vector3 heading = Vector3.ProjectOnPlane(sim.Rotations[0] * Vector3.forward, up);
         heading = heading.sqrMagnitude > 1e-8f ? heading.normalized : Vector3.forward;
         float v = Mathf.Max(sim.Speed, f.launchSpeed * T);
-        Model.Reset(sim.Joints[girdle], heading * v + up * (kVault * T), heading, up);
+        Model.Reset(sim.Joints[girdle], heading * v + up * ((f.vaultSpeed > 0f ? f.vaultSpeed : kVault) * T), heading, up);
+        DiveFold = 0f; Model.DemandCap = float.MaxValue; sim.Crouch = 0f;
         Model.AltitudeGoal = altitudeGoal;
         Model.SpeedGoal = f.cruiseSpeed * T;
         Model.TurnRateGoal = 0f;
@@ -349,6 +368,14 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         switch (Mode)
         {
             case FlightMode.Ground:
+                if (crouchLeft > 0f)
+                {
+                    // the quad launch's crouch: the body sinks on its limbs (eased), then vaults
+                    crouchLeft -= dt;
+                    float c = 1f - Mathf.Clamp01(crouchLeft / (f.launchCrouch * T));
+                    sim.Crouch = f.launchCrouchDepth * scale * c * c * (3f - 2f * c);
+                    if (crouchLeft <= 0f) { crouchLeft = 0f; Vault(crouchAlt); }
+                }
                 return false;
             case FlightMode.Launch:
                 ModeTime += dt;
@@ -427,12 +454,14 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
                                               Landing ? landToward : goalToward, f.PursuitGain);
         Model.Control(dt);
         Wings.Advance(dt, Model);
-        if (foldFloor > 0f)
+        // (DiveFold: a behaviour folds the wings in the air - a stoop; 0 = the flight's own floor exactly)
+        float ff = DiveFold > foldFloor ? DiveFold : foldFloor;
+        if (ff > 0f)
             for (int w = 0; w < Wings.Count; w++)
             {
                 ref WingState st = ref Wings.State[w];
-                st.fold = Mathf.Max(st.fold, foldFloor);
-                st.area *= 1f - 0.8f * foldFloor; // a folded wing barely grips the air
+                st.fold = Mathf.Max(st.fold, ff);
+                st.area *= 1f - 0.8f * ff; // a folded wing barely grips the air
             }
         Model.Integrate(dt, Wings);
         Contain();
@@ -703,6 +732,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     void BeginTouchdown()
     {
         Array.Copy(sim.Joints, snapshot, n);
+        DiveFold = 0f; Model.DemandCap = float.MaxValue;
         touchSpeed = Vector3.ProjectOnPlane(Model.Velocity, Model.Up).magnitude;
         if (landSource != 0)
         {
@@ -776,17 +806,21 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
                 offsetValid = true;
             }
             float t = ModeTime / (kTouchdownTime * T);
-            for (int i = 0; i < n; i++)
+            if (f.touchdownTogether) TogetherBlend(J, Smooth01(t / 0.6f));
+            else
             {
-                // the hips and tail settle first, the head last
-                float lag = 0.4f * (1f - i / Mathf.Max(1f, n - 1f));
-                float g = Smooth01((t - lag) / 0.6f);
-                AirWeight[i] = 1f - g;
-                J[i] += offset[i] * (1f - g);
+                for (int i = 0; i < n; i++)
+                {
+                    // the hips and tail settle first, the head last
+                    float lag = 0.4f * (1f - i / Mathf.Max(1f, n - 1f));
+                    float g = Smooth01((t - lag) / 0.6f);
+                    AirWeight[i] = 1f - g;
+                    J[i] += offset[i] * (1f - g);
+                }
             }
             armBlend = 1f - Smooth01(t / kArmHandover);
             foldFloor = Smooth01(t);
-            Relength(J);
+            if (!f.touchdownTogether) Relength(J);
             sim.RefreshFrames();
         }
     }
@@ -959,6 +993,29 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     }
 
     // Exact segment lengths from the girdle out both ways (the blend of two chains is not exact).
+    // FlightSpec.touchdownTogether: the whole body from the frozen hovering pose onto the grounded body as it is now, the
+    // girdle's position lerped and every segment's direction slerped out from it (exact lengths; a short deep trunk). A
+    // blend of positions shortened the segments where the two bodies disagree and the re-lengthening folded them.
+    void TogetherBlend(Vector3[] J, float g)
+    {
+        float seg = sp.spacing * scale;
+        Vector3[] P = offset;   // scratch (the offsets are not used by this blend)
+        P[girdle] = Vector3.Lerp(snapshot[girdle], J[girdle], g);
+        for (int i = girdle + 1; i < n; i++)
+            P[i] = P[i - 1] + SlerpDir(snapshot[i] - snapshot[i - 1], J[i] - J[i - 1], g) * seg;
+        for (int i = girdle - 1; i >= 0; i--)
+            P[i] = P[i + 1] + SlerpDir(snapshot[i] - snapshot[i + 1], J[i] - J[i + 1], g) * seg;
+        for (int i = 0; i < n; i++) { J[i] = P[i]; AirWeight[i] = 1f - g; }
+    }
+
+    static Vector3 SlerpDir(Vector3 a, Vector3 b, float t)
+    {
+        float la = a.magnitude, lb = b.magnitude;
+        if (!(la > 1e-9f)) return lb > 1e-9f ? b / lb : Vector3.forward;
+        if (!(lb > 1e-9f)) return a / la;
+        return Vector3.Slerp(a / la, b / lb, t).normalized;
+    }
+
     void Relength(Vector3[] J)
     {
         float seg = sp.spacing * scale;

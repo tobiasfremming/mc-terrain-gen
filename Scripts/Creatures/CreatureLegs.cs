@@ -151,6 +151,16 @@ sealed class CreatureLegs
     // 1 = free to walk, 0 = a planted foot is at full stretch and the body must wait for its step.
     public float MaxSpeed { get; private set; } = float.PositiveInfinity;
     float walkMaxSpeed = float.PositiveInfinity; // StrideLimitedSpeed: MaxSpeed while walking
+    // Sideways walking (CreatureSim, species sideways): the travel direction in the attach joints' frame (forward, or
+    // +-right), which steps aim along; walking to a side, MaxSpeed is the stride limit across the body. Off: as before.
+    bool sideways;
+    float sideMaxSpeed = float.PositiveInfinity;
+    public Vector3 TravelLocal = Vector3.forward;
+    public bool Sideways
+    {
+        get => sideways;
+        set { sideways = value; if (value) sideMaxSpeed = SideStrideSpeed(); }
+    }
     int gaitGroups;                              // distinct gait groups of the walking legs
     public float Throttle { get; private set; } = 1f;
     // Climbing: the fastest the body may go and still stop (braking at StopDecel) before a planted foot reaches
@@ -342,6 +352,34 @@ sealed class CreatureLegs
     // the stance's rest points lie further out across the body (they curve round it) than on flat ground. With the
     // walking cap the body outran a waiting leg (1.2 x its reach at 1.3 m/s, the head back on the ground while the
     // hips were still on the bark) and the IK dragged its planted foot.
+    // StrideLimitedSpeed for travel across the body: each foot's path runs along the attach frame's x through its rest
+    // point; it can move from there inward to the leg's shortest reach and outward to its stride reach, and the smaller
+    // of the two (either way: leading legs pull in, trailing legs push out) is half its usable stride.
+    float SideStrideSpeed()
+    {
+        float best = float.PositiveInfinity;
+        int groups = Mathf.Max(2, gaitGroups);
+        for (int l = 0; l < specs.Length; l++)
+        {
+            LegSpec s = specs[l];
+            if (s.feeler) continue;
+            Vector3 sh = Mirror(s.shoulderOffset, l) * scale;
+            Vector3 rs = Mirror(s.restOffset, l) * scale;
+            rs.y = -sp.joints[s.attachJoint].clearance * scale;
+            Vector3 v = rs - sh;
+            float along = Mathf.Abs(v.x);
+            float perp2 = v.y * v.y + v.z * v.z;
+            float outer = Mathf.Sqrt(Mathf.Max(0f, Sq(kStrideReach * reachLen[l] * scale) - perp2));
+            float inner = Mathf.Sqrt(Mathf.Max(0f, Sq(minReach[l] * scale) - perp2));
+            float half = Mathf.Max(0f, Mathf.Min(outer - along, along - inner));
+            float cycle = groups * Mathf.Max(1e-3f, s.stepDuration * timeScale);
+            best = Mathf.Min(best, kStrideUse * 4f * half / cycle);
+        }
+        return Mathf.Max(best, 0.05f);
+    }
+
+    static float Sq(float x) => x * x;
+
     float ClimbStrideSpeed()
     {
         float best = walkMaxSpeed;
@@ -557,7 +595,7 @@ sealed class CreatureLegs
             climbStrideValid = true;
             MaxSpeed = climbStride;
         }
-        else { MaxSpeed = walkMaxSpeed; climbStrideValid = false; }
+        else { MaxSpeed = sideways && TravelLocal.z == 0f ? sideMaxSpeed : walkMaxSpeed; climbStrideValid = false; }
 
         UpdateDroop(dt);
 
@@ -802,7 +840,7 @@ sealed class CreatureLegs
         LegSpec s = specs[l];
         // The species' overshoot, trimmed so the foot can still reach it; fixed for the whole step so
         // re-aiming in flight only follows the body (an idle tidy-up lands exactly on the rest point).
-        Vector3 fwd = rotations[s.attachJoint] * Vector3.forward;
+        Vector3 fwd = rotations[s.attachJoint] * (sideways ? TravelLocal : Vector3.forward);
         float over = speed < kIdleSpeed * timeScale ? 0f : s.overshoot * scale;
         if (Climbing) over *= Factor(sp.climb.StrideFactor, Steep(l));
         float maxDist = kLandReach * reachLen[l] * scale;
@@ -823,7 +861,7 @@ sealed class CreatureLegs
     void Aim(int l, float speed, float remaining)
     {
         LegSpec s = specs[l];
-        Vector3 fwd = rotations[s.attachJoint] * Vector3.forward;
+        Vector3 fwd = rotations[s.attachJoint] * (sideways ? TravelLocal : Vector3.forward);
         float travel = Mathf.Max(0f, speed) * s.stepDuration * timeScale * remaining;
         if (Climbing) travel *= Factor(sp.climb.StepTimeFactor, Steep(l));
         float over = stepOver[l];

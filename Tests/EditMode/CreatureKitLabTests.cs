@@ -60,6 +60,7 @@ namespace TerrainGen.Tests
                 { "Crocodile", Habitat.Plain }, { "KomodoDragon", Habitat.Plain }, { "GolfballStrider", Habitat.Plain },
                 { "SkyManta", Habitat.Aviary },
                 { "Delver", Habitat.Plain },
+                { "Apex", Habitat.Aviary },
             };
             foreach (string n in CreatureKitAssets.Species())
             {

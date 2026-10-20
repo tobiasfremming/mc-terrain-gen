@@ -257,8 +257,11 @@ public sealed class CreatureWorld : MonoBehaviour
             }
             if (octopusMaterial != null) m = octopusMaterial;
         }
-        renderers.Add(new CreatureRenderer(sp, m));
-        return renderers[renderers.Count - 1];
+        var ren = new CreatureRenderer(sp, m);
+        // creature fur: only a species with the Fur look module gets a fur system (every other draws as before)
+        if (CreatureKit.FurBuilder.ModuleOf(sp) != null) ren.Fur = CreatureKit.CreatureFur.Create(sp, ren);
+        renderers.Add(ren);
+        return ren;
     }
 
     // A tree octopus (a Cephalopod species; SpawnCreature takes any species). Its surfaces are the terrain plus every registered collider (real
@@ -361,6 +364,7 @@ public sealed class CreatureWorld : MonoBehaviour
         if (surfaces != null) surfaces.SyncIfDirty();
         // the surface probes need back faces (inside-solid tests); one switch for the whole tick
         PhysicsSurfaceProbe.BackfaceScope backfaces = surfaces != null ? PhysicsSurfaceProbe.Backfaces() : default;
+        CreatureKit.HuntPrey.Source = sims;   // what a hunting behaviour (SkyHunt) may take
         try
         {
             for (int i = 0; i < sims.Count; i++)

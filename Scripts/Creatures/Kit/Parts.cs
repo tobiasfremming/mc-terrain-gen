@@ -212,7 +212,7 @@ namespace CreatureKit
             if (role == LimbRole.Folded)
             {
                 bool winged = false;
-                for (int i = 0; i < c.Parts.Count; i++) if (c.Parts[i] is Wing w && w.arm == id) winged = true;
+                for (int i = 0; i < c.Parts.Count; i++) if (c.Parts[i] is WingPart w && w.arm == id) winged = true;
                 if (!winged || !(this is Leg2Bone)) return $"{id}: role Folded is a Wing's arm (a Leg2Bone a Wing names)";
             }
             return null;
@@ -287,19 +287,20 @@ namespace CreatureKit
         [Param(ParamUnit.Fraction, "start of the band-coloured stretch (fraction of the segment)", Min = 0, Max = 1)] public float bandStart;
         [Param(ParamUnit.Fraction, "end of the band-coloured stretch", Min = 0, Max = 1)] public float bandEnd;
         [Param(ParamUnit.Metres, "a sharp spur at the segment's distal end, on its lower side, raked toward the tip (claw layer); 0 = none", Example = "scolopendra 0.0018")] public float spurLength;
+        [Param(ParamUnit.Fraction, "cross-section flattened in the leg's plane: height = (1 - flatten) x width (0 = round): a crab's broad flat leg segments", Min = 0, Max = 0.8f, Example = "stone crab merus 0.35")] public float flatten;
 
         public LegSegment ToRuntime() => new LegSegment
         {
             length = length, radiusStart = radiusStart, radiusEnd = radiusEnd, restBendDeg = restBendDeg, minBendDeg = minBendDeg, maxBendDeg = maxBendDeg,
             flexWeight = flexWeight, liftWeight = liftWeight, axisTiltDeg = axisTiltDeg, knuckle = knuckle, bandStart = bandStart, bandEnd = bandEnd,
-            spurLength = spurLength,
+            spurLength = spurLength, flatten = flatten,
         };
 
         public static SegmentDef From(in LegSegment s) => new SegmentDef
         {
             length = s.length, radiusStart = s.radiusStart, radiusEnd = s.radiusEnd, restBendDeg = s.restBendDeg, minBendDeg = s.minBendDeg, maxBendDeg = s.maxBendDeg,
             flexWeight = s.flexWeight, liftWeight = s.liftWeight, axisTiltDeg = s.axisTiltDeg, knuckle = s.knuckle, bandStart = s.bandStart, bandEnd = s.bandEnd,
-            spurLength = s.spurLength,
+            spurLength = s.spurLength, flatten = s.flatten,
         };
     }
 
@@ -356,18 +357,20 @@ namespace CreatureKit
 
     // ------------------------------------------------------------------ wings, chains
 
+    // A membrane wing on an arm limb, flown by CreatureFlight + CreatureWings (the wingbeat physics, the arm and the
+    // finger/rib bones): Wing (the dragon's / serpent's mesh) and PteroWing (a pterosaur's) differ in how they look and
+    // in bones of their own after the flight's. Compose, the bone layout and the Fly module see every WingPart.
     [Serializable]
-    [Part("Wing", PartKind.Wing, Bones = "6 + max(1, spec.flankPatches), +1 with spec.groundTallStance", Summary = "3-finger membrane wing on an arm limb (a Leg2Bone it names); a wingbeat is a step with a vertical comfort band (CreatureWings, FlightModel).",
-          System = "CreatureFlight + CreatureWings", MaterialLayers = new[] { 8, 1, 2 }, UseWhen = "bats, pterosaurs, dragons; the Fly module makes it fly")]
-    public sealed partial class Wing : CreaturePart
+    public abstract class WingPart : CreaturePart
     {
-        // 3 fingers, 2 ribs, arm sector, the humerus patch (or spec.flankPatches flank patches), a tall stance's fan-side rear rib
         [Param(ParamUnit.PartRef, "the Leg2Bone this wing rides on (its role becomes WingArm); a mirrored wing names the unmirrored id and gets .L / .R")]
         public string arm = "";
         [Param(ParamUnit.Spec, "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm`")]
         public WingSpec spec = new WingSpec();
 
-        public override int BoneCount(in SpeciesCtx c) => WingBoneLayout.Bones(spec);
+        // the flight's bones (WingBoneLayout); a subtype's own bones follow them in its block
+        public int FlightBones => WingBoneLayout.Bones(spec);
+        public override int BoneCount(in SpeciesCtx c) => FlightBones;
         public override void CollectReferences(List<string> into) => into.Add(arm);
         protected override void CopyArrays()
         {
@@ -383,6 +386,14 @@ namespace CreatureKit
             if (!(c.Find(arm) is Leg2Bone)) return $"{id}: arm '{arm}' must name a Leg2Bone";
             return null;
         }
+    }
+
+    [Serializable]
+    [Part("Wing", PartKind.Wing, Bones = "6 + max(1, spec.flankPatches), +1 with spec.groundTallStance", Summary = "3-finger membrane wing on an arm limb (a Leg2Bone it names); a wingbeat is a step with a vertical comfort band (CreatureWings, FlightModel).",
+          System = "CreatureFlight + CreatureWings", MaterialLayers = new[] { 8, 1, 2 }, UseWhen = "bats, pterosaurs, dragons; the Fly module makes it fly")]
+    public sealed partial class Wing : WingPart
+    {
+        // 3 fingers, 2 ribs, arm sector, the humerus patch (or spec.flankPatches flank patches), a tall stance's fan-side rear rib
     }
 
     [Serializable]

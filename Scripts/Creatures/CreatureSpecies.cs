@@ -300,6 +300,14 @@ public class CreatureSpecies : ScriptableObject
     // (CreatureLegs.StartWave). false = the event-driven gait every shipped species walks with.
     [Tooltip("Gait groups step strictly in turn (ascending id): a metachronal wave. Off = the event-driven gait.")]
     public bool waveGait;
+    // Sideways walking (the kit's Walk.travel Sideways): the heading stays the body's forward and the head travels
+    // along the body's lateral axis, to whichever side needs the smaller turn (a crab); a target dead ahead is walked
+    // to forward at sidewaysForward x the speed (0 = 0.35, < 0 = never forward). Needs a rigid body. false = every
+    // shipped species' forward walk (bit-identical).
+    [Tooltip("Walk sideways (a crab): travel along the body's lateral axis. Off = forward.")]
+    public bool sideways;
+    public float sidewaysForward;
+    public float SidewaysForward => !sideways ? 1f : sidewaysForward > 0f ? sidewaysForward : sidewaysForward < 0f ? 0f : 0.35f;
     public EyeSpot[] eyeCluster;
     public BodyAppendage[] appendages;
     // Membrane strips along the spine (the kit's FinStrip: manes, crests, fins), skinned to the spine; empty = none.

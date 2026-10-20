@@ -1,0 +1,79 @@
+// Creature fur strands, once per frame (CreatureFur.cs). One thread per (slot, root): skin the root with the SAME
+// skin matrices the creature renderer just uploaded (_Bones, the individual's block), then advance the strand's
+// two-segment spring (FurStrandSim in Scripts/Creatures/Fur/FurSim.cs is the CPU reference, line for line).
+// A slot is one simulated individual: _FurSlots[s] = (instance index, reset, active, 0). A reset (a newly
+// assigned individual) or a non-finite state starts the strand at its rest pose and bakes its colours.
+#pragma kernel FurStep
+
+#include "../../Shaders/Creature/CreatureSkin.hlsl"
+#include "../../Shaders/Creature/CreaturePattern.hlsl"
+#include "FurCommon.hlsl"
+
+StructuredBuffer<FurSkinVertex> _FurVerts;
+StructuredBuffer<FurRoot> _FurRoots;
+StructuredBuffer<FurRegionRow> _FurRegions;
+StructuredBuffer<uint4> _FurSlots;
+RWStructuredBuffer<FurStrand> _FurStrands;
+uint _FurRootCount;
+uint _FurSlotCount;
+float _FurDt;
+
+[numthreads(64, 1, 1)]
+void FurStep(uint3 id : SV_DispatchThreadID)
+{
+    uint gi = id.x;
+    if (gi >= _FurRootCount * _FurSlotCount) return;
+    uint slot = gi / _FurRootCount, ri = gi - slot * _FurRootCount;
+    uint4 sl = _FurSlots[slot];
+    if (sl.z == 0u) return;
+
+    FurRoot r = _FurRoots[ri];
+    FurRegionRow g = _FurRegions[r.region];
+    CreatureInstance inst = _Instances[sl.x];
+    uint baseIndex = sl.x * _BonesPerCreature;
+    FurSkinVertex a = _FurVerts[r.v0], b = _FurVerts[r.v1], c = _FurVerts[r.v2];
+    float3 p0, n, comb, tip;
+    FurSkinRoot(r, a, b, c, baseIndex, p0, n, comb, tip);
+
+    float scale = max(inst.sizeScale, 1e-3);
+    float len = r.length * scale;
+    FurStrand s = _FurStrands[gi];
+    bool bad = any(!isfinite(s.p1.xyz)) || any(!isfinite(s.p2.xyz)) || any(!isfinite(s.v1.xyz)) || any(!isfinite(s.v2.xyz));
+    if (sl.y != 0u || bad || s.v2.w != 1.0)
+    {
+        float seg = 0.5 * len;
+        s.p0 = float4(p0, 0.0);
+        s.p1 = float4(p0 + comb * seg, 0.0);
+        s.p2 = float4(s.p1.xyz + tip * seg, 0.0);
+        s.v1 = float4(0.0, 0.0, 0.0, 0.0);
+        s.v2 = float4(0.0, 0.0, 0.0, 1.0);
+        // colours: the region's, toward the body's palette and pattern at the root, the individual's hue and value
+        float l1 = r.b1, l2 = r.b2, l0 = 1.0 - l1 - l2;
+        float2 uv0 = a.uv0 * l0 + b.uv0 * l1 + c.uv0 * l2;
+        float2 uv1 = float2(a.uv1.x, a.uv1.y * l0 + b.uv1.y * l1 + c.uv1.y * l2);
+        float radius = a.radius * l0 + b.radius * l1 + c.radius * l2;
+        float3 rootC, tipC;
+        FurColours(g, uv0, uv1, radius, inst, lerp(0.85, 1.15, FurHash01(r.seed ^ 0x51ED270Bu)), rootC, tipC);
+        s.look = FurPackLook(rootC, tipC, r.seed);
+    }
+    else
+    {
+        float dt = clamp(_FurDt, 0.0, 0.1);
+        if (dt > 0.0)
+        {
+            float omega = 6.2831853 * g.dyn.x / sqrt(scale);
+            uint steps = clamp((uint)ceil(dt / FUR_MAX_STEP), 1u, (uint)FUR_MAX_SUBSTEPS);
+            float h = dt / steps;
+            float3 from = s.p0.xyz;
+            float3 rootVel = (p0 - from) / dt;
+            for (uint k = 1u; k <= steps; k++)
+                FurSubStep(s, lerp(from, p0, (float)k / steps), rootVel, n, comb, tip, len, omega, g.dyn.y, g.dyn.z, h);
+        }
+        else s.p0.xyz = p0;
+    }
+    s.p0.w = r.width * scale;
+    s.p1.w = len;
+    s.p2.w = r.rank;
+    s.v1.w = FurPackNormal(n);
+    _FurStrands[gi] = s;
+}

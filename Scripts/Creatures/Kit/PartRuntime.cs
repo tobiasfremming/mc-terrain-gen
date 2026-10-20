@@ -47,6 +47,12 @@ namespace CreatureKit
         void DrawDebug(ICreatureDebugDraw d);
     }
 
+    // A part runtime whose bones are built on the wing bones (see KitRuntime.AfterSpreadWings).
+    public interface ISpreadWingsRest
+    {
+        void AfterSpreadWings(Matrix4x4[] bones, int offset);
+    }
+
     // What a module gets to build a locomotion mode: the sim's ground and up field.
     public readonly struct ModeCtx
     {
@@ -88,6 +94,16 @@ namespace CreatureKit
             n = 0;
             for (int i = 0; i < all.Length; i++) if (all[i].Stage == stage) r[n++] = all[i];
             return r;
+        }
+
+        // The bind pose of a winged species is the spread glide pose: a separate CreatureWings writes the arm, finger and
+        // rib bones over the rest sim's (WingedMeshBuilder.RestBoneWorld). A runtime whose bones are built on those bones
+        // (a pterosaur's wing-finger phalanges) re-poses them here on the spread wings, so its bind pose agrees.
+        public static void AfterSpreadWings(CreatureSim sim, Matrix4x4[] bones)
+        {
+            IPartRuntime[] all = sim.PartRuntimes;
+            if (all == null) return;
+            for (int i = 0; i < all.Length; i++) if (all[i] is ISpreadWingsRest r) r.AfterSpreadWings(bones, 0);
         }
 
         public static ILocomotionMode[] Modes(CreatureSim sim, IReadOnlyList<CreatureModule> modules, in ModeCtx c)

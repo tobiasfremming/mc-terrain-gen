@@ -20,7 +20,7 @@ namespace CreatureKit
         public readonly List<CreaturePart> Parts = new List<CreaturePart>();     // flat, sugar expanded
         public readonly List<CreatureModule> Modules = new List<CreatureModule>();
         public readonly List<LimbPart> Limbs = new List<LimbPart>();             // = the runtime legs, in order
-        public readonly List<Wing> Wings = new List<Wing>();
+        public readonly List<WingPart> Wings = new List<WingPart>();
         public readonly List<string> Problems = new List<string>();
         public CreatureBoneLayout Layout { get; private set; }
         // The runtime view: the species whose legacy fields the systems read. A legacy asset (kitVersion 0) is
@@ -35,6 +35,15 @@ namespace CreatureKit
 
         CompiledSpecies(string name, bool soft) { Name = name; Soft = soft; }
 
+        // Archetypes: the asset's own parts by id (they override generated ones), the explicit parts that took a
+        // generated part's place (not expanded again at their own), and which archetype generated each final part id.
+        readonly Dictionary<string, CreaturePart> explicitById = new Dictionary<string, CreaturePart>();
+        readonly HashSet<CreaturePart> consumed = new HashSet<CreaturePart>();
+        readonly Dictionary<string, string> generatedBy = new Dictionary<string, string>();
+
+        // The id of the archetype part that generated this (final, expanded) part id; null for an explicit part.
+        public string GeneratedBy(string id) => id != null && generatedBy.TryGetValue(id, out string a) ? a : null;
+
         // ------------------------------------------------------------ compose
 
         public static CompiledSpecies Compose(string name, IList<CreaturePart> parts, IList<CreatureModule> modules)
@@ -43,17 +52,28 @@ namespace CreatureKit
             if (parts != null) foreach (CreaturePart p in parts) if (p is SoftBody) soft = true;
             var c = new CompiledSpecies(name, soft);
             if (modules != null) foreach (CreatureModule m in modules) { if (m == null) c.Problems.Add("a module is null (missing type?)"); else c.Modules.Add(m.Clone()); }
+            // archetypes: the ids the asset lists itself override the generated parts
+            bool archetype = false;
+            if (parts != null)
+                foreach (CreaturePart p in parts)
+                {
+                    if (p is IArchetype) archetype = true;
+                    else if (p != null && p.id != null && !c.explicitById.ContainsKey(p.id)) c.explicitById[p.id] = p;
+                }
+            if (!archetype) c.explicitById.Clear();
             if (parts != null)
                 for (int i = 0; i < parts.Count; i++)
                 {
                     if (parts[i] == null) { c.Problems.Add($"parts[{i}] is null (missing type?)"); continue; }
+                    if (c.consumed.Contains(parts[i])) continue;   // already expanded in a generated part's place
                     c.Expand(parts[i].Clone(), 0);
                 }
+            if (archetype) c.TuckLast();
             foreach (CreaturePart p in c.Parts)
             {
                 if (p.Kind == PartKind.Body) { if (c.Body == null) c.Body = p; else c.Problems.Add($"{p.id}: a second Body part (exactly one SpineBody or SoftBody)"); }
                 if (p is LimbPart l) c.Limbs.Add(l);
-                if (p is Wing w) c.Wings.Add(w);
+                if (p is WingPart w) c.Wings.Add(w);
             }
             if (c.Body == null) c.Problems.Add("no Body part (exactly one SpineBody or SoftBody)");
             c.WingArms();
@@ -66,6 +86,16 @@ namespace CreatureKit
         void Expand(CreaturePart p, int depth)
         {
             if (depth > 4) { Problems.Add($"{p.id}: Repeat nested too deep"); return; }
+            if (p is IArchetype arch)   // a body plan: its generated parts, explicit ones in their place
+            {
+                string e = p.Validate(Ctx);
+                if (e != null) { Problems.Add(e); return; }
+                var gen = new List<CreaturePart>();
+                try { arch.Generate(gen, Modules); }
+                catch (InvalidOperationException x) { Problems.Add($"{p.id}: {x.Message}"); return; }
+                foreach (CreaturePart q in gen) ExpandGenerated(q, p.id, depth + 1);
+                return;
+            }
             if (p is Repeat r)
             {
                 if (r.template == null) { Problems.Add($"{r.id}: Repeat has no template"); return; }
@@ -84,7 +114,7 @@ namespace CreatureKit
             }
             if (p.mirror && !(p is RigidCone) && !(p is FinStrip))
             {
-                string arm = (p as Wing)?.arm;
+                string arm = (p as WingPart)?.arm;
                 for (int side = -1; side <= 1; side += 2)
                 {
                     string suffix = side < 0 ? ".L" : ".R";
@@ -93,12 +123,50 @@ namespace CreatureKit
                     m.at.side = side;
                     m.id = p.id + suffix;
                     // a mirrored wing names the mirrored arm
-                    if (m is Wing w && arm != null && !(arm.EndsWith(".L") || arm.EndsWith(".R"))) w.arm = arm + suffix;
+                    if (m is WingPart w && arm != null && !(arm.EndsWith(".L") || arm.EndsWith(".R"))) w.arm = arm + suffix;
                     Parts.Add(m);
                 }
                 return;
             }
             Parts.Add(p);
+        }
+
+        // A generated part, or the explicit part with its id in its place; a mirrored generated part whose one side is
+        // listed explicitly keeps its other side and takes the explicit side in that side's slot.
+        void ExpandGenerated(CreaturePart q, string archetypeId, int depth)
+        {
+            if (q.id != null && explicitById.TryGetValue(q.id, out CreaturePart mine))
+            {
+                consumed.Add(mine);
+                Expand(mine.Clone(), depth);
+                return;
+            }
+            int from = Parts.Count;
+            Expand(q, depth);
+            int to = Parts.Count;
+            for (int i = from; i < to; i++)
+            {
+                if (explicitById.TryGetValue(Parts[i].id, out CreaturePart side) && !side.mirror)
+                {
+                    consumed.Add(side);
+                    Parts[i] = side.Clone();
+                    continue;
+                }
+                generatedBy[Parts[i].id] = archetypeId;
+            }
+        }
+
+        // A Tuck poses the other parts' bones after they wrote them, so it must be the last part: one that came from an
+        // archetype (generated, or explicit in a generated one's place) moves behind the parts the asset added after the plan.
+        void TuckLast()
+        {
+            for (int i = Parts.Count - 2; i >= 0; i--)
+                if (Parts[i] is Tuck t && (GeneratedBy(t.id) != null || (explicitById.TryGetValue(t.id, out CreaturePart e) && consumed.Contains(e))))
+                {
+                    Parts.RemoveAt(i);
+                    Parts.Add(t);
+                    return;
+                }
         }
 
         // Repeat taper: lengths (and the stride that goes with them) x f. Times stay: the copies step together.
@@ -129,7 +197,7 @@ namespace CreatureKit
 
         void WingArms()
         {
-            foreach (Wing w in Wings)
+            foreach (WingPart w in Wings)
                 if (Find(w.arm) is LimbPart arm && arm.role == LimbRole.Walk) arm.role = LimbRole.WingArm;
         }
 
@@ -206,7 +274,7 @@ namespace CreatureKit
             foreach (CreaturePart p in Parts) if (p is Eyes) eyes++;
             if (!Soft && eyes != 1) Problems.Add($"a spine body needs exactly one Eyes part (the runtime writes two eye bones), found {eyes}");
             var armed = new HashSet<string>();
-            foreach (Wing w in Wings) if (!armed.Add(w.arm)) Problems.Add($"{w.id}: arm '{w.arm}' already carries a wing");
+            foreach (WingPart w in Wings) if (!armed.Add(w.arm)) Problems.Add($"{w.id}: arm '{w.arm}' already carries a wing");
             foreach (LimbPart l in Limbs) if (l.gaitGroup < 0 || l.gaitGroup > 31) Problems.Add($"{l.id}: gaitGroup must be in 0..31");
             if (Soft)
             {
@@ -233,12 +301,12 @@ namespace CreatureKit
             for (int i = 0; i < Parts.Count; i++)
             {
                 if (Parts[i] is Eyes) eyes = Layout.Start(i);
-                if (Parts[i] is Wing && wings < 0) wings = Layout.Start(i);
+                if (Parts[i] is WingPart && wings < 0) wings = Layout.Start(i);
             }
             var chains = new List<int>();
             for (int i = 0; i < Parts.Count; i++) if (Parts[i] is Antenna) chains.Add(Layout.Start(i));
             var wingStarts = new List<int>();
-            for (int i = 0; i < Parts.Count; i++) if (Parts[i] is Wing) wingStarts.Add(Layout.Start(i));
+            for (int i = 0; i < Parts.Count; i++) if (Parts[i] is WingPart) wingStarts.Add(Layout.Start(i));
             Layout.SetLegacyStarts(legStart, wings < 0 ? eyes : wings, eyes, chains.ToArray(), wingStarts.ToArray());
         }
 
@@ -293,6 +361,7 @@ namespace CreatureKit
                 dst.gaitSwayDeg = walk.gaitSwayDeg; dst.gaitRollDeg = walk.gaitRollDeg; dst.subSteps = walk.subSteps;
                 dst.gaitBob = new GaitBob { amplitude = walk.bob.amplitude, hz = walk.bob.hz, damping = walk.bob.damping };
                 dst.waveGait = walk.pattern == GaitPattern.Wave;
+                dst.sideways = walk.travel == TravelMode.Sideways; dst.sidewaysForward = walk.forwardFactor;
                 dst.gaitBurst = new GaitBurst { factor = walk.burst.factor, every = walk.burst.every, seconds = walk.burst.seconds };
             }
             Slither sl = Module<Slither>();
@@ -324,6 +393,7 @@ namespace CreatureKit
             var ant = new List<AntennaSpec>();
             foreach (CreaturePart p in Parts) if (p is Antenna an) ant.Add(an.ToRuntime());
             dst.antennae = ant.ToArray();
+            foreach (CreatureModule m in Modules) m.Configure(dst);   // modules with runtime settings of their own (QuadLaunch, SkyHunt)
             dst.InvalidateLayout();
         }
 

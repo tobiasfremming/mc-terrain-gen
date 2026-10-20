@@ -23,6 +23,7 @@ namespace CreatureKit
         [Param(ParamUnit.Metres, "centre line raised (+) or lowered (-) along the loft's up")] public float rise;
         [Param(ParamUnit.Fraction, "superellipse exponent of the upper half: 2 = round, 4 = squared, flat-topped", Min = 1, Max = 12)] public float squareTop;
         [Param(ParamUnit.Fraction, "superellipse exponent of the lower half", Min = 1, Max = 12)] public float squareBottom;
+        [Param(ParamUnit.Fraction, "depth of the lower half / halfHeight: a flat belly under a dome (a crab's sternum under its carapace); 0 = 1, as deep as the top is high", Min = 0, Max = 1)] public float belly;
     }
 
     [Serializable]
@@ -72,7 +73,7 @@ namespace CreatureKit
 
         // ---------------------------------------------------------------- the shape (pure, also for tests)
 
-        static float Channel(in LoftKey k, int ch) => ch == 0 ? k.halfWidth : ch == 1 ? k.halfHeight : ch == 2 ? k.rise : ch == 3 ? k.squareTop : k.squareBottom;
+        static float Channel(in LoftKey k, int ch) => ch == 0 ? k.halfWidth : ch == 1 ? k.halfHeight : ch == 2 ? k.rise : ch == 3 ? k.squareTop : ch == 4 ? k.squareBottom : k.belly > 0f ? k.belly : 1f;
 
         // Monotone cubic Hermite through the keys (SpineBody.Profile's rule): no overshoot between keys.
         public float Key(float t, int ch)
@@ -121,17 +122,37 @@ namespace CreatureKit
         public Vector3 Surface(float t, float phi) => Point(SectionAt(t), phi);
 
         // One section, evaluated once for all the points round it.
-        public struct Section { public Vector3 c, up, right; public float a, b, eTop, eBottom; }
+        public struct Section { public Vector3 c, up, right; public float a, b, eTop, eBottom, bBottom; }   // bBottom: the lower half's depth (b x belly)
 
         public Section SectionAt(float t)
         {
             Centre(t, out Vector3 c, out Vector3 up, out Vector3 right);
-            return new Section
+            var s = new Section
             {
                 c = c, up = up, right = right,
                 a = Mathf.Max(PartMeshEmitter.MinRadius, Key(t, 0)), b = Mathf.Max(PartMeshEmitter.MinRadius, Key(t, 1)),
                 eTop = 2f / Mathf.Max(1f, Key(t, 3)), eBottom = 2f / Mathf.Max(1f, Key(t, 4)),
             };
+            // a flat belly (any key's belly > 0): the lower half's own depth; otherwise exactly b (bit-identical)
+            s.bBottom = HasBelly ? Mathf.Max(PartMeshEmitter.MinRadius, s.b * Key(t, 5)) : s.b;
+            return s;
+        }
+
+        // cached per keys array (SectionAt runs per vertex in some emitters): any key with a belly
+        [NonSerialized] LoftKey[] bellyOf;
+        [NonSerialized] bool belly;
+        bool HasBelly
+        {
+            get
+            {
+                if (!ReferenceEquals(bellyOf, keys))
+                {
+                    belly = false;
+                    if (keys != null) foreach (LoftKey k in keys) if (k.belly > 0f) belly = true;
+                    bellyOf = keys;
+                }
+                return belly;
+            }
         }
 
         public static Vector3 Point(in Section q, float phi)
@@ -139,7 +160,7 @@ namespace CreatureKit
             float cs = Mathf.Cos(phi), sn = Mathf.Sin(phi);
             float e = sn >= 0f ? q.eTop : q.eBottom;
             float x = Mathf.Sign(cs) * Mathf.Pow(Mathf.Abs(cs), e), y = Mathf.Sign(sn) * Mathf.Pow(Mathf.Abs(sn), e);
-            return q.c + q.right * (q.a * x) + q.up * (q.b * y);
+            return q.c + q.right * (q.a * x) + q.up * ((sn >= 0f ? q.b : q.bBottom) * y);
         }
 
         // The (curled) centre line at t with its section axes, in the joint frame.

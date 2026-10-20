@@ -82,6 +82,13 @@ public class FlightSpec
     public float legTuckDown;
     [Tooltip("... the foot at this fraction of the leg's reach (0 = 0.8): near 1 = the legs stretched straight back.")]
     public float legTuckReach;
+    [Header("Short bodies")]
+    [Tooltip("Touchdown eases the whole body onto the ground at once instead of hips and tail first: a short deep trunk (a pterosaur's), where the per-joint lag bent it 90 deg between neighbouring joints. Off = the shipped ease.")]
+    public bool touchdownTogether;
+    [Tooltip("Share of the flight path's climb or descent the trunk ignores in the air (0 = it trails the path, the shipped chain; 1 = the trunk stays level): a short-bodied flyer glides and flares with its body level instead of hanging along the path.")]
+    [Range(0f, 1f)] public float airLevel;
+    [Tooltip("Gliding, the descent's energy goes into the forward speed (the lift tilts forward down a sinking path): a soarer keeps its speed and lift down a long glide. Off = the shipped model (a glide only loses speed to drag).")]
+    public bool glideEnergy;
     public float LegTuckOut => legTuckOut > 0f ? legTuckOut : 0.25f;
     public float LegTuckDown => legTuckDown > 0f ? legTuckDown : 0.35f;
     public float LegTuckReach => legTuckReach > 0f ? legTuckReach : 0.8f;
@@ -90,4 +97,8 @@ public class FlightSpec
     // air, which swims in 3D S-curves and corkscrews; the roll travels head to tail. Off (all zero) for every
     // species that does not set it (the kit's Fly.twist fills it at compose): the air chain above is unchanged.
     [NonSerialized] public AirTwistSpec twist;
+    // Filled at compose by the kit's modules (0 = off; never serialized here): QuadLaunch's crouch (s at scale 1) and
+    // its depth (m), the vault's upward speed (m/s at scale 1; 0 = the shipped 2.4), and SkyHunt's soaring height (m at
+    // scale 1 over the ground: the aviary is made at least this tall, AviarySizing).
+    [NonSerialized] public float launchCrouch, launchCrouchDepth, vaultSpeed, soarCeiling;
 }

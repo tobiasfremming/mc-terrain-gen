@@ -11,6 +11,7 @@ using UnityEngine;
 public static class AviarySizing
 {
     public const float kScaleCap = 1.5f;
+    const float kSoarRoom = 1.25f;   // the roof over a soarer's circling height (SkyHunt)
     const float kTurnRadii = 2.6f, kLandingTurns = 2.2f, kBodyLengths = 1.6f, kAltitudes = 3f, kRises = 2f;
 
     public static float Radius(CreatureSpecies sp, float maxScale, float baseRadius)
@@ -39,6 +40,7 @@ public static class AviarySizing
         AirTwistSpec t = sp.flight.twist;
         float rise = Mathf.Max(Mathf.Max(t.corkscrewAmplitude, t.barrelRadius), t.loopRadius) * 2f * maxScale;
         float need = kAltitudes * sp.flight.minAltitude * maxScale + kRises * rise;
+        if (sp.flight.soarCeiling > 0f) need = Mathf.Max(need, kSoarRoom * sp.flight.soarCeiling * maxScale);   // a high soarer
         return Mathf.Max(based, need);
     }
 }

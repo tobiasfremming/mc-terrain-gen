@@ -33,4 +33,6 @@ public struct LegSegment
     public float bandStart, bandEnd;
     [Tooltip("A sharp spur at the segment's distal end, metres at scale 1 (0 = none): on its lower side, raked toward the tip, claw-coloured.")]
     public float spurLength;
+    [Tooltip("Cross-section flattened in the leg's plane: height = (1 - flatten) x width (0 = round). A crab's broad, flat merus and propodus.")]
+    public float flatten;
 }

@@ -69,6 +69,7 @@ namespace CreatureKit
                 // a tall stance's bind keeps a straight spine (WingedMeshBuilder.StraightenBind); no-op otherwise
                 WingedMeshBuilder.StraightenBind(sp, WingSpecs, Rest);
                 Bones = WingedMeshBuilder.RestBoneWorld(sp, WingSpecs, Rest, out Wings);
+                KitRuntime.AfterSpreadWings(Rest, Bones);   // parts whose bones follow the wing bones (CreatureRestPose)
             }
             else Bones = CreatureRestPose.BoneWorld(Rest);
             pos = Lists.pos; nrm = Lists.nrm; uv0 = Lists.uv0; uv1 = Lists.uv1; uv2 = Lists.uv2; tris = Lists.tris;
@@ -370,7 +371,7 @@ namespace CreatureKit
                 switch (p)
                 {
                     case LimbPart _: limbs++; break;
-                    case Wing _: wings++; break;
+                    case WingPart _: wings++; break;
                     case Eyes _: eyes++; break;
                     case RigidCone rc: if (!rc.ownBone) cones++; break;
                     case FinStrip _: fins++; break;
