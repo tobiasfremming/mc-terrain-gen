@@ -33,6 +33,10 @@ namespace CreatureKit
             return Mathf.Max(0f, (2f * k3 - 3f * k2 + 1f) + m0 * (k3 - 2f * k2 + k) + kTailTipSlope * (k3 - k2));
         }
 
+        // The skin of a ring a fraction f of the way along segment i (joint i -> i + 1): the smoothstep blend of the two.
+        // The one rule the body's rings use (RingSequence); parts riding on the surface (PitRow) take it from here.
+        internal static Vector4 SegmentSkin(int i, float f) => PartMeshEmitter.Blend(i, i + 1, f * f * (3f - 2f * f));
+
         // What a body draws its rings with (RingSequence): the front pole, a ring at arc s with its skin, the tail pole.
         internal interface IBodyRings
         {
@@ -59,7 +63,7 @@ namespace CreatureKit
                 for (int q = 0; q < rps; q++)
                 {
                     float f = (float)q / rps;
-                    rings.Add(r.Ring(lh + spacing * (i + f), PartMeshEmitter.Blend(i, i + 1, f * f * (3f - 2f * f)), segs));
+                    rings.Add(r.Ring(lh + spacing * (i + f), SegmentSkin(i, f), segs));
                 }
             rings.Add(r.Ring(lh + spine, PartMeshEmitter.Rigid(n - 1), segs));
             for (int k = 1; k <= kTailRings; k++)

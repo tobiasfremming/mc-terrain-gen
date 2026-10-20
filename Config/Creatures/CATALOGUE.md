@@ -45,12 +45,14 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | **BeakHead** | Rigid | exists | 1 (the lower jaw) | 0, 2 | pterosaurs, birds, herons and storks, beaked dinosaurs, turtles: any head that is mostly beak; with a crest (casque, sail) or without | Pterodactyl |
 | **Burrow** | Rigid | exists | 0 (poses the others' bones) |  | burrowers: moles, armadillos, sandworms, burrowing lizards and amphisbaenians, anything that digs in and bursts out | Delver |
 | **Chela** | Rigid | exists | 0 (rigid to its ArthropodLeg's last bone) | 1, 2 | crab and lobster claws (crusher and cutter), scorpion pincers: any heavy chela on an arthropod limb | RockCrab, TentacleCrab |
+| **CrestBeakHead** | Rigid | exists | 1 (the jaw) | 0 | a serpent- or dragon-like head ending in a beak, on a FlowBody (or SpineBody) head joint: crested beaks, toothless snapping heads; the Apex | - |
 | **DimpledOrb** | Rigid | exists | 1 | 0 | a round abdomen (spiders, ticks), puffballs, seed heads, golf-ball or pitted shells; any heavy round mass that should wobble on its body | GolfballStrider, StriderMatriarch |
 | **EyeStalk** | Rigid | exists | 1 | 1, 2, 9 | crab and snail eye stalks, periscopes, anything on a stalk that folds away | RockCrab, TentacleCrab |
 | **Jaw** | Rigid | exists | 1 | 0, 2, 13 | a mouth that opens: a crocodile basking agape (opensUp), a yawn, a threat gape, a snapping beak | Crocodile |
 | **LimbSpines** | Rigid | exists | 0 (rigid to the leg's segment bones) | 1, 2, 9 | spiny legs (king crab), leg bristles and setae fringes (stone crab, tarantula), raptorial spines | RockCrab, TentacleCrab |
 | **Maw** | Rigid | exists | 1 (the lower jaw) | 0, 13, 14 | reptilian and monstrous heads with a huge gape: burrowers bursting out jaws first, crocodilian or theropod-like heads, deep-sea gapers | Delver |
 | **Pincer** | Rigid | exists | = segments (1-4) | 11, 9 | forcipules, mandibles, chelicera fangs, pincers, earwig forceps, centipede ultimate legs - any jointed appendage that opens and closes | Scolopendra |
+| **PitRow** | Rigid | exists | 0 (skinned like the body's rings) | 0 | breathing holes along a throat or flank, nostrils, sensory pits on a FlowBody | - |
 | **RigidCone** | Rigid | exists | 0 (1 with ownBone) | 2 | horns, spikes, fangs, mandibles, chelicerae | GiantCentipede, Hexadrake, SkyDragon, Swinger, Tarantula, TentacleCrab, TreeOctopus, TreeSpider |
 | **RigidLoft** | Rigid | exists | 0 (rigid to its joint) | 0, 2 | head shapes: squared snouts, jaws, brows, nostrils, bosses; any rigid lump on a joint | GiantCentipede, Hexadrake, RockCrab, Scolopendra, SkyDragon, TentacleCrab |
 | **Sculpt** | Rigid | exists | 0 (rigid to its joint, or rides a Jaw's bone) | 0, 2, 13 | realistic heads and skulls: brows over recessed eye sockets, jowls, lip lines, nostrils, skull tables, a lower jaw on a Jaw; any rigid organic solid a loft cannot express | Crocodile, KomodoDragon |
@@ -1093,6 +1095,42 @@ A heavy crab claw on an ArthropodLeg's last segment: bulbous flattened palm, fix
 | `spineLayer` | int | Count | - | material layer of the palm spines | 0..15 | default 1 |
 | `around` | int | Count | - | mesh: vertices around each section (0 = 14) | 0..32 |  |
 
+### CrestBeakHead
+
+The beaked serpent head: a long, slightly flattened SDF skull flowing into a pointed, hooked beak, small eyes under a soft brow, lamellae along the mouth line, crests curling back like breaking waves on top of the upper beak, and a jaw on its own bone that opens on its own call timer. Rigid to the body's head joint; its back overlaps the neck so the outline runs on; carries the species' eyes. System: CrestBeakHeadRuntime (part runtime, stage Late: jaw, eye bones) + CrestBeakHead.EmitMesh (SculptMesher pieces, cached).
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `skullLength` | float | Metres | x s | skull length; the skull reaches half of it behind the head joint (into the neck) and half ahead to the beak's root |  | fixture 0.26 |
+| `skullWidth` | float | Metres | x s | skull half width (>= skullDepth: slightly flattened) |  |  |
+| `skullDepth` | float | Metres | x s | skull half depth (the head's back starts at ~0.6 x it inside the neck) |  |  |
+| `beakLength` | float | Metres | x s | beak length from its root (skullLength / 2 ahead of the joint) to the tip |  |  |
+| `beakHookDeg` | float | Degrees | - | the upper beak's tip hooks down by this much over the beak's last third, over the lower jaw's tip | -10..30 |  |
+| `browRidge` | float | Fraction | - | how far the brow juts out over the eye socket | 0..1 |  |
+| `crests` | CrestDef[] | Struct | - | crests on top of the upper beak (rear one first by convention) |  |  |
+| `crests[].along` | float | Fraction | - | where it stands along the beak: 0 the beak's root .. 1 its tip | 0..1 |  |
+| `crests[].height` | float | Metres | x s | how high its centre line rises above the beak's top |  |  |
+| `crests[].length` | float | Metres | x s | its centre line's length, root to tip (>= height) |  |  |
+| `crests[].curlDeg` | float | Degrees | - | how far it curls backward from its root to its tip (0 = a straight blade leaning forward) | 0..200 |  |
+| `crests[].thickness` | float | Metres | x s | blade half thickness at its root (it tapers to a point at the tip) |  |  |
+| `crests[].chord` | float | Metres | x s | blade half chord (its width seen from the side) at its root; 0 = 0.35 x length; chord / thickness is capped at 4 (it tapers with the thickness) |  |  |
+| `grooves` | int | Count | - | lamellae: fine grooves across the mouth line | 0..32 |  |
+| `grooveDepth` | float | Metres | x s | groove depth |  |  |
+| `jawFraction` | float | Fraction | - | the lower jaw's share of the head's depth (the mouth line's height) | 0.15..0.7 |  |
+| `gapeDeg` | float | Degrees | - | the jaw's widest gape (a call) | 0..80 |  |
+| `callEverySeconds` | Vector2 | Seconds | x sqrt(s) | time between calls: x the shortest, y the longest (each individual draws its own, seeded) |  |  |
+| `callSeconds` | float | Seconds | x sqrt(s) | one call: open, hold, close |  |  |
+| `eyeAt` | Vector2 | Fraction | - | eye centre: x along the skull (fraction of skullLength ahead of the joint), y height (fraction of skullDepth) | -0.5..0.5 |  |
+| `pitchDeg` | float | Degrees | - | the head's long axis tilts nose-down (+) or up (-) from the neck's line at the head joint in the rest pose (0 = the head continues the neck) | -45..45 |  |
+| `cell` | float | Metres | x s | polygoniser cell of the skull and jaw (the crests use a finer one from their thickness) |  |  |
+
 ### DimpledOrb
 
 A big round body on a bone of its own covered in golf-ball pits (spherical Fibonacci lattice, analytic pit normals, pits darkened through the dorsal channel); it rocks on a damped spring about a pivot when the body accelerates (bobs, starts, stops, turns). System: DimpledOrbRuntime (part runtime, stage AfterLimbs: its bone) + DimpledOrb.EmitMesh.
@@ -1298,6 +1336,27 @@ A hinged, jointed, curved appendage on 1-4 bones that opens and closes: curls to
 | `spineSegments` | int | Count | - | segments carrying the inner spines (the first N; 0 or 1 = the first only) | 0..4 |  |
 | `layer` | int | Count | - | material layer (part id) of the segments: 11 = pincer; 1 limb, 2 claw, 10 plate | 0..15 | default 11 |
 | `sides` | int | Count | - | mesh: sides of the tube (0 = 10) | 0..24 |  |
+
+### PitRow
+
+A row of recessed pits with soft pale raised rims on a FlowBody's surface (count from fromU to toU at section angle angleDeg; mirror for both sides): spiracles, nostrils, sensory pits. Dark cup (kind pit), belly-coloured rim, skinned with the body's rings. System: mesh only (PitRow.EmitMesh), skinned like the FlowBody rings under it.
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `fromU` | float | Fraction | - | body fraction of the first pit (FlowBody.Section's u: 0 front tip .. 1 tail tip) | 0..1 | 0.12 |
+| `toU` | float | Fraction | - | body fraction of the last pit | 0..1 | 0.3 |
+| `angleDeg` | float | Degrees | - | place around the section, FlowBody's phi: -90 belly .. 0 flank .. +90 back (the right side; the left is mirrored) | -90..90 | default -35 |
+| `count` | int | Count | - | pits in the row (per side) | 1..32 | default 6 |
+| `radius` | float | Metres | x s | cup radius | 0.001..0.2 | default 0.012 |
+| `depth` | float | Fraction | - | cup depth x radius | 0..2 | default 0.6 |
+| `rim` | float | Fraction | - | rim height and width x radius (the pale raised lip around the cup) | 0..1 | default 0.35 |
 
 ### RigidCone
 
@@ -2119,3 +2178,5 @@ Creature.shader shades a part id by its row of the species' look-layer table (Ki
 | 13 | `teeth` | teeth (Jaw) | Skin (Sheen, Shimmer) |
 | 14 | `tongue` | tongue (Tongue) | Skin (Sheen, Shimmer) |
 | 15 | `ray-skin` | ray skin (RayBody, RayWing, WhipTail, CephalicLobe) | Skin (Sheen, Shimmer) |
+| (per species) | `crest` | beak crests (CrestBeakHead) | Claw (NoPattern, NoGrain, tint Own 1) |
+| (per species) | `pit` | breathing holes / nostrils (PitRow) | Claw (NoPattern, NoGrain, tint Own 1) |

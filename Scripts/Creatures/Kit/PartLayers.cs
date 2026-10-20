@@ -116,6 +116,10 @@ namespace CreatureKit
         // part emits with PartMeshEmitter.Slot(kind); a species restyles it with a Layers row naming the kind.
         public static readonly Entry[] NamedKinds =
         {
+            // CrestBeakHead's beak crests: glossy keratin in their own bright teal (#3FC0B0)
+            new Entry(-1, "crest", "beak crests (CrestBeakHead)", new PartLayer(ShadingModel.Claw, LayerFlags.NoPattern | LayerFlags.NoGrain, TintSource.Own, 1f) { tint = new Color(0.247f, 0.753f, 0.69f) }),
+            // PitRow's recessed cups (spiracles, nostrils): near-black, a little moist
+            new Entry(-1, "pit", "breathing holes / nostrils (PitRow)", new PartLayer(ShadingModel.Claw, LayerFlags.NoPattern | LayerFlags.NoGrain, TintSource.Own, 1f, 0.5f) { tint = new Color(0.03f, 0.02f, 0.025f) }),
         };
 
         // The registry entry of a kind (by name: Registry, then NamedKinds); false when it is none of them.

@@ -256,10 +256,48 @@ namespace CreatureKit
             return f.c + f.x * o.x + f.y * o.y;
         }
 
-        int EmitRing(PartMeshEmitter m, float s, Vector4 skin, int segs, int kindTail, int kindStripe)
+        // One vertex of the drawn surface at arc s, section angle phi, in the section frame f: the point, its outward
+        // normal (finite differences around and along the body) and the unit direction along the body toward the tail.
+        // EmitRing's per-vertex surface, shared with the parts riding on it (SurfaceAt).
+        Vector3 SurfaceVertex(PartMeshEmitter m, in Frame f, float s, float phi, out Vector3 normal, out Vector3 toTail)
         {
             float L = BodyLength, u = s / L, h = PartMeshEmitter.DiffStep;
             float s0 = Mathf.Max(0f, s - h), s1 = Mathf.Min(L, s + h);
+            Section(u, phi, out Vector2 o);
+            Vector3 p = f.c + f.x * o.x + f.y * o.y;
+            // the surface's tangents: around the ring (in the section plane) and along the body (toward the tail)
+            Section(u, phi + h, out Vector2 oa); Section(u, phi - h, out Vector2 ob);
+            Vector2 d = oa - ob;
+            Vector3 around = f.x * d.x + f.y * d.y;
+            Vector3 along = Point(m, s1, phi) - Point(m, s0, phi);
+            // outward: the ring runs counter-clockwise in (x, y), so cross(around, toward the head) points out
+            normal = PartMeshEmitter.Unit(Vector3.Cross(around, -along), f.x * Mathf.Cos(phi) + f.y * Mathf.Sin(phi));
+            toTail = PartMeshEmitter.Unit(along, -f.t);
+            return p;
+        }
+
+        // The drawn surface at body fraction u and section angle phi in the rest pose (a part riding on it: PitRow).
+        internal Vector3 SurfaceAt(PartMeshEmitter m, float u, float phi, out Vector3 normal, out Vector3 toTail)
+        {
+            float s = Mathf.Clamp01(u) * BodyLength;
+            return SurfaceVertex(m, FrameAt(m, s), s, phi, out normal, out toTail);
+        }
+
+        // The skin the body's rings have at arc s (SpineBody.RingSequence): rigid to joint 0 over the head cap, the
+        // segment blend (SpineBody.SegmentSkin) between the joints, rigid to the last joint over the tail tip.
+        internal Vector4 SkinAt(float s)
+        {
+            float lh = HeadLen, tailStart = lh + SpineLen;
+            if (s <= lh) return PartMeshEmitter.Rigid(0);
+            if (s >= tailStart) return PartMeshEmitter.Rigid(jointCount - 1);
+            float k = (s - lh) / spacing;
+            int i = Mathf.Min((int)k, jointCount - 2);
+            return SpineBody.SegmentSkin(i, k - i);
+        }
+
+        int EmitRing(PartMeshEmitter m, float s, Vector4 skin, int segs, int kindTail, int kindStripe)
+        {
+            float u = s / BodyLength;
             Frame f = FrameAt(m, s);
             float stripeHalf = 0.5f * dorsalStripeWidthDeg * Mathf.Deg2Rad;
             int first = m.VertexCount;
@@ -267,15 +305,7 @@ namespace CreatureKit
             {
                 int kk = k == segs ? 0 : k;   // exact seam duplicate
                 float phi = -0.5f * Mathf.PI + 2f * Mathf.PI * kk / segs;
-                Section(u, phi, out Vector2 o);
-                Vector3 p = f.c + f.x * o.x + f.y * o.y;
-                // the surface's tangents: around the ring (in the section plane) and along the body (toward the tail)
-                Section(u, phi + h, out Vector2 oa); Section(u, phi - h, out Vector2 ob);
-                Vector2 d = oa - ob;
-                Vector3 around = f.x * d.x + f.y * d.y;
-                Vector3 along = Point(m, s1, phi) - Point(m, s0, phi);
-                // outward: the ring runs counter-clockwise in (x, y), so cross(around, toward the head) points out
-                Vector3 nn = PartMeshEmitter.Unit(Vector3.Cross(around, -along), f.x * Mathf.Cos(phi) + f.y * Mathf.Sin(phi));
+                Vector3 p = SurfaceVertex(m, f, s, phi, out Vector3 nn, out _);
                 if (FlipNormalsForTest) nn = -nn;
                 float sn = Mathf.Sin(phi);
                 int part = PartMeshEmitter.PartBody;

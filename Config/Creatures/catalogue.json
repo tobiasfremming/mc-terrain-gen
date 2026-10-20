@@ -7458,6 +7458,282 @@
       ]
     },
     {
+      "name": "CrestBeakHead",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "1 (the jaw)",
+      "materialLayers": [
+        0
+      ],
+      "system": "CrestBeakHeadRuntime (part runtime, stage Late: jaw, eye bones) + CrestBeakHead.EmitMesh (SculptMesher pieces, cached)",
+      "useWhen": "a serpent- or dragon-like head ending in a beak, on a FlowBody (or SpineBody) head joint: crested beaks, toothless snapping heads; the Apex",
+      "summary": "The beaked serpent head: a long, slightly flattened SDF skull flowing into a pointed, hooked beak, small eyes under a soft brow, lamellae along the mouth line, crests curling back like breaking waves on top of the upper beak, and a jaw on its own bone that opens on its own call timer. Rigid to the body's head joint; its back overlaps the neck so the outline runs on; carries the species' eyes.",
+      "usedBy": [],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "skullLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "skull length; the skull reaches half of it behind the head joint (into the neck) and half ahead to the beak's root",
+          "range": "",
+          "example": "fixture 0.26"
+        },
+        {
+          "name": "skullWidth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "skull half width (>= skullDepth: slightly flattened)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "skullDepth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "skull half depth (the head's back starts at ~0.6 x it inside the neck)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "beakLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "beak length from its root (skullLength / 2 ahead of the joint) to the tip",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "beakHookDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the upper beak's tip hooks down by this much over the beak's last third, over the lower jaw's tip",
+          "range": "-10..30",
+          "example": ""
+        },
+        {
+          "name": "browRidge",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "how far the brow juts out over the eye socket",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "crests",
+          "type": "CrestDef[]",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "crests on top of the upper beak (rear one first by convention)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "crests[].along",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "where it stands along the beak: 0 the beak's root .. 1 its tip",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "crests[].height",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "how high its centre line rises above the beak's top",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "crests[].length",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "its centre line's length, root to tip (>= height)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "crests[].curlDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "how far it curls backward from its root to its tip (0 = a straight blade leaning forward)",
+          "range": "0..200",
+          "example": ""
+        },
+        {
+          "name": "crests[].thickness",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "blade half thickness at its root (it tapers to a point at the tip)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "crests[].chord",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "blade half chord (its width seen from the side) at its root; 0 = 0.35 x length; chord / thickness is capped at 4 (it tapers with the thickness)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "grooves",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "lamellae: fine grooves across the mouth line",
+          "range": "0..32",
+          "example": ""
+        },
+        {
+          "name": "grooveDepth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "groove depth",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "jawFraction",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the lower jaw's share of the head's depth (the mouth line's height)",
+          "range": "0.15..0.7",
+          "example": ""
+        },
+        {
+          "name": "gapeDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the jaw's widest gape (a call)",
+          "range": "0..80",
+          "example": ""
+        },
+        {
+          "name": "callEverySeconds",
+          "type": "Vector2",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "time between calls: x the shortest, y the longest (each individual draws its own, seeded)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "callSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "one call: open, hold, close",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "eyeAt",
+          "type": "Vector2",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "eye centre: x along the skull (fraction of skullLength ahead of the joint), y height (fraction of skullDepth)",
+          "range": "-0.5..0.5",
+          "example": ""
+        },
+        {
+          "name": "pitchDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the head's long axis tilts nose-down (+) or up (-) from the neck's line at the head joint in the rest pose (0 = the head continues the neck)",
+          "range": "-45..45",
+          "example": ""
+        },
+        {
+          "name": "cell",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "polygoniser cell of the skull and jaw (the crests use a finer one from their thickness)",
+          "range": "",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "DimpledOrb",
       "kind": "Rigid",
       "status": "exists",
@@ -9044,6 +9320,147 @@
           "meaning": "mesh: sides of the tube (0 = 10)",
           "range": "0..24",
           "example": ""
+        }
+      ]
+    },
+    {
+      "name": "PitRow",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "0 (skinned like the body's rings)",
+      "materialLayers": [
+        0
+      ],
+      "system": "mesh only (PitRow.EmitMesh), skinned like the FlowBody rings under it",
+      "useWhen": "breathing holes along a throat or flank, nostrils, sensory pits on a FlowBody",
+      "summary": "A row of recessed pits with soft pale raised rims on a FlowBody's surface (count from fromU to toU at section angle angleDeg; mirror for both sides): spiracles, nostrils, sensory pits. Dark cup (kind pit), belly-coloured rim, skinned with the body's rings.",
+      "usedBy": [],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "fromU",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "body fraction of the first pit (FlowBody.Section's u: 0 front tip .. 1 tail tip)",
+          "range": "0..1",
+          "example": "0.12"
+        },
+        {
+          "name": "toU",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "body fraction of the last pit",
+          "range": "0..1",
+          "example": "0.3"
+        },
+        {
+          "name": "angleDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "place around the section, FlowBody's phi: -90 belly .. 0 flank .. +90 back (the right side; the left is mirrored)",
+          "range": "-90..90",
+          "example": "default -35"
+        },
+        {
+          "name": "count",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "pits in the row (per side)",
+          "range": "1..32",
+          "example": "default 6"
+        },
+        {
+          "name": "radius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "cup radius",
+          "range": "0.001..0.2",
+          "example": "default 0.012"
+        },
+        {
+          "name": "depth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "cup depth x radius",
+          "range": "0..2",
+          "example": "default 0.6"
+        },
+        {
+          "name": "rim",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "rim height and width x radius (the pale raised lip around the cup)",
+          "range": "0..1",
+          "example": "default 0.35"
         }
       ]
     },
