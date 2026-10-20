@@ -7,14 +7,20 @@ namespace TerrainGen.Tests
 {
     // FleshWing (Apex redesign §1 Stance / Wings, §5.2): the soft, thick folding wing it walks on. The fixture: the
     // FlowBody fixture's body (CreatureFlowBodyTests.Body, keel off: 24 joints at 0.1 m, the chest and its hump at
-    // joint ~7), a mirrored wing arm (Leg2Bone) at the shoulder joint carrying a mirrored 5-finger FleshWing, mirrored
-    // DrakeLeg hind legs at the hips, Eyes; Walk + Fly + FlightExcursion. The wing's numbers sit in the shipped tall-stance
-    // ranges (fold 150-166 deg, groundTallStance, groundLiftDeg ~70, thumbPlant, fanRearRollsWithFan, flankPatches 6, the
-    // rear attach 0.6 of the way from the shoulder to the hips), picked from the middle of a passing region of a scan
-    // (see the task report). Invariants: the sail is thick (not a plane) with a round rim; folded on the ground each blade
-    // stands well above the back and behind the shoulder and is broad; it stands on the drawn pad; nothing inverts through
-    // the fold, a launch and a landing (rear attach at the default and at the hips); the outer wing lags the root and the
-    // trailing rays the leading one; no GC; Froude-similar chains. Each has a RED.
+    // joint ~7), a mirrored wing arm (Leg2Bone: a short humerus 0.2, a long forearm 0.5, the wrist 0.22 m behind the
+    // shoulder and 0.06 m out, pole (0.2, 1, -0.4)) carrying a mirrored 5-finger FleshWing on the part's own defaults
+    // (FleshWing.DefaultSpec: fold 160-168 deg clamped by the rear rib, foldGap 3.5, groundLiftDeg 68, groundTallStance,
+    // thumbPlant, fanRearRollsWithFan, flankPatches 6, the rear attach half way from the shoulder to the hips; bindFold
+    // 0.3, spanMaxDeg 20), mirrored DrakeLeg hind legs at the hips, Eyes; Walk + Fly + FlightExcursion; numbers from the
+    // middle of the scanned passing region (see the task report). Invariants: the sail is thick (not a plane) with a
+    // round rim and closed (no open edge); folded on the ground each blade stands well above the back and behind the
+    // shoulder, steep, broad, on its own side of the body; it stands on the drawn club; nothing inverts through the fold,
+    // a launch and a landing (rear attach at the default and at the hips; the body's triangles too); the outer wing lags
+    // the root and the trailing rays the leading one; no GC; Froude-similar chains. Each has a RED. FlyModule() turns on
+    // all three stance-bound flight flags (airNeckStance, launchHeadOnNeck, touchdownAtStance), so every test here flies
+    // with them; with them the Apex's own body traits - the steep raised neck and the keel - fly, fold and land without a
+    // body flip, the head no less steady (FlowBody_Winged_SteepNeckKeel_*). With the flags off a winged FlowBody still
+    // shows the flips - even this plain body's neck front in the launch - which only the REDs cover.
     public class CreatureFleshWingTests
     {
         internal const float kDt = 1f / 60f;
@@ -30,8 +36,8 @@ namespace TerrainGen.Tests
         internal static Leg2Bone Arm() => new Leg2Bone
         {
             id = "arm", at = new PartSocket(kShoulder, 0, new Vector3(0.1f, 0.02f, 0f)), mirror = true,
-            restOffset = new Vector3(0.14f, 0f, -0.22f), upperLength = 0.2f, lowerLength = 0.5f, upperRadius = 0.04f, lowerRadius = 0.03f,
-            pole = new Vector3(0.4f, 1f, -0.4f), stepThreshold = 0.14f, stepDuration = 0.3f, stepLift = 0.06f,
+            restOffset = new Vector3(0.06f, 0f, -0.22f), upperLength = 0.2f, lowerLength = 0.5f, upperRadius = 0.04f, lowerRadius = 0.03f,
+            pole = new Vector3(0.2f, 1f, -0.4f), stepThreshold = 0.14f, stepDuration = 0.3f, stepLift = 0.06f,
         };
 
         internal static DrakeLeg Hind() => new DrakeLeg
@@ -42,6 +48,8 @@ namespace TerrainGen.Tests
             stepThreshold = 0.16f, stepDuration = 0.25f, stepLift = 0.06f,
         };
 
+        internal const float kAirNeckStance = 0.55f;
+
         internal static Fly FlyModule()
         {
             var f = new Fly();
@@ -50,21 +58,25 @@ namespace TerrainGen.Tests
             s.strokeRateMin = 2.5f; s.strokeRateMax = 6f; s.amplitudeMin = 0.7f; s.glideDemand = 0.1f;
             s.airUndulationDeg = 0f; s.airUndulationHz = 0f; s.tailSag = 0f; s.headStabilise = 0.3f;
             s.launchSpeed = 2.5f; s.flareDistance = 2.2f; s.minAltitude = 1.2f; s.touchdownTogether = true; s.airLevel = 0.8f;
+            // the body is bound at its stance (FlowBody.restAtStance): the air neck keeps a share of the stance's bends (in
+            // the steep-neck scan's flip-free 0.2 - 0.9, where the head bob is least - see the task-8b report), the launching
+            // head turns with its neck, the touchdown starts the walking body at its stance
+            s.airNeckStance = kAirNeckStance; s.launchHeadOnNeck = true; s.touchdownAtStance = true;
             return f;
         }
 
         // the fixture; edit: changes to the wing (both sides), arm: to the wing arm
-        internal static CreatureSpecies Species(System.Action<FleshWing> edit = null, System.Action<Leg2Bone> arm = null, string name = "FleshWingFixture")
+        internal static CreatureSpecies Species(System.Action<FleshWing> edit = null, System.Action<Leg2Bone> arm = null, string name = "FleshWingFixture", FlowBody withBody = null, System.Action<FlightSpec> fly = null)
         {
             FleshWing w = Wing(); edit?.Invoke(w);
             Leg2Bone a = Arm(); arm?.Invoke(a);
-            // the body: the FlowBody fixture (CreatureFlowBodyTests.Body) without its keel. Two FlowBody flips the fold sweep
-            // found are follow-ups of the FlowBody / flight integration, not this part's: the sharp keel's belly seam turns over
-            // in the air fold, and the steep neck's chest kinks 30-56 deg past its bend limit in the touchdown blend
-            FlowBody body = CreatureFlowBodyTests.Body();
-            body.profile[2].keel = 0f;
+            // the body: the FlowBody fixture (CreatureFlowBodyTests.Body) without its keel (the Apex's steep neck and keel:
+            // FlowBody_Winged_SteepNeckKeel_NoBodyFlips)
+            FlowBody body = withBody;
+            if (body == null) { body = CreatureFlowBodyTests.Body(); body.profile[2].keel = 0f; }
             var parts = new List<CreaturePart> { body, a, Hind(), w, CreatureKitComposeTests.TwoEyes() };
-            var mods = new CreatureModule[] { new Walk { speed = 0.45f, turnRateDeg = 60f, accel = 1.5f, turnSlowdown = 0.5f }, FlyModule(), new FlightExcursion() };
+            Fly flyModule = FlyModule(); fly?.Invoke(flyModule.spec);
+            var mods = new CreatureModule[] { new Walk { speed = 0.45f, turnRateDeg = 60f, accel = 1.5f, turnSlowdown = 0.5f }, flyModule, new FlightExcursion() };
             return FlowKit.Build(name, 1f, parts, mods);
         }
 
@@ -198,6 +210,7 @@ namespace TerrainGen.Tests
             if (rings.Count == 0) return "no rim";
             foreach (List<int> l in rings.Values)
             {
+                if (l.Count < 3) continue;   // a cap's apex (where a rim closes onto the skins' meeting point), not a ring
                 float d = 0f;
                 foreach (int a in l) foreach (int b in l) d = Mathf.Max(d, (P[a] - P[b]).magnitude);
                 rimMin = Mathf.Min(rimMin, 0.5f * d);
@@ -299,39 +312,59 @@ namespace TerrainGen.Tests
             Assert.IsNotNull(e, "fingers folded part way: the blades lie low");
         }
 
-        // Walking straight (3 s, every 5th frame after the first steps): each folded blade standing on its planted club (wrist -> its highest skinned
-        // vertex) stands >= kSteepDeg above the horizontal, its tip within the body's half width at the shoulder + kSide x
-        // the blade's length of the body's mid-plane (levelled girdle frame): steep, close along the body's side.
-        internal const float kSteepDeg = 60f, kSide = 0.25f;
+        // Walking straight (3 s, every 5th frame after the first steps): each folded blade standing on its planted club
+        // (wrist -> its highest skinned vertex) stands >= kSteepDeg above the horizontal, and the blades rise side by side
+        // close along the body: each tip on its own wing's side of the body's mid-plane by >= kOwnSide x s (signed: a tip
+        // that crosses over the back fails), the two tips >= kTipGap x s apart across the body, and each tip within the
+        // body's half width at the shoulder + kSide x the blade's length of the mid-plane (levelled girdle frame).
+        // lateral: the problem is the side clause (not the steepness).
+        internal const float kSteepDeg = 60f, kSide = 0.25f, kOwnSide = 0.05f, kTipGap = 0.15f;
 
-        internal static string SteepProblem(CreatureSpecies sp, out float minElev, out float maxSide)
+        internal static string SteepProblem(CreatureSpecies sp, out float minElev, out float maxSide) => SteepProblem(sp, out minElev, out maxSide, out _, out _, out _);
+
+        internal static string SteepProblem(CreatureSpecies sp, out float minElev, out float maxSide, out float minOwn, out float minGap, out bool lateral)
         {
-            minElev = 90f; maxSide = float.MinValue;
+            minElev = 90f; maxSide = float.MinValue; minOwn = float.MaxValue; minGap = float.MaxValue; lateral = false;
+            float s = sp.scale;
             var m = new CreaturePteroWingTests.Skinned(sp);
-            var sim = FlowKit.Sim(sp, sp.scale);
+            var sim = FlowKit.Sim(sp, s);
             string miss = null;
+            var tips = new Vector3[sp.WingCount]; var have = new bool[sp.WingCount];
             for (int t = 0; t < 180; t++)
             {
-                sim.Tick(kDt, new Vector3(0f, 0f, 50f * sp.scale));
+                sim.Tick(kDt, new Vector3(0f, 0f, 50f * s));
                 if (t < 30 || t % 5 != 0) continue;
                 m.Pose(sim);
                 Vector3 gf = Vector3.ProjectOnPlane(sim.Rotations[kShoulder] * Vector3.forward, Vector3.up).normalized;
                 Vector3 right = Vector3.Cross(Vector3.up, gf);
+                Vector3 mid = sim.Joints[kShoulder];
                 for (int w = 0; w < sp.WingCount; w++)
                 {
+                    have[w] = false;
                     LegState ls = sim.Legs[sp.wings[w].leg];
                     if (ls.stepping && ls.stepT >= 0f) continue;   // the blade swings with its step
                     int top = -1;
                     for (int i = 0; i < m.P.Length; i++) if (WingBone(sp, w, (int)m.Uv2[i].x, false) && (top < 0 || m.P[i].y > m.P[top].y)) top = i;
+                    tips[w] = m.P[top]; have[w] = true;
                     Vector3 wr = sim.Flight.Wings.State[w].wrist, ax = m.P[top] - wr;
                     float L = ax.magnitude, elev = Mathf.Asin(ax.y / L) * Mathf.Rad2Deg;
-                    float side = Mathf.Abs(Vector3.Dot(m.P[top] - sim.Joints[kShoulder], right)) - (sp.joints[kShoulder].halfWidth * sp.scale + kSide * L);
-                    minElev = Mathf.Min(minElev, elev); maxSide = Mathf.Max(maxSide, side);
+                    // the wing's own side: the side its wrist stands on (a mirrored arm's side sign)
+                    float sideSign = Mathf.Sign(Vector3.Dot(wr - mid, right));
+                    float own = sideSign * Vector3.Dot(m.P[top] - mid, right);
+                    float side = Mathf.Abs(Vector3.Dot(m.P[top] - mid, right)) - (sp.joints[kShoulder].halfWidth * s + kSide * L);
+                    minElev = Mathf.Min(minElev, elev); maxSide = Mathf.Max(maxSide, side); minOwn = Mathf.Min(minOwn, own);
                     if (miss == null && elev < kSteepDeg) miss = $"t={sim.Time:F2} s: wing {w}'s folded blade stands only {elev:F0} deg above the horizontal";
-                    if (miss == null && side > 0f) miss = $"t={sim.Time:F2} s: wing {w}'s blade tip splays {side:F3} m beyond the body's side + {kSide} x its length";
+                    if (miss == null && own < kOwnSide * s) { miss = $"t={sim.Time:F2} s: wing {w}'s blade tip is {own:F3} m out on its own side (< {kOwnSide}): it crosses over the back"; lateral = true; }
+                    if (miss == null && side > 0f) { miss = $"t={sim.Time:F2} s: wing {w}'s blade tip splays {side:F3} m beyond the body's side + {kSide} x its length"; lateral = true; }
+                }
+                if (sp.WingCount == 2 && have[0] && have[1])
+                {
+                    float gap = Mathf.Abs(Vector3.Dot(tips[0] - tips[1], right));
+                    minGap = Mathf.Min(minGap, gap);
+                    if (miss == null && gap < kTipGap * s) { miss = $"t={sim.Time:F2} s: the blade tips are only {gap:F3} m apart across the body (< {kTipGap})"; lateral = true; }
                 }
             }
-            TestContext.Out.WriteLine($"blades: steepest-least {minElev:F0} deg, tip beyond the side allowance by at most {maxSide:F3} m");
+            TestContext.Out.WriteLine($"blades: least steep {minElev:F0} deg; tips out on their own side >= {minOwn:F3} m, apart >= {minGap:F3} m; beyond the side allowance by at most {maxSide:F3} m");
             return miss;
         }
 
@@ -339,6 +372,17 @@ namespace TerrainGen.Tests
         {
             string e = SteepProblem(Species(), out _, out _);
             Assert.IsNull(e, e);
+        }
+
+        // RED (lateral alone): the wrists closer in and the fan lifted steeply - the blades stand steep, but their tips lean in
+        // over the back and cross
+        [Test] public void Red_FleshWing_TipsCross()
+        {
+            string e = SteepProblem(Species(w => w.spec.groundLiftDeg = 60f, a => a.restOffset = new Vector3(0.14f, 0f, -0.22f)), out float el, out _, out _, out _, out bool lateral);
+            TestContext.Out.WriteLine("RED: " + e);
+            Assert.IsNotNull(e);
+            Assert.IsTrue(lateral, "the lateral clause fails (not the steepness)");
+            Assert.GreaterOrEqual(el, kSteepDeg, "steep enough: only the side bites");
         }
 
         // RED: the earlier pose (a short forearm reaching forward, the fan lifted steeply about the rear rib) - the blades lean
@@ -467,22 +511,19 @@ namespace TerrainGen.Tests
         // ------------------------------------------------------------ the fold sweep, a launch, a landing
 
         // A walk, a launch, the fold swept 0 -> 1 in 20 steps in the air (DiveFold, held 6 ticks each) and back, a landing
-        // and a walk: no triangle turns over (CreaturePteroWingTests.Skinned's measure, the kit's) - the wings' and the body's,
-        // but for the one known body flip owned by a follow-up (the FlowBody neck's front, joints 0-1, in the launch: bodyNote).
+        // and a walk: no triangle turns over (CreaturePteroWingTests.Skinned's measure, the kit's) - the wings' and the body's.
         // Null or the first.
-        internal static string SweepProblem(CreatureSpecies sp, out int frames) => SweepProblem(sp, out frames, out _);
-
-        internal static string SweepProblem(CreatureSpecies sp, out int frames, out string bodyNote)
+        internal static string SweepProblem(CreatureSpecies sp, out int frames)
         {
-            frames = 0; bodyNote = null;
+            frames = 0;
             float s = sp.scale, T = Mathf.Sqrt(s);
             var m = new CreaturePteroWingTests.Skinned(sp);
             var sim = FlowKit.Sim(sp, s);
-            string worst = null, body = null; int f = 0;
+            string worst = null; int f = 0;
             void Check(string when)
             {
                 m.Pose(sim); f++;
-                for (int k = 0; k < m.T.Length && (worst == null || body == null); k += 3)
+                for (int k = 0; k < m.T.Length && worst == null; k += 3)
                 {
                     int i0 = m.T[k], i1 = m.T[k + 1], i2 = m.T[k + 2], b = (int)m.Uv2[i0].x;
                     Vector3 rest = Vector3.Cross(m.V[i1] - m.V[i0], m.V[i2] - m.V[i0]);
@@ -491,12 +532,7 @@ namespace TerrainGen.Tests
                     bool wing = false;
                     for (int w = 0; w < sp.WingCount; w++) wing |= WingBone(sp, w, b, true);
                     string at = $"{when}: triangle {k / 3} part {m.Part(i0)} bones {m.Uv2[i0]}";
-                    if (wing) { if (worst == null) worst = at; continue; }
-                    // the one known body flip (a separate follow-up: FlowBody / AirChain): the neck's front, joints 0 and 1, in
-                    // the launch; any other body flip fails
-                    bool known = sim.Mode == FlightMode.Launch && (int)m.Uv2[i0].x <= 1 && (int)m.Uv2[i0].y <= 1;
-                    if (known) { if (body == null) body = at; }
-                    else if (worst == null) worst = "body " + at;
+                    worst = wing ? at : "body " + at;
                 }
             }
             for (int t = 0; t < 60; t++) { sim.Tick(kDt, Ahead(sim, s)); if (t % 3 == 0) Check($"walk t{t}"); }
@@ -519,21 +555,24 @@ namespace TerrainGen.Tests
             for (int t = 0; t < 7200 && sim.Mode != FlightMode.Ground; t++) { sim.Tick(kDt, sim.Joints[0]); if (t % 2 == 0) Check($"landing t{t} mode {sim.Mode}"); }
             if (sim.Mode != FlightMode.Ground) return "it never landed";
             for (int t = 0; t < 120; t++) { sim.Tick(kDt, Ahead(sim, s)); if (t % 3 == 0) Check($"after t{t}"); }
-            frames = f; bodyNote = body;
+            frames = f;
             return worst;
         }
 
         [Test] public void FleshWing_FoldSweep_NoInvertedTriangles()
         {
-            string e = SweepProblem(Species(), out int frames, out string body);
-            TestContext.Out.WriteLine($"{frames} frames checked; outside the wings: {body ?? "nothing turned over"}");
+            string e = SweepProblem(Species(), out int frames);
+            TestContext.Out.WriteLine($"{frames} frames checked");
             Assert.IsNull(e, e);
+            // every frame (BodyFlips): no body triangle turns over either
+            SortedSet<string> flips = BodyFlips(Species());
+            Assert.IsEmpty(flips, "body flips: " + string.Join(" | ", flips));
         }
 
         [Test] public void FleshWing_RearAttachAtHips_NoInvertedTriangles()
         {
-            string e = SweepProblem(Species(w => w.spec.membraneRearJoint = kHips), out int frames, out string body);
-            TestContext.Out.WriteLine($"{frames} frames checked; outside the wings: {body ?? "nothing turned over"}");
+            string e = SweepProblem(Species(w => w.spec.membraneRearJoint = kHips), out int frames);
+            TestContext.Out.WriteLine($"{frames} frames checked");
             Assert.IsNull(e, e);
         }
 
@@ -732,6 +771,268 @@ namespace TerrainGen.Tests
             Assert.Greater(nb, na, "the hook is drawn");
             string e = PadProblem(hooked, out float drift, out float low);
             Assert.IsNull(e, e);
+        }
+
+        // ------------------------------------------------------------ closed: no hole in the wing
+
+        // The rest mesh's triangles of wing 0 (first vertex on its bones or its arm's), their vertices welded by position: every
+        // edge is shared by at least two triangles - the skins, rims, caps, the arm and the club close; no open boundary (a hole
+        // that only another part's flesh would hide). open: the open edges found; at: the first.
+        internal static int OpenEdges(CreatureSpecies sp, out string at)
+        {
+            at = null;
+            var m = new CreaturePteroWingTests.Skinned(sp);
+            var id = new Dictionary<(int, int, int), int>();
+            int Weld(Vector3 p)
+            {
+                var k = (Mathf.RoundToInt(p.x * 1e5f), Mathf.RoundToInt(p.y * 1e5f), Mathf.RoundToInt(p.z * 1e5f));
+                if (!id.TryGetValue(k, out int v)) id[k] = v = id.Count;
+                return v;
+            }
+            var edges = new Dictionary<long, int>();
+            var where = new Dictionary<long, Vector3>();
+            for (int t = 0; t < m.T.Length; t += 3)
+            {
+                if (!WingBone(sp, 0, (int)m.Uv2[m.T[t]].x, true)) continue;
+                int[] w = { Weld(m.V[m.T[t]]), Weld(m.V[m.T[t + 1]]), Weld(m.V[m.T[t + 2]]) };
+                for (int e = 0; e < 3; e++)
+                {
+                    int a = w[e], b = w[(e + 1) % 3];
+                    if (a == b) continue;
+                    long key = a < b ? ((long)a << 32) | (uint)b : ((long)b << 32) | (uint)a;
+                    edges.TryGetValue(key, out int c); edges[key] = c + 1;
+                    where[key] = m.V[m.T[t + e]];
+                }
+            }
+            int open = 0;
+            foreach (var kv in edges) if (kv.Value < 2) { open++; if (at == null) at = $"an edge at {where[kv.Key]} used by one triangle"; }
+            TestContext.Out.WriteLine($"wing 0: {edges.Count} edges, {open} open");
+            return open;
+        }
+
+        [Test] public void FleshWing_Closed_NoOpenEdge()
+        {
+            int open = OpenEdges(Species(), out string at);
+            Assert.AreEqual(0, open, at);
+        }
+
+        // RED: the rims left out - the sheets' edges are holes
+        [Test] public void Red_FleshWing_OpenWithoutRims()
+        {
+            FleshWing.NoRimsForTest = true;
+            try
+            {
+                int open = OpenEdges(Species(), out string at);
+                TestContext.Out.WriteLine($"RED: {open} open edges ({at})");
+                Assert.Greater(open, 0);
+            }
+            finally { FleshWing.NoRimsForTest = false; }
+        }
+
+        // ------------------------------------------------------------ the Apex's body in flight (task 8b)
+
+        // The Apex's own body traits - the steep raised neck (CrestBeakHead's) and the sharp keel - bound at their stance
+        // (FlowBody.restAtStance) fly, fold and land without a body flip once the flight carries the stance-bound body
+        // (FlyModule's airNeckStance, launchHeadOnNeck, touchdownAtStance). Without them (the REDs) three body flips came
+        // back: the neck's front over the walking head in the launch, the keel's belly seam in the air (the air chain laid
+        // the chest's bend 31-35 deg the other way from its bind's), and the chest kink and a neck segment tipped past
+        // vertical at touchdown (the walking body hauled up from the hovering pose, its legs drooping it).
+
+        // every body flip of the sweep (walk, launch and climb, fold 0 -> 1 -> 0, landing, the wing-walk after), every frame,
+        // as "phase mode bones"
+        internal static SortedSet<string> BodyFlips(CreatureSpecies sp)
+        {
+            float s = sp.scale, T = Mathf.Sqrt(s);
+            var m = new CreaturePteroWingTests.Skinned(sp);
+            var sim = FlowKit.Sim(sp, s);
+            var seen = new SortedSet<string>();
+            void Check(string phase)
+            {
+                m.Pose(sim);
+                for (int k = 0; k < m.T.Length; k += 3)
+                {
+                    int i0 = m.T[k], i1 = m.T[k + 1], i2 = m.T[k + 2], b = (int)m.Uv2[i0].x;
+                    if (b >= sp.JointCount) continue;
+                    Vector3 rest = Vector3.Cross(m.V[i1] - m.V[i0], m.V[i2] - m.V[i0]);
+                    Vector3 now = Vector3.Cross(m.P[i1] - m.P[i0], m.P[i2] - m.P[i0]);
+                    if (Vector3.Dot(now, m.Skin(b).MultiplyVector(rest)) > 0f) continue;
+                    seen.Add($"{phase} {sim.Mode} joints {b}-{(int)m.Uv2[i0].y}");
+                }
+            }
+            for (int t = 0; t < 60; t++) { sim.Tick(kDt, Ahead(sim, s)); Check("walk"); }
+            sim.Flight.Launch(6f * s);
+            for (int t = 0; t < 240; t++) { sim.Flight.SetGoals(6f * s, sp.flight.cruiseSpeed * T, 0f); sim.Tick(kDt, sim.Joints[0]); Check("air"); }
+            for (int k = 0; k <= 40; k++)
+            {
+                float fold = k <= 20 ? k / 20f : (40 - k) / 20f;
+                for (int t = 0; t < 6; t++) { sim.Flight.DiveFold = fold; sim.Flight.SetGoals(6f * s, sp.flight.cruiseSpeed * T, 0f); sim.Tick(kDt, sim.Joints[0]); Check("fold"); }
+            }
+            sim.Flight.DiveFold = 0f;
+            for (int t = 0; t < 120; t++) { sim.Flight.SetGoals(6f * s, sp.flight.cruiseSpeed * T, 0f); sim.Tick(kDt, sim.Joints[0]); }
+            sim.Flight.Land(sim.Flight.Model.Position + sim.Flight.Model.Forward * (8f * s) - Vector3.up * sim.Flight.Model.Altitude);
+            for (int t = 0; t < 7200 && sim.Mode != FlightMode.Ground; t++) { sim.Tick(kDt, sim.Joints[0]); Check("landing"); }
+            for (int t = 0; t < 120; t++) { sim.Tick(kDt, Ahead(sim, s)); Check("after"); }
+            return seen;
+        }
+
+        internal static CreatureSpecies SteepNeckKeel(System.Action<FlightSpec> fly = null) =>
+            Species(withBody: CreatureCrestBeakHeadTests.Neck(), name: "FleshWingSteepNeckKeel", fly: fly);
+
+        [Test] public void FlowBody_Winged_SteepNeckKeel_NoBodyFlips()
+        {
+            CreatureSpecies sp = SteepNeckKeel();
+            FlowBody body = null;
+            foreach (CreaturePart p in KitView.Parts(sp)) if (p is FlowBody fb) body = fb;
+            Assert.IsTrue(body.restAtStance && body.profile[2].keel > 0f, "the steep neck bound at its stance, with the keel");
+            SortedSet<string> flips = BodyFlips(sp);
+            Assert.IsEmpty(flips, "body flips: " + string.Join(" | ", flips));
+            string e = SweepProblem(sp, out int frames);
+            TestContext.Out.WriteLine($"{frames} frames checked, no body flip in any frame");
+            Assert.IsNull(e, e);
+        }
+
+        // RED: the shipped air chain (airNeckStance 0) lays the raised neck flat - the keel's belly seam turns over in the air.
+        [Test] public void Red_SteepNeckKeel_FlatAirNeck_KeelSeamTurns()
+        {
+            SortedSet<string> flips = BodyFlips(SteepNeckKeel(f => f.airNeckStance = 0f));
+            TestContext.Out.WriteLine("flips: " + string.Join(" | ", flips));
+            Assert.IsTrue(Has(flips, "fold Air joints 6-7"), "the keel seam at the chest turns over in the air fold");
+        }
+
+        // RED: the whole stance in the air (airNeckStance 1) bends the neck root past its bind's already deep bend - the back
+        // under the hump turns over (the share's passing range is 0.2 - 0.9).
+        [Test] public void Red_SteepNeckKeel_FullStanceAirNeck_BackTurns()
+        {
+            SortedSet<string> flips = BodyFlips(SteepNeckKeel(f => f.airNeckStance = 1f));
+            TestContext.Out.WriteLine("flips: " + string.Join(" | ", flips));
+            Assert.IsTrue(Has(flips, "air Launch joints 6-7") || Has(flips, "air Air joints 6-7"), "the neck root turns over in the air");
+        }
+
+        // RED: the shipped launch (launchHeadOnNeck off) keeps the head on the walking heading while the neck rises - the
+        // fixture's own body (the one-time known neck-front flip; the steep neck with airNeckStance happens to rise less).
+        [Test] public void Red_LevelLaunchHead_NeckFrontTurns()
+        {
+            SortedSet<string> flips = BodyFlips(Species(fly: f => f.launchHeadOnNeck = false));
+            TestContext.Out.WriteLine("flips: " + string.Join(" | ", flips));
+            Assert.IsTrue(Has(flips, "air Launch joints 0-1"), "the neck's front turns over in the launch");
+        }
+
+        // RED: the shipped touchdown (touchdownAtStance off) - the chest kinks and a neck segment tips over.
+        [Test] public void Red_SteepNeckKeel_HoverTouchdown_ChestKinks()
+        {
+            SortedSet<string> flips = BodyFlips(SteepNeckKeel(f => f.touchdownAtStance = false));
+            TestContext.Out.WriteLine("flips: " + string.Join(" | ", flips));
+            Assert.IsTrue(Has(flips, "landing Touchdown joints 7-8") || Has(flips, "landing Touchdown joints 6-7"), "the chest kinks at touchdown");
+        }
+
+        // The head's and the girdle's vertical bob (peak to peak about a 1 s running mean) in 6 s of steady cruise after a
+        // launch and 6 s of climb-out; the ratio head / girdle (< 1: the head steadier than the shoulders).
+        internal static float BobRatio(CreatureSpecies sp, out float head, out float girdle)
+        {
+            float s = sp.scale, T = Mathf.Sqrt(s);
+            var sim = FlowKit.Sim(sp, s);
+            for (int t = 0; t < 30; t++) sim.Tick(kDt, Ahead(sim, s));
+            sim.Flight.Launch(6f * s);
+            for (int t = 0; t < 360; t++) { sim.Flight.SetGoals(6f * s, sp.flight.cruiseSpeed * T, 0f); sim.Tick(kDt, sim.Joints[0]); }
+            int g = sim.Flight.Girdle, N = 360, W = Mathf.RoundToInt(0.5f / kDt);
+            var hy = new float[N]; var gy = new float[N];
+            for (int t = 0; t < N; t++)
+            {
+                sim.Flight.SetGoals(6f * s, sp.flight.cruiseSpeed * T, 0f); sim.Tick(kDt, sim.Joints[0]);
+                hy[t] = sim.Joints[0].y; gy[t] = sim.Joints[g].y;
+            }
+            float PP(float[] y)
+            {
+                float lo = float.MaxValue, hi = float.MinValue;
+                for (int i = W; i < y.Length - W; i++)
+                {
+                    float m = 0f;
+                    for (int j = -W; j <= W; j++) m += y[i + j];
+                    m /= 2 * W + 1;
+                    lo = Mathf.Min(lo, y[i] - m); hi = Mathf.Max(hi, y[i] - m);
+                }
+                return hi - lo;
+            }
+            head = PP(hy); girdle = PP(gy);
+            return head / Mathf.Max(1e-6f, girdle);
+        }
+
+        // The stance-bound flight keeps the head at least as steady as the shipped air neck does (airNeckStance 0).
+        [Test] public void FlowBody_Winged_SteepNeckKeel_HeadNoLessSteady()
+        {
+            float on = BobRatio(SteepNeckKeel(), out float h, out float g);
+            float off = BobRatio(SteepNeckKeel(f => f.airNeckStance = 0f), out _, out _);
+            TestContext.Out.WriteLine($"head / girdle bob: {on:F3} (head {h:F3} m, girdle {g:F3} m); airNeckStance 0: {off:F3}");
+            Assert.Less(on, 1f, "the head steadier than the shoulders");
+            Assert.LessOrEqual(on, off, "no less steady than the shipped air neck");
+        }
+
+        // RED: the whole stance in the air (airNeckStance 1) stiffens the neck - the head bobs more than with the shipped one.
+        [Test] public void Red_SteepNeckKeel_FullStanceAirNeck_HeadBobs()
+        {
+            float on = BobRatio(SteepNeckKeel(f => f.airNeckStance = 1f), out _, out _);
+            float off = BobRatio(SteepNeckKeel(f => f.airNeckStance = 0f), out _, out _);
+            TestContext.Out.WriteLine($"head / girdle bob: {on:F3}; airNeckStance 0: {off:F3}");
+            Assert.Greater(on, off, "the stiff neck bobs the head more");
+        }
+
+        // The largest pitch of any spine segment while the body is on the ground (Ground and Touchdown modes): a straight
+        // walk, tight turns both ways, the sweep's launch, flight and the touchdown ease, the walk after. A segment past
+        // vertical rolls its walking frame 180 deg (the up projected across a segment that has tipped over).
+        internal static float MaxWalkPitch(CreatureSpecies sp, out string at)
+        {
+            float s = sp.scale, T = Mathf.Sqrt(s), worst = 0f; string where = null;
+            var sim = FlowKit.Sim(sp, s);
+            void Check(string when)
+            {
+                if (sim.Mode != FlightMode.Ground && sim.Mode != FlightMode.Touchdown) return;
+                for (int i = 1; i < sp.JointCount; i++)
+                {
+                    Vector3 d = sim.Joints[i - 1] - sim.Joints[i];
+                    float p = Mathf.Asin(Mathf.Clamp(Vector3.Dot(d.normalized, Vector3.up), -1f, 1f)) * Mathf.Rad2Deg;
+                    if (Mathf.Abs(p) > worst) { worst = Mathf.Abs(p); where = $"{when} {sim.Mode} segment {i - 1}-{i}"; }
+                }
+            }
+            for (int t = 0; t < 120; t++) { sim.Tick(kDt, Ahead(sim, s)); Check("walk"); }
+            foreach (float side in new[] { 1f, -1f })
+                for (int t = 0; t < 240; t++)
+                {
+                    Vector3 fw = sim.Rotations[0] * Vector3.forward, rt = sim.Rotations[0] * Vector3.right;
+                    sim.Tick(kDt, sim.Joints[0] + (0.3f * fw + side * rt) * s);
+                    Check(side > 0f ? "turn right" : "turn left");
+                }
+            sim.Flight.Launch(6f * s);
+            for (int t = 0; t < 240; t++) { sim.Flight.SetGoals(6f * s, sp.flight.cruiseSpeed * T, 0f); sim.Tick(kDt, sim.Joints[0]); }
+            sim.Flight.Land(sim.Flight.Model.Position + sim.Flight.Model.Forward * (8f * s) - Vector3.up * sim.Flight.Model.Altitude);
+            for (int t = 0; t < 7200 && sim.Mode != FlightMode.Ground; t++) { sim.Tick(kDt, sim.Joints[0]); Check("landing"); }
+            for (int t = 0; t < 120; t++) { sim.Tick(kDt, Ahead(sim, s)); Check("after"); }
+            at = where;
+            return worst;
+        }
+
+        internal const float kMaxWalkPitch = 85f;
+
+        [Test] public void FlowBody_Winged_SteepNeckKeel_NoSegmentTipsOver()
+        {
+            float p = MaxWalkPitch(SteepNeckKeel(), out string at);
+            TestContext.Out.WriteLine($"largest walking segment pitch {p:F1} deg ({at})");
+            Assert.Less(p, kMaxWalkPitch, at);
+        }
+
+        // RED: a steeper neck (the head 0.25 m higher over the same chest) - a neck segment tips past vertical on the ground.
+        [Test] public void Red_SteeperNeck_SegmentTipsOver()
+        {
+            FlowBody body = CreatureCrestBeakHeadTests.Neck();
+            body.profile[0].clearance += 0.25f; body.profile[1].clearance += 0.2f;
+            float p = MaxWalkPitch(Species(withBody: body, name: "FleshWingSteeperNeck"), out string at);
+            TestContext.Out.WriteLine($"largest walking segment pitch {p:F1} deg ({at})");
+            Assert.GreaterOrEqual(p, kMaxWalkPitch, "the steeper neck tips a segment over");
+        }
+
+        static bool Has(SortedSet<string> flips, string prefix)
+        {
+            foreach (string f in flips) if (f.StartsWith(prefix)) return true;
+            return false;
         }
 }
 }

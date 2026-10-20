@@ -57,6 +57,12 @@ public class FlightSpec
     public float airUndulationHz = 1.2f;
     public float tailSag = 0.3f;            // m/s at the tail end (x sqrt(scale)), falls off toward the girdle
     public float headStabilise = 0.15f;     // s: time constant of the head target's 2nd-order low-pass (x sqrt(scale))
+    [Tooltip("Share of the stance's neck shape the air chain keeps (for a species bound at its stance, CreatureSpecies.restAtSpacing - FlowBody.restAtStance): each neck joint's bend limit is taken around this share of its bend in the stance (CreatureSim.RestRun's layout), so a steeply raised neck lowers toward the flight line (the head target stays on it) by at most its bend limits and its skin never bends further from the bind than they allow. 0 = the shipped chain (the limits around a straight neck). The twisting chain (FlightSpec.twist, AirTwist) ignores it.")]
+    [Range(0f, 1f)] public float airNeckStance;
+    [Tooltip("Launching, the head turns with its rising neck (blended in by the head's air weight) instead of keeping the walking heading until the air takes over: a raised neck's front folded over the level head. Off = the shipped launch.")]
+    public bool launchHeadOnNeck;
+    [Tooltip("A touchdown on the ground starts the walking body at its stance (the girdle where it is, the other joints laid along the heading at their clearances, each segment spacing long: CreatureSim.RestRun's layout) instead of at the hovering pose, which the walking chain then hauled up to a steeply raised neck's clearances in a few ticks (the chest kinked, a neck segment tipped over). The eased touchdown carries the hovering body there. Off = the shipped touchdown.")]
+    public bool touchdownAtStance;
 
     [Header("Obstacle avoidance (FlightAvoidance)")]
     [Tooltip("s at scale 1: predicted flight paths this far ahead are swept by rays against real geometry (bark, rocks) and the turn is changed early when one is blocked. 0 = off.")]

@@ -9,6 +9,11 @@ using UnityEngine;
 //   neck + head: two anchors, the girdle and a low-passed head target ahead of it, joined by a curve the
 //     neck joints are laid along from the girdle out (exact lengths, bend cones), so the head glides
 //     while the shoulders bob (headStabilise); the head may trail its target slightly.
+//     FlightSpec.airNeckStance (opt-in, a species bound at its stance): the cones are centred on that share
+//     of the stance's own neck bends, so a steeply raised neck lowers toward the flight line by at most its
+//     bend limits from them (its bind's bends were far outside the limits: the chest folded through the skin).
+//     The head target stays on the flight line: a target raised toward the stance's head left the neck too
+//     little slack and the head bobbed with the shoulders.
 //   frames: forward toward the head; up starts at the girdle as the banked up and is carried along the
 //     chain by projection (parallel transport for the small per-joint bends), then Rotations = (fwd, up).
 // Pure C#, flat arrays, allocation-free after construction, deterministic.
@@ -20,6 +25,9 @@ public sealed class AirChain
     readonly int n, girdle;
     readonly float seg, timeScale, scale;
     readonly float[] cosLimit, sinLimit; // per joint bend cone (rigid = 0)
+    // FlightSpec.airNeckStance: per neck joint, the cone's centre - the share of the stance's bend there (cos, sin of
+    // the pitch turn toward the up); null = off (the shipped chain: the cones around a straight neck).
+    readonly float[] restCos, restSin;
     readonly FlightSpec f;
     public readonly Vector3[] Up;
     public readonly Vector3[] Forward;
@@ -50,6 +58,21 @@ public sealed class AirChain
         }
         Up = new Vector3[n]; Forward = new Vector3[n];
         Level = Mathf.Clamp01(flight.airLevel);
+        float share = Mathf.Clamp01(flight.airNeckStance);
+        if (share > 0f && girdle > 0)
+        {
+            // the stance: each segment spacing long between its joints' clearances (CreatureSim.RestRun), pitched
+            // toward the head by p[k] (segment k = joint k-1 to k); the bend at joint j turns p[j+1] into p[j]
+            var p = new float[n];
+            for (int k = 1; k < n; k++)
+                p[k] = Mathf.Atan2(sp.joints[k - 1].clearance - sp.joints[k].clearance, CreatureSim.RestRun(sp, k, sp.spacing, 1f));
+            restCos = new float[n]; restSin = new float[n];
+            for (int j = 0; j < n; j++)
+            {
+                float a = j >= 1 && j <= girdle && j + 1 < n ? share * (p[j] - p[j + 1]) : 0f;
+                restCos[j] = Mathf.Cos(a); restSin[j] = Mathf.Sin(a);
+            }
+        }
         if (flight.twist.Enabled) Twist = new AirTwist(flight.twist, n, seg, scale, cosLimit, sinLimit, girdle);
     }
 
@@ -107,6 +130,8 @@ public sealed class AirChain
             smoothPos += (girdlePos - smoothPos) * Mathf.Min(1f, kDriftRate / timeScale * h);
             Vector3 dir = Norm(smoothVel, -leader);
             Vector3 target = smoothPos + dir * (kNeckSlack * seg * girdle);
+            // the neck's sagittal plane: across it the girdle's banked side (airNeckStance turns the neck up in it)
+            Vector3 across = restCos != null ? Norm(Vector3.Cross(vh, bankedUp), side) : side;
             HeadTarget = target;
             Vector3 trunkDir = n > girdle + 1 ? Norm(joints[girdle] - joints[girdle + 1], dir) : dir;
             // Two anchors: the girdle (leaving along the trunk) and the head target (arriving along the
@@ -121,7 +146,11 @@ public sealed class AirChain
                 float t = (girdle - i) / (float)girdle, it = 1f - t;
                 Vector3 aim = it * it * girdlePos + 2f * it * t * ctrl + t * t * target;
                 Vector3 d = Norm(aim - joints[i + 1], pd);
-                d = Cone(pd, d, cosLimit[i + 1], sinLimit[i + 1]);
+                // the cone's centre: straight on, or (airNeckStance) the stance's share of the bend at joint i + 1
+                Vector3 axis = pd;
+                if (restCos != null && restSin[i + 1] != 0f)
+                    axis = Norm(pd * restCos[i + 1] + Norm(Vector3.Cross(across, pd), up) * restSin[i + 1], pd);
+                d = Cone(axis, d, cosLimit[i + 1], sinLimit[i + 1]);
                 joints[i] = joints[i + 1] + d * seg;
                 pd = d;
             }

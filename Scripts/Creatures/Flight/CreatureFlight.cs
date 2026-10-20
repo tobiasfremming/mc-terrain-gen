@@ -409,6 +409,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
                 if (ModeTime >= kTouchdownTime * T)
                 {
                     Mode = FlightMode.Ground; ModeTime = 0f;
+                    sim.LegsInternal.HoldDroop = false;
                     for (int i = 0; i < n; i++) AirWeight[i] = 0f;
                     armBlend = 0f; foldFloor = 1f;
                     Perched = landSource != 0;
@@ -762,12 +763,32 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             }
             touchSpeed = 0f;
         }
+        else if (f.touchdownAtStance)
+        {
+            // onto the ground (FlightSpec.touchdownAtStance): the walking body starts at its stance - the girdle where
+            // it is, the other joints along the heading at their clearances, each segment spacing long (the bind's
+            // layout, CreatureSim.RestRun) - and the eased touchdown carries the hovering body there
+            Vector3 up = Model.Up;
+            Vector3 axis = Vector3.ProjectOnPlane(sim.Joints[0] - sim.Joints[girdle], up);
+            if (axis.sqrMagnitude < 1e-8f) axis = Vector3.ProjectOnPlane(Model.Forward, up);
+            if (axis.sqrMagnitude < 1e-8f) axis = Model.Forward;
+            axis.Normalize();
+            float seg = sp.spacing * scale;
+            for (int i = girdle + 1; i < n; i++)
+                sim.Joints[i] = sim.Joints[i - 1] - axis * CreatureSim.RestRun(sp, i, seg, scale) + up * ((sp.joints[i].clearance - sp.joints[i - 1].clearance) * scale);
+            for (int i = girdle - 1; i >= 0; i--)
+                sim.Joints[i] = sim.Joints[i + 1] + axis * CreatureSim.RestRun(sp, i + 1, seg, scale) + up * ((sp.joints[i].clearance - sp.joints[i + 1].clearance) * scale);
+            touchSpeed = 0f;
+        }
         sim.SetGrip(f.perchGrip && landSource != 0);   // perched: the feet close round the branch
         // onto a perch the arms come down to the raised wrist (standing on the thumb claws) from the start: blended
         // straight to the foot point, the wrist swept the branch's flank (it is set again once on the ground)
         if (landSource != 0)
             for (int w = 0; w < Wings.Count; w++) wristLift[w] = Mathf.Max(wristLift[w], sp.wings[w].groundWristLift * scale);
         sim.ResetGround(0.5f * touchSpeed, (kTouchHeight + 1f) * scale);
+        // (touchdownAtStance onto the ground: the walking body stands at its stance until the touchdown ends - its legs,
+        // measured from the hovering body still above, would lower it and tip a steep neck over)
+        sim.LegsInternal.HoldDroop = f.touchdownAtStance && landSource == 0;
         offsetValid = false;
         Mode = FlightMode.Touchdown; ModeTime = 0f;
     }
@@ -832,6 +853,21 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     internal void AfterFrames()
     {
         if (Mode == FlightMode.Launch && Chain.Twist != null) { Chain.WriteRotations(sim.Rotations); sim.RigidHeadFromRotations(); }
+        else if (Mode == FlightMode.Launch && f.launchHeadOnNeck && sp.RigidHead < 2 && n > 1 && AirWeight[0] > 0f)
+        {
+            // FlightSpec.launchHeadOnNeck: the walking frames keep the head on the ground heading; it turns with its
+            // rising neck as the air takes it (the air chain's head frame: along its front segment), so the steep
+            // launch neck no longer folds over a level head. (A rigid head's frame already follows its neck chord.)
+            Vector3[] J = sim.Joints;
+            Vector3 fw = J[0] - J[1];
+            if (fw.sqrMagnitude > 1e-6f)
+            {
+                fw.Normalize();
+                Vector3 u = Vector3.ProjectOnPlane(sim.Rotations[1] * Vector3.up, fw);
+                if (u.sqrMagnitude > 1e-6f)
+                    sim.Rotations[0] = Quaternion.Slerp(sim.Rotations[0], CreatureSim.Basis(fw, u.normalized), AirWeight[0]);
+            }
+        }
     }
 
     // Perched (or any flyer on the ground): joints past the edge of what they stand on hang - a tail over a

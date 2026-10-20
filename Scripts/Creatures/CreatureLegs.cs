@@ -147,6 +147,10 @@ sealed class CreatureLegs
     // (a leg whose rest point lies on much lower ground, e.g. one side of a steep face).
     public readonly float[] Droop;       // per attach joint, as computed from its legs
     public readonly float[] DroopSpread; // per spine joint: Droop smoothed over +-3 joints, what the sim applies
+    // Droop held where it is (CreatureFlight, FlightSpec.touchdownAtStance: while the hovering body eases down onto a
+    // walking body laid at its stance, its legs measured from the displayed shoulders, still up in the air, wanted it
+    // lowered). False = the shipped legs.
+    internal bool HoldDroop;
 
     // 1 = free to walk, 0 = a planted foot is at full stretch and the body must wait for its step.
     public float MaxSpeed { get; private set; } = float.PositiveInfinity;
@@ -597,7 +601,7 @@ sealed class CreatureLegs
         }
         else { MaxSpeed = sideways && TravelLocal.z == 0f ? sideMaxSpeed : walkMaxSpeed; climbStrideValid = false; }
 
-        UpdateDroop(dt);
+        if (!HoldDroop) UpdateDroop(dt);
 
         // advance steps in flight
         for (int l = 0; l < c; l++)
