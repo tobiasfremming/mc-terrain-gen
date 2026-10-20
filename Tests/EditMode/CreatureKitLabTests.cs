@@ -58,12 +58,16 @@ namespace TerrainGen.Tests
                 { "FinnedSandEel", Habitat.Plain }, { "GiantCentipede", Habitat.Plain }, { "Hexadrake", Habitat.Aviary },
                 { "TentacleCrab", Habitat.Plain }, { "RockCrab", Habitat.Plain }, { "Scolopendra", Habitat.Plain },
                 { "Crocodile", Habitat.Plain }, { "KomodoDragon", Habitat.Plain }, { "GolfballStrider", Habitat.Plain },
+                { "SkyManta", Habitat.Aviary },
+                { "Delver", Habitat.Plain },
+                { "Apex", Habitat.Aviary },
             };
             foreach (string n in CreatureKitAssets.Species())
             {
                 CreatureSpecies asset = CreatureKitAssets.LoadAsset(n);
                 Habitat h = LabHabitat.For(asset);
-                Assert.AreEqual((int)CreatureKitAssets.LegacyHabitatOf(asset.Compiled.Runtime), (int)h, n + ": modules vs legacy fields");
+                // an airborne kit module (Soar) has no legacy-field form: its habitat is pinned by the table only
+                if (Airborne.Of(asset) == null) Assert.AreEqual((int)CreatureKitAssets.LegacyHabitatOf(asset.Compiled.Runtime), (int)h, n + ": modules vs legacy fields");
                 if (expect.TryGetValue(n, out Habitat want)) Assert.AreEqual(want, h, n);
             }
             CreatureLabRoster r = Roster();

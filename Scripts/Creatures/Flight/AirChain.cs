@@ -24,6 +24,9 @@ public sealed class AirChain
     public readonly Vector3[] Up;
     public readonly Vector3[] Forward;
     public float Time { get; private set; }
+    // Share of the flight path's climb or descent the trunk ignores (0 = it trails the path: the shipped chain).
+    // FlightSpec.airLevel; a behaviour may change it at run time (a stoop dives along its path: 0).
+    public float Level;
 
     // head stabiliser: a smoothed girdle (position + velocity), no lag in steady flight
     Vector3 smoothPos, smoothVel, smoothAcc;
@@ -46,6 +49,7 @@ public sealed class AirChain
             cosLimit[i] = Mathf.Cos(a); sinLimit[i] = Mathf.Sin(a);
         }
         Up = new Vector3[n]; Forward = new Vector3[n];
+        Level = Mathf.Clamp01(flight.airLevel);
         if (flight.twist.Enabled) Twist = new AirTwist(flight.twist, n, seg, scale, cosLimit, sinLimit, girdle);
     }
 
@@ -69,7 +73,10 @@ public sealed class AirChain
         joints[girdle] = girdlePos;
 
         // ---- trunk + tail: pull chain from the girdle back
-        Vector3 vh = Norm(girdleVel, Norm(joints[girdle] - joints[Mathf.Min(girdle + 1, n - 1)], Vector3.forward));
+        // (Level > 0: the trunk leads along the flight line with its climb or descent taken out by that share - a
+        // short-bodied flyer holds its body level in a glide or a flare instead of hanging along a steep path)
+        Vector3 gv = Level > 0f ? girdleVel - up * (Vector3.Dot(girdleVel, up) * Level) : girdleVel;
+        Vector3 vh = Norm(gv, Norm(joints[girdle] - joints[Mathf.Min(girdle + 1, n - 1)], Vector3.forward));
         Vector3 side = Vector3.Cross(vh, up);
         side = side.sqrMagnitude > 1e-10f ? side.normalized : Vector3.right;
         float und = f.airUndulationDeg * Mathf.Deg2Rad * Mathf.Sin(2f * Mathf.PI * f.airUndulationHz / timeScale * Time);

@@ -223,7 +223,7 @@ namespace TerrainGen.Tests
             for (int w = 0; w < sp.WingCount; w++)
             {
                 if (sp.WingBone(w, 0) != next) return $"wing {w} starts at bone {sp.WingBone(w, 0)}, expected {next}";
-                next += WingBoneLayout.Bones(sp.wings[w]);
+                next += WingBlock(sp, w);
             }
             if (sp.EyeBone(0) != next || sp.EyeBone(1) != next + 1) return $"eyes at bones {sp.EyeBone(0)}, {sp.EyeBone(1)}, expected {next}, {next + 1}";
             next += 2;
@@ -252,11 +252,20 @@ namespace TerrainGen.Tests
             for (int l = 0; l < (sp.legs != null ? sp.legs.Length : 0); l++)
                 for (int k = 0; k < sp.legs[l].SegmentCount; k++) if (!used[sp.LegBone(l, k)]) bare.Add($"leg {l} bone {k}");
             for (int w = 0; w < sp.WingCount; w++)
-                for (int k = 0; k < WingBoneLayout.Bones(sp.wings[w]); k++) if (!used[sp.WingBone(w, k)]) bare.Add($"wing {w} bone {k}");
+                for (int k = 0; k < WingBlock(sp, w); k++) if (!used[sp.WingBone(w, k)]) bare.Add($"wing {w} bone {k}");
             if (sp.eyeRadius > 0f) for (int e = 0; e < 2; e++) if (!used[sp.EyeBone(e)]) bare.Add("eye " + e);
             foreach (CreatureKit.BoneRange r in sp.Layout.Ranges)
                 if (r.Start >= legacyEnd) for (int k = 0; k < r.Count; k++) if (!used[r.Start + k]) bare.Add($"{r.Id} bone {k}");
             return bare.Count > 0 ? "bones with no skinned vertex: " + string.Join(", ", bare) : null;
+        }
+
+        // A wing's block: the flight's bones (WingBoneLayout.Bones) plus a wing type's own after them (PteroWing's
+        // phalanges), as the layout gave the wing part; a legacy species' wings have exactly the flight's.
+        static int WingBlock(CreatureSpecies sp, int w)
+        {
+            int start = sp.WingBone(w, 0);
+            foreach (CreatureKit.BoneRange r in sp.Layout.Ranges) if (r.Start == start && r.Count > 0) return Mathf.Max(r.Count, WingBoneLayout.Bones(sp.wings[w]));
+            return WingBoneLayout.Bones(sp.wings[w]);
         }
 
         // Skin indices within [0, bones) wherever their weight is non-zero (uv3: the octopus's extra influences).
@@ -366,15 +375,23 @@ namespace TerrainGen.Tests
         {
             float big = CreatureLab.MaxScale(sp);
             EnclosureArea area = EnclosureArea.For(Vector3.zero, Vector3.up, CreatureLab.EnclosureRadius(sp, big), sp, big);
-            if (sp.CanFly) area.maxHeight = AviarySizing.Height(sp, big, CreatureLab.kAviaryHeight);
+            // a flyer (legacy wings, or an airborne kit module: KitAirborne.cs) has the aviary's roof
+            if (sp.CanFly || CreatureKit.Airborne.Of(sp) != null) area.maxHeight = AviarySizing.Height(sp, big, CreatureLab.kAviaryHeight);
             return area;
         }
+
+        // The brain the checks drive a species with: the flyer's FlightBrain, an airborne kit flyer's own (its behaviour
+        // modules: BrainFactory - a WanderBrain's ground points mean nothing to it), else the WanderBrain.
+        static ICreatureBrain Brain(CreatureSpecies sp, EnclosureArea area, int seed)
+            => sp.CanFly ? new FlightBrain(area, seed)
+             : CreatureKit.Airborne.Of(sp) != null ? CreatureKit.BrainFactory.Create(sp, area, seed)
+             : (ICreatureBrain)WanderBrain.For(sp, area, seed);
 
         internal static string WanderProblem(CreatureSpecies sp, float sizeScale, int seed, EnclosureArea area, float seconds)
         {
             const float dt = 1f / 30f;
             var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, area.center, Vector3.forward, sizeScale, seed) { Bounds = area };
-            ICreatureBrain brain = sp.CanFly ? new FlightBrain(area, seed) : (ICreatureBrain)WanderBrain.For(sp, area, seed);
+            ICreatureBrain brain = Brain(sp, area, seed);
             float far = 0f, path = 0f, top = 0f;
             Vector3 last = sim.Joints[0];
             for (int t = 0; t < (int)(seconds / dt); t++)
@@ -511,7 +528,7 @@ namespace TerrainGen.Tests
         {
             EnclosureArea area = LabArea(sp);
             var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, sp.scale, 1) { Bounds = area };
-            ICreatureBrain brain = sp.CanFly ? new FlightBrain(area, 1) : (ICreatureBrain)WanderBrain.For(sp, area, 1);
+            ICreatureBrain brain = Brain(sp, area, 1);
             var bones = new Matrix4x4[sp.BoneCount];
             for (int t = 0; t < 120; t++) { sim.Tick(kDt, brain.Target(sim, kDt)); sim.WriteBoneWorld(bones, 0); }
             return GcAllocs.Count(() =>

@@ -16,6 +16,8 @@ public sealed class CreatureWorld : MonoBehaviour
     // private physics scene (play mode). Physics: another game - the ground and every surface are the
     // colliders in surfaceMask of the default physics scene (TerrainColliders, MeshColliders, buildings).
     public enum GroundSource { Auto, Physics }
+    [Tooltip("Terrain carves (digging creatures: CreatureKit.CreatureDigging) applied per frame at most; the rest wait in the queue.")]
+    public int maxCarvesPerFrame = 1;
     public GroundSource groundSource = GroundSource.Auto;
     public LayerMask surfaceMask = ~0;
     [Tooltip("Edit mode only (tests): the layer render-only surfaces' colliders are put on.")]
@@ -169,6 +171,8 @@ public sealed class CreatureWorld : MonoBehaviour
     void Awake()
     {
         if (Instance == null) Instance = this;
+        // a new world: no tunnels, groups or pending carves from an earlier one (the terrain's edits are its own)
+        CreatureKit.TunnelNetwork.ClearAll(); CreatureKit.CreatureGroup.Clear(); CreatureKit.CreatureDigging.Clear();
         // the surface registry first, so render-only surfaces (the lab's tree) can register as they enable
         if (Application.isPlaying) _ = Surfaces;
     }
@@ -253,8 +257,11 @@ public sealed class CreatureWorld : MonoBehaviour
             }
             if (octopusMaterial != null) m = octopusMaterial;
         }
-        renderers.Add(new CreatureRenderer(sp, m));
-        return renderers[renderers.Count - 1];
+        var ren = new CreatureRenderer(sp, m);
+        // creature fur: only a species with the Fur look module gets a fur system (every other draws as before)
+        if (CreatureKit.FurBuilder.ModuleOf(sp) != null) ren.Fur = CreatureKit.CreatureFur.Create(sp, ren);
+        renderers.Add(ren);
+        return ren;
     }
 
     // A tree octopus (a Cephalopod species; SpawnCreature takes any species). Its surfaces are the terrain plus every registered collider (real
@@ -301,6 +308,7 @@ public sealed class CreatureWorld : MonoBehaviour
         if (sg is CompositeSurfaceProbe comp) sg = comp.Terrain;
         if (sg is CachedGroundProbe cache) caches.Remove(cache);
         sims.RemoveAt(i); simBodies.RemoveAt(i); brains.RemoveAt(i); simGrounds.RemoveAt(i);
+        CreatureKit.CreatureGroup.Forget(sim);
         return true;
     }
 
@@ -332,7 +340,23 @@ public sealed class CreatureWorld : MonoBehaviour
     {
         RebindIfStale();
         TickAll(Time.deltaTime);
+        // digging creatures' terrain edits, a budget a frame, into the terrain's runtime density edits
+        CreatureKit.CreatureDigging.Frame++;
+        if (CreatureKit.CreatureDigging.Pending > 0) CreatureKit.CreatureDigging.Drain(carver, Mathf.Max(0, maxCarvesPerFrame));
     }
+
+    // The terrain's runtime edit path (TerrainModificationSystem.CarveSphere: the chunk manager remeshes the chunks the
+    // edit touches; a physical edit re-cooks their colliders and drops the creatures' cached ground there).
+    sealed class TerrainCarver : CreatureKit.ICarveSink
+    {
+        public void Carve(Vector3 centre, float radius, bool physical)
+        {
+            MCChunkManager m = MCChunkManager.Instance;
+            if (m == null || m.Modifications == null) return;
+            m.Modifications.CarveSphere(centre, radius, physical);
+        }
+    }
+    readonly TerrainCarver carver = new TerrainCarver();
 
     internal void TickAll(float dt)
     {
@@ -340,6 +364,7 @@ public sealed class CreatureWorld : MonoBehaviour
         if (surfaces != null) surfaces.SyncIfDirty();
         // the surface probes need back faces (inside-solid tests); one switch for the whole tick
         PhysicsSurfaceProbe.BackfaceScope backfaces = surfaces != null ? PhysicsSurfaceProbe.Backfaces() : default;
+        CreatureKit.HuntPrey.Source = sims;   // what a hunting behaviour (SkyHunt) may take
         try
         {
             for (int i = 0; i < sims.Count; i++)

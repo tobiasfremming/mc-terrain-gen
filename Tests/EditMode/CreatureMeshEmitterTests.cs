@@ -23,6 +23,8 @@ namespace TerrainGen.Tests
             if (sp.bodyPlan == CreatureBodyPlan.Cephalopod) Assert.Ignore("cephalopod: OctopusMeshBuilder (octopus internals stay until its roles plan lands)");
             string changed = MeshBytes.ChangedSinceReference(sp);
             if (changed != null) Assert.Ignore(changed);
+            // a kit-only BODY (RayBody: ISpineChainBody) draws its own trunk: the legacy builder's spine tube is not a prefix of it
+            if (sp.Compiled != null && sp.Compiled.Body is CreatureKit.ISpineChainBody) Assert.Ignore("kit-only body " + sp.Compiled.Body + ": no legacy mesh to compare");
             // a kit-only part (MeshOrder 100) appends after every legacy vertex: the legacy mesh is then a byte prefix
             bool prefix = CreatureKitAssets.KitOnlyReason(sp) != null;
             string diff = MeshBytes.Compare(MeshBytes.Legacy(sp), MeshBytes.Current(sp), prefix);

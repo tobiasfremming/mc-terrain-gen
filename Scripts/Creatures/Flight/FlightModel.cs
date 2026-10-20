@@ -45,6 +45,7 @@ public sealed class FlightModel
     public float Demand { get; private set; }     // 0..1
     public float Amplitude { get; private set; }  // fraction of the comfort band
     public float AmplitudeCap = float.MaxValue;   // set by the flight mode (a branch flare's shallow strokes); none by default
+    public float DemandCap = float.MaxValue;      // a behaviour holds the wings still (a stoop: 0 glides with no beat); none by default
     public float StrokeRate { get; private set; } // downstroke rad/s (scaled)
     public float Asymmetry { get; private set; }  // + = left wing strokes harder (rolls right)
     public bool Gliding { get; private set; }
@@ -118,6 +119,7 @@ public sealed class FlightModel
         float thr = Mathf.Clamp(f.thrustGain * (SpeedGoal - ForwardSpeed) / T, -1f, 1f);
         float floor = c > f.descendCutoff ? f.demandFloor : 0f;
         float demand = Mathf.Clamp01(Mathf.Max(c, Mathf.Max(0.5f * Mathf.Abs(thr), floor)));
+        if (demand > DemandCap) demand = DemandCap;
         Climb = c; Thrust = thr; Demand = demand;
         Gliding = demand < f.glideDemand;
         Amplitude = Mathf.Min(f.amplitudeMin + (1f - f.amplitudeMin) * demand, AmplitudeCap);
@@ -143,6 +145,15 @@ public sealed class FlightModel
         spread = n > 0 ? spread / n : 0f;
         Vector3 acc = -G * GravityScale * Up - (f.kDrag / s) * sp * Velocity + (f.kLift / s) * spread * fwd * fwd * BankedUp;
         Velocity += acc * h;
+        // FlightSpec.glideEnergy: a glide trades height for speed (the lift tilts forward as the path sinks): the
+        // descent's energy goes into the forward speed, so a soarer keeps its speed - and its lift - down a long glide
+        // (both ways: a glide that rises pays for it in speed - a phugoid, not a free climb; spread wings only, not a
+        // stoop's folded ones)
+        if (f.glideEnergy && Gliding && spread > 0.5f)
+        {
+            float down = -Vector3.Dot(Velocity, Up), along = Vector3.Dot(Velocity, Forward);
+            if (along > 0.1f) Velocity += Forward * (Mathf.Clamp(G * GravityScale * down / along * h * spread, -0.5f * along, 0.5f * along));
+        }
 
         // Implicit air plant per wing (the prototype's sequential update): kappa = GripRate, g = kappa h /
         // (1 + kappa h), v <- v - g ((v + rise) . n) n. A sequential solve depends on the order (the first

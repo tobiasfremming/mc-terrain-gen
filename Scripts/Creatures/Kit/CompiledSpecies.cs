@@ -20,7 +20,7 @@ namespace CreatureKit
         public readonly List<CreaturePart> Parts = new List<CreaturePart>();     // flat, sugar expanded
         public readonly List<CreatureModule> Modules = new List<CreatureModule>();
         public readonly List<LimbPart> Limbs = new List<LimbPart>();             // = the runtime legs, in order
-        public readonly List<Wing> Wings = new List<Wing>();
+        public readonly List<WingPart> Wings = new List<WingPart>();
         public readonly List<string> Problems = new List<string>();
         public CreatureBoneLayout Layout { get; private set; }
         // The runtime view: the species whose legacy fields the systems read. A legacy asset (kitVersion 0) is
@@ -28,7 +28,7 @@ namespace CreatureKit
         public CreatureSpecies Runtime { get; internal set; }
 
         public string Error => Problems.Count > 0 ? Problems[0] : null;
-        public SpeciesCtx Ctx => new SpeciesCtx(Parts, Modules, Body is SpineBody b ? b.JointCount : 0, Soft);
+        public SpeciesCtx Ctx => new SpeciesCtx(Parts, Modules, Body is SpineBody b ? b.JointCount : Body is ISpineChainBody cb ? cb.JointCount : 0, Soft);
         public CreaturePart Body { get; private set; }
         public T Module<T>() where T : CreatureModule { foreach (CreatureModule m in Modules) if (m is T t) return t; return null; }
         public CreaturePart Find(string id) { foreach (CreaturePart p in Parts) if (p.id == id) return p; return null; }
@@ -53,7 +53,7 @@ namespace CreatureKit
             {
                 if (p.Kind == PartKind.Body) { if (c.Body == null) c.Body = p; else c.Problems.Add($"{p.id}: a second Body part (exactly one SpineBody or SoftBody)"); }
                 if (p is LimbPart l) c.Limbs.Add(l);
-                if (p is Wing w) c.Wings.Add(w);
+                if (p is WingPart w) c.Wings.Add(w);
             }
             if (c.Body == null) c.Problems.Add("no Body part (exactly one SpineBody or SoftBody)");
             c.WingArms();
@@ -84,7 +84,7 @@ namespace CreatureKit
             }
             if (p.mirror && !(p is RigidCone) && !(p is FinStrip))
             {
-                string arm = (p as Wing)?.arm;
+                string arm = (p as WingPart)?.arm;
                 for (int side = -1; side <= 1; side += 2)
                 {
                     string suffix = side < 0 ? ".L" : ".R";
@@ -93,7 +93,7 @@ namespace CreatureKit
                     m.at.side = side;
                     m.id = p.id + suffix;
                     // a mirrored wing names the mirrored arm
-                    if (m is Wing w && arm != null && !(arm.EndsWith(".L") || arm.EndsWith(".R"))) w.arm = arm + suffix;
+                    if (m is WingPart w && arm != null && !(arm.EndsWith(".L") || arm.EndsWith(".R"))) w.arm = arm + suffix;
                     Parts.Add(m);
                 }
                 return;
@@ -129,7 +129,7 @@ namespace CreatureKit
 
         void WingArms()
         {
-            foreach (Wing w in Wings)
+            foreach (WingPart w in Wings)
                 if (Find(w.arm) is LimbPart arm && arm.role == LimbRole.Walk) arm.role = LimbRole.WingArm;
         }
 
@@ -206,7 +206,7 @@ namespace CreatureKit
             foreach (CreaturePart p in Parts) if (p is Eyes) eyes++;
             if (!Soft && eyes != 1) Problems.Add($"a spine body needs exactly one Eyes part (the runtime writes two eye bones), found {eyes}");
             var armed = new HashSet<string>();
-            foreach (Wing w in Wings) if (!armed.Add(w.arm)) Problems.Add($"{w.id}: arm '{w.arm}' already carries a wing");
+            foreach (WingPart w in Wings) if (!armed.Add(w.arm)) Problems.Add($"{w.id}: arm '{w.arm}' already carries a wing");
             foreach (LimbPart l in Limbs) if (l.gaitGroup < 0 || l.gaitGroup > 31) Problems.Add($"{l.id}: gaitGroup must be in 0..31");
             if (Soft)
             {
@@ -233,12 +233,12 @@ namespace CreatureKit
             for (int i = 0; i < Parts.Count; i++)
             {
                 if (Parts[i] is Eyes) eyes = Layout.Start(i);
-                if (Parts[i] is Wing && wings < 0) wings = Layout.Start(i);
+                if (Parts[i] is WingPart && wings < 0) wings = Layout.Start(i);
             }
             var chains = new List<int>();
             for (int i = 0; i < Parts.Count; i++) if (Parts[i] is Antenna) chains.Add(Layout.Start(i));
             var wingStarts = new List<int>();
-            for (int i = 0; i < Parts.Count; i++) if (Parts[i] is Wing) wingStarts.Add(Layout.Start(i));
+            for (int i = 0; i < Parts.Count; i++) if (Parts[i] is WingPart) wingStarts.Add(Layout.Start(i));
             Layout.SetLegacyStarts(legStart, wings < 0 ? eyes : wings, eyes, chains.ToArray(), wingStarts.ToArray());
         }
 
@@ -271,10 +271,19 @@ namespace CreatureKit
                 return;
             }
             dst.bodyPlan = CreatureBodyPlan.Spine;
-            var body = (SpineBody)Body;
-            dst.spacing = body.spacing; dst.joints = body.BuildJoints(); dst.headCapLength = body.headCapLength; dst.tailTipLength = body.tailTipLength;
-            dst.ringSegments = body.ringSegments; dst.ringsPerSegment = body.ringsPerSegment;
-            dst.rigidHeadJoints = body.RigidHeadJoints;   // a spine body's head is rigid unless set to 0 (auto: its profile's head)
+            if (Body is SpineBody body)
+            {
+                dst.spacing = body.spacing; dst.joints = body.BuildJoints(); dst.headCapLength = body.headCapLength; dst.tailTipLength = body.tailTipLength;
+                dst.ringSegments = body.ringSegments; dst.ringsPerSegment = body.ringsPerSegment;
+                dst.rigidHeadJoints = body.RigidHeadJoints;   // a spine body's head is rigid unless set to 0 (auto: its profile's head)
+            }
+            else
+            {
+                // another chain body (KitAirborne.cs: ISpineChainBody, e.g. RayBody) draws its own mesh
+                var chain = (ISpineChainBody)Body;
+                dst.spacing = chain.Spacing; dst.joints = chain.BuildJoints(); dst.headCapLength = chain.HeadCapLength; dst.tailTipLength = chain.TailTipLength;
+                dst.rigidHeadJoints = chain.RigidHeadJoints;
+            }
             dst.legs = new LegSpec[Limbs.Count];
             for (int i = 0; i < Limbs.Count; i++) dst.legs[i] = Limbs[i].ToLegSpec();
             Walk walk = Module<Walk>();
@@ -315,6 +324,7 @@ namespace CreatureKit
             var ant = new List<AntennaSpec>();
             foreach (CreaturePart p in Parts) if (p is Antenna an) ant.Add(an.ToRuntime());
             dst.antennae = ant.ToArray();
+            foreach (CreatureModule m in Modules) m.Configure(dst);   // modules with runtime settings of their own (QuadLaunch, SkyHunt)
             dst.InvalidateLayout();
         }
 

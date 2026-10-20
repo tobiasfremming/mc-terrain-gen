@@ -11,6 +11,7 @@ using UnityEngine;
 public static class AviarySizing
 {
     public const float kScaleCap = 1.5f;
+    const float kSoarRoom = 1.25f;   // the roof over a soarer's circling height (SkyHunt)
     const float kTurnRadii = 2.6f, kLandingTurns = 2.2f, kBodyLengths = 1.6f, kAltitudes = 3f, kRises = 2f;
 
     public static float Radius(CreatureSpecies sp, float maxScale, float baseRadius)
@@ -18,7 +19,7 @@ public static class AviarySizing
         float legacy = baseRadius * Mathf.Max(1f, maxScale);
         if (sp == null) return legacy;
         sp = sp.Compiled.Runtime;
-        if (!sp.CanFly) return legacy;
+        if (!sp.CanFly) return CreatureKit.Airborne.Of(sp) is CreatureKit.IAirborne air ? air.AviaryRadius(sp, maxScale, baseRadius) : legacy;
         float based = baseRadius * Mathf.Clamp(maxScale, 1f, kScaleCap);
         float v = sp.flight.cruiseSpeed * Mathf.Sqrt(maxScale);
         float turn = v * v / (FlightModel.G * Mathf.Tan(sp.flight.maxBankDeg * Mathf.Deg2Rad));
@@ -34,11 +35,12 @@ public static class AviarySizing
         float legacy = baseHeight * Mathf.Max(1f, maxScale);
         if (sp == null) return legacy;
         sp = sp.Compiled.Runtime;
-        if (!sp.CanFly) return legacy;
+        if (!sp.CanFly) return CreatureKit.Airborne.Of(sp) is CreatureKit.IAirborne air ? air.AviaryHeight(sp, maxScale, baseHeight) : legacy;
         float based = baseHeight * Mathf.Clamp(maxScale, 1f, kScaleCap);
         AirTwistSpec t = sp.flight.twist;
         float rise = Mathf.Max(Mathf.Max(t.corkscrewAmplitude, t.barrelRadius), t.loopRadius) * 2f * maxScale;
         float need = kAltitudes * sp.flight.minAltitude * maxScale + kRises * rise;
+        if (sp.flight.soarCeiling > 0f) need = Mathf.Max(need, kSoarRoom * sp.flight.soarCeiling * maxScale);   // a high soarer
         return Mathf.Max(based, need);
     }
 }

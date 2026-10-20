@@ -64,6 +64,11 @@ public sealed class CreatureRenderer : IDisposable
 
     Matrix4x4[] _skin;
     CreatureInstance[] instances;
+    // creature fur (Fur look module, Scripts/Creatures/Fur): drawn after the body with the same buffers; null = none
+    // (every species without fur: one null test per individual, nothing else)
+    CreatureKit.ICreatureFurDraw fur;
+    Vector3[] furCentres;
+    readonly int furCentreBone;
     int capacity;
     bool instancesDirty;
     GraphicsBuffer bonesBuf, instBuf, bindBuf;
@@ -77,6 +82,11 @@ public sealed class CreatureRenderer : IDisposable
     internal CreatureInstance[] InstancesForTest => instances;
     internal MaterialPropertyBlock PropsForTest => props;
     internal Vector4[] PartLayersForTest => partLayers;
+    internal Vector3[] FurCentresForTest => furCentres;
+    // The fur system (CreatureWorld attaches it for a species with the Fur module); the renderer disposes it.
+    public CreatureKit.ICreatureFurDraw Fur { get => fur; set => fur = value; }
+    public Matrix4x4[] BindPoses => bindPoses;
+    public Vector4 BodyParams => bodyParams;
     // the world bounds of the last Render (the draw's culling bounds)
     public Bounds LastBounds { get; private set; }
 
@@ -93,6 +103,7 @@ public sealed class CreatureRenderer : IDisposable
         reach = rd.Reach;
         bodyParams = rd.BodyParams;
         boneScratch = new Matrix4x4[bonesPer];
+        furCentreBone = cephalopod ? 0 : Mathf.Clamp(sp.JointCount / 2, 0, bonesPer - 1);
         partLayers = CreatureKit.PartLayers.Table(sp, QualitySettings.activeColorSpace == ColorSpace.Linear);
 
         // Without a graphics device (batch -nographics) only the CPU side runs.
@@ -160,6 +171,9 @@ public sealed class CreatureRenderer : IDisposable
         if (_skin != null) Array.Copy(_skin, skin, bodies.Count * bonesPer);
         if (instances != null) Array.Copy(instances, inst, bodies.Count);
         _skin = skin; instances = inst; capacity = newCapacity;
+        var centres = new Vector3[newCapacity];
+        if (furCentres != null) Array.Copy(furCentres, centres, bodies.Count);
+        furCentres = centres;
         if (gpu)
         {
             bonesBuf?.Dispose(); instBuf?.Dispose();
@@ -185,6 +199,7 @@ public sealed class CreatureRenderer : IDisposable
             if (cephalopod) for (int b = 0; b < bonesPer; b++) _skin[o + b] = OctoMath.MulAffine(boneScratch[b], bindPoses[b]);
             else for (int b = 0; b < bonesPer; b++) _skin[o + b] = boneScratch[b] * bindPoses[b];
             body.EncapsulateBounds(ref lo, ref hi);
+            if (fur != null) { Matrix4x4 c = boneScratch[furCentreBone]; furCentres[s] = new Vector3(c.m03, c.m13, c.m23); }
             maxScale = Mathf.Max(maxScale, body.SizeScale);
             if (body.DynamicLook) { body.UpdateLook(ref instances[s]); instancesDirty = true; }
         }
@@ -245,10 +260,12 @@ public sealed class CreatureRenderer : IDisposable
         rp.worldBounds = bounds;
         rp.matProps = props;
         Graphics.RenderMeshPrimitives(rp, Mesh, 0, n);
+        if (fur != null) fur.Draw(bonesBuf, instBuf, n, bodies, furCentres, instances);
     }
 
     public void Dispose()
     {
+        fur?.Dispose(); fur = null;
         bonesBuf?.Dispose(); bonesBuf = null;
         instBuf?.Dispose(); instBuf = null;
         bindBuf?.Dispose(); bindBuf = null;

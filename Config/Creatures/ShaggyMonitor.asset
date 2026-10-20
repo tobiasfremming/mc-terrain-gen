@@ -1,0 +1,477 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39d3296fcbe55a0429fe582610f52ec3, type: 3}
+  m_Name: ShaggyMonitor
+  m_EditorClassIdentifier: TerrainGen.Runtime::CreatureSpecies
+  scale: 4
+  kitVersion: 1
+  parts:
+  - rid: 1000
+  - rid: 1001
+  - rid: 1002
+  - rid: 1003
+  modules:
+  - rid: 1004
+  - rid: 1005
+  - rid: 1006
+  - rid: 1007
+  - rid: 1008
+  - rid: 1009
+  - rid: 1010
+  references:
+    version: 2
+    RefIds:
+    - rid: 1000
+      type: {class: SpineBody, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: body
+        at:
+          joint: 0
+          side: 0
+          offset: {x: 0, y: 0, z: 0}
+          slot: 0
+        mirror: 0
+        spacing: 0.06
+        headCapLength: 0.05
+        tailTipLength: 0.04
+        joints:
+        - halfWidth: 0.022
+          halfHeight: 0.018
+          clearance: 0.077999994
+          bendLimitDeg: 20
+          rigid: 0
+        - halfWidth: 0.032
+          halfHeight: 0.026
+          clearance: 0.085999995
+          bendLimitDeg: 20
+          rigid: 1
+        - halfWidth: 0.04
+          halfHeight: 0.032
+          clearance: 0.092
+          bendLimitDeg: 20
+          rigid: 1
+        - halfWidth: 0.036
+          halfHeight: 0.03
+          clearance: 0.089999996
+          bendLimitDeg: 20
+          rigid: 0
+        - halfWidth: 0.034
+          halfHeight: 0.03
+          clearance: 0.089999996
+          bendLimitDeg: 20
+          rigid: 0
+        - halfWidth: 0.036
+          halfHeight: 0.032
+          clearance: 0.092
+          bendLimitDeg: 20
+          rigid: 0
+        - halfWidth: 0.05
+          halfHeight: 0.04
+          clearance: 0.099999994
+          bendLimitDeg: 20
+          rigid: 0
+        - halfWidth: 0.062
+          halfHeight: 0.046
+          clearance: 0.106
+          bendLimitDeg: 20
+          rigid: 0
+        - halfWidth: 0.072
+          halfHeight: 0.052
+          clearance: 0.112
+          bendLimitDeg: 20
+          rigid: 0
+        - halfWidth: 0.08
+          halfHeight: 0.056
+          clearance: 0.116
+          bendLimitDeg: 20
+          rigid: 0
+        - halfWidth: 0.085
+          halfHeight: 0.058
+          clearance: 0.118
+          bendLimitDeg: 20
+          rigid: 0
+        - halfWidth: 0.084
+          halfHeight: 0.057
+          clearance: 0.117
+          bendLimitDeg: 20
+          rigid: 0
+        - halfWidth: 0.078
+          halfHeight: 0.054
+          clearance: 0.114
+          bendLimitDeg: 20
+          rigid: 0
+        - halfWidth: 0.066
+          halfHeight: 0.05
+          clearance: 0.11
+          bendLimitDeg: 20
+          rigid: 0
+        - halfWidth: 0.052
+          halfHeight: 0.044
+          clearance: 0.092
+          bendLimitDeg: 25
+          rigid: 0
+        - halfWidth: 0.044
+          halfHeight: 0.038
+          clearance: 0.074
+          bendLimitDeg: 25
+          rigid: 0
+        - halfWidth: 0.038
+          halfHeight: 0.033
+          clearance: 0.057
+          bendLimitDeg: 25
+          rigid: 0
+        - halfWidth: 0.033
+          halfHeight: 0.029
+          clearance: 0.041
+          bendLimitDeg: 25
+          rigid: 0
+        - halfWidth: 0.028
+          halfHeight: 0.025
+          clearance: 0.025
+          bendLimitDeg: 25
+          rigid: 0
+        - halfWidth: 0.024
+          halfHeight: 0.021
+          clearance: 0.021
+          bendLimitDeg: 25
+          rigid: 0
+        - halfWidth: 0.02
+          halfHeight: 0.018
+          clearance: 0.018
+          bendLimitDeg: 25
+          rigid: 0
+        - halfWidth: 0.017
+          halfHeight: 0.015
+          clearance: 0.015
+          bendLimitDeg: 25
+          rigid: 0
+        - halfWidth: 0.014
+          halfHeight: 0.012
+          clearance: 0.012
+          bendLimitDeg: 25
+          rigid: 0
+        - halfWidth: 0.011
+          halfHeight: 0.01
+          clearance: 0.01
+          bendLimitDeg: 25
+          rigid: 0
+        - halfWidth: 0.008
+          halfHeight: 0.007
+          clearance: 0.007
+          bendLimitDeg: 25
+          rigid: 0
+        - halfWidth: 0.005
+          halfHeight: 0.005
+          clearance: 0.005
+          bendLimitDeg: 25
+          rigid: 0
+        profile: []
+        jointCount: 0
+        rigidHead: 0
+        rigidHeadJoints: -1
+        ringSegments: 16
+        ringsPerSegment: 3
+    - rid: 1001
+      type: {class: Leg2Bone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: leg0
+        at:
+          joint: 7
+          side: 0
+          offset: {x: 0.05, y: -0.04, z: 0}
+          slot: 0
+        mirror: 1
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 0.21, y: 0, z: 0.095}
+        stepThreshold: 0.11
+        stepDuration: 0.13
+        stepLift: 0.045
+        overshoot: 0.08
+        footLength: 0.07
+        toeCount: 5
+        forwardSwingLimitDeg: 75
+        backSwingLimitDeg: 50
+        kneeRangeDeg: 50
+        kneeFlexDeg: 18
+        upperLength: 0.145
+        lowerLength: 0.135
+        upperRadius: 0.03
+        lowerRadius: 0.019
+        pole: {x: 0.6, y: 0.6, z: -0.9}
+        kneeBlend: 0
+    - rid: 1002
+      type: {class: Leg2Bone, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: leg2
+        at:
+          joint: 13
+          side: 0
+          offset: {x: 0.05, y: -0.02, z: 0}
+          slot: 0
+        mirror: 1
+        role: 0
+        gaitGroup: -1
+        restOffset: {x: 0.22, y: 0, z: 0.01}
+        stepThreshold: 0.11
+        stepDuration: 0.13
+        stepLift: 0.045
+        overshoot: 0.08
+        footLength: 0.075
+        toeCount: 5
+        forwardSwingLimitDeg: 75
+        backSwingLimitDeg: 50
+        kneeRangeDeg: 50
+        kneeFlexDeg: 18
+        upperLength: 0.145
+        lowerLength: 0.135
+        upperRadius: 0.032
+        lowerRadius: 0.02
+        pole: {x: 0.6, y: 0.6, z: 0.9}
+        kneeBlend: 0
+    - rid: 1003
+      type: {class: Eyes, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        id: eyes
+        at:
+          joint: 1
+          side: 0
+          offset: {x: 0.024, y: 0.014, z: 0.008}
+          slot: 0
+        mirror: 0
+        radius: 0.007
+        cluster: []
+    - rid: 1004
+      type: {class: Walk, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        speed: 0.9
+        turnRateDeg: 160
+        accel: 3
+        turnSlowdown: 0.5
+        gaitSwayDeg: 12
+        gaitRollDeg: 3
+        subSteps: 1
+        pattern: 1
+        waveGroups: 4
+        bob:
+          amplitude: 0
+          hz: 0
+          damping: 0
+    - rid: 1005
+      type: {class: Slither, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        undulationDeg: 6
+        undulationHz: 1.4
+    - rid: 1006
+      type: {class: Climb, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        maxSurfaceAngleDeg: 0
+        maxHeightBodyLengths: 0
+        speedFactor: 0
+        descentSpeedFactor: 0
+        clearanceFactor: 0
+        strideFactor: 0
+        stepTimeFactor: 0
+        liftFactor: 0
+        upRateDeg: 0
+        upSmoothJoints: 0
+        pitchLimitDeg: 0
+        minWidthFactor: 0
+    - rid: 1007
+      type: {class: Wander, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+    - rid: 1008
+      type: {class: ClimbExcursion, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+    - rid: 1009
+      type: {class: Skin, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        dorsal: {r: 0.8, g: 0.62, b: 0.4, a: 1}
+        flank: {r: 0.76, g: 0.53, b: 0.32, a: 1}
+        belly: {r: 0.92, g: 0.82, b: 0.64, a: 1}
+        pattern: {r: 0.27, g: 0.17, b: 0.1, a: 1}
+        patternType: 4
+        patternScale: 9
+        patternContrast: 0.7
+        patternSoftness: 0.25
+        spotScale: 0.08
+        smoothness: 0.5
+        rimStrength: 0.6
+        subsurface: 0.3
+        sizeJitter: 0.08
+        hueJitter: 0.01
+        valueJitter: 0.06
+    - rid: 1010
+      type: {class: Fur, ns: CreatureKit, asm: TerrainGen.Runtime}
+      data:
+        regions:
+        - name: pelt
+          kind: 0
+          partMask: 1
+          arcFrom: 0.16
+          arcTo: 1.56
+          arcEdge: 0.04
+          dorsalFrom: -1
+          dorsalTo: 1
+          dorsalEdge: 0
+          length: 0.007
+          lengthJitter: 0.25
+          density: 80
+          width: 0.0005
+          rootColour: {r: 0.22, g: 0.14, b: 0.08, a: 1}
+          tipColour: {r: 0.86, g: 0.7, b: 0.47, a: 1}
+          bodyTint: 0.55
+          liftDeg: 20
+          flowBack: 0.8
+          flowDown: 0.4
+          jitterDeg: 10
+          clump: 0
+          clumpSize: 1
+          stiffnessHz: 3
+          damping: 0.5
+          droop: 0.35
+        - name: leg pelt
+          kind: 0
+          partMask: 2
+          arcFrom: 0.0
+          arcTo: 0.25
+          arcEdge: 0.04
+          dorsalFrom: -1
+          dorsalTo: 1
+          dorsalEdge: 0
+          length: 0.005
+          lengthJitter: 0.25
+          density: 80
+          width: 0.00045
+          rootColour: {r: 0.22, g: 0.14, b: 0.08, a: 1}
+          tipColour: {r: 0.86, g: 0.7, b: 0.47, a: 1}
+          bodyTint: 0.55
+          liftDeg: 20
+          flowBack: 0.2
+          flowDown: 1.0
+          jitterDeg: 10
+          clump: 0
+          clumpSize: 1
+          stiffnessHz: 3
+          damping: 0.5
+          droop: 0.3
+        - name: mane
+          kind: 1
+          partMask: 1
+          arcFrom: 0.17
+          arcTo: 0.78
+          arcEdge: 0.05
+          dorsalFrom: 0.5
+          dorsalTo: 1
+          dorsalEdge: 0.3
+          length: 0.075
+          lengthJitter: 0.3
+          density: 30000
+          width: 0.004
+          rootColour: {r: 0.3, g: 0.19, b: 0.11, a: 1}
+          tipColour: {r: 0.93, g: 0.8, b: 0.56, a: 1}
+          bodyTint: 0.3
+          liftDeg: 55
+          flowBack: 0.85
+          flowDown: 0.25
+          jitterDeg: 16
+          clump: 0.6
+          clumpSize: 6
+          stiffnessHz: 3
+          damping: 0.35
+          droop: 0.6
+        - name: back shag
+          kind: 1
+          partMask: 1
+          arcFrom: 0.55
+          arcTo: 1.0
+          arcEdge: 0.08
+          dorsalFrom: -0.1
+          dorsalTo: 1
+          dorsalEdge: 0.35
+          length: 0.045
+          lengthJitter: 0.3
+          density: 20000
+          width: 0.0035
+          rootColour: {r: 0.22, g: 0.14, b: 0.08, a: 1}
+          tipColour: {r: 0.86, g: 0.7, b: 0.47, a: 1}
+          bodyTint: 0.45
+          liftDeg: 28
+          flowBack: 0.55
+          flowDown: 0.85
+          jitterDeg: 14
+          clump: 0.5
+          clumpSize: 5
+          stiffnessHz: 3.5
+          damping: 0.4
+          droop: 0.7
+        - name: tail crest
+          kind: 1
+          partMask: 1
+          arcFrom: 0.95
+          arcTo: 1.32
+          arcEdge: 0.06
+          dorsalFrom: 0.6
+          dorsalTo: 1
+          dorsalEdge: 0.2
+          length: 0.035
+          lengthJitter: 0.3
+          density: 20000
+          width: 0.003
+          rootColour: {r: 0.3, g: 0.19, b: 0.11, a: 1}
+          tipColour: {r: 0.93, g: 0.8, b: 0.56, a: 1}
+          bodyTint: 0.35
+          liftDeg: 45
+          flowBack: 0.9
+          flowDown: 0.1
+          jitterDeg: 12
+          clump: 0.5
+          clumpSize: 5
+          stiffnessHz: 3.5
+          damping: 0.4
+          droop: 0.5
+        - name: tail tuft
+          kind: 1
+          partMask: 1
+          arcFrom: 1.34
+          arcTo: 1.6
+          arcEdge: 0.05
+          dorsalFrom: -1
+          dorsalTo: 1
+          dorsalEdge: 0
+          length: 0.07
+          lengthJitter: 0.3
+          density: 30000
+          width: 0.003
+          rootColour: {r: 0.3, g: 0.19, b: 0.11, a: 1}
+          tipColour: {r: 0.93, g: 0.8, b: 0.56, a: 1}
+          bodyTint: 0.2
+          liftDeg: 35
+          flowBack: 1.0
+          flowDown: 0.0
+          jitterDeg: 18
+          clump: 0.7
+          clumpSize: 8
+          stiffnessHz: 2
+          damping: 0.3
+          droop: 0.6
+        seed: 7
+        maxStrands: 8000
+        shells: 14
+        maxSimulated: 6
+        strandFadeStart: 5
+        strandFadeEnd: 12
+        shellFadeEnd: 20
+        pattern: 0.8
+        rootOcclusion: 0.65
+        highlight: 0.3
+        translucency: 0.5

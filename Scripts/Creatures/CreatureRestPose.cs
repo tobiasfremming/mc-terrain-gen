@@ -12,7 +12,14 @@ public static class CreatureRestPose
     public static Matrix4x4[] BoneWorld(CreatureSpecies sp)
     {
         sp = sp.Compiled.Runtime;   // creature kit: the runtime view (a legacy asset is its own)
-        return sp.WingCount > 0 ? WingedMeshBuilder.RestBoneWorld(sp, sp.wings) : BoneWorld(Sim(sp));
+        if (sp.WingCount == 0) return BoneWorld(Sim(sp));
+        // = WingedMeshBuilder.RestBoneWorld(sp, sp.wings), then the parts whose bones follow the wing bones re-pose
+        // them on the spread wings (CreatureKit.KitRuntime.AfterSpreadWings; none for the shipped species)
+        CreatureSim sim = Sim(sp);
+        WingedMeshBuilder.StraightenBind(sp, sp.wings, sim);
+        Matrix4x4[] m = WingedMeshBuilder.RestBoneWorld(sp, sp.wings, sim, out _);
+        CreatureKit.KitRuntime.AfterSpreadWings(sim, m);
+        return m;
     }
 
     internal static Matrix4x4[] BoneWorld(CreatureSim sim)

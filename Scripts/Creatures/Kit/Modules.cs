@@ -127,7 +127,7 @@ namespace CreatureKit
             if (spec == null) return "Fly: no spec";
             if (twist.swimAmplitude < 0f || twist.corkscrewAmplitude < 0f || twist.barrelRadius < 0f || twist.loopRadius < 0f) return "Fly.twist: amplitudes must be >= 0";
             if (twist.CanCorkscrew && twist.corkscrewTurns < 0) return "Fly.twist: corkscrewTurns must be >= 0";
-            for (int i = 0; i < c.Parts.Count; i++) if (c.Parts[i] is Wing) return null;
+            for (int i = 0; i < c.Parts.Count; i++) if (c.Parts[i] is WingPart) return null;
             return "Fly needs Wing parts";
         }
     }

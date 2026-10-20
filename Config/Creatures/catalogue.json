@@ -2,6 +2,257 @@
   "version": 1,
   "parts": [
     {
+      "name": "RayBody",
+      "kind": "Body",
+      "status": "exists",
+      "bones": "= jointCount",
+      "materialLayers": [
+        15
+      ],
+      "system": "CreatureSim chain (ISpineChainBody) + RayBody.EmitMesh",
+      "useWhen": "manta and eagle rays, skates, stingrays, flatfish-like gliders: a disc body whose sides are its wings",
+      "summary": "The thick flat body of a ray: a short stiff spine chain (the sim runs it like a SpineBody's) under a broad lens-shaped trunk - domed back, flatter belly, blunt rear at the tail root - whose edges run on into RayWing pectoral fins without a seam (one shared surface, RayShape).",
+      "usedBy": [
+        "SkyManta"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "jointCount",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "spine joints head to tail root",
+          "range": "3..24",
+          "example": "manta 8"
+        },
+        {
+          "name": "spacing",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "joint spacing",
+          "range": "",
+          "example": "manta 0.14"
+        },
+        {
+          "name": "headCapLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "disc front ahead of joint 0 (the head and mouth)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "tailTipLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "disc rear behind the last joint (the tail root)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "halfWidth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "half width of the body; the wings start here",
+          "range": "",
+          "example": "manta 0.24"
+        },
+        {
+          "name": "thickness",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "full thickness at the centre",
+          "range": "",
+          "example": "manta 0.2"
+        },
+        {
+          "name": "edgeThickness",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "full thickness at the body's edge (the wing root)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "trailingThickness",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "minimum thickness of the trailing edge (never a knife edge)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "headRound",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the front edge recedes this much at the body's edge (a rounded head)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "rearInset",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the rear edge comes forward this much at the body's edge",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "topShare",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "share of the thickness above the chord line (domed back, flatter belly)",
+          "range": "0.3..0.8",
+          "example": ""
+        },
+        {
+          "name": "fullness",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "section fullness at the centre (exponent on the thickness form: < 1 fuller)",
+          "range": "0.3..1",
+          "example": ""
+        },
+        {
+          "name": "bluntRear",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "blunt rear at the centre: the section ends this far before its fine trailing edge (the tail root)",
+          "range": "0..0.4",
+          "example": ""
+        },
+        {
+          "name": "bendLimitDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "bend limit per joint (a ray's trunk is stiff)",
+          "range": "",
+          "example": "manta 5"
+        },
+        {
+          "name": "columns",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: columns across the body",
+          "range": "4..24",
+          "example": "default 8"
+        },
+        {
+          "name": "dorsalFinHeight",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "dorsal fin height (0 = none)",
+          "range": "",
+          "example": "manta 0.07"
+        },
+        {
+          "name": "dorsalFinLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "dorsal fin base length",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "dorsalFinAt",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "dorsal fin place along the spine: 0 head .. 1 last joint",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "dorsalFinThickness",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "dorsal fin thickness at its base",
+          "range": "",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "SoftBody",
       "kind": "Body",
       "status": "exists",
@@ -105,8 +356,10 @@
       "useWhen": "anything with a backbone or a segmented trunk",
       "summary": "Bend-limited follow-the-leader chain riding the ground or a climbed surface (CreatureSim). The body of every walker, snake and the wyvern. Its head is rigid by default (rigidHeadJoints: auto from the profile; 0 = off).",
       "usedBy": [
+        "Apex",
         "Crocodile",
         "DaddyLongLegs",
+        "Delver",
         "DesertBeetle",
         "DesertMonitor",
         "DesertSnake",
@@ -118,6 +371,7 @@
         "KomodoDragon",
         "RockCrab",
         "Scolopendra",
+        "ShaggyMonitor",
         "SkyDragon",
         "Tarantula",
         "TentacleCrab",
@@ -1208,6 +1462,366 @@
       ]
     },
     {
+      "name": "DigLeg",
+      "kind": "Limb",
+      "status": "exists",
+      "bones": "3",
+      "materialLayers": [
+        1,
+        11
+      ],
+      "system": "CreatureLegs (gait groups, throttle, sway) + DigLeg.EmitMesh (LimbLoft)",
+      "useWhen": "burrowers and diggers: moles, armadillos, pangolins, badgers, aardvarks, any heavy limb with spade claws",
+      "summary": "Heavy digging limb: walks as a Leg2Bone (TwoBoneIK, pole, limits, ankle), drawn with a buried shoulder mass and deltoid hump, a short thick upper limb, a ball joint, a forearm swelling to the wrist, a broad spade hand turned out and big flat scimitar claws (middle longest) whose tips meet the ground. `digs` lets a Burrow part pose it in a scoop stroke.",
+      "usedBy": [
+        "Delver"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "role",
+          "type": "Walk / Feeler / WingArm / Folded",
+          "unit": "Enum",
+          "size": "-",
+          "meaning": "Walk steps in its gait group; Feeler is posed, never plants; WingArm is set by compose for a Wing's arm; Folded: a Wing's arm held folded on the ground (wrist at restOffset, never plants), flown by the Wing in the air",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "gaitGroup",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "gait group (one group steps at a time); -1 = from the Walk module's pattern",
+          "range": "-1..31",
+          "example": ""
+        },
+        {
+          "name": "restOffset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "foot rest point in the attach frame (x mirrored by side; y ignored: projected to the ground)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "stepThreshold",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "foot travel before it steps (comfort radius)",
+          "range": "",
+          "example": "monitor 0.11"
+        },
+        {
+          "name": "stepDuration",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "step duration",
+          "range": "",
+          "example": "monitor 0.12"
+        },
+        {
+          "name": "stepLift",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "step apex height",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "overshoot",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the step lands this far ahead of the rest point",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "footLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "foot (tarsus claw) length",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "toeCount",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "toes (arthropod: tarsus claws)",
+          "range": "0..6",
+          "example": ""
+        },
+        {
+          "name": "forwardSwingLimitDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "upper bone (arthropod: coxa yaw) swing limit toward the head, 0 = 55",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "backSwingLimitDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "swing limit toward the tail, 0 = 55",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "kneeRangeDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "knee range around its rest bend, 0 = 35 (arthropod: reach synergy extension)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "kneeFlexDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "knee flexion past rest, 0 = kneeRange (arthropod: reach synergy flexion)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "upperLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "upper bone length",
+          "range": "0.005..2",
+          "example": "delver fore 0.12"
+        },
+        {
+          "name": "lowerLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "lower bone length",
+          "range": "0.005..2",
+          "example": "delver fore 0.115"
+        },
+        {
+          "name": "upperRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "upper bone radius",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "lowerRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "lower bone radius",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "pole",
+          "type": "Vector3",
+          "unit": "Direction",
+          "size": "-",
+          "meaning": "knee direction hint in the attach frame (x mirrored): front z < 0 (elbow back), rear z > 0 (knee forward)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "ankleHeight",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "wrist / ankle height above the foot's contact point, 0 = 1.2 x lowerRadius, < 0 = none",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "shoulderMass",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "shoulder / hip mass radius, x upperRadius",
+          "range": "1..3",
+          "example": "default 1.6"
+        },
+        {
+          "name": "rootDepth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "how deep the mass reaches into the body, x its radius",
+          "range": "0.3..2",
+          "example": "default 1.2"
+        },
+        {
+          "name": "forearmSwell",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "forearm swelling toward the wrist, x lowerRadius (0 = a plain taper)",
+          "range": "0..1",
+          "example": "default 0.3"
+        },
+        {
+          "name": "handWidth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "hand half-width at the knuckles, x lowerRadius",
+          "range": "0.5..3",
+          "example": "default 1.5"
+        },
+        {
+          "name": "handThick",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "hand half-thickness, x lowerRadius",
+          "range": "0.2..1.5",
+          "example": "default 0.55"
+        },
+        {
+          "name": "handYawDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the hand turned outward from the heading",
+          "range": "-30..60",
+          "example": "default 15"
+        },
+        {
+          "name": "clawLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the longest claw's length (0 = 0.9 x footLength)",
+          "range": "",
+          "example": "delver fore 0.11"
+        },
+        {
+          "name": "clawCurveDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "claw curl over its length",
+          "range": "10..140",
+          "example": "default 70"
+        },
+        {
+          "name": "clawWidth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "claw width / height at the base (flat side to side)",
+          "range": "0.2..1",
+          "example": "default 0.55"
+        },
+        {
+          "name": "clawSpreadDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "fan of the claws from the inner to the outer",
+          "range": "0..120",
+          "example": "default 35"
+        },
+        {
+          "name": "digs",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "a digging limb: a Burrow part poses it in its scoop stroke",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "around",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: vertices round the limb, 0 = 16",
+          "range": "0..32",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "Leg2Bone",
       "kind": "Limb",
       "status": "exists",
@@ -1220,9 +1834,11 @@
       "useWhen": "lizards, mammals, birds' legs, wing arms",
       "summary": "Vertebrate two-bone limb: TwoBoneIK with a pole, rounded knee blend, swing/knee limits (R16), keep-out (R28). Also the wyvern's wing arm.",
       "usedBy": [
+        "Apex",
         "DesertMonitor",
         "Hexadrake",
         "KitMonitor",
+        "ShaggyMonitor",
         "SkyDragon",
         "TestHexapod",
         "WingedSerpent"
@@ -2024,6 +2640,259 @@
       ]
     },
     {
+      "name": "PteroWing",
+      "kind": "Wing",
+      "status": "exists",
+      "bones": "as Wing + 6 (wing-finger phalanges 2-4, the pteroid, 2 propatagium patches)",
+      "materialLayers": [
+        8,
+        1,
+        2
+      ],
+      "system": "CreatureFlight + CreatureWings (the beat, the arm, the rays) + PteroWingRuntime (phalanges, pteroid, propatagium; stage Late) + PteroWingMesh",
+      "useWhen": "pterosaurs (azhdarchids, pteranodons): a long single wing finger, a pteroid and propatagium, walking on the folded wings' knuckles",
+      "summary": "A pterosaur's wing on an arm limb (a Leg2Bone it names), flown like a Wing (CreatureFlight + CreatureWings): crested humerus, two-bone forearm, long metacarpal to the knuckle, three small clawed walking digits, a pteroid with the propatagium in front of the arm, a four-phalanx wing finger that sweeps, lags the stroke and curls when folded, and a narrow brachiopatagium with a smooth trailing edge to the flank.",
+      "usedBy": [
+        "Apex"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "arm",
+          "type": "string",
+          "unit": "PartRef",
+          "size": "-",
+          "meaning": "the Leg2Bone this wing rides on (its role becomes WingArm); a mirrored wing names the unmirrored id and gets .L / .R",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "spec",
+          "type": "WingSpec",
+          "unit": "Spec",
+          "size": "-",
+          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "phalanges",
+          "type": "float[]",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the wing finger (fingerLengths[0]) split into its four phalanges, root to tip (sum 1)",
+          "range": "",
+          "example": "azhdarchid 0.32 0.29 0.24 0.15"
+        },
+        {
+          "name": "fingerRoot",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "wing finger radius at its root (it tapers to a fine tip)",
+          "range": "",
+          "example": "apex 0.017"
+        },
+        {
+          "name": "sweepDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "static sweep back (toward the trailing edge) at each of the three interphalangeal joints",
+          "range": "-10..15",
+          "example": ""
+        },
+        {
+          "name": "flexDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the tip's lag against the stroke: each interphalangeal joint bends up to this much (up on the downstroke)",
+          "range": "0..20",
+          "example": ""
+        },
+        {
+          "name": "flexSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "time constant of that lag (and of the curl's ease)",
+          "range": "0.01..1",
+          "example": ""
+        },
+        {
+          "name": "foldCurlDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "folded on the ground: each interphalangeal joint curls this much dorsally (the folded blade arches back)",
+          "range": "-20..30",
+          "example": ""
+        },
+        {
+          "name": "carpusAt",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the carpus (the pteroid's root, the forearm's end) along the lower arm bone, 0 elbow .. 1 knuckle",
+          "range": "0.3..0.9",
+          "example": ""
+        },
+        {
+          "name": "pteroidLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "pteroid length",
+          "range": "",
+          "example": "apex 0.13"
+        },
+        {
+          "name": "pteroidDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the pteroid turned from the carpus-shoulder line toward the leading edge, in the arm's plane",
+          "range": "5..80",
+          "example": ""
+        },
+        {
+          "name": "crest",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the deltopectoral crest's height on the humerus, x the upper arm radius (0 = none)",
+          "range": "0..3",
+          "example": ""
+        },
+        {
+          "name": "digitLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the three walking digits' length (0 = none)",
+          "range": "",
+          "example": "apex 0.07"
+        },
+        {
+          "name": "trailingCurve",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the trailing edge's concavity between neighbouring rays, a fraction of the zone's reach",
+          "range": "0..0.3",
+          "example": ""
+        },
+        {
+          "name": "leadingEdge",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the leading edge's thickness: the membrane rolls over the wing finger into a rounded edge this thick (0 = a flat sheet to the finger)",
+          "range": "",
+          "example": "apex 0.012"
+        },
+        {
+          "name": "camber",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the membrane's camber: it bellies up between the leading edge and the trailing edge by this x the local chord",
+          "range": "0..0.15",
+          "example": ""
+        },
+        {
+          "name": "membraneColumns",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: membrane columns per zone (across the rays)",
+          "range": "4..32",
+          "example": ""
+        },
+        {
+          "name": "membraneRows",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: membrane rows (out from the knuckle)",
+          "range": "4..48",
+          "example": ""
+        },
+        {
+          "name": "bindFold",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the bind pose's fold (0 = the spread glide pose, as a Wing): the mesh is built part-folded, so the flight's spread opens the membrane's zones and the ground fold closes them each by a ratio two-ray skinning can follow (a pterosaur folds its finger along the arm: from the spread bind its zones close to a seventh and turn inside out)",
+          "range": "0..0.8",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "Wing",
       "kind": "Wing",
       "status": "exists",
@@ -2137,8 +3006,10 @@
       "useWhen": "always (every shipped species has two eye bones)",
       "summary": "Two glossy eye spheres on their own bones (sp.EyeBone), placed at the socket (joint, offset x mirrored); cluster eyes ride them (spiders).",
       "usedBy": [
+        "Apex",
         "Crocodile",
         "DaddyLongLegs",
+        "Delver",
         "DesertBeetle",
         "DesertMonitor",
         "DesertSnake",
@@ -2150,7 +3021,9 @@
         "KomodoDragon",
         "RockCrab",
         "Scolopendra",
+        "ShaggyMonitor",
         "SkyDragon",
+        "SkyManta",
         "Swinger",
         "Tarantula",
         "TentacleCrab",
@@ -2449,6 +3322,302 @@
           "meaning": "probing sweeps per second",
           "range": "",
           "example": "scolopendra 1.3"
+        }
+      ]
+    },
+    {
+      "name": "LongNeck",
+      "kind": "Chain",
+      "status": "exists",
+      "bones": "= segments (the last is the head's bone)",
+      "materialLayers": [
+        0
+      ],
+      "system": "LongNeckRuntime (part runtime, stage Late: posture, head follower, Hermite neck) + LongNeck.EmitMesh (rings)",
+      "useWhen": "long necks that are carried, not dragged: pterosaurs, giraffes, sauropods, swans, plesiosaurs; any head held up off the body",
+      "summary": "A long neck on bones of its own from a spine joint (the chest), held in a posture (raised on the ground, stretched forward in the air) instead of dragged along the path: a stabilised head that glides while the body bobs, glances, calls, turns toward an aim point and strikes. Its last bone carries a head part (BeakHead).",
+      "usedBy": [
+        "Apex"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "segments",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "bones: neck segments + the head's (the last)",
+          "range": "4..24",
+          "example": "apex 11"
+        },
+        {
+          "name": "length",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "neck length, root to the head bone",
+          "range": "",
+          "example": "apex 0.9"
+        },
+        {
+          "name": "rootRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "half width at the root (it flares into the chest)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "headRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "half width at the head",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "depth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "cross-section height / width",
+          "range": "0.6..1.6",
+          "example": ""
+        },
+        {
+          "name": "baseDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "on the ground: the base's elevation above the heading",
+          "range": "-30..90",
+          "example": ""
+        },
+        {
+          "name": "headDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "on the ground: the head's elevation (its forward axis) above the heading",
+          "range": "-60..60",
+          "example": ""
+        },
+        {
+          "name": "flightBaseDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "in the air: the base's elevation (stretched forward)",
+          "range": "-30..60",
+          "example": ""
+        },
+        {
+          "name": "flightHeadDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "in the air: the head's elevation",
+          "range": "-60..60",
+          "example": ""
+        },
+        {
+          "name": "bindBaseDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the bind (mesh) pose's base elevation: between the stance and the flight pose",
+          "range": "-30..90",
+          "example": ""
+        },
+        {
+          "name": "bindHeadDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the bind pose's head elevation",
+          "range": "-60..60",
+          "example": ""
+        },
+        {
+          "name": "reach",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the head point's distance from the root, x the neck's chord for its bend (< 1 leaves the neck slack)",
+          "range": "0.7..1",
+          "example": ""
+        },
+        {
+          "name": "stabiliseSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "the head follower's time constant (larger: steadier head, more lag)",
+          "range": "0.02..2",
+          "example": ""
+        },
+        {
+          "name": "glanceDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "idle glances: yaw / pitch amplitude (0 = none)",
+          "range": "0..80",
+          "example": ""
+        },
+        {
+          "name": "glanceSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "idle glances: mean interval",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "callDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "a call (on the ground, standing): the base and head rise by this much",
+          "range": "0..60",
+          "example": ""
+        },
+        {
+          "name": "callSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "a call's length (0 = it never calls)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "callInterval",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "mean interval between calls while standing",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "aimYawDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the most the head turns toward an aim point off the heading",
+          "range": "0..120",
+          "example": ""
+        },
+        {
+          "name": "strikeReach",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "striking: the head's reach toward the aim point, x the neck length",
+          "range": "0.5..1",
+          "example": ""
+        },
+        {
+          "name": "headClearance",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the head never comes lower than this over the ground under the chest",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "tipReach",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the head part's reach past the head bone along the head (a beak's tip): a strike lands this point on the aim point",
+          "range": "",
+          "example": "apex 0.6"
+        },
+        {
+          "name": "ringSides",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: vertices round each ring",
+          "range": "8..32",
+          "example": ""
+        },
+        {
+          "name": "ringsPerSegment",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: rings per neck segment",
+          "range": "1..8",
+          "example": ""
         }
       ]
     },
@@ -3033,6 +4202,346 @@
           "meaning": "material layer (part id): 14 tongue (restyle it with Layers), 1 limb, 0 body",
           "range": "0..15",
           "example": "default 14"
+        }
+      ]
+    },
+    {
+      "name": "WhipTail",
+      "kind": "Chain",
+      "status": "exists",
+      "bones": "= segments",
+      "materialLayers": [
+        15
+      ],
+      "system": "WhipTailRuntime (part runtime, stage AfterLimbs) + WhipTail.EmitMesh",
+      "useWhen": "manta and stingray whips, rat and opossum tails, whip lizards: any long thin tail with no muscle of its own that lags the body",
+      "summary": "A long thin tapering tail that trails the path its root flew, easing there more slowly toward the tip (the tip lags most), sagging a little; exact lengths, bend cone; a fine tapered tube.",
+      "usedBy": [
+        "SkyManta"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "length",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "length",
+          "range": "",
+          "example": "manta 1.8"
+        },
+        {
+          "name": "segments",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "segments (one bone each)",
+          "range": "2..24",
+          "example": "default 14"
+        },
+        {
+          "name": "radiusRoot",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "radius at the root",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "radiusTip",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "radius at the tip",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "followSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "the tip's lag: time constant of its follow (the root's is 0, growing along the tail)",
+          "range": "",
+          "example": "manta 0.35"
+        },
+        {
+          "name": "sagDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the tail sags by this much per segment under its own weight",
+          "range": "0..10",
+          "example": ""
+        },
+        {
+          "name": "maxBendDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "bend cone between segments",
+          "range": "5..60",
+          "example": ""
+        },
+        {
+          "name": "sides",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: sides of the tube",
+          "range": "4..16",
+          "example": "default 8"
+        }
+      ]
+    },
+    {
+      "name": "CephalicLobe",
+      "kind": "Fin",
+      "status": "exists",
+      "bones": "2 (base, tip)",
+      "materialLayers": [
+        15
+      ],
+      "system": "CephalicLobeRuntime (part runtime, stage Late) + CephalicLobe.EmitMesh",
+      "useWhen": "manta and devil ray head fins, rolled ear flaps, curled horn-like frills, a squid's rolled arms at rest",
+      "summary": "A head fin rolled up into a short horn (manta cephalic lobes): a thick sheet curled about its length, tighter toward the tip, jutting forward from the head. The base sways slowly and leans out of turns; the tip follows the base with lag (damped spring).",
+      "usedBy": [
+        "SkyManta"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "length",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "length, base to tip",
+          "range": "",
+          "example": "manta 0.22"
+        },
+        {
+          "name": "width",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "unrolled width at the base",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "thickness",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "sheet thickness at the base",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "curlDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "curl along its length: the tip turns down (and in, half as much) by this much",
+          "range": "0..180",
+          "example": ""
+        },
+        {
+          "name": "tipCurlDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "how far the flap is rolled up at the tip (0 flat, 360 a round horn)",
+          "range": "0..360",
+          "example": ""
+        },
+        {
+          "name": "pitchDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "points down from the head's forward",
+          "range": "-60..80",
+          "example": ""
+        },
+        {
+          "name": "splayDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "splays out to the side",
+          "range": "-45..45",
+          "example": ""
+        },
+        {
+          "name": "swayDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the base's slow sway amplitude",
+          "range": "0..30",
+          "example": ""
+        },
+        {
+          "name": "swayHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "the base's sway frequency",
+          "range": "",
+          "example": "manta 0.25"
+        },
+        {
+          "name": "turnLean",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "lean out of turns: degrees per deg/s of the body's yaw rate",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "followHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "the tip follows the base at this natural frequency",
+          "range": "",
+          "example": "manta 2.5"
+        },
+        {
+          "name": "damping",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "damping ratio of the tip's follow",
+          "range": "0.1..2",
+          "example": ""
         }
       ]
     },
@@ -3685,6 +5194,275 @@
       ]
     },
     {
+      "name": "RayWing",
+      "kind": "Fin",
+      "status": "exists",
+      "bones": "= stations x chordRows",
+      "materialLayers": [
+        15
+      ],
+      "system": "RayWingRuntime (part runtime, stage AfterLimbs) + RayWing.EmitMesh",
+      "useWhen": "manta / eagle ray / skate pectoral fins; any thick wing or fin that bends along its span AND its chord (a whale fluke, a cuttlefish fin, a soft-bodied flyer)",
+      "summary": "A thick pectoral wing that is a 2D chain: a lattice of stations (span) x chordRows (chord). The root segment is driven by the locomotion mode's stroke (IFlapDriver), every outer segment follows the one before it (a damped spring: the beat travels to a whipping tip), every chord row follows the row ahead (feathering wave to the trailing edge); the body's heave reaches it as inertia. Mesh: thick airfoil sections continuing the RayBody's edge (RayShape), round leading edge, falcate pointed tip.",
+      "usedBy": [
+        "SkyManta"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "span",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "span from the body's edge to the tip",
+          "range": "",
+          "example": "manta 1.35"
+        },
+        {
+          "name": "sweepDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "leading edge sweep from straight out sideways",
+          "range": "0..60",
+          "example": ""
+        },
+        {
+          "name": "tipSweep",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "extra sweep of the tip (x u^3: a falcate, swept-back tip)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "tipChord",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "chord at the tip",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "chordExponent",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "chord falls as (1 - u)^this (> 1: a concave trailing edge)",
+          "range": "0.5..3",
+          "example": ""
+        },
+        {
+          "name": "tipThickness",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "full thickness at the tip",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "thicknessFalloff",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "how fast the thick root thins out along the span (1 = the plain cubic)",
+          "range": "1..4",
+          "example": ""
+        },
+        {
+          "name": "stations",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "span stations (bones along the span)",
+          "range": "3..12",
+          "example": "default 7"
+        },
+        {
+          "name": "chordRows",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "chord rows (bones along the chord)",
+          "range": "3..8",
+          "example": "default 6"
+        },
+        {
+          "name": "subdivisions",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh columns per station interval",
+          "range": "1..6",
+          "example": "default 3"
+        },
+        {
+          "name": "flapDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "root stroke amplitude (the driven segment's dihedral, + up)",
+          "range": "0..60",
+          "example": "manta 30"
+        },
+        {
+          "name": "glideDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "root dihedral while gliding (+ up)",
+          "range": "-30..30",
+          "example": ""
+        },
+        {
+          "name": "glideTipDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "gliding: extra bend of the outer wing, growing to the tip (+ tips up, - drooped)",
+          "range": "-40..40",
+          "example": ""
+        },
+        {
+          "name": "spanHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "span chain: natural frequency of a segment following the one before",
+          "range": "",
+          "example": "manta 2.4"
+        },
+        {
+          "name": "spanDamping",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "span chain: damping ratio (< 0.7: the tip overshoots - the whip)",
+          "range": "0.1..2",
+          "example": ""
+        },
+        {
+          "name": "chordHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "chord chain: natural frequency of a row following the row ahead",
+          "range": "",
+          "example": "manta 3"
+        },
+        {
+          "name": "chordDamping",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "chord chain: damping ratio",
+          "range": "0.1..2",
+          "example": ""
+        },
+        {
+          "name": "featherDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "feathering: trailing rows' pitch per m/s of the leading edge's beat speed (scale 1)",
+          "range": "0..40",
+          "example": ""
+        },
+        {
+          "name": "inertiaDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "inertia: outer wing's lag per m/s^2 of the body's vertical acceleration",
+          "range": "0..10",
+          "example": ""
+        },
+        {
+          "name": "maxBendDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "largest bend between neighbouring span segments or chord rows",
+          "range": "5..60",
+          "example": ""
+        },
+        {
+          "name": "asymmetry",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "turns: the outer wing's stroke grows / shrinks by this x the turn's asymmetry",
+          "range": "0..1",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "ArmourPlates",
       "kind": "Rigid",
       "status": "exists",
@@ -3941,6 +5719,884 @@
           "meaning": "mesh: rows along a plate",
           "range": "3..24",
           "example": "default 8"
+        }
+      ]
+    },
+    {
+      "name": "BandShell",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "0 (each band rigid to its joint)",
+      "materialLayers": [
+        10
+      ],
+      "system": "mesh only (BandShell.EmitMesh, ShellBand)",
+      "useWhen": "armadillos, pangolins, glyptodonts, trilobites, woodlice, armoured diggers: any banded shell over the back, with a head shield",
+      "summary": "A carapace of overlapping transverse bands over the back, one per joint, each rigid to its joint: arched sections standing off the body, shingled front over back (rear edge proud, front edge tucked) so it bends without gaps or clipping, rolled scalloped rear lips, a hump over its middle, and an optional hood - bands ahead of the first, curling down over the head like a shield.",
+      "usedBy": [
+        "Delver"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "toJoint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "last joint with a band (the first is at.joint)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "lift",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the shell's stand-off above the body at the top",
+          "range": "",
+          "example": "delver 0.06"
+        },
+        {
+          "name": "sideLift",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "stand-off at the flanks",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "hump",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "extra height over the middle of the run (a hunched back)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "humpAt",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "where along the run the hump peaks (0 first band .. 1 last)",
+          "range": "0..1",
+          "example": "default 0.45"
+        },
+        {
+          "name": "humpWidth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the hump's half-width, fraction of the run",
+          "range": "0.1..2",
+          "example": "default 0.6"
+        },
+        {
+          "name": "edgeDrop",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the section's equator below the joint (the shell reaches down the flanks)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "skirtDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "how far the lower edge curls under past the equator",
+          "range": "-30..60",
+          "example": "default 8"
+        },
+        {
+          "name": "flare",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the lower edges flare out by this",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "thickness",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "shell thickness",
+          "range": "",
+          "example": "delver 0.008"
+        },
+        {
+          "name": "shingle",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "shingle step: the rear edge stands this proud, the front edge tucks this far in (> thickness / 2 + the bend's sweep)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "overlap",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "overlap of neighbouring bands, fraction of the joint spacing",
+          "range": "0..1",
+          "example": "default 0.45"
+        },
+        {
+          "name": "lobes",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "rounded lobes along each rear edge (0 = straight)",
+          "range": "0..40",
+          "example": ""
+        },
+        {
+          "name": "lobeDepth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "how far the rear edge draws back between lobes, fraction of the joint spacing",
+          "range": "0..0.6",
+          "example": ""
+        },
+        {
+          "name": "lip",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "rolled lip along the rear edge",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "square",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "section squareness: 2 = round, up to 4 = boxy shoulders",
+          "range": "2..4",
+          "example": "default 2.2"
+        },
+        {
+          "name": "hoodBands",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "hood bands ahead of the first band (0 = none)",
+          "range": "0..8",
+          "example": ""
+        },
+        {
+          "name": "hoodStep",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "each hood band's step forward, fraction of the joint spacing",
+          "range": "0.2..1.5",
+          "example": "default 0.75"
+        },
+        {
+          "name": "hoodCurlDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the front hood band's forward lean about its equator (its top overhangs the head; each band leans its share more)",
+          "range": "0..120",
+          "example": "default 45"
+        },
+        {
+          "name": "hoodFlare",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "each hood band grows by this (wider and taller: a flaring shield)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "hoodDrop",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "each hood band's lower edge drops by this",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "around",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: vertices across each band, 0 = 40",
+          "range": "0..96",
+          "example": ""
+        },
+        {
+          "name": "layer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer: 10 armour plate (restyle with Layers)",
+          "range": "0..15",
+          "example": "default 10"
+        }
+      ]
+    },
+    {
+      "name": "BeakHead",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "1 (the lower jaw)",
+      "materialLayers": [
+        0,
+        2
+      ],
+      "system": "BeakHeadRuntime (part runtime, stage Late: jaw, eye bones) + BeakHead.EmitMesh (SculptMesher pieces)",
+      "useWhen": "pterosaurs, birds, herons and storks, beaked dinosaurs, turtles: any head that is mostly beak; with a crest (casque, sail) or without",
+      "summary": "A beaked head from head-scale numbers: an elongated skull with eye sockets and an antorbital groove, a long keeled keratin beak, a lower jaw on its own bone that gapes when the neck calls or strikes, and a blade crest in its own layer; SDF solids (SculptField / SculptMesher). Rides a LongNeck's head bone or a spine joint; carries the species' eyes.",
+      "usedBy": [
+        "Apex"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "follow",
+          "type": "string",
+          "unit": "PartRef",
+          "size": "-",
+          "meaning": "the LongNeck whose head bone it rides (empty: rigid to at.joint, at.offset)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "skullLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "skull length behind the beak (occiput to the beak's root)",
+          "range": "",
+          "example": "apex 0.16"
+        },
+        {
+          "name": "skullHeight",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "skull half height",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "skullWidth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "skull half width",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "beakLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "beak length from its root to the tip",
+          "range": "",
+          "example": "apex 0.46"
+        },
+        {
+          "name": "beakDepth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the beak's half height at its root (upper beak)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "beakCompress",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "beak cross-section height / width",
+          "range": "0.8..3",
+          "example": ""
+        },
+        {
+          "name": "beakDroopDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the beak bends down (+) or up (-) toward its tip",
+          "range": "-20..30",
+          "example": ""
+        },
+        {
+          "name": "keel",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the keel (culmen ridge) along the upper beak, x the beak depth (0 = round)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "gapeDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the widest gape (a strike); a call opens it 0.6 x as far",
+          "range": "0..80",
+          "example": ""
+        },
+        {
+          "name": "clackInterval",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "mean interval between idle clacks (0 = none)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "crestHeight",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "crest height above the skull (0 = none)",
+          "range": "",
+          "example": "apex 0.07"
+        },
+        {
+          "name": "crestLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "crest length along the head",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "crestSweepDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "crest sweep back (0 = straight up)",
+          "range": "-30..80",
+          "example": ""
+        },
+        {
+          "name": "crestThickness",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "crest half thickness",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "crestAt",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the crest's root along the skull, 0 occiput .. 1 the beak's root",
+          "range": "0..1.5",
+          "example": ""
+        },
+        {
+          "name": "eyeOffset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "eye centre in the head frame (x mirrored)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "skinLayer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer of the skull and rostrum (0 = the body's skin)",
+          "range": "0..15",
+          "example": ""
+        },
+        {
+          "name": "beakLayer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer of the beak and jaw (2 = claw keratin)",
+          "range": "0..15",
+          "example": ""
+        },
+        {
+          "name": "crestLayer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer of the crest (2 = claw keratin; a species may restyle a spare row for it with Layers: the Apex's teal crest is row 13)",
+          "range": "0..15",
+          "example": ""
+        },
+        {
+          "name": "cell",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "polygoniser cell (~1/100 of the head's length)",
+          "range": "",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "Burrow",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "0 (poses the others' bones)",
+      "materialLayers": [],
+      "system": "BurrowRuntime (part runtime, stage Late; the LAST part: moves the other parts' bones) + CreatureSim Halt / Crouch / Display + CreatureDigging / TunnelNetwork",
+      "useWhen": "burrowers: moles, armadillos, sandworms, burrowing lizards and amphisbaenians, anything that digs in and bursts out",
+      "summary": "A digger's postures and trips underground: scratch and sniff, rest curled or flat; dig in (forelimbs scooping, head first), travel hidden along a real carved tunnel (or ride the enclosure's existing tunnels), burst out jaws first (CreatureSim.Display) and climb out. Shared TunnelNetwork per enclosure; carves through CreatureDigging, inside the enclosure only.",
+      "usedBy": [
+        "Delver"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "depth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "how far the body sinks under the surface (every joint, at the full dive)",
+          "range": "",
+          "example": "delver 0.6"
+        },
+        {
+          "name": "diveLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the dive's (and the climb-out's) run along the path: a joint sinks over this much travel past the hole",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "digSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "scooping before the dive into new ground",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "slipSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "the pause before slipping into an existing hole",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "lungeSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "the burst: the head rises out of the ground",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "roarSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "held agape after the burst",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "lungeJoints",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "joints the burst lifts (head first, fading)",
+          "range": "1..16",
+          "example": "default 6"
+        },
+        {
+          "name": "lungeLift",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "how high above its walking height the head bursts",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "lungePitchDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the head's pitch up at the burst",
+          "range": "0..80",
+          "example": "default 40"
+        },
+        {
+          "name": "tunnelRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "tunnel radius (the carve spheres')",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "carveStep",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "a carve every this x the radius of the head's travel underground",
+          "range": "0.3..2",
+          "example": "default 0.7"
+        },
+        {
+          "name": "carvePhysics",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "carve into the terrain's physical layer (colliders and creatures feel the holes); off = rendered only",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "holeSnap",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "a trip starts or ends at an existing hole within this distance",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "digCost",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "planning: a metre dug costs this many metres walked or ridden (> 1 favours existing tunnels)",
+          "range": "1..20",
+          "example": "default 4"
+        },
+        {
+          "name": "scoopDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the digging limbs' scoop stroke",
+          "range": "0..90",
+          "example": "default 45"
+        },
+        {
+          "name": "scoopHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "scoop strokes a second",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "sniffDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the head lowered to sniff and dig",
+          "range": "0..60",
+          "example": "default 22"
+        },
+        {
+          "name": "restCrouch",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "crouch at rest",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "restCurlDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the head tucked down under the hood at a curled rest",
+          "range": "0..70",
+          "example": "default 35"
+        },
+        {
+          "name": "blendSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "postures blend in and out over this",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "minUnderSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "out of sight at least this long: a trip that reaches its exit sooner tunnels on (turning off the wall) until then",
+          "range": "",
+          "example": "delver 8"
+        },
+        {
+          "name": "debris",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "clods of earth flung by the digging and the burst (one bone each; 0 = none)",
+          "range": "0..48",
+          "example": ""
+        },
+        {
+          "name": "debrisSize",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "a clod's size",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "debrisLayer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer of the clods (0 the body's skin: the palette's sandy colours)",
+          "range": "0..15",
+          "example": ""
+        },
+        {
+          "name": "carapaceFrom",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "a rigid carapace: joints from here to carapaceTo dive and climb as one (their sinks on a line), so the plates on them never turn against each other; -1 = none",
+          "range": "-1..",
+          "example": ""
+        },
+        {
+          "name": "carapaceTo",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "the carapace's last joint",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "hiddenShare",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "out of sight (Under) once this share of the joints, head first, is at the full depth (a tail tip may still show)",
+          "range": "0.3..1",
+          "example": "default 0.8"
         }
       ]
     },
@@ -5209,6 +7865,349 @@
       ]
     },
     {
+      "name": "Maw",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "1 (the lower jaw)",
+      "materialLayers": [
+        0,
+        13,
+        14
+      ],
+      "system": "MawRuntime (part runtime, stage Late) + Maw.EmitMesh (LimbLoft)",
+      "useWhen": "reptilian and monstrous heads with a huge gape: burrowers bursting out jaws first, crocodilian or theropod-like heads, deep-sea gapers",
+      "summary": "A big-mouthed head: a lofted skull rigid to its joint (brow ridges, nostril bosses, cheek flare) and a hinged mandible on its own bone, both lined with the mouth layer, with interlocking raked conical teeth along every lip (fangs at the front). Gapes with CreatureSim.Display (a burst, a threat) and breathes slowly otherwise.",
+      "usedBy": [
+        "Delver"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "skull",
+          "type": "MawKey[]",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "skull sections, back to front (>= 3)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "skull[].z",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "place along the head from the hinge (+ forward)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "skull[].halfWidth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "half width",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "skull[].top",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "top of the section above the hinge (the skull's roof; a mandible's floor)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "skull[].bottom",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "bottom of the section (the skull's palate; a mandible's chin)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mandible",
+          "type": "MawKey[]",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "mandible sections, back to front (>= 3), closed against the palate",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mandible[].z",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "place along the head from the hinge (+ forward)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mandible[].halfWidth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "half width",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mandible[].top",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "top of the section above the hinge (the skull's roof; a mandible's floor)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mandible[].bottom",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "bottom of the section (the skull's palate; a mandible's chin)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "square",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "how squared the lower halves are (superellipse exponent)",
+          "range": "2..6",
+          "example": "default 3"
+        },
+        {
+          "name": "brow",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "brow ridge height over the eyes",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "browAt",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "where along the head the brows peak (from the hinge)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "nostril",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "nostril boss height at the snout's tip",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "gapeDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the widest gape (CreatureSim.Display 1)",
+          "range": "0..85",
+          "example": "default 60"
+        },
+        {
+          "name": "breathDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the breathing gape at rest (0 = shut)",
+          "range": "0..15",
+          "example": "default 3"
+        },
+        {
+          "name": "breathSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "the breath's period",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "gapeSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "time to swing from shut to the full gape",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "teethPerSide",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "teeth along each lip side, upper and lower (0 = none)",
+          "range": "0..24",
+          "example": ""
+        },
+        {
+          "name": "toothLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "a back tooth's length",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "fang",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the front teeth (fangs) are this much longer",
+          "range": "1..3",
+          "example": "default 1.8"
+        },
+        {
+          "name": "toothWidth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "tooth base radius, x its length",
+          "range": "0.1..0.6",
+          "example": "default 0.28"
+        },
+        {
+          "name": "toothRakeDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "teeth rake back from straight down / up",
+          "range": "0..50",
+          "example": "default 18"
+        },
+        {
+          "name": "teethFrom",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "teeth start this far along the lip (0 = the hinge .. 1 = the tip)",
+          "range": "0..1",
+          "example": "default 0.2"
+        },
+        {
+          "name": "toothInset",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "teeth sit this far in from the lip's edge",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "layer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer of the skull and mandible (0 the body's skin)",
+          "range": "0..15",
+          "example": ""
+        },
+        {
+          "name": "toothLayer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer of the teeth (13 teeth)",
+          "range": "0..15",
+          "example": "default 13"
+        },
+        {
+          "name": "mouthLayer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer of the mouth's lining (14 the mouth's soft tissue)",
+          "range": "0..15",
+          "example": "default 14"
+        },
+        {
+          "name": "around",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: vertices round a section, 0 = 28",
+          "range": "0..64",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "Pincer",
       "kind": "Rigid",
       "status": "exists",
@@ -6451,6 +9450,463 @@
           "meaning": "material layer: 12 armour (restyle it with Layers), 0 the body's skin",
           "range": "0..15",
           "example": "default 12"
+        }
+      ]
+    },
+    {
+      "name": "SerratedRings",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "0 (each ring rigid to its joint)",
+      "materialLayers": [
+        10
+      ],
+      "system": "mesh only (SerratedRings.EmitMesh, ShellBand)",
+      "useWhen": "armoured tails: glyptodont and ankylosaur tail rings, trilobite pygidia, girdled lizards, serrated or spiked tails, segmented sea-creature tails",
+      "summary": "Segmented ring armour along a run of the spine (a tail): one shingled ring per joint wrapping the top and flanks, each with a flat saw-tooth blade on either flank pointing out and back (and an optional dorsal tooth), blades shingled so a bend slides them under each other.",
+      "usedBy": [
+        "Delver"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "toJoint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "last joint with a ring (the first is at.joint)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "lift",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the rings' stand-off from the body",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "skirtDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "how far each ring wraps under past the equator (90 = all but a slit)",
+          "range": "-30..85",
+          "example": "default 40"
+        },
+        {
+          "name": "thickness",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "ring thickness",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "shingle",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "shingle step (rear proud, front tucked), > thickness / 2",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "overlap",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "overlap of neighbouring rings, fraction of the joint spacing",
+          "range": "0..1",
+          "example": "default 0.4"
+        },
+        {
+          "name": "lip",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "rolled lip along each rear edge",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "square",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "section squareness: 2 round .. 4 boxy",
+          "range": "2..4",
+          "example": "default 2.4"
+        },
+        {
+          "name": "bladeLength",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "blade length (out from the ring), x the ring's half-width at the first ring",
+          "range": "0..3",
+          "example": "default 0.7"
+        },
+        {
+          "name": "bladeEnd",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "blade length at the last ring, x the first's",
+          "range": "0..2",
+          "example": "default 0.6"
+        },
+        {
+          "name": "bladeBase",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "blade base, fraction of the ring's length (from its rear edge forward)",
+          "range": "0.2..1",
+          "example": "default 0.6"
+        },
+        {
+          "name": "bladeSweepDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "blade sweep back from straight out",
+          "range": "0..75",
+          "example": "default 30"
+        },
+        {
+          "name": "bladeAtDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "where round the ring the blade sits: 0 = the equator, + higher up the flank",
+          "range": "-40..60",
+          "example": "default 0"
+        },
+        {
+          "name": "bladeThick",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "blade thickness",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "bladeStep",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "blade shingle: its front edge this much lower than its rear (> bladeThick / 2)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "dorsalTooth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "dorsal tooth height, x the blade length (0 = none)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "around",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: vertices across each ring, 0 = 28",
+          "range": "0..96",
+          "example": ""
+        },
+        {
+          "name": "layer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer: 10 armour plate (restyle with Layers)",
+          "range": "0..15",
+          "example": "default 10"
+        }
+      ]
+    },
+    {
+      "name": "Shag",
+      "kind": "Rigid",
+      "status": "exists",
+      "bones": "0 (each lock rigid to its joint or limb bone)",
+      "materialLayers": [
+        0
+      ],
+      "system": "mesh only (Shag.EmitMesh)",
+      "useWhen": "furry or shaggy underbodies, manes, beards, chest ruffs, hairy thighs; any coat of locks on a spine body",
+      "summary": "Shaggy fur: flattened tapering locks rooted in a band round the body over a run of joints (and on named limbs' upper bones), staggered, length-jittered, drooping and swept back, never reaching the ground.",
+      "usedBy": [
+        "Delver"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "toJoint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "last joint of the run (the first is at.joint)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "perJoint",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "rows of locks per joint step along the run",
+          "range": "0.5..8",
+          "example": "default 2"
+        },
+        {
+          "name": "around",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "rows round the body on each side (and under the midline)",
+          "range": "1..16",
+          "example": "default 4"
+        },
+        {
+          "name": "dorsalFrom",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the band round the body: from (-1 the belly's midline)",
+          "range": "-1..1",
+          "example": "default -1"
+        },
+        {
+          "name": "dorsalTo",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the band round the body: to (+1 the back's midline)",
+          "range": "-1..1",
+          "example": "default -0.2"
+        },
+        {
+          "name": "length",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "lock length",
+          "range": "",
+          "example": "delver 0.05"
+        },
+        {
+          "name": "jitter",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "length jitter (+-)",
+          "range": "0..0.9",
+          "example": "default 0.35"
+        },
+        {
+          "name": "width",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "lock width at the root",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "droop",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "0 straight out from the skin .. 1 hanging straight down",
+          "range": "0..1",
+          "example": "default 0.6"
+        },
+        {
+          "name": "sweep",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "sweep toward the tail",
+          "range": "0..1",
+          "example": "default 0.35"
+        },
+        {
+          "name": "fade",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the locks taper off over the run's first and last joints (fraction of the run)",
+          "range": "0..0.5",
+          "example": "default 0.15"
+        },
+        {
+          "name": "groundClear",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "a lock's tip stays above this fraction of its root's height over the rest pose's ground",
+          "range": "0..0.9",
+          "example": "default 0.25"
+        },
+        {
+          "name": "limbs",
+          "type": "string[]",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "limbs whose upper bones get locks too (ids; a mirrored limb's base id names both)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "limbLength",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "locks on a limb, x length",
+          "range": "0..2",
+          "example": "default 0.8"
+        },
+        {
+          "name": "layer",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "material layer (0 the body's skin; a species may put its fur on any id it does not use and restyle that row with Layers - the Delver: 12)",
+          "range": "0..15",
+          "example": "default 0"
         }
       ]
     },
@@ -7836,6 +11292,54 @@
       "params": []
     },
     {
+      "name": "Bask",
+      "category": "Behaviour",
+      "status": "exists",
+      "needs": "a Burrow part",
+      "summary": "Lies down where it is for a while: curled, the head tucked under its hood, or flat in the sun (the Burrow part's Rest posture); comes due every so often per individual.",
+      "usedBy": [
+        "Delver"
+      ],
+      "params": [
+        {
+          "name": "everySeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "mean time between rests (uniform 0.5..1.5 x, per individual)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "restSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "a rest's length (x 0.7..1.3)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "curlShare",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "share of the rests taken curled up (the rest flat in the sun)",
+          "range": "0..1",
+          "example": "default 0.5"
+        },
+        {
+          "name": "utility",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "utility when due",
+          "range": "0.2..2",
+          "example": "default 0.4"
+        }
+      ]
+    },
+    {
       "name": "ClimbExcursion",
       "category": "Behaviour",
       "status": "exists",
@@ -7844,6 +11348,7 @@
       "usedBy": [
         "DesertMonitor",
         "KitMonitor",
+        "ShaggyMonitor",
         "TreeSpider"
       ],
       "params": []
@@ -7903,11 +11408,369 @@
       "needs": "Fly",
       "summary": "Rest, Face, Patrol, Soar, Landing on perches; predictive wall turn-back (FlightBrain).",
       "usedBy": [
+        "Apex",
         "Hexadrake",
         "SkyDragon",
         "WingedSerpent"
       ],
       "params": []
+    },
+    {
+      "name": "Follow",
+      "category": "Behaviour",
+      "status": "exists",
+      "needs": "Walk",
+      "summary": "Trails a visible member of its group (same species, same enclosure: CreatureGroup) at a distance for a while, every so often per individual.",
+      "usedBy": [
+        "Delver"
+      ],
+      "params": [
+        {
+          "name": "everySeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "mean time between follows (uniform 0.5..1.5 x, per individual)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "followSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "a follow's length",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "distance",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "how far behind the leader's tail it keeps, x its body length",
+          "range": "0..3",
+          "example": "default 0.4"
+        },
+        {
+          "name": "radius",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "a leader must be within this x its body length",
+          "range": "1..20",
+          "example": "default 6"
+        },
+        {
+          "name": "utility",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "utility when due and a leader is in sight",
+          "range": "0.2..2",
+          "example": "default 0.3"
+        }
+      ]
+    },
+    {
+      "name": "Forage",
+      "category": "Behaviour",
+      "status": "exists",
+      "needs": "Walk + a Burrow part",
+      "summary": "Walks a little way, then sniffs and scratches at the ground (the Burrow part's Scratch posture: head down, digging limbs scooping) for a while; comes due every so often per individual.",
+      "usedBy": [
+        "Delver"
+      ],
+      "params": [
+        {
+          "name": "everySeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "mean time between forays (uniform 0.5..1.5 x, per individual)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "scratchSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "time spent scratching at the spot",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "walk",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "how far it walks to the spot, x its body length",
+          "range": "0..5",
+          "example": "default 1.2"
+        },
+        {
+          "name": "utility",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "utility when due",
+          "range": "0.2..2",
+          "example": "default 0.35"
+        }
+      ]
+    },
+    {
+      "name": "School",
+      "category": "Behaviour",
+      "status": "exists",
+      "needs": "an airborne locomotion (Soar)",
+      "summary": "Flying in a loose group: separation (3D, strongest), alignment, cohesion, a shared waypoint that moves round the enclosure at a height in the band, the wall and the aviary's obstacles; vetoes the locomotion's manoeuvres while a neighbour is near. Members of a lab group find each other by species and enclosure.",
+      "usedBy": [
+        "SkyManta"
+      ],
+      "params": [
+        {
+          "name": "separation",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "keep at least this many spans from a neighbour (separation acts inside it)",
+          "range": "0.5..6",
+          "example": "manta 3"
+        },
+        {
+          "name": "cohesion",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "weight of the pull to the group's centre",
+          "range": "0..3",
+          "example": ""
+        },
+        {
+          "name": "alignment",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "weight of the group's mean heading",
+          "range": "0..3",
+          "example": ""
+        },
+        {
+          "name": "waypoint",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "weight of the shared waypoint",
+          "range": "0..3",
+          "example": ""
+        },
+        {
+          "name": "waypointSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "a new shared waypoint about this often",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "bandLow",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "height band of the waypoints: lowest, as a fraction of the room under the roof",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "bandHigh",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "height band of the waypoints: highest",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "manoeuvreGap",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "no manoeuvres while a neighbour is within this many spans (or will come within 3/4 of it in the next seconds)",
+          "range": "0..10",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "SkyHunt",
+      "category": "Behaviour",
+      "status": "exists",
+      "needs": "Fly (+ a LongNeck: the strike)",
+      "summary": "A soaring predator's hunt: climb to soarAltitude, circle in long glides and bursts of slow deep beats, stoop on prey below (HuntPrey; with none, a practice mark on the ground) with the wings folded and the neck reaching, pull out over it with a strike, climb away. In bouts; the species' FlightExcursion flies between them. Gives the species a ModularBrain.",
+      "usedBy": [
+        "Apex"
+      ],
+      "params": [
+        {
+          "name": "soarAltitude",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "circling height over the ground (the aviary is made 1.25 x this tall)",
+          "range": "",
+          "example": "apex 9"
+        },
+        {
+          "name": "soarBand",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the soaring band: glides down this far below soarAltitude, beats back up",
+          "range": "",
+          "example": "apex 1.2"
+        },
+        {
+          "name": "circleRadius",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "circle radius, x the area's safe radius",
+          "range": "0.2..0.9",
+          "example": ""
+        },
+        {
+          "name": "boutSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "a hunting bout's length (then the other flight behaviour has the brain)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "restSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "rest between bouts",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "stoopInterval",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "mean time between stoops within a bout",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "stoopDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the stoop is at least this steep (the line from where it folds to the pull-out over the mark)",
+          "range": "15..85",
+          "example": ""
+        },
+        {
+          "name": "pullUpHeight",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "pulls out this high over the target (the head reaches below it)",
+          "range": "",
+          "example": "apex 0.9"
+        },
+        {
+          "name": "stoopFold",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the wings' fold in the stoop at its steepest",
+          "range": "0.3..1",
+          "example": ""
+        },
+        {
+          "name": "practice",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "with no prey in its area it stoops at a practice mark on the ground",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "utility",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "utility while hunting (FlightExcursion 0.2, Wander 0.1)",
+          "range": "0.25..2",
+          "example": ""
+        }
+      ]
+    },
+    {
+      "name": "Tunnel",
+      "category": "Behaviour",
+      "status": "exists",
+      "needs": "Walk + a Burrow part",
+      "summary": "Every so often (per individual) goes underground to a goal across the enclosure: the Burrow part plans the trip through the enclosure's shared tunnels (walk to a hole, ride, dig only the rest), digs in, travels hidden and bursts out. Holds until the trip ends; never while more than maxHiddenShare of its group is under. Gives the species a ModularBrain.",
+      "usedBy": [
+        "Delver"
+      ],
+      "params": [
+        {
+          "name": "surfaceSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "mean time on the surface between trips (uniform 0.5..1.5 x, per individual)",
+          "range": "",
+          "example": "delver 45"
+        },
+        {
+          "name": "minTrip",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the shortest trip, fraction of the safe disc's radius",
+          "range": "0.2..2",
+          "example": "default 0.7"
+        },
+        {
+          "name": "maxTrip",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the longest trip, fraction of the safe disc's radius",
+          "range": "0.2..2",
+          "example": "default 1.6"
+        },
+        {
+          "name": "maxHiddenShare",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "at most this share of the group underground at once (always lets one go)",
+          "range": "0..1",
+          "example": "default 0.5"
+        },
+        {
+          "name": "utility",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "utility when due (Wander idles at 0.1)",
+          "range": "0.2..2",
+          "example": "default 0.9"
+        }
+      ]
     },
     {
       "name": "Wander",
@@ -7916,8 +11779,10 @@
       "needs": "",
       "summary": "Safe-disc points, walk, pause, glance (WanderBrain). Containment is structural: the head is clamped to the safe radius.",
       "usedBy": [
+        "Apex",
         "Crocodile",
         "DaddyLongLegs",
+        "Delver",
         "DesertBeetle",
         "DesertMonitor",
         "DesertSnake",
@@ -7929,6 +11794,7 @@
         "KomodoDragon",
         "RockCrab",
         "Scolopendra",
+        "ShaggyMonitor",
         "SkyDragon",
         "Tarantula",
         "TentacleCrab",
@@ -7976,6 +11842,7 @@
       "usedBy": [
         "DesertMonitor",
         "KitMonitor",
+        "ShaggyMonitor",
         "TreeSpider"
       ],
       "params": [
@@ -8096,6 +11963,7 @@
       "needs": "Wing parts",
       "summary": "Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlight, FlightModel, AirChain). Froude-scaled. twist: the twisting Chinese-dragon air chain (AirTwist).",
       "usedBy": [
+        "Apex",
         "Hexadrake",
         "SkyDragon",
         "WingedSerpent"
@@ -8106,7 +11974,7 @@
           "type": "FlightSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain, legTuckOut, legTuckDown, legTuckReach",
+          "meaning": "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain, legTuckOut, legTuckDown, legTuckReach, touchdownTogether, airLevel, glideEnergy",
           "range": "",
           "example": ""
         },
@@ -8311,6 +12179,45 @@
       ]
     },
     {
+      "name": "QuadLaunch",
+      "category": "Locomotion",
+      "status": "exists",
+      "needs": "Fly",
+      "summary": "A quadrupedal launch: a crouch on the four limbs (the body lowered by crouchDepth over crouchSeconds), then a vault at vaultSpeed off the folded wing arms; the wings open at the top (CreatureFlight.Launch). Without it a flyer hops off at the shipped 2.4 m/s.",
+      "usedBy": [
+        "Apex"
+      ],
+      "params": [
+        {
+          "name": "crouchSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "the crouch before the vault",
+          "range": "0.05..2",
+          "example": "apex 0.4"
+        },
+        {
+          "name": "crouchDepth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "how far the body sinks in the crouch (every joint's clearance)",
+          "range": "",
+          "example": "apex 0.12"
+        },
+        {
+          "name": "vaultSpeed",
+          "type": "float",
+          "unit": "MetresPerSecond",
+          "size": "x sqrt(s)",
+          "meaning": "the vault's upward speed (the shipped launch: 2.4)",
+          "range": "",
+          "example": "apex 4"
+        }
+      ]
+    },
+    {
       "name": "Slither",
       "category": "Locomotion",
       "status": "exists",
@@ -8326,6 +12233,7 @@
         "KitMonitor",
         "KomodoDragon",
         "Scolopendra",
+        "ShaggyMonitor",
         "SkyDragon",
         "TestSnake",
         "WingedSerpent"
@@ -8352,14 +12260,262 @@
       ]
     },
     {
+      "name": "Soar",
+      "category": "Locomotion",
+      "status": "exists",
+      "needs": "a spine chain body (RayBody); flapping parts (RayWing) read its stroke",
+      "summary": "Always-airborne flight without legs or legacy wings (manta rays, gliding fish): flap bouts alternating with long glides, coordinated banked turns, an altitude band over the ground and under the roof, barrel rolls and loops; the body lies on the head's 3D path and heaves opposite the stroke. Drives flapping parts (RayWing) through IFlapDriver; sizes its own aviary (IAirborne).",
+      "usedBy": [
+        "SkyManta"
+      ],
+      "params": [
+        {
+          "name": "cruiseSpeed",
+          "type": "float",
+          "unit": "MetresPerSecond",
+          "size": "x sqrt(s)",
+          "meaning": "cruising speed",
+          "range": "",
+          "example": "manta 3"
+        },
+        {
+          "name": "minSpeed",
+          "type": "float",
+          "unit": "MetresPerSecond",
+          "size": "x sqrt(s)",
+          "meaning": "slowest flight: below it a flap bout starts",
+          "range": "",
+          "example": "manta 2"
+        },
+        {
+          "name": "maxSpeed",
+          "type": "float",
+          "unit": "MetresPerSecond",
+          "size": "x sqrt(s)",
+          "meaning": "fastest flight (a dive)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "glideRatio",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "glide ratio: distance per height lost in a glide at cruise",
+          "range": "2..30",
+          "example": "manta 11"
+        },
+        {
+          "name": "climbDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "climb angle of a flap bout at cruise",
+          "range": "0..40",
+          "example": ""
+        },
+        {
+          "name": "diveDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "steepest dive",
+          "range": "0..60",
+          "example": ""
+        },
+        {
+          "name": "flapHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "wingbeat frequency",
+          "range": "",
+          "example": "manta 0.5"
+        },
+        {
+          "name": "beatsMin",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "fewest beats in a bout",
+          "range": "1..12",
+          "example": ""
+        },
+        {
+          "name": "beatsMax",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "most beats in a bout",
+          "range": "1..12",
+          "example": ""
+        },
+        {
+          "name": "glideMin",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "shortest glide between bouts",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "glideMax",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "longest glide between bouts",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "maxBankDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "steepest bank of a turn",
+          "range": "5..75",
+          "example": ""
+        },
+        {
+          "name": "bankSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "time constant of banking into a turn",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "steerSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "steering: the heading error is turned out in about this time",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "altitudeSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "altitude: the error is flown out in about this time",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "pitchRateDeg",
+          "type": "float",
+          "unit": "DegPerSecond",
+          "size": "/ sqrt(s)",
+          "meaning": "fastest change of the climb angle",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "cruiseAltitude",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "cruising height above the ground when the brain's target is on the ground",
+          "range": "",
+          "example": "manta 6"
+        },
+        {
+          "name": "minAltitude",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "lowest height of the body above the ground (hard floor)",
+          "range": "",
+          "example": "manta 2.5"
+        },
+        {
+          "name": "altitudeBand",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "half height of the altitude band a glide may sink through before a bout",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "heave",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "body heave amplitude at a full beat (up on the downstroke)",
+          "range": "",
+          "example": "manta 0.05"
+        },
+        {
+          "name": "heaveLag",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "heave wave: phase lag head -> tail, in cycles",
+          "range": "0..0.5",
+          "example": ""
+        },
+        {
+          "name": "barrelRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "barrel roll: helix radius (0 = none)",
+          "range": "",
+          "example": "manta 0.7"
+        },
+        {
+          "name": "rollSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "barrel roll: duration",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "loopRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "loop: radius (0 = none)",
+          "range": "",
+          "example": "manta 1.8"
+        },
+        {
+          "name": "manoeuvreMin",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "shortest time between manoeuvres",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "manoeuvreMax",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "longest time between manoeuvres",
+          "range": "",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "Walk",
       "category": "Locomotion",
       "status": "exists",
       "needs": "SpineBody",
       "summary": "Head steering in the tangent plane, chain, grounding, gait groups, girdle sway (CreatureSim.SubStep, CreatureLegs). The default locomotion of a spine body.",
       "usedBy": [
+        "Apex",
         "Crocodile",
         "DaddyLongLegs",
+        "Delver",
         "DesertBeetle",
         "DesertMonitor",
         "DesertSnake",
@@ -8371,6 +12527,7 @@
         "KomodoDragon",
         "RockCrab",
         "Scolopendra",
+        "ShaggyMonitor",
         "SkyDragon",
         "Tarantula",
         "TentacleCrab",
@@ -8616,19 +12773,367 @@
       "params": []
     },
     {
+      "name": "Fur",
+      "category": "Look",
+      "status": "exists",
+      "needs": "SpineBody",
+      "summary": "Hair in regions: an Undercoat of shells (short dense fur) and Strands (long fur, manes, tufts) as GPU blades skinned with the body's bone matrices and simulated as springs that trail the motion and droop (Scripts/Creatures/Fur, Resources/CreatureFur). Off = no extra draw.",
+      "usedBy": [
+        "ShaggyMonitor"
+      ],
+      "params": [
+        {
+          "name": "regions",
+          "type": "FurRegion[]",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "the furry regions",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "regions[].name",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "a name for the region (debug, the catalogue)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "regions[].kind",
+          "type": "Undercoat / Strands",
+          "unit": "Enum",
+          "size": "-",
+          "meaning": "Undercoat (shells: short dense fur) or Strands (blades: long fur, manes, tufts)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "regions[].partMask",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "bit mask of the part ids it grows on (bit 0 body, bit 1 limb, ...; the claw/eye/membrane/jaw/teeth ids are refused)",
+          "range": "",
+          "example": "body 1, body + limbs 3"
+        },
+        {
+          "name": "regions[].arcFrom",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "arc window start along the part (uv0.x, rest metres: the body from the snout, a limb from its root)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "regions[].arcTo",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "arc window end",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "regions[].arcEdge",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "soft edge outside the arc window (0 = hard)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "regions[].dorsalFrom",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "dorsal window start (-1 belly .. +1 ridge)",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "regions[].dorsalTo",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "dorsal window end",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "regions[].dorsalEdge",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "soft edge outside the dorsal window (0 = hard)",
+          "range": "0..2",
+          "example": ""
+        },
+        {
+          "name": "regions[].length",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "hair length (strands: the whole lock; undercoat: the outer shell's height)",
+          "range": "",
+          "example": "mane 0.06, undercoat 0.008"
+        },
+        {
+          "name": "regions[].lengthJitter",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "length jitter (+-)",
+          "range": "0..0.9",
+          "example": ""
+        },
+        {
+          "name": "regions[].density",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "strands: roots per square metre of the rest (scale-1) surface; undercoat: hairs per square centimetre of it",
+          "range": "",
+          "example": "mane 30000, undercoat 60"
+        },
+        {
+          "name": "regions[].width",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "strands: the lock's width at the root; undercoat: a hair's radius at the root",
+          "range": "",
+          "example": "mane 0.004, undercoat 0.0006"
+        },
+        {
+          "name": "regions[].rootColour",
+          "type": "Color",
+          "unit": "SrgbColour",
+          "size": "-",
+          "meaning": "colour at the root",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "regions[].tipColour",
+          "type": "Color",
+          "unit": "SrgbColour",
+          "size": "-",
+          "meaning": "colour at the tip",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "regions[].bodyTint",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "toward the body's own palette and pattern at the root (0 = the region colours only)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "regions[].liftDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "how far the hair rises off the skin (0 flat .. 90 standing up)",
+          "range": "0..90",
+          "example": "pelt 20, mane 55"
+        },
+        {
+          "name": "regions[].flowBack",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "comb toward the tail (along the body)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "regions[].flowDown",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "comb toward the ground (down the flanks and legs)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "regions[].jitterDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "per-hair direction jitter",
+          "range": "0..60",
+          "example": ""
+        },
+        {
+          "name": "regions[].clump",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "strands: how much the tips gather into locks with their neighbours",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "regions[].clumpSize",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "strands: strands per lock",
+          "range": "1..32",
+          "example": ""
+        },
+        {
+          "name": "regions[].stiffnessHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "strands: spring frequency (how fast a hair swings back; / sqrt(s))",
+          "range": "0.2..20",
+          "example": "mane 3, tufts 2"
+        },
+        {
+          "name": "regions[].damping",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "strands: damping ratio (0.2 swishy .. 1 dead)",
+          "range": "0..2",
+          "example": ""
+        },
+        {
+          "name": "regions[].droop",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "how much gravity pulls the hair down (strands: x g against the spring; undercoat: the outer shells' sag)",
+          "range": "0..2",
+          "example": ""
+        },
+        {
+          "name": "seed",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "seed of the root placement (deterministic per species)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "maxStrands",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "most strands per individual (densities scale down to fit)",
+          "range": "0..65536",
+          "example": ""
+        },
+        {
+          "name": "shells",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "undercoat shells (0 = no undercoat)",
+          "range": "0..32",
+          "example": ""
+        },
+        {
+          "name": "maxSimulated",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "individuals of this species with strands at once (the nearest)",
+          "range": "0..64",
+          "example": ""
+        },
+        {
+          "name": "strandFadeStart",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "strands: full count closer than this to the camera (x sizeScale)",
+          "range": "",
+          "example": "6"
+        },
+        {
+          "name": "strandFadeEnd",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "strands: none past this (x sizeScale)",
+          "range": "",
+          "example": "14"
+        },
+        {
+          "name": "shellFadeEnd",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "undercoat: shells thin to 3 by this distance (x sizeScale); none past twice it",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "pattern",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "how much of the body's pattern shows through the fur",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "rootOcclusion",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "darker roots (the fur's ambient occlusion)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "highlight",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "soft anisotropic highlight along the hair (Kajiya-Kay)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "translucency",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "light through the tips against the sun",
+          "range": "0..2",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "Layers",
       "category": "Look",
       "status": "exists",
       "needs": "",
       "summary": "Restyles part ids (material layers) for this species: shading model (Skin, Chitin, Membrane, Eye, Claw), tint, smoothness, and which layers (pattern, scale grain, sheen, shimmer) each has. Rows not listed keep the registry's (Kit/PartLayers.cs). A new part needs a row, never a shader edit.",
       "usedBy": [
+        "Apex",
         "Crocodile",
+        "Delver",
         "GiantCentipede",
         "GolfballStrider",
         "Hexadrake",
         "KomodoDragon",
         "RockCrab",
         "Scolopendra",
+        "SkyManta",
         "TentacleCrab"
       ],
       "params": [
@@ -8758,6 +13263,7 @@
       "needs": "",
       "summary": "Translucent veined membrane (part 8, the Membrane shading model, CreatureMembrane.hlsl): wings, FinStrip fins, antennae - any part whose layer row is Membrane.",
       "usedBy": [
+        "Apex",
         "FinnedSandEel",
         "Hexadrake",
         "SkyDragon",
@@ -8884,8 +13390,10 @@
       "needs": "",
       "summary": "Palette dorsal/flank/belly + procedural pattern by rest arc length (CreaturePattern.hlsl); per-individual size/hue/value jitter. Layers of parts 0-2.",
       "usedBy": [
+        "Apex",
         "Crocodile",
         "DaddyLongLegs",
+        "Delver",
         "DesertBeetle",
         "DesertMonitor",
         "DesertSnake",
@@ -8897,7 +13405,9 @@
         "KomodoDragon",
         "RockCrab",
         "Scolopendra",
+        "ShaggyMonitor",
         "SkyDragon",
+        "SkyManta",
         "Swinger",
         "Tarantula",
         "TentacleCrab",
@@ -9048,6 +13558,35 @@
   ],
   "species": [
     {
+      "name": "Apex",
+      "kitVersion": 1,
+      "plan": "Spine",
+      "bones": 79,
+      "parts": [
+        "SpineBody:body",
+        "Leg2Bone:arm.L",
+        "Leg2Bone:arm.R",
+        "Leg2Bone:hind.L",
+        "Leg2Bone:hind.R",
+        "PteroWing:wing.L",
+        "PteroWing:wing.R",
+        "Eyes:eyes",
+        "LongNeck:neck",
+        "BeakHead:head"
+      ],
+      "modules": [
+        "Walk",
+        "Fly",
+        "QuadLaunch",
+        "Wander",
+        "FlightExcursion",
+        "SkyHunt",
+        "Skin",
+        "Membrane",
+        "Layers"
+      ]
+    },
+    {
       "name": "Crocodile",
       "kitVersion": 1,
       "plan": "Spine",
@@ -9116,6 +13655,35 @@
         "Wander",
         "Skin",
         "Chitin"
+      ]
+    },
+    {
+      "name": "Delver",
+      "kitVersion": 1,
+      "plan": "Spine",
+      "bones": 67,
+      "parts": [
+        "SpineBody:body",
+        "DigLeg:fore.L",
+        "DigLeg:fore.R",
+        "DigLeg:hind.L",
+        "DigLeg:hind.R",
+        "Eyes:eyes",
+        "BandShell:shell",
+        "SerratedRings:tailArmour",
+        "Maw:maw",
+        "Shag:fur",
+        "Burrow:burrow"
+      ],
+      "modules": [
+        "Walk",
+        "Wander",
+        "Skin",
+        "Tunnel",
+        "Forage",
+        "Bask",
+        "Follow",
+        "Layers"
       ]
     },
     {
@@ -9502,6 +14070,29 @@
       ]
     },
     {
+      "name": "ShaggyMonitor",
+      "kitVersion": 1,
+      "plan": "Spine",
+      "bones": 40,
+      "parts": [
+        "SpineBody:body",
+        "Leg2Bone:leg0.L",
+        "Leg2Bone:leg0.R",
+        "Leg2Bone:leg2.L",
+        "Leg2Bone:leg2.R",
+        "Eyes:eyes"
+      ],
+      "modules": [
+        "Walk",
+        "Slither",
+        "Climb",
+        "Wander",
+        "ClimbExcursion",
+        "Skin",
+        "Fur"
+      ]
+    },
+    {
       "name": "SkyDragon",
       "kitVersion": 1,
       "plan": "Spine",
@@ -9548,6 +14139,27 @@
         "Skin",
         "Membrane",
         "Shimmer"
+      ]
+    },
+    {
+      "name": "SkyManta",
+      "kitVersion": 1,
+      "plan": "Spine",
+      "bones": 112,
+      "parts": [
+        "RayBody:body",
+        "Eyes:eyes",
+        "RayWing:wing.L",
+        "RayWing:wing.R",
+        "CephalicLobe:lobe.L",
+        "CephalicLobe:lobe.R",
+        "WhipTail:tail"
+      ],
+      "modules": [
+        "Soar",
+        "School",
+        "Skin",
+        "Layers"
       ]
     },
     {
@@ -9852,7 +14464,13 @@
       "use": "tongue (Tongue)",
       "model": "Skin",
       "layers": "Skin (Sheen, Shimmer)"
+    },
+    {
+      "id": 15,
+      "use": "ray skin (RayBody, RayWing, WhipTail, CephalicLobe)",
+      "model": "Skin",
+      "layers": "Skin (Sheen, Shimmer)"
     }
   ],
-  "nextFreeMaterialLayer": 15
+  "nextFreeMaterialLayer": 16
 }

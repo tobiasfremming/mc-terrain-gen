@@ -21,6 +21,10 @@ namespace CreatureKit
 
         public LimbLoft(int around) { Around = Mathf.Max(3, around); }
 
+        // Optional: a vertex's part id by (ring, point round it) instead of Emit's `part` (a lip line: the palate of a
+        // head in a mouth layer). Null = every vertex in `part` (unchanged).
+        public System.Func<int, int, int> PartOf;
+
         public int Count => rings.Count;
 
         // A ring: centre c, unit frame x, y (the ring's plane), radius r(phi) about c + y d; phi = 0 along x,
@@ -87,7 +91,7 @@ namespace CreatureKit
                 {
                     Vector3 nk = nn[k % Around];
                     float v = poles[i] ? (k + 0.5f) / Around : (float)k / Around;
-                    m.Vertex(P(i, k % Around), nk, arcs[i], v, part, nk.y, skins[i]);
+                    m.Vertex(P(i, k % Around), nk, arcs[i], v, PartOf != null ? PartOf(i, k % Around) : part, nk.y, skins[i]);
                 }
             }
             for (int i = 0; i + 1 < n; i++)

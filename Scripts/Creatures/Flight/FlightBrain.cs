@@ -84,7 +84,7 @@ public sealed class FlightBrain : ICreatureBrain
     // radius v^2 / (g tan bank); the turn must fit in half the safe radius.
     public static bool FitsAviary(CreatureSpecies sp, EnclosureArea area, float sizeScale)
     {
-        if (!sp.CanFly) return false;
+        if (!sp.CanFly) return CreatureKit.Airborne.Of(sp) is CreatureKit.IAirborne air && air.FitsAviary(sp, area, sizeScale);
         float v = sp.flight.cruiseSpeed * Mathf.Sqrt(sizeScale);
         return v <= Mathf.Sqrt(FlightModel.G * Mathf.Tan(sp.flight.maxBankDeg * Mathf.Deg2Rad) * 0.5f * area.safeRadius)
                && area.maxHeight > 2f * sp.flight.minAltitude * sizeScale;
