@@ -48,7 +48,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | **BeakHead** | Rigid | exists | 1 (the lower jaw) | 0, 2 | pterosaurs, birds, herons and storks, beaked dinosaurs, turtles: any head that is mostly beak; with a crest (casque, sail) or without | Pterodactyl |
 | **Burrow** | Rigid | exists | 0 (poses the others' bones) |  | burrowers: moles, armadillos, sandworms, burrowing lizards and amphisbaenians, anything that digs in and bursts out | Delver |
 | **Chela** | Rigid | exists | 0 (rigid to its ArthropodLeg's last bone) | 1, 2 | crab and lobster claws (crusher and cutter), scorpion pincers: any heavy chela on an arthropod limb | RockCrab, TentacleCrab |
-| **CrestBeakHead** | Rigid | exists | 1 (the jaw) | 0 | a serpent- or dragon-like head ending in a beak, on a FlowBody (or SpineBody) head joint: crested beaks, toothless snapping heads; the Apex | - |
+| **CrestBeakHead** | Rigid | exists | 2 (the jaw, the upper head) | 0 | a serpent- or dragon-like head ending in a beak, on a FlowBody (or SpineBody) head joint: crested, toothed beaks; the Apex | - |
 | **DimpledOrb** | Rigid | exists | 1 | 0 | a round abdomen (spiders, ticks), puffballs, seed heads, golf-ball or pitted shells; any heavy round mass that should wobble on its body | GolfballStrider, StriderMatriarch |
 | **EyeStalk** | Rigid | exists | 1 | 1, 2, 9 | crab and snail eye stalks, periscopes, anything on a stalk that folds away | RockCrab, TentacleCrab |
 | **Jaw** | Rigid | exists | 1 | 0, 2, 13 | a mouth that opens: a crocodile basking agape (opensUp), a yawn, a threat gape, a snapping beak | Crocodile |
@@ -1204,7 +1204,7 @@ A heavy crab claw on an ArthropodLeg's last segment: bulbous flattened palm, fix
 
 ### CrestBeakHead
 
-The beaked serpent head: a long, slightly flattened SDF skull flowing into a pointed, hooked beak, small eyes under a soft brow, lamellae along the mouth line, crests curling back like breaking waves on top of the upper beak, and a jaw on its own bone that opens on its own call timer. Rigid to the body's head joint; its back overlaps the neck so the outline runs on; carries the species' eyes. System: CrestBeakHeadRuntime (part runtime, stage Late: jaw, eye bones) + CrestBeakHead.EmitMesh (SculptMesher pieces, cached).
+The beaked serpent head: a long, slightly flattened SDF skull flowing into a pointed, hooked beak, small eyes under a soft brow, a mouth line running back past the eye with rows of small interlocking teeth (fangs at the lower jaw's tip, a knob under it), a deep fleshy lower jaw running back into the throat, a pink mouth inside with cheek webs that stretch when it gapes, sickle crests (a prong widening into a crescent that hooks back) on top of the upper beak, and a jaw on its own bone that hangs a little open at rest and gapes wide on its own call timer while the upper head tips up. Rigid to the body's head joint; its back overlaps the neck so the outline runs on; carries the species' eyes. System: CrestBeakHeadRuntime (part runtime, stage Late: jaw, upper head, eye bones) + CrestBeakHead.EmitMesh (SculptMesher pieces, cached; teeth as horns; cheek webs skinned between the bones).
 
 | field | type | unit | size | meaning | range | example |
 |---|---|---|---|---|---|---|
@@ -1226,14 +1226,35 @@ The beaked serpent head: a long, slightly flattened SDF skull flowing into a poi
 | `crests[].height` | float | Metres | x s | how high its centre line rises above the beak's top (vertically; a splayed blade is longer) |  |  |
 | `crests[].length` | float | Metres | x s | its centre line's length, root to tip (>= height / cos splayDeg) |  |  |
 | `crests[].curlDeg` | float | Degrees | - | how far it curls backward from its root to its tip (0 = a straight blade leaning forward) | 0..200 |  |
-| `crests[].thickness` | float | Metres | x s | blade half thickness at its root (it tapers to a point at the tip) |  |  |
-| `crests[].chord` | float | Metres | x s | blade half chord (its width seen from the side) at its root; 0 = 0.35 x length; chord / thickness is capped at 4 (it tapers with the thickness) |  |  |
+| `crests[].thickness` | float | Metres | x s | blade half thickness at its widest (its root; with flare, where it flares out) - it tapers to a point at the tip |  |  |
+| `crests[].chord` | float | Metres | x s | blade half chord (its width seen from the side) at its widest; 0 = 0.35 x length; chord / thickness is capped at 4 (it follows the thickness) |  |  |
+| `crests[].flare` | float | Fraction | - | a sickle: the blade rises from a narrow prong and flares out to its widest (at flareAt of its length) this many times its root's width, then sweeps to the point; 0 = a plain taper from the root (a horn) | 0..6 |  |
+| `crests[].flareAt` | float | Fraction | - | where along the blade it is widest (with flare): toward its end, a crescent (0 = 0.4) | 0..0.9 |  |
+| `crests[].outside` | float | Fraction | - | the blade's width shifted to the outside (front, convex side) of its curl: its axis arches out from the centre line by up to this share of the widest half chord (sin(pi u): none at the root and the point) - a broad crescent outside, a thin inner edge hooking to the point (0 = symmetric) | 0..0.8 |  |
+| `crests[].hookDeg` | float | Degrees | - | the tip hooks back by this much more over the last quarter of the blade (on top of curlDeg) | 0..120 |  |
 | `crests[].splayDeg` | float | Degrees | - | the blade leans out from upright by this much (toward +x; a mirrored pair: each away from the midline - a V from the front) | 0..75 |  |
 | `crests[].mirror` | bool | Flag | - | an equal pair rooted side by side on the midline, mirrored left and right (else one blade on the midline) |  |  |
-| `grooves` | int | Count | - | lamellae: fine grooves across the mouth line | 0..32 |  |
+| `grooves` | int | Count | - | lamellae: fine grooves across the mouth line (the teeth took their place: 0) | 0..32 |  |
 | `grooveDepth` | float | Metres | x s | groove depth |  |  |
 | `jawFraction` | float | Fraction | - | the lower jaw's share of the head's depth (the mouth line's height) | 0.15..0.7 |  |
-| `gapeDeg` | float | Degrees | - | the jaw's widest gape (a call) | 0..80 |  |
+| `mouthCornerAt` | float | Fraction | - | the gape's corner (the jaw's hinge): fraction of skullLength ahead of the head joint (negative = behind it: the mouth line runs back under and past the eye) | -0.4..0.3 |  |
+| `hingeBehind` | float | Fraction | - | the jaw's hinge: it turns about a point this far (x the jaw's depth at the gape's corner) behind the corner and half as far below it - the gape opens back into the throat | 0..1.5 |  |
+| `jawDepth` | float | Fraction | - | the lower jaw's own depth below the mouth line at mid-length, x skullDepth (a deep, fleshy jaw; 0 = only what the head's outline gives) | 0..2 |  |
+| `chinDepth` | float | Fraction | - | the lower jaw's depth at its chin, x skullDepth | 0..2 |  |
+| `throatDepth` | float | Fraction | - | the lower jaw's depth at the gape's corner, where its underside runs back into the throat, x skullDepth | 0..2 |  |
+| `cheekWeb` | float | Fraction | - | cheek webs: skin from the upper lip to the lower one, reaching this far (x skullLength) forward from the gape's corner, stretched between the head and the jaw when it gapes (0 = none: the open mouth is a slot at the corner) | 0..0.5 |  |
+| `gapeDeg` | float | Degrees | - | the jaw's widest gape (a call): the lower jaw drops this far about the hinge | 0..80 |  |
+| `callPitchDeg` | float | Degrees | - | on a call the upper head (skull, beak, crests) tips up this far at the full gape, about the skull's back | 0..30 |  |
+| `restGapeDeg` | float | Degrees | - | the mouth hangs this far open at rest, showing the teeth (< gapeDeg) | 0..30 |  |
+| `teeth` | int | Count | - | teeth in each row (upper and lower, each side): small pointed teeth along the lip line, the lower row between the upper's, showing even at rest | 0..40 |  |
+| `toothLength` | float | Metres | x s | tooth length (the ones near the gape's corner shorter) |  |  |
+| `toothRadius` | float | Metres | x s | tooth base radius |  |  |
+| `toothKind` | string | Text | - | the material kind of the teeth and fangs: ivory-teeth (the kit's ivory keratin row), or any kind the species styles (a species short of material slots can share one, e.g. dewlap) |  |  |
+| `toothRakeDeg` | float | Degrees | - | the teeth lean back toward the throat by this much (both rows) | -45..60 |  |
+| `fangPairs` | int | Count | - | fang pairs at the lower jaw's tip (0..2: up to four small fangs) | 0..2 |  |
+| `fangLength` | float | Metres | x s | fang length (the second pair 0.85 x) |  |  |
+| `fangLiftDeg` | float | Degrees | - | the fangs point forward out of the jaw's tip, raised this far above its line | -30..90 |  |
+| `chinKnob` | float | Metres | x s | radius of the rounded knob under the lower jaw's tip (0 = none) |  |  |
 | `callEverySeconds` | Vector2 | Seconds | x sqrt(s) | time between calls: x the shortest, y the longest (each individual draws its own, seeded) |  |  |
 | `callSeconds` | float | Seconds | x sqrt(s) | one call: open, hold, close |  |  |
 | `eyeAt` | Vector2 | Fraction | - | eye centre: x along the skull (fraction of skullLength ahead of the joint), y height (fraction of skullDepth) | -0.5..0.5 |  |
@@ -1448,7 +1469,7 @@ A hinged, jointed, curved appendage on 1-4 bones that opens and closes: curls to
 
 ### PitRow
 
-A row of recessed pits with soft pale raised rims on a FlowBody's surface (count from fromU to toU at section angle angleDeg; mirror for both sides): spiracles, nostrils, sensory pits. Dark cup (kind pit), belly-coloured rim, skinned with the body's rings. System: mesh only (PitRow.EmitMesh), skinned like the FlowBody rings under it.
+A row of recessed pits with soft pale raised rims on a FlowBody's surface (count from fromU to toU at section angle angleDeg; mirror for both sides): spiracles, nostrils, sensory pits - oblique slits (aspect, slantDeg) growing toward the head (sizeGrowth). Dark cup (kind pit), belly-coloured rim, skinned with the body's rings. System: mesh only (PitRow.EmitMesh), skinned like the FlowBody rings under it.
 
 | field | type | unit | size | meaning | range | example |
 |---|---|---|---|---|---|---|
@@ -1463,9 +1484,12 @@ A row of recessed pits with soft pale raised rims on a FlowBody's surface (count
 | `toU` | float | Fraction | - | body fraction of the last pit | 0..1 | 0.3 |
 | `angleDeg` | float | Degrees | - | place around the section, FlowBody's phi: -90 belly .. 0 flank .. +90 back (the right side; the left is mirrored) | -90..90 | default -35 |
 | `count` | int | Count | - | pits in the row (per side) | 1..32 | default 6 |
-| `radius` | float | Metres | x s | cup radius | 0.001..0.2 | default 0.012 |
-| `depth` | float | Fraction | - | cup depth x radius | 0..2 | default 0.6 |
-| `rim` | float | Fraction | - | rim height and width x radius (the pale raised lip around the cup) | 0..1 | default 0.35 |
+| `radius` | float | Metres | x s | the rearmost pit's half width (across the slit; its half length is aspect x this) | 0.001..0.2 | default 0.012 |
+| `depth` | float | Fraction | - | cup depth x the pit's half width | 0..2 | default 0.6 |
+| `rim` | float | Fraction | - | rim height and width x the pit's half width (the pale raised lip around the cup) | 0..1 | default 0.35 |
+| `aspect` | float | Fraction | - | each pit is an elongated slit this many times as long as it is wide (1 = round) | 1..5 | default 2.2 |
+| `slantDeg` | float | Degrees | - | the slit's long axis turns this far from the body's long axis toward its back (0 = along the body, 90 = around it; the left side mirrored) | -90..90 | default 50 |
+| `sizeGrowth` | float | Fraction | - | the pits grow toward the head: the frontmost is 1 + this times the rearmost (0 = all alike) | 0..3 | default 0.6 |
 
 ### RigidCone
 
@@ -2288,6 +2312,8 @@ Creature.shader shades a part id by its row of the species' look-layer table (Ki
 | 14 | `tongue` | tongue (Tongue) | Skin (Sheen, Shimmer) |
 | 15 | `ray-skin` | ray skin (RayBody, RayWing, WhipTail, CephalicLobe) | Skin (Sheen, Shimmer) |
 | (per species) | `crest` | beak crests (CrestBeakHead) | Claw (NoPattern, NoGrain, tint Own 1) |
+| (per species) | `ivory-teeth` | teeth and fangs, ivory (CrestBeakHead) | Claw (NoPattern, NoGrain, tint Own 1) |
+| (per species) | `mouth` | inside of the mouth (CrestBeakHead) | Skin (NoPattern, FineGrain, Sheen, Shimmer, tint Own 1) |
 | (per species) | `pit` | breathing holes / nostrils (PitRow) | Claw (NoPattern, NoGrain, tint Own 1) |
 | (per species) | `dewlap` | throat sail (Dewlap) | Skin (NoPattern, FineGrain, Sheen, Shimmer, tint Own 1) |
 | (per species) | `wingfan` | flesh wing sail (FleshWing) | Skin (NoPattern, FineGrain, Sheen, Shimmer, tint Own 1) |

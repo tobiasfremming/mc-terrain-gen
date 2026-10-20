@@ -1,10 +1,13 @@
 // Creature kit (Apex redesign §1 breathing holes, §5.7): PitRow - a row of recessed pits with soft pale rims on a
 // FlowBody's surface: spiracles along a throat, nostrils, sensory pits. `count` pits from body fraction fromU to toU
 // (the same u as FlowBody.Section) at section angle angleDeg (FlowBody's phi: -90 belly .. 0 flank .. +90 back; the
-// left side, from `mirror` or at.side -1, takes the mirror image: negative x). Each pit is
-//   cup   a bowl `depth` x radius deep (kind "pit": near-black by default, a species restyles it with a Layers row)
-//   rim   a raised half-round lip, `rim` x radius high and wide, in the body skin at its palest (dorsal -1: the belly
-//         colour), wrapping the cup, its outer foot on the surface
+// left side, from `mirror` or at.side -1, takes the mirror image: negative x). Each pit is an oblique slit - an ellipse
+// `aspect` times as long as it is wide, its long axis turned slantDeg from the body's long axis (toward its back; the
+// left side mirrored) - and the pits grow toward the head: the frontmost (least u) is 1 + sizeGrowth times the rearmost,
+// `radius` being the rearmost's half width (Apex face close-up: five slits, the front one largest).
+//   cup   a bowl `depth` x its half width deep (kind "pit": near-black by default, a species restyles it with a Layers row)
+//   rim   a raised half-round lip, `rim` x its half width high and wide, in the body skin at its palest (dorsal -1: the
+//         belly colour), wrapping the cup, its outer foot on the surface
 // both standing on the surface point the drawn section gives (FlowBody.SurfaceAt, along its normal), and both skinned
 // the way the body's rings are at that place (FlowBody.SkinAt), so the pit travels with the skin. Mesh only, no bones.
 // Author at scale 1 (metres).
@@ -15,7 +18,7 @@ using UnityEngine;
 namespace CreatureKit
 {
     [Serializable]
-    [Part("PitRow", PartKind.Rigid, Bones = "0 (skinned like the body's rings)", Summary = "A row of recessed pits with soft pale raised rims on a FlowBody's surface (count from fromU to toU at section angle angleDeg; mirror for both sides): spiracles, nostrils, sensory pits. Dark cup (kind pit), belly-coloured rim, skinned with the body's rings.",
+    [Part("PitRow", PartKind.Rigid, Bones = "0 (skinned like the body's rings)", Summary = "A row of recessed pits with soft pale raised rims on a FlowBody's surface (count from fromU to toU at section angle angleDeg; mirror for both sides): spiracles, nostrils, sensory pits - oblique slits (aspect, slantDeg) growing toward the head (sizeGrowth). Dark cup (kind pit), belly-coloured rim, skinned with the body's rings.",
           System = "mesh only (PitRow.EmitMesh), skinned like the FlowBody rings under it", MaterialLayers = new[] { 0 }, MaterialKinds = new[] { "pit" }, KitOnly = true,
           UseWhen = "breathing holes along a throat or flank, nostrils, sensory pits on a FlowBody")]
     public sealed class PitRow : CreaturePart
@@ -24,9 +27,12 @@ namespace CreatureKit
         [Param(ParamUnit.Fraction, "body fraction of the last pit", Min = 0, Max = 1, Example = "0.3")] public float toU = 0.3f;
         [Param(ParamUnit.Degrees, "place around the section, FlowBody's phi: -90 belly .. 0 flank .. +90 back (the right side; the left is mirrored)", Min = -90, Max = 90, Default = "-35")] public float angleDeg = -35f;
         [Param(ParamUnit.Count, "pits in the row (per side)", Min = 1, Max = 32, Default = "6")] public int count = 6;
-        [Param(ParamUnit.Metres, "cup radius", Min = 0.001f, Max = 0.2f, Default = "0.012")] public float radius = 0.012f;
-        [Param(ParamUnit.Fraction, "cup depth x radius", Min = 0, Max = 2, Default = "0.6")] public float depth = 0.6f;
-        [Param(ParamUnit.Fraction, "rim height and width x radius (the pale raised lip around the cup)", Min = 0, Max = 1, Default = "0.35")] public float rim = 0.35f;
+        [Param(ParamUnit.Metres, "the rearmost pit's half width (across the slit; its half length is aspect x this)", Min = 0.001f, Max = 0.2f, Default = "0.012")] public float radius = 0.012f;
+        [Param(ParamUnit.Fraction, "cup depth x the pit's half width", Min = 0, Max = 2, Default = "0.6")] public float depth = 0.6f;
+        [Param(ParamUnit.Fraction, "rim height and width x the pit's half width (the pale raised lip around the cup)", Min = 0, Max = 1, Default = "0.35")] public float rim = 0.35f;
+        [Param(ParamUnit.Fraction, "each pit is an elongated slit this many times as long as it is wide (1 = round)", Min = 1, Max = 5, Default = "2.2")] public float aspect = 2.2f;
+        [Param(ParamUnit.Degrees, "the slit's long axis turns this far from the body's long axis toward its back (0 = along the body, 90 = around it; the left side mirrored)", Min = -90, Max = 90, Default = "50")] public float slantDeg = 50f;
+        [Param(ParamUnit.Fraction, "the pits grow toward the head: the frontmost is 1 + this times the rearmost (0 = all alike)", Min = 0, Max = 3, Default = "0.6")] public float sizeGrowth = 0.6f;
 
         // RED test hook (CreaturePitRowTests.Red_Pits_Float): the pits lifted this far off the surface, metres.
         internal static float SurfaceBiasForTest;
@@ -53,6 +59,9 @@ namespace CreatureKit
             if (count < 1 || count > 32) return $"{id}: count must be 1..32";
             if (!(radius > 0f)) return $"{id}: radius must be > 0";
             if (depth < 0f || rim < 0f) return $"{id}: depth and rim must be >= 0";
+            if (!(aspect >= 1f && aspect <= 5f)) return $"{id}: aspect must be 1..5";
+            if (!(slantDeg >= -90f && slantDeg <= 90f)) return $"{id}: slantDeg must be -90..90";
+            if (!(sizeGrowth >= 0f && sizeGrowth <= 3f)) return $"{id}: sizeGrowth must be 0..3";
             return null;
         }
 
@@ -65,12 +74,18 @@ namespace CreatureKit
         // Pit k's body fraction.
         public float PitU(int k) => count <= 1 ? 0.5f * (fromU + toU) : Mathf.Lerp(fromU, toU, k / (count - 1f));
 
+        // Pit k's half width (across the slit): radius at the rearmost pit, 1 + sizeGrowth times it at the frontmost
+        // (the least u: toward the head), linear in u between.
+        public float PitRadius(int k)
+        {
+            float lo = Mathf.Min(fromU, toU), hi = Mathf.Max(fromU, toU);
+            float front = hi - lo > 1e-6f ? (hi - PitU(k)) / (hi - lo) : 1f;
+            return radius * (1f + sizeGrowth * front);
+        }
+
         // Pit k's section angle (radians) on this part's side: the right side is angleDeg, the left its mirror image.
         public float PitPhi() => at.side < 0 ? Mathf.PI - angleDeg * Mathf.Deg2Rad : angleDeg * Mathf.Deg2Rad;
 
-        // Cup: a bowl, deepest on the axis, level with the surface at r = radius.
-        float CupH(float r) => -depth * radius * (1f - r * r / (radius * radius));
-        float CupDh(float r) => 2f * depth * r / radius;
 
         public override void EmitMesh(PartMeshEmitter m, in PartCtx c)
         {
@@ -78,16 +93,19 @@ namespace CreatureKit
             FlowBody body = FindBody(KitView.Parts(m.Species));
             if (body == null) return;
             int cup = m.Slot("pit"), segs = Segs;
-            float rr = rim * radius;
             for (int k = 0; k < count; k++)
             {
-                float u = PitU(k);
+                float u = PitU(k), R = PitRadius(k), A = aspect * R, rr = rim * R;   // half width, half length, lip
                 float phi = PitPhi();
                 Vector3 p = body.SurfaceAt(m, u, phi, out Vector3 n, out Vector3 along);
                 Vector4 skin = RigidSkinForTest ? PartMeshEmitter.Rigid(0) : body.SkinAt(u * body.BodyLength);
                 // the pit's frame: a along the body (on the surface), b = n x a, so a x b = n
                 Vector3 a = PartMeshEmitter.Unit(Vector3.ProjectOnPlane(along, n), Vector3.Cross(n, Vector3.up));
                 Vector3 b = Vector3.Cross(n, a);
+                // the slit's axes: long L turned slantDeg from a toward b (the left side the other way: its mirror image),
+                // short S = n x L, so L x S = n and the rings run as before
+                float sl = (at.side < 0 ? -slantDeg : slantDeg) * Mathf.Deg2Rad;
+                Vector3 L = a * Mathf.Cos(sl) + b * Mathf.Sin(sl), S = -a * Mathf.Sin(sl) + b * Mathf.Cos(sl);
                 // the surface's own tangents at the centre: a ring vertex at (x along a, y along b) is moved on the surface
                 // itself (u, phi from the 2x2 metric), so a pit on a strongly curved neck still lies in the skin
                 const float eu = 1e-3f, ep = 0.02f;
@@ -96,16 +114,18 @@ namespace CreatureKit
                 float g00 = Vector3.Dot(pu, pu), g01 = Vector3.Dot(pu, pp), g11 = Vector3.Dot(pp, pp);
                 float det = Mathf.Max(1e-12f, g00 * g11 - g01 * g01);
 
-                // cup: the pole, then rings out to the edge
+                // cup: the pole, then rings out to the edge - an elliptic bowl, deepest on the axis, level with the surface
+                // at its rim: h = -depth R (1 - f^2) at the fraction f of the way out
                 int first = m.VertexCount;
                 for (int i = 0; i <= CupRings; i++)
                 {
-                    float r = radius * i / CupRings, h = CupH(r), dh = CupDh(r);
+                    float f = (float)i / CupRings, h = -depth * R * (1f - f * f);
                     for (int j = 0; j <= segs; j++)
                     {
-                        float th = 2f * Mathf.PI * (j == segs ? 0 : j) / segs;
-                        Vector3 d = a * Mathf.Cos(th) + b * Mathf.Sin(th);
-                        m.Vertex(OnSurface(body, m, u, phi, pu, pp, g00, g01, g11, det, d * r, h), PartMeshEmitter.Unit(n - d * dh, n), 0.5f, (float)j / segs, cup, 0f, Skin(skin, body, i));
+                        float th = 2f * Mathf.PI * (j == segs ? 0 : j) / segs, cs = Mathf.Cos(th), sn = Mathf.Sin(th);
+                        float x = A * f * cs, y = R * f * sn;
+                        Vector3 disp = L * x + S * y, grad = L * (2f * depth * R * x / (A * A)) + S * (2f * depth * R * y / (R * R));
+                        m.Vertex(OnSurface(body, m, u, phi, pu, pp, g00, g01, g11, det, disp, h), PartMeshEmitter.Unit(n - grad, n), 0.5f, (float)j / segs, cup, 0f, Skin(skin, body, i));
                     }
                 }
                 Stitch(m, first, CupRings + 1, segs, true);
@@ -115,13 +135,15 @@ namespace CreatureKit
                 for (int i = 0; i < RimRings; i++)
                 {
                     float psi = Mathf.PI * i / (RimRings - 1);
-                    float r = radius + rr * (1f - Mathf.Cos(psi)), h = rr * Mathf.Sin(psi);
-                    float nr = -Mathf.Cos(psi), nh = Mathf.Sin(psi);   // the lip's outward normal in the (r, up) plane
+                    float o = rr * (1f - Mathf.Cos(psi)), h = rr * Mathf.Sin(psi);
+                    float nr = -Mathf.Cos(psi), nh = Mathf.Sin(psi);   // the lip's outward normal in the (out, up) plane
                     for (int j = 0; j <= segs; j++)
                     {
-                        float th = 2f * Mathf.PI * (j == segs ? 0 : j) / segs;
-                        Vector3 d = a * Mathf.Cos(th) + b * Mathf.Sin(th);
-                        m.Vertex(OnSurface(body, m, u, phi, pu, pp, g00, g01, g11, det, d * r, h), PartMeshEmitter.Unit(d * nr + n * nh, n), 0.5f, (float)j / segs, PartMeshEmitter.PartBody, -1f, Skin(skin, body, i));
+                        float th = 2f * Mathf.PI * (j == segs ? 0 : j) / segs, cs = Mathf.Cos(th), sn = Mathf.Sin(th);
+                        // the ellipse grown by o along each axis, and its outward normal in the surface's plane
+                        Vector3 disp = L * ((A + o) * cs) + S * ((R + o) * sn);
+                        Vector3 d = PartMeshEmitter.Unit(L * (cs / A) + S * (sn / R), L);
+                        m.Vertex(OnSurface(body, m, u, phi, pu, pp, g00, g01, g11, det, disp, h), PartMeshEmitter.Unit(d * nr + n * nh, n), 0.5f, (float)j / segs, PartMeshEmitter.PartBody, -1f, Skin(skin, body, i));
                     }
                 }
                 Stitch(m, lip, RimRings, segs, false);

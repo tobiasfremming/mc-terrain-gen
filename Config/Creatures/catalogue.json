@@ -8252,13 +8252,13 @@
       "name": "CrestBeakHead",
       "kind": "Rigid",
       "status": "exists",
-      "bones": "1 (the jaw)",
+      "bones": "2 (the jaw, the upper head)",
       "materialLayers": [
         0
       ],
-      "system": "CrestBeakHeadRuntime (part runtime, stage Late: jaw, eye bones) + CrestBeakHead.EmitMesh (SculptMesher pieces, cached)",
-      "useWhen": "a serpent- or dragon-like head ending in a beak, on a FlowBody (or SpineBody) head joint: crested beaks, toothless snapping heads; the Apex",
-      "summary": "The beaked serpent head: a long, slightly flattened SDF skull flowing into a pointed, hooked beak, small eyes under a soft brow, lamellae along the mouth line, crests curling back like breaking waves on top of the upper beak, and a jaw on its own bone that opens on its own call timer. Rigid to the body's head joint; its back overlaps the neck so the outline runs on; carries the species' eyes.",
+      "system": "CrestBeakHeadRuntime (part runtime, stage Late: jaw, upper head, eye bones) + CrestBeakHead.EmitMesh (SculptMesher pieces, cached; teeth as horns; cheek webs skinned between the bones)",
+      "useWhen": "a serpent- or dragon-like head ending in a beak, on a FlowBody (or SpineBody) head joint: crested, toothed beaks; the Apex",
+      "summary": "The beaked serpent head: a long, slightly flattened SDF skull flowing into a pointed, hooked beak, small eyes under a soft brow, a mouth line running back past the eye with rows of small interlocking teeth (fangs at the lower jaw's tip, a knob under it), a deep fleshy lower jaw running back into the throat, a pink mouth inside with cheek webs that stretch when it gapes, sickle crests (a prong widening into a crescent that hooks back) on top of the upper beak, and a jaw on its own bone that hangs a little open at rest and gapes wide on its own call timer while the upper head tips up. Rigid to the body's head joint; its back overlaps the neck so the outline runs on; carries the species' eyes.",
       "usedBy": [],
       "params": [
         {
@@ -8428,7 +8428,7 @@
           "type": "float",
           "unit": "Metres",
           "size": "x s",
-          "meaning": "blade half thickness at its root (it tapers to a point at the tip)",
+          "meaning": "blade half thickness at its widest (its root; with flare, where it flares out) - it tapers to a point at the tip",
           "range": "",
           "example": ""
         },
@@ -8437,8 +8437,44 @@
           "type": "float",
           "unit": "Metres",
           "size": "x s",
-          "meaning": "blade half chord (its width seen from the side) at its root; 0 = 0.35 x length; chord / thickness is capped at 4 (it tapers with the thickness)",
+          "meaning": "blade half chord (its width seen from the side) at its widest; 0 = 0.35 x length; chord / thickness is capped at 4 (it follows the thickness)",
           "range": "",
+          "example": ""
+        },
+        {
+          "name": "crests[].flare",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "a sickle: the blade rises from a narrow prong and flares out to its widest (at flareAt of its length) this many times its root's width, then sweeps to the point; 0 = a plain taper from the root (a horn)",
+          "range": "0..6",
+          "example": ""
+        },
+        {
+          "name": "crests[].flareAt",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "where along the blade it is widest (with flare): toward its end, a crescent (0 = 0.4)",
+          "range": "0..0.9",
+          "example": ""
+        },
+        {
+          "name": "crests[].outside",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the blade's width shifted to the outside (front, convex side) of its curl: its axis arches out from the centre line by up to this share of the widest half chord (sin(pi u): none at the root and the point) - a broad crescent outside, a thin inner edge hooking to the point (0 = symmetric)",
+          "range": "0..0.8",
+          "example": ""
+        },
+        {
+          "name": "crests[].hookDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the tip hooks back by this much more over the last quarter of the blade (on top of curlDeg)",
+          "range": "0..120",
           "example": ""
         },
         {
@@ -8464,7 +8500,7 @@
           "type": "int",
           "unit": "Count",
           "size": "-",
-          "meaning": "lamellae: fine grooves across the mouth line",
+          "meaning": "lamellae: fine grooves across the mouth line (the teeth took their place: 0)",
           "range": "0..32",
           "example": ""
         },
@@ -8487,12 +8523,165 @@
           "example": ""
         },
         {
+          "name": "mouthCornerAt",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the gape's corner (the jaw's hinge): fraction of skullLength ahead of the head joint (negative = behind it: the mouth line runs back under and past the eye)",
+          "range": "-0.4..0.3",
+          "example": ""
+        },
+        {
+          "name": "hingeBehind",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the jaw's hinge: it turns about a point this far (x the jaw's depth at the gape's corner) behind the corner and half as far below it - the gape opens back into the throat",
+          "range": "0..1.5",
+          "example": ""
+        },
+        {
+          "name": "jawDepth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the lower jaw's own depth below the mouth line at mid-length, x skullDepth (a deep, fleshy jaw; 0 = only what the head's outline gives)",
+          "range": "0..2",
+          "example": ""
+        },
+        {
+          "name": "chinDepth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the lower jaw's depth at its chin, x skullDepth",
+          "range": "0..2",
+          "example": ""
+        },
+        {
+          "name": "throatDepth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the lower jaw's depth at the gape's corner, where its underside runs back into the throat, x skullDepth",
+          "range": "0..2",
+          "example": ""
+        },
+        {
+          "name": "cheekWeb",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "cheek webs: skin from the upper lip to the lower one, reaching this far (x skullLength) forward from the gape's corner, stretched between the head and the jaw when it gapes (0 = none: the open mouth is a slot at the corner)",
+          "range": "0..0.5",
+          "example": ""
+        },
+        {
           "name": "gapeDeg",
           "type": "float",
           "unit": "Degrees",
           "size": "-",
-          "meaning": "the jaw's widest gape (a call)",
+          "meaning": "the jaw's widest gape (a call): the lower jaw drops this far about the hinge",
           "range": "0..80",
+          "example": ""
+        },
+        {
+          "name": "callPitchDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "on a call the upper head (skull, beak, crests) tips up this far at the full gape, about the skull's back",
+          "range": "0..30",
+          "example": ""
+        },
+        {
+          "name": "restGapeDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the mouth hangs this far open at rest, showing the teeth (< gapeDeg)",
+          "range": "0..30",
+          "example": ""
+        },
+        {
+          "name": "teeth",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "teeth in each row (upper and lower, each side): small pointed teeth along the lip line, the lower row between the upper's, showing even at rest",
+          "range": "0..40",
+          "example": ""
+        },
+        {
+          "name": "toothLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "tooth length (the ones near the gape's corner shorter)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "toothRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "tooth base radius",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "toothKind",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "the material kind of the teeth and fangs: ivory-teeth (the kit's ivory keratin row), or any kind the species styles (a species short of material slots can share one, e.g. dewlap)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "toothRakeDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the teeth lean back toward the throat by this much (both rows)",
+          "range": "-45..60",
+          "example": ""
+        },
+        {
+          "name": "fangPairs",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "fang pairs at the lower jaw's tip (0..2: up to four small fangs)",
+          "range": "0..2",
+          "example": ""
+        },
+        {
+          "name": "fangLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "fang length (the second pair 0.85 x)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "fangLiftDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the fangs point forward out of the jaw's tip, raised this far above its line",
+          "range": "-30..90",
+          "example": ""
+        },
+        {
+          "name": "chinKnob",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "radius of the rounded knob under the lower jaw's tip (0 = none)",
+          "range": "",
           "example": ""
         },
         {
@@ -10142,7 +10331,7 @@
       ],
       "system": "mesh only (PitRow.EmitMesh), skinned like the FlowBody rings under it",
       "useWhen": "breathing holes along a throat or flank, nostrils, sensory pits on a FlowBody",
-      "summary": "A row of recessed pits with soft pale raised rims on a FlowBody's surface (count from fromU to toU at section angle angleDeg; mirror for both sides): spiracles, nostrils, sensory pits. Dark cup (kind pit), belly-coloured rim, skinned with the body's rings.",
+      "summary": "A row of recessed pits with soft pale raised rims on a FlowBody's surface (count from fromU to toU at section angle angleDeg; mirror for both sides): spiracles, nostrils, sensory pits - oblique slits (aspect, slantDeg) growing toward the head (sizeGrowth). Dark cup (kind pit), belly-coloured rim, skinned with the body's rings.",
       "usedBy": [],
       "params": [
         {
@@ -10249,7 +10438,7 @@
           "type": "float",
           "unit": "Metres",
           "size": "x s",
-          "meaning": "cup radius",
+          "meaning": "the rearmost pit's half width (across the slit; its half length is aspect x this)",
           "range": "0.001..0.2",
           "example": "default 0.012"
         },
@@ -10258,7 +10447,7 @@
           "type": "float",
           "unit": "Fraction",
           "size": "-",
-          "meaning": "cup depth x radius",
+          "meaning": "cup depth x the pit's half width",
           "range": "0..2",
           "example": "default 0.6"
         },
@@ -10267,9 +10456,36 @@
           "type": "float",
           "unit": "Fraction",
           "size": "-",
-          "meaning": "rim height and width x radius (the pale raised lip around the cup)",
+          "meaning": "rim height and width x the pit's half width (the pale raised lip around the cup)",
           "range": "0..1",
           "example": "default 0.35"
+        },
+        {
+          "name": "aspect",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "each pit is an elongated slit this many times as long as it is wide (1 = round)",
+          "range": "1..5",
+          "example": "default 2.2"
+        },
+        {
+          "name": "slantDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the slit's long axis turns this far from the body's long axis toward its back (0 = along the body, 90 = around it; the left side mirrored)",
+          "range": "-90..90",
+          "example": "default 50"
+        },
+        {
+          "name": "sizeGrowth",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the pits grow toward the head: the frontmost is 1 + this times the rearmost (0 = all alike)",
+          "range": "0..3",
+          "example": "default 0.6"
         }
       ]
     },

@@ -6,7 +6,9 @@ using CreatureKit;
 namespace TerrainGen.Tests
 {
     // PitRow (Apex redesign §1 breathing holes, §5.7): recessed pits with pale raised rims on a FlowBody's surface.
-    // Fixture: CreatureFlowBodyTests' body (steep neck, chest), a mirrored PitRow along the throat.
+    // Fixture: CreatureFlowBodyTests' body (steep neck, chest), a mirrored PitRow along the throat - at the part's
+    // defaults the pits are oblique slits (aspect, slantDeg) growing toward the head (sizeGrowth), so every size check
+    // below is per pit (PitRow.PitRadius).
     public class CreaturePitRowTests
     {
         static PitRow Pits(bool mirrored = true) => new PitRow
@@ -74,15 +76,15 @@ namespace TerrainGen.Tests
             return best;
         }
 
-        // null, or the first pit whose rim does not stand on the surface: its outer foot ring within 0.15 x radius of the
-        // body, every rim vertex within the lip's height + 0.15 x radius, the cup's deepest point within depth + 0.15.
+        // null, or the first pit whose rim does not stand on the surface: its outer foot ring within 0.15 x its half width of
+        // the body, every rim vertex within the lip's height + 0.15 x its half width.
         static string SurfaceProblem(PitRow pits)
         {
             Rest r = Mesh(pits);
             int pitCount = 2 * pits.count;
-            float R = pits.radius, tol = 0.15f * R;
             for (int k = 0; k < pitCount; k++)
             {
+                float R = pits.PitRadius(k % pits.count), tol = 0.15f * R;
                 int cup = r.Pit + k * PitRow.VertsPerPit, rim = cup + PitRow.CupVertices;
                 float foot = 0f;
                 for (int j = 0; j < PitRow.Segs; j++)
@@ -150,9 +152,9 @@ namespace TerrainGen.Tests
             Assert.GreaterOrEqual(pit, PartLayers.LegacyIds, "pit has a kit slot");
             Assert.IsTrue(PartLayers.Find("pit", out PartLayers.Entry e), "pit has a default row");
             Assert.Less(Mathf.Max(e.Row.tint.r, e.Row.tint.g, e.Row.tint.b), 0.1f, "near-black cup");
-            float R = p.radius;
             for (int k = 0; k < p.count; k++)
             {
+                float R = p.PitRadius(k);
                 int cup = r.Pit + k * PitRow.VertsPerPit, rim = cup + PitRow.CupVertices;
                 Assert.AreEqual(pit, Mathf.RoundToInt(r.Uv1[cup].x), "cup on the pit kind");
                 float below = DistToBody(r, r.V[cup]);
@@ -209,7 +211,8 @@ namespace TerrainGen.Tests
         }
 
         // null, or the pit that leaves the posed body skin: the sim bent hard toward a far side target, then every rim foot
-        // vertex within 0.5 x radius of the posed body triangles. bend = the sharpest joint angle reached.
+        // vertex within 0.5 x radius (the rearmost pit's half width) of the posed body triangles. bend = the sharpest joint
+        // angle reached.
         static string PosedProblem(PitRow pits, out float bend)
         {
             CreatureSpecies sp = Species(pits);
@@ -262,6 +265,87 @@ namespace TerrainGen.Tests
             PitRow.RigidSkinForTest = true;
             try { StringAssert.Contains("off the posed skin", PosedProblem(Pits(), out _), "pits glued to joint 0 must leave a bent body"); }
             finally { PitRow.RigidSkinForTest = false; }
+        }
+
+        // ------------------------------------------------------------ slits growing toward the head (Apex face close-up)
+
+        struct PitShape { public float halfWidth, halfLength, slantDeg; public Vector3 pole; }
+
+        // One side's pits (the first `count` in the mesh), measured on the cup's edge ring: half length = half the
+        // longest span across it, half width = half the shortest span between opposite vertices, and the long axis's
+        // angle from the row's own line (the next pit's pole, the line of the body there).
+        static PitShape[] Shapes(PitRow pits)
+        {
+            Rest r = Mesh(pits);
+            int w = PitRow.Segs + 1, n = pits.count;
+            var o = new PitShape[n];
+            var axis = new Vector3[n];
+            for (int k = 0; k < n; k++)
+            {
+                int edge = r.Pit + k * PitRow.VertsPerPit + PitRow.CupRings * w;
+                float lo = float.MaxValue, hi = 0f;
+                for (int j = 0; j < PitRow.Segs / 2; j++)
+                {
+                    Vector3 d = r.V[edge + j] - r.V[edge + j + PitRow.Segs / 2];
+                    float m = 0.5f * d.magnitude;
+                    if (m > hi) { hi = m; axis[k] = d.normalized; }
+                    lo = Mathf.Min(lo, m);
+                }
+                o[k] = new PitShape { halfWidth = lo, halfLength = hi, pole = r.V[r.Pit + k * PitRow.VertsPerPit] };
+            }
+            for (int k = 0; k < n; k++)
+            {
+                Vector3 along = (k + 1 < n ? o[k + 1].pole - o[k].pole : o[k].pole - o[k - 1].pole).normalized;
+                o[k].slantDeg = Mathf.Acos(Mathf.Min(1f, Mathf.Abs(Vector3.Dot(axis[k], along)))) * Mathf.Rad2Deg;
+                TestContext.Out.WriteLine($"pit {k} (u {pits.PitU(k):F3}): half width {o[k].halfWidth * 1000f:F2} mm, half length {o[k].halfLength * 1000f:F2} mm (x {o[k].halfLength / o[k].halfWidth:F2}), long axis {o[k].slantDeg:F1} deg off the row");
+            }
+            return o;
+        }
+
+        // The pits grow toward the head: each one's half width larger than the next one back, the front one >= 1.3 x the rearmost.
+        static string GrowthProblem(PitRow pits)
+        {
+            PitShape[] s = Shapes(pits);
+            for (int k = 0; k + 1 < s.Length; k++)
+                if (!(s[k].halfWidth > s[k + 1].halfWidth * 1.01f)) return $"the pits do not grow toward the head: pit {k} ({s[k].halfWidth * 1000f:F2} mm) is not larger than pit {k + 1} behind it ({s[k + 1].halfWidth * 1000f:F2} mm)";
+            float ratio = s[0].halfWidth / s[s.Length - 1].halfWidth;
+            return ratio >= 1.3f ? null : $"the pits do not grow toward the head enough: front / rear x {ratio:F2} (< 1.3)";
+        }
+
+        [Test] public void Pits_GrowTowardTheHead() => Assert.IsNull(GrowthProblem(Pits()));
+
+        [Test] public void Red_Pits_AllAlike()
+        {
+            PitRow p = Pits(); p.sizeGrowth = 0f;
+            StringAssert.Contains("do not grow", GrowthProblem(p));
+        }
+
+        // The pits are oblique slits: every one >= 1.6 x as long as it is wide, its long axis within 15 deg of the wanted
+        // slant (the part's default, 50 deg) off the row's line (neither along nor around the body).
+        static string SlitProblem(PitRow pits, float wantSlantDeg)
+        {
+            PitShape[] s = Shapes(pits);
+            for (int k = 0; k < s.Length; k++)
+            {
+                float asp = s[k].halfLength / s[k].halfWidth;
+                if (asp < 1.6f) return $"pit {k} is round, not a slit: x {asp:F2} long / wide (< 1.6)";
+                if (Mathf.Abs(s[k].slantDeg - Mathf.Abs(wantSlantDeg)) > 15f) return $"pit {k} is not oblique: its long axis is {s[k].slantDeg:F1} deg off the row (want {wantSlantDeg:F0} +- 15)";
+            }
+            return null;
+        }
+
+        [Test] public void Pits_AreObliqueSlits() => Assert.IsNull(SlitProblem(Pits(), Pits().slantDeg));
+
+        [Test] public void Red_Pits_Round()
+        {
+            PitRow p = Pits(); p.aspect = 1f;
+            StringAssert.Contains("round", SlitProblem(p, Pits().slantDeg));
+        }
+
+        [Test] public void Red_Pits_AlongTheBody()
+        {
+            PitRow p = Pits(); p.slantDeg = 0f;
+            StringAssert.Contains("not oblique", SlitProblem(p, Pits().slantDeg));   // laid along the body: not the slant asked for
         }
 
         [Test] public void Validate_Messages()

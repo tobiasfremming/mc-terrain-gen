@@ -5,32 +5,40 @@
 //           (smaller than the neck where it starts, so the neck's front rings run into it without a step), a long snout
 //           cone, and the upper beak: a cone riding on the mouth line to where the jaw ends, then the hooked tip, a cone
 //           to the point that hooks below the mouth line by beakHookDeg; all smooth-unioned with generous blends.
-//           The mouth line rises toward the gape's corner (the hinge, under the eye). The jaw's region - a box below
-//           the mouth line whose top-rear edge is rounded with the jaw's depth, so the cut sweeps from the gape's corner
-//           down and back into the throat with no rear face - is carved out with a small blend (the lip edge) and the
-//           hooked tip put back; then a soft brow over each eye socket, nostril pits and the lamellae (round-bottomed
-//           furrows on the upper lip, each continued on the jaw below the mouth line, every feature at least a cell
-//           wide so the mesh stays manifold).
+//           The mouth line runs straight from the beak back to the gape's corner, far back under and past the eye
+//           (mouthCornerAt). The jaw's region - a box below the mouth line whose top-rear edge is rounded with the jaw's
+//           depth, so the cut sweeps from the gape's corner down and back into the throat with no rear face - is carved
+//           out with a small blend (the lip edge) and the hooked tip put back; then a soft brow over each eye socket,
+//           nostril pits and (optional, grooves) lamellae furrows along the lips.
 //   tilt    the joint's frame is level (the heading); the skull's long axis continues the neck's line into the head
 //           joint in the rest pose (RestTilt), turned by pitchDeg - fixed per individual when its runtime is made.
 //   jaw     the same solids inside that region (the same outer surface: the mouth line a fine crease, the jaw flowing
-//           into the throat), ending under the hook with a chin sloping back; the same lamellae; rigid to the part's
-//           one bone, which turns about the hinge (CrestBeakHeadRuntime.Gape).
+//           into the throat), ending under the hook with a chin sloping back and a rounded knob under its tip (chinKnob);
+//           rigid to the part's one bone, which turns about the hinge (Pivot: a little behind and below the gape's
+//           corner) - hanging restGapeDeg open at rest (the mesh is bound there), gapeDeg wide on a call.
+//   teeth   horns along the lip line, `teeth` per row and side: the upper row on the skull's margin pointing down, the
+//           lower row between them on the jaw's pointing up, both raked back and splayed out so their tips stand
+//           outboard of the opposite lip (a toothy grin even with the mouth shut); fangPairs fangs at the jaw's tip,
+//           pointing forward and up. Upper teeth rigid to the head joint, lower teeth and fangs ride the jaw's bone.
 //   crests  each CrestDef is one blade on top of the upper beak - or, mirrored, an equal pair rooted side by side that
-//           lean apart by splayDeg each, a V seen from the front (the Apex's). A blade: 28 flattened round cones along a
+//           lean apart by splayDeg each, a V seen from the front (the Apex's). A blade: 56 flattened round cones along a
 //           centre line in its own plane that leans forward at its root and curls back by curlDeg (curvature growing
 //           toward the tip: a wave breaking backward), one flattening (chord / thickness) and radii shared at every
-//           join, tapering to a point; a flared foot sunk into the beak. Built once per CrestDef in the blade's own
+//           join - a sickle: from a narrow prong it flares to its widest at 0.4 of its length (flare) and sweeps to a
+//           point (flare 0: a plain taper); a flared foot sunk into the beak. Built once per CrestDef in the blade's own
 //           frame (a RoundCone's flattening follows world up, so a leaning blade is drawn upright and turned into place
 //           - BladeFrame - when it is emitted; the pair shares one polygonised piece).
 // Look: skull and jaw on the body's skin (layer 0) with the dorsal channel from the height in the head frame,
 // (y - centre) / half depth of the head's side outline at that z - the body's sin(phi) on a round section, so the
 // seam into the neck does not show in colour; the jaw a little paler from the hinge forward (no step at its rear);
 // crests on the named kind "crest" (default row: glossy keratin, bright teal #3FC0B0; a species restyles it with a
-// Layers row). The derived solids and each piece's dorsal values are cached per parameter set.
-// Runtime (stage Late): the jaw opens on its own calls - a timer between callEverySeconds.x and .y (Froude), seeded
-// per individual - and the species' two eye bones sit in the sockets. Head frame: +Z along the head (the beak), +Y up,
-// origin at the head joint (plus at.offset), metres at scale 1. Allocation-free after construction; main thread.
+// Layers row); teeth on the kind "teeth" (legacy id 13) at the pale end of the dorsal channel (the belly colour: ivory
+// on the Apex; a Layers row naming "teeth" restyles them). The derived solids, teeth and each piece's dorsal values are
+// cached per parameter set.
+// Runtime (stage Late): the jaw rests at restGapeDeg and opens to gapeDeg on its own calls - a timer between
+// callEverySeconds.x and .y (Froude), seeded per individual - and the species' two eye bones sit in the sockets. Head
+// frame: +Z along the head (the beak), +Y up, origin at the head joint (plus at.offset), metres at scale 1.
+// Allocation-free after construction; main thread.
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -45,43 +53,79 @@ namespace CreatureKit
         [Param(ParamUnit.Metres, "how high its centre line rises above the beak's top (vertically; a splayed blade is longer)")] public float height;
         [Param(ParamUnit.Metres, "its centre line's length, root to tip (>= height / cos splayDeg)")] public float length;
         [Param(ParamUnit.Degrees, "how far it curls backward from its root to its tip (0 = a straight blade leaning forward)", Min = 0, Max = 200)] public float curlDeg;
-        [Param(ParamUnit.Metres, "blade half thickness at its root (it tapers to a point at the tip)")] public float thickness;
-        [Param(ParamUnit.Metres, "blade half chord (its width seen from the side) at its root; 0 = 0.35 x length; chord / thickness is capped at 4 (it tapers with the thickness)")] public float chord;
+        [Param(ParamUnit.Metres, "blade half thickness at its widest (its root; with flare, where it flares out) - it tapers to a point at the tip")] public float thickness;
+        [Param(ParamUnit.Metres, "blade half chord (its width seen from the side) at its widest; 0 = 0.35 x length; chord / thickness is capped at 4 (it follows the thickness)")] public float chord;
+        [Param(ParamUnit.Fraction, "a sickle: the blade rises from a narrow prong and flares out to its widest (at flareAt of its length) this many times its root's width, then sweeps to the point; 0 = a plain taper from the root (a horn)", Min = 0, Max = 6)] public float flare;
+        [Param(ParamUnit.Fraction, "where along the blade it is widest (with flare): toward its end, a crescent (0 = 0.4). The Apex's 0.62 is the latest that keeps the outline smooth: past it the fall to the point is steeper, and with outside's arch (widest at 0.5) the measured widest moves from 0.61 toward the point as this grows", Min = 0, Max = 0.9f)] public float flareAt;
+        [Param(ParamUnit.Fraction, "the blade's width shifted to the outside (front, convex side) of its curl: its axis arches out from the centre line by up to this share of the widest half chord (sin(pi u): none at the root and the point) - a broad crescent outside, a thin inner edge hooking to the point (0 = symmetric)", Min = 0, Max = 0.8f)] public float outside;
+        [Param(ParamUnit.Degrees, "the tip hooks back by this much more over the last quarter of the blade (on top of curlDeg)", Min = 0, Max = 120)] public float hookDeg;
         [Param(ParamUnit.Degrees, "the blade leans out from upright by this much (toward +x; a mirrored pair: each away from the midline - a V from the front)", Min = 0, Max = 75)] public float splayDeg;
         [Param(ParamUnit.Flag, "an equal pair rooted side by side on the midline, mirrored left and right (else one blade on the midline)")] public bool mirror;
     }
 
     [Serializable]
-    [Part("CrestBeakHead", PartKind.Rigid, Bones = "1 (the jaw)",
-          Summary = "The beaked serpent head: a long, slightly flattened SDF skull flowing into a pointed, hooked beak, small eyes under a soft brow, lamellae along the mouth line, crests curling back like breaking waves on top of the upper beak, and a jaw on its own bone that opens on its own call timer. Rigid to the body's head joint; its back overlaps the neck so the outline runs on; carries the species' eyes.",
-          System = "CrestBeakHeadRuntime (part runtime, stage Late: jaw, eye bones) + CrestBeakHead.EmitMesh (SculptMesher pieces, cached)",
-          MaterialLayers = new[] { 0 }, MaterialKinds = new[] { "crest" }, KitOnly = true,
-          UseWhen = "a serpent- or dragon-like head ending in a beak, on a FlowBody (or SpineBody) head joint: crested beaks, toothless snapping heads; the Apex")]
-    public sealed class CrestBeakHead : CreaturePart
+    [Part("CrestBeakHead", PartKind.Rigid, Bones = "2 (the jaw, the upper head)",
+          Summary = "The beaked serpent head: a long, slightly flattened SDF skull flowing into a pointed, hooked beak, small eyes under a soft brow, a mouth line running back past the eye with rows of small interlocking teeth (fangs at the lower jaw's tip, a knob under it), a deep fleshy lower jaw running back into the throat, a pink mouth inside with cheek webs that stretch when it gapes, sickle crests (a prong widening into a crescent that hooks back) on top of the upper beak, and a jaw on its own bone that hangs a little open at rest and gapes wide on its own call timer while the upper head tips up. Rigid to the body's head joint; its back overlaps the neck so the outline runs on; carries the species' eyes.",
+          System = "CrestBeakHeadRuntime (part runtime, stage Late: jaw, upper head, eye bones) + CrestBeakHead.EmitMesh (SculptMesher pieces, cached; teeth as horns; cheek webs skinned between the bones)",
+          MaterialLayers = new[] { 0 }, MaterialKinds = new[] { "crest", "mouth" }, KitOnly = true,
+          UseWhen = "a serpent- or dragon-like head ending in a beak, on a FlowBody (or SpineBody) head joint: crested, toothed beaks; the Apex")]
+    public sealed class CrestBeakHead : CreaturePart, IMaterialKinds
     {
         [Param(ParamUnit.Metres, "skull length; the skull reaches half of it behind the head joint (into the neck) and half ahead to the beak's root", Example = "fixture 0.26")] public float skullLength = 0.26f;
         [Param(ParamUnit.Metres, "skull half width (>= skullDepth: slightly flattened)")] public float skullWidth = 0.055f;
-        [Param(ParamUnit.Metres, "skull half depth (the head's back starts at ~0.6 x it inside the neck)")] public float skullDepth = 0.052f;
+        [Param(ParamUnit.Metres, "skull half depth (the head's back starts at ~0.6 x it inside the neck)")] public float skullDepth = 0.067f;
         [Param(ParamUnit.Metres, "beak length from its root (skullLength / 2 ahead of the joint) to the tip")] public float beakLength = 0.26f;
         [Param(ParamUnit.Degrees, "the upper beak's tip hooks down by this much over the beak's last third, over the lower jaw's tip", Min = -10, Max = 30)] public float beakHookDeg = 11f;
         [Param(ParamUnit.Fraction, "how far the brow juts out over the eye socket", Min = 0, Max = 1)] public float browRidge = 0.3f;
         [Param(ParamUnit.Struct, "crests on top of the upper beak: each one blade, or (mirror) an equal pair splayed into a V")] public CrestDef[] crests =
         {
-            new CrestDef { along = 0.8f, height = 0.055f, length = 0.085f, curlDeg = 105f, thickness = 0.007f, chord = 0.026f, splayDeg = 30f, mirror = true },
+            new CrestDef { along = 0.8f, height = 0.0825f, length = 0.1275f, curlDeg = 95f, thickness = 0.0065f, chord = 0.026f, flare = 2.6f, flareAt = 0.62f, outside = 0.75f, hookDeg = 40f, splayDeg = 30f, mirror = true },
         };
-        [Param(ParamUnit.Count, "lamellae: fine grooves across the mouth line", Min = 0, Max = 32)] public int grooves = 9;
+        [Param(ParamUnit.Count, "lamellae: fine grooves across the mouth line (the teeth took their place: 0)", Min = 0, Max = 32)] public int grooves = 0;
         [Param(ParamUnit.Metres, "groove depth")] public float grooveDepth = 0.004f;
-        [Param(ParamUnit.Fraction, "the lower jaw's share of the head's depth (the mouth line's height)", Min = 0.15f, Max = 0.7f)] public float jawFraction = 0.42f;
-        [Param(ParamUnit.Degrees, "the jaw's widest gape (a call)", Min = 0, Max = 80)] public float gapeDeg = 28f;
+        [Param(ParamUnit.Fraction, "the lower jaw's share of the head's depth (the mouth line's height)", Min = 0.15f, Max = 0.7f)] public float jawFraction = 0.5f;
+        [Param(ParamUnit.Fraction, "the gape's corner (the jaw's hinge): fraction of skullLength ahead of the head joint (negative = behind it: the mouth line runs back under and past the eye)", Min = -0.4f, Max = 0.3f)] public float mouthCornerAt = -0.15f;
+        [Param(ParamUnit.Fraction, "the jaw's hinge: it turns about a point this far (x the jaw's depth at the gape's corner) behind the corner and half as far below it - the gape opens back into the throat", Min = 0, Max = 1.5f)] public float hingeBehind = 0.15f;
+        [Param(ParamUnit.Fraction, "the lower jaw's own depth below the mouth line at mid-length, x skullDepth (a deep, fleshy jaw; 0 = only what the head's outline gives)", Min = 0, Max = 2)] public float jawDepth = 0.9f;
+        [Param(ParamUnit.Fraction, "the lower jaw's depth at its chin, x skullDepth", Min = 0, Max = 2)] public float chinDepth = 0.5f;
+        [Param(ParamUnit.Fraction, "the lower jaw's depth at the gape's corner, where its underside runs back into the throat, x skullDepth", Min = 0, Max = 2)] public float throatDepth = 0.6f;
+        [Param(ParamUnit.Fraction, "cheek webs: skin from the upper lip to the lower one, reaching this far (x skullLength) forward from the gape's corner, stretched between the head and the jaw when it gapes (0 = none: the open mouth is a slot at the corner)", Min = 0, Max = 0.5f)] public float cheekWeb = 0.16f;
+        [Param(ParamUnit.Metres, "the throat: a pink plug at the back of the mouth hiding the body's front end (the neck's front rings and cap run into the head; an open mouth would show them) - its half size, about the neck's half height at the head joint (0 = none)")] public float throatRadius = 0.055f;
+        [Param(ParamUnit.Metres, "how far ahead of the head joint the body's front end reaches (the FlowBody's front ring plus its headCapLength): the throat plug covers it to here")] public float throatReach = 0.065f;
+        [Param(ParamUnit.Degrees, "the jaw's widest gape (a call): the lower jaw drops this far about the hinge", Min = 0, Max = 80)] public float gapeDeg = 62f;
+        [Param(ParamUnit.Degrees, "on a call the upper head (skull, beak, crests) tips up this far at the full gape, about the skull's back", Min = 0, Max = 30)] public float callPitchDeg = 6f;
+        [Param(ParamUnit.Degrees, "the mouth hangs this far open at rest, showing the teeth (< gapeDeg)", Min = 0, Max = 30)] public float restGapeDeg = 7f;
+        [Param(ParamUnit.Count, "teeth in each row (upper and lower, each side): small pointed teeth along the lip line, the lower row between the upper's, showing even at rest", Min = 0, Max = 40)] public int teeth = 16;
+        [Param(ParamUnit.Metres, "tooth length (the ones near the gape's corner shorter)")] public float toothLength = 0.014f;
+        [Param(ParamUnit.Metres, "tooth base radius")] public float toothRadius = 0.003f;
+        [Param(ParamUnit.Text, "the material kind of the teeth and fangs: ivory-teeth (the kit's ivory keratin row, a kit slot of its own). A species short of kit slots uses the legacy \"teeth\" (registry row 13: no kit slot) with a Layers row restyling 13 to ivory Claw. Validate: a registry / NamedKinds kind or one a Layers row names")] public string toothKind = "ivory-teeth";
+        [Param(ParamUnit.Degrees, "the teeth lean back toward the throat by this much (both rows)", Min = -45, Max = 60)] public float toothRakeDeg = 18f;
+        [Param(ParamUnit.Count, "fang pairs at the lower jaw's tip (0..2: up to four small fangs)", Min = 0, Max = 2)] public int fangPairs = 2;
+        [Param(ParamUnit.Metres, "fang length (the second pair 0.85 x)")] public float fangLength = 0.022f;
+        [Param(ParamUnit.Degrees, "the fangs point forward out of the jaw's tip, raised this far above its line", Min = -30, Max = 90)] public float fangLiftDeg = 35f;
+        [Param(ParamUnit.Metres, "radius of the rounded knob under the lower jaw's tip (0 = none)")] public float chinKnob = 0.009f;
         [Param(ParamUnit.Seconds, "time between calls: x the shortest, y the longest (each individual draws its own, seeded)")] public Vector2 callEverySeconds = new Vector2(6f, 14f);
         [Param(ParamUnit.Seconds, "one call: open, hold, close")] public float callSeconds = 0.8f;
-        [Param(ParamUnit.Fraction, "eye centre: x along the skull (fraction of skullLength ahead of the joint), y height (fraction of skullDepth)", Min = -0.5f, Max = 0.5f)] public Vector2 eyeAt = new Vector2(0.15f, 0.3f);
+        [Param(ParamUnit.Fraction, "eye centre: x along the skull (fraction of skullLength ahead of the joint), y height (fraction of skullDepth)", Min = -0.5f, Max = 0.5f)] public Vector2 eyeAt = new Vector2(0.15f, 0.4f);
         [Param(ParamUnit.Degrees, "the head's long axis tilts nose-down (+) or up (-) from the neck's line at the head joint in the rest pose (0 = the head continues the neck)", Min = -45, Max = 45)] public float pitchDeg = 0f;
         [Param(ParamUnit.Metres, "polygoniser cell of the skull and jaw (the crests use a finer one from their thickness)")] public float cell = 0.005f;
 
-        public const int MaxCrests = 8, MaxGrooves = 32;
+        public const int MaxCrests = 8, MaxGrooves = 32, MaxTeeth = 40;
 
-        public override int BoneCount(in SpeciesCtx c) => 1;
+        public override int BoneCount(in SpeciesCtx c) => 2;   // the jaw, the upper head
+
+        // A kind the species can draw with: a registry or NamedKinds kind, or one a Layers row names.
+        static bool KindKnown(string kind, in SpeciesCtx c)
+        {
+            if (PartLayers.Find(kind, out _)) return true;
+            for (int i = 0; i < c.Modules.Count; i++)
+                if (c.Modules[i] is Layers l && l.rows != null)
+                    foreach (LayerDef d in l.rows) if (d.kind == kind) return true;
+            return false;
+        }
+
+        // IMaterialKinds: the teeth's kind (data), besides the crest and mouth kinds of [Part].
+        public void Kinds(List<string> into) { if (!string.IsNullOrEmpty(toothKind)) into.Add(toothKind); }
         public override int MeshOrder => 100;
         protected override void CopyArrays() { crests = (CrestDef[])crests?.Clone(); }
 
@@ -98,6 +142,22 @@ namespace CreatureKit
             if (jawFraction < 0.15f || jawFraction > 0.7f) return $"{id}: jawFraction must be 0.15..0.7";
             if (pitchDeg < -45f || pitchDeg > 45f) return $"{id}: pitchDeg must be -45..45";
             if (gapeDeg < 0f || gapeDeg > 80f) return $"{id}: gapeDeg must be 0..80";
+            if (restGapeDeg < 0f || restGapeDeg > 30f || restGapeDeg > gapeDeg) return $"{id}: restGapeDeg must be 0..30 and <= gapeDeg";
+            if (mouthCornerAt < -0.4f || mouthCornerAt > 0.3f) return $"{id}: mouthCornerAt must be -0.4..0.3";
+            if (hingeBehind < 0f || hingeBehind > 1.5f) return $"{id}: hingeBehind must be 0..1.5";
+            if (teeth < 0 || teeth > MaxTeeth) return $"{id}: teeth must be 0..{MaxTeeth}";
+            if (teeth > 0 && (!(toothLength > 0f) || !(toothRadius > 0f))) return $"{id}: toothLength and toothRadius must be > 0";
+            if (toothRakeDeg < -45f || toothRakeDeg > 60f) return $"{id}: toothRakeDeg must be -45..60";
+            if (fangPairs < 0 || fangPairs > 2) return $"{id}: fangPairs must be 0..2";
+            if (fangPairs > 0 && !(fangLength > 0f)) return $"{id}: fangLength must be > 0";
+            if (fangLiftDeg < -30f || fangLiftDeg > 90f) return $"{id}: fangLiftDeg must be -30..90";
+            if (chinKnob < 0f) return $"{id}: chinKnob must be >= 0";
+            if (jawDepth < 0f || chinDepth < 0f || throatDepth < 0f || jawDepth > 2f || chinDepth > 2f || throatDepth > 2f) return $"{id}: jawDepth, chinDepth and throatDepth must be 0..2";
+            if (cheekWeb < 0f || cheekWeb > 0.5f) return $"{id}: cheekWeb must be 0..0.5";
+            if (throatRadius < 0f || throatReach < -skullLength) return $"{id}: throatRadius must be >= 0 and throatReach > -skullLength";
+            if ((teeth > 0 || fangPairs > 0) && !string.IsNullOrEmpty(toothKind) && !KindKnown(toothKind, c)) return $"{id}: toothKind '{toothKind}' is neither a registry or kit kind (PartLayers) nor named by a Layers row";
+            if (callPitchDeg < 0f || callPitchDeg > 30f) return $"{id}: callPitchDeg must be 0..30";
+            if ((teeth > 0 || fangPairs > 0) && string.IsNullOrEmpty(toothKind)) return $"{id}: toothKind is empty";
             if (!(callEverySeconds.x > 0f) || callEverySeconds.y < callEverySeconds.x) return $"{id}: callEverySeconds needs 0 < x <= y";
             if (!(callSeconds > 0f)) return $"{id}: callSeconds must be > 0";
             if (crests == null || crests.Length > MaxCrests) return $"{id}: at most {MaxCrests} crests";
@@ -110,6 +170,10 @@ namespace CreatureKit
                 if (d.splayDeg < 0f || d.splayDeg > 75f) return $"{id}: crest {k}: splayDeg must be 0..75";
                 if (!(d.length >= d.height / Mathf.Cos(d.splayDeg * Mathf.Deg2Rad))) return $"{id}: crest {k}: length must be >= height / cos splayDeg";
                 if (d.curlDeg < 0f || d.curlDeg > 200f) return $"{id}: crest {k}: curlDeg must be 0..200";
+                if (d.flare != 0f && (d.flare < 1f || d.flare > 6f)) return $"{id}: crest {k}: flare must be 0 or 1..6";
+                if (d.flareAt != 0f && (d.flareAt < 0.2f || d.flareAt > 0.9f)) return $"{id}: crest {k}: flareAt must be 0 or 0.2..0.9";
+                if (d.outside < 0f || d.outside > 0.8f) return $"{id}: crest {k}: outside must be 0..0.8";
+                if (d.hookDeg < 0f || d.hookDeg > 120f) return $"{id}: crest {k}: hookDeg must be 0..120";
             }
             return null;
         }
@@ -130,12 +194,44 @@ namespace CreatureKit
         // frame's place in the head frame.
         public IReadOnlyList<SculptShape> CrestSolid(int b) => Geo().crest[Geo().bladeDef[b]];
         public Vector3[] CrestSpine(int b) => (Vector3[])Geo().spine[Geo().bladeDef[b]].Clone();
+        // Blade b's cones' axis (its own frame): the centre line moved toward the outside of the curl by outside x the
+        // half chord - the line the blade's outline is symmetric about.
+        public Vector3[] CrestAxis(int b) => (Vector3[])Geo().axis[Geo().bladeDef[b]].Clone();
         public Matrix4x4 BladeFrame(int b) => Geo().bladeFrame[b];
         // The jaw's hinge and the right eye's centre on the socket floor (head frame).
         public Vector3 Hinge => Geo().hinge;
+        // The point the jaw turns about (head frame): behind and below the gape's corner by hingeBehind (the gape reaches
+        // back into the throat; the jaw's rear swings less).
+        public Vector3 Pivot => Geo().pivot;
+        // The point the upper head tips up about on a call (head frame): the skull's back, inside the neck.
+        public Vector3 SkullPivot => Geo().skullPivot;
+        // The cheek web's columns (+x side, head frame, the jaw closed): its upper and lower edge from the corner forward
+        // (empty: no web).
+        public Vector3[] WebTop => (Vector3[])(Geo().webTop ?? new Vector3[0]).Clone();
+        public Vector3[] WebBot => (Vector3[])(Geo().webBot ?? new Vector3[0]).Clone();
         public Vector3 EyeSurface => Geo().eye;
+        // The mouth line's height at z (head frame, the jaw closed): straight from the gape's corner (the hinge) forward.
+        public float MouthY(float z) { Built g = Geo(); return g.hinge.y + g.mouthSlope * (z - g.hinge.z); }
+        // The lower jaw's front end at the mouth line (z, head frame) and the knob's centre under its tip.
+        public float JawFrontZ => Geo().jawFront;
+        public Vector3 KnobCentre => Geo().knob;
 
-        // The polygonised pieces: 0 the skull, 1 the jaw, 2 + b blade b (in its own frame; BladeFrame places it).
+        // One tooth or fang (head frame, the jaw closed): Horn from basePt along dir (length, base radius, curling back
+        // by curveDeg - the tip is where the curve ends), leaving the gum at emerge. Lower ones ride the jaw's bone.
+        public struct ToothDef { public Vector3 basePt, dir, up, emerge, tip; public float length, radius, curveDeg; public bool lower, fang; }
+        public int ToothCount => Geo().teeth.Length;
+        public ToothDef Tooth(int i) => Geo().teeth[i];
+
+        // The jaw's place at a gape (degrees) in the head frame: a turn about the hinge, + = the front drops. The jaw
+        // piece is drawn closed; the mesh binds it at restGapeDeg (the runtime's resting gape), so a bone at gape G shows it at G.
+        public Matrix4x4 JawPose(float deg)
+        {
+            Vector3 h = Pivot; Quaternion q = Quaternion.AngleAxis(deg, Vector3.right);
+            return Matrix4x4.TRS(h - q * h, q, Vector3.one);
+        }
+
+        // The polygonised pieces: 0 the skull, 1 the jaw (closed: the mesh draws it at JawPose(restGapeDeg)), 2 + b blade b
+        // (in its own frame; BladeFrame places it). The teeth are horns (Tooth), not pieces.
         public int PieceCount => 2 + BladeCount;
         public SculptPiece Piece(int i)
         {
@@ -150,16 +246,21 @@ namespace CreatureKit
         {
             public SculptShape[] head, skull, jaw;
             public SculptShape[][] crest;
-            public Vector3[][] spine;
+            public Vector3[][] spine, axis;   // per CrestDef: its centre line, and its cones' axis (moved outside by `outside`)
             public Sculpt skullSculpt, jawSculpt;
             public Sculpt[] crestSculpt;       // per CrestDef
             public int[] bladeDef;             // per blade: its CrestDef
             public Matrix4x4[] bladeFrame;     // per blade: its frame in the head frame
-            public Vector3 hinge, eye, boundsCentre;
-            public float boundsRadius;
+            public Vector3 hinge, pivot, eye, boundsCentre, knob;
+            public float boundsRadius, mouthSlope, jawFront;
+            public ToothDef[] teeth;
             public float profZ0, profDz;
             public float[] profC, profH;   // the side outline's centre and half depth at profZ0 + i profDz
             public float[][] dorsal;       // per piece (0 skull, 1 jaw, 2 + b blades): each vertex's dorsal value, made on first use
+            public bool[][] inside;        // per piece (0 skull, 1 jaw): the vertex is on a cut face inside the closed head (the mouth)
+            public SculptField headField, boxField;   // the closed head; the jaw's region (the mouth's cut)
+            public Vector3[] webTop, webBot;   // per column (from the gape's corner forward): the cheek web's upper and lower edge (+x side, the jaw closed)
+            public Vector3 skullPivot;
         }
 
         static readonly Dictionary<ulong, Built> built = new Dictionary<ulong, Built>();
@@ -173,9 +274,14 @@ namespace CreatureKit
             h = Mix(Mix(Mix(Mix(h, beakHookDeg), browRidge), grooves), grooveDepth);
             h = Mix(Mix(Mix(Mix(h, jawFraction), eyeAt.x), eyeAt.y), cell);
             h = Mix(Mix(Mix(Mix(Mix(h, gapeDeg), BlobCrestsForTest ? 1 : 0), BlobSharpTipForTest ? 1 : 0), CrestSinkForTest), BladeScaleForTest);
+            h = Mix(Mix(Mix(Mix(Mix(h, restGapeDeg), mouthCornerAt), teeth), toothLength), toothRadius);
+            h = Mix(Mix(Mix(Mix(Mix(h, toothRakeDeg), fangPairs), fangLength), fangLiftDeg), chinKnob);
+            h = Mix(Mix(Mix(h, TeethInsetForTest), TeethLiftForTest), hingeBehind);
+            h = Mix(Mix(Mix(Mix(Mix(h, jawDepth), chinDepth), throatDepth), cheekWeb), NoMouthKindForTest ? 1 : 0);
+            h = Mix(Mix(Mix(h, throatRadius), throatReach), MouthNoBoxForTest ? 1 : 0);
             int n = crests?.Length ?? 0;
             h = Mix(h, n);
-            for (int k = 0; k < n; k++) { CrestDef d = crests[k]; h = Mix(Mix(Mix(Mix(Mix(Mix(Mix(Mix(h, d.along), d.height), d.length), d.curlDeg), d.thickness), d.chord), d.splayDeg), d.mirror ? 1 : 0); }
+            for (int k = 0; k < n; k++) { CrestDef d = crests[k]; h = Mix(Mix(Mix(Mix(Mix(Mix(Mix(Mix(Mix(h, d.along), d.height), d.length), d.curlDeg), d.thickness), d.chord), d.flare), d.splayDeg), d.mirror ? 1 : 0); h = Mix(Mix(Mix(h, d.flareAt), d.outside), d.hookDeg); }
             return h;
         }
 
@@ -243,7 +349,7 @@ namespace CreatureKit
             // is the lower jaw's pointed tip, its upper half the beak)
             var head = new List<SculptShape>
             {
-                Ell(new Vector3(0f, 0.05f * D, -0.05f * L), new Vector3(0.9f * W, 0.92f * D, 0.55f * L), SculptOp.Union, 0f),                       // cranium
+                Ell(new Vector3(0f, 0.05f * D, 0.02f * L), new Vector3(0.9f * W, 0.92f * D, 0.5f * L), SculptOp.Union, 0f),                         // cranium (deepest by the eye, easing back into the neck)
                 Cone(new Vector3(0f, -0.02f * D, zb), new Vector3(0f, 0.05f * D, -0.1f * L), 0.6f * W, 0.85f * W, 0.95f * sq, 0.5f * W),    // back into the neck
                 Ell(new Vector3(0.45f * W, -0.45f * D, -0.08f * L), new Vector3(0.38f * W, 0.45f * D, 0.28f * L), SculptOp.Union, 0.5f * W, true), // jowls
                 Cone(new Vector3(0f, 0.05f * D, 0.1f * L), new Vector3(0f, -0.12f * D, zr + 0.9f * BL), 0.68f * W, 0.1f * W, 1.15f * sq, 0.6f * W), // snout
@@ -252,13 +358,17 @@ namespace CreatureKit
 
             // the mouth line: on the beak jawFraction of the depth up from the bottom; at the hinge (the gape's corner,
             // under the eye) 0.1 of the depth higher - it rises toward the rear; straight between
-            float zh = 0.02f * L, zm = zr + 0.3f * BL;
+            float zh = mouthCornerAt * L, zm = zr + 0.3f * BL;
             Outline(H0, zh, reach, out float th, out float bh);
             Outline(H0, zm, reach, out float tm, out float bm);
-            Vector3 mh = new Vector3(0f, bh + Mathf.Min(0.8f, jawFraction + 0.1f) * (th - bh), zh), mm = new Vector3(0f, bm + jawFraction * (tm - bm), zm);
+            Vector3 mh = new Vector3(0f, bh + jawFraction * (th - bh), zh), mm = new Vector3(0f, bm + jawFraction * (tm - bm), zm);
             Vector3 md = (mm - mh).normalized;
             float MouthY(float z) => mh.y + (mm.y - mh.y) * (z - zh) / (zm - zh);
-            g.hinge = mh;
+            g.hinge = mh; g.mouthSlope = (mm.y - mh.y) / (zm - zh);
+            {
+                float jd = Mathf.Max(0.01f, mh.y - bh);   // the jaw's depth at the corner
+                g.pivot = mh + new Vector3(0f, -0.5f * hingeBehind * jd, -hingeBehind * jd);
+            }
 
             // the upper beak: a cone riding on the mouth line from mid-beak to where the lower jaw ends (zFront), then the
             // hooked tip - a cone from there to the point, which hooks down below the mouth line by beakHookDeg and
@@ -271,11 +381,37 @@ namespace CreatureKit
             const float kBeakSquash = 1.1f;
             Vector3 cF = new Vector3(0f, MouthY(zFront) + kBeakSquash * rF, zFront);
             SculptShape beakA = Cone(new Vector3(0f, MouthY(z3) + kBeakSquash * r3, z3), cF, r3, rF, kBeakSquash, 0.3f * W);
-            SculptShape hook = Cone(cF, new Vector3(0f, MouthY(zt) - drop, zt), rF, Mathf.Max(0.002f, 0.5f * cell), kBeakSquash, 0.2f * W);
+            SculptShape hook = Cone(cF, new Vector3(0f, MouthY(zt) - drop, zt), rF, Mathf.Max(0.002f, 0.6f * cell), kBeakSquash, 0.2f * W);
             head.Add(beakA);
             head.Add(hook);
+            // the lower jaw's own body: a deep, fleshy jaw under the mouth line - round cones from the gape's corner (its
+            // underside running back into the throat, throatDepth) through mid-jaw (jawDepth) to the chin (chinDepth),
+            // each hanging from the mouth line (its top on it), smooth-unioned into the head
+            // (each cone 0.8 x the head's own half width at the mouth line there and hanging from 0.2 of its depth under
+            // the line: the lips keep the head's outline, the upper lip's overhang and the teeth's margin)
+            {
+                var Hb = new SculptField(head.ToArray());
+                float gapJ = Mathf.Max(0.003f, 0.5f * cell), zJ = zFront - rF - gapJ;
+                float[] zs = { zh, Mathf.Lerp(zh, zJ, 0.5f), zJ - 0.5f * chinDepth * D };
+                float[] dd = { throatDepth * D, jawDepth * D, chinDepth * D };
+                var ww = new float[3];
+                for (int i = 0; i < 3; i++)
+                {
+                    if (i == 0) { March(Hb, new Vector3(0f, MouthY(zh), zh), Vector3.right, reach, 0.0005f, out Vector3 s0); zs[0] = zh + 0.8f * 0.8f * s0.x; }   // its round end at the corner, not behind it
+                    ww[i] = 0.8f * (March(Hb, new Vector3(0f, MouthY(zs[i]), zs[i]), Vector3.right, reach, 0.0005f, out Vector3 sw) ? sw.x : 0.5f * W);
+                }
+                for (int i = 0; i < 2; i++)
+                {
+                    if (!(dd[i] > 0.002f) || !(dd[i + 1] > 0.002f)) continue;
+                    Vector3 a = new Vector3(0f, MouthY(zs[i]) - 0.7f * dd[i], zs[i]), b = new Vector3(0f, MouthY(zs[i + 1]) - 0.7f * dd[i + 1], zs[i + 1]);
+                    float sqj = Mathf.Clamp(0.5f * (0.5f * dd[i] / ww[i] + 0.5f * dd[i + 1] / ww[i + 1]), 0.3f, 4f);
+                    head.Add(Cone(a, b, ww[i], ww[i + 1], sqj, 0.25f * W));
+                }
+            }
             var H = new SculptField(head.ToArray());
             g.head = head.ToArray();
+            g.headField = H;
+            g.skullPivot = new Vector3(0f, 0.05f * D, zb);
 
             // the side outline (dorsal shading)
             const int kProf = 64;
@@ -300,8 +436,8 @@ namespace CreatureKit
             float pitch = -Mathf.Atan2(md.y, md.z) * Mathf.Rad2Deg;   // + nose down
             Quaternion bq = SculptField.Rotation(new Vector3(pitch, 0f, 0f));
             Vector3 boxUp = bq * Vector3.up;
-            float jawDepth = Mathf.Max(0.01f, mh.y - bh);
-            float R = 1.1f * jawDepth;
+            float jd0 = Mathf.Max(0.01f, mh.y - bh);   // the head outline's depth under the corner (before the jaw's own body)
+            float R = 1.1f * jd0;
             float sRear = -R, sFront = (zt - zh) / Mathf.Max(0.2f, md.z) + R + 0.02f;   // along md from the hinge
             float hx = 3f * W + R, hy = 3f * D + R, hz = 0.5f * (sFront - sRear);
             float lip = Mathf.Max(0.5f * cell, 0.004f);
@@ -311,6 +447,7 @@ namespace CreatureKit
                 round = R,
             };
 
+            g.boxField = new SculptField(new[] { jawBox });
             // lamellae: furrows across the mouth line, grooveDepth deep
             var upperGrooves = new List<SculptShape>(); var lowerGrooves = new List<SculptShape>();
             if (grooves > 0 && grooveDepth > 0f)
@@ -357,7 +494,7 @@ namespace CreatureKit
             var skull = new List<SculptShape>(head);
             SculptShape cut = jawBox; cut.op = SculptOp.Subtract; cut.blend = lip;
             skull.Add(cut);
-            SculptShape hookBack = hook; hookBack.blend = 0.5f * lip;
+            SculptShape hookBack = hook; hookBack.blend = lip;   // (0.5 x lip pinched a sub-cell crease under the hook at some mouth lines)
             skull.Add(hookBack);
             var withCut = new SculptField(skull.ToArray());
             float ze = eyeAt.x * L, ye = eyeAt.y * D;
@@ -377,6 +514,17 @@ namespace CreatureKit
                     skull.Add(Ell(ns, new Vector3(0.12f * W, 0.05f * D, 0.07f * BL), SculptOp.Subtract, 0.08f * W, true));   // nostril
             }
             skull.AddRange(upperGrooves);
+            // the throat: a capsule round the body's front end (centred on the head's axis, from the gape's corner to
+            // throatReach), a little larger than it, inside the closed head - its faces in the open mouth are the
+            // mouth's (the back of the throat), and the neck's front rings and cap stay hidden when the jaw drops
+            if (throatRadius > 0f)
+            {
+                float rr = throatRadius + 0.003f;
+                March(H, new Vector3(0f, 0f, throatReach - rr), Vector3.right, reach, 0.0005f, out Vector3 sx);
+                float rx = Mathf.Min(rr, Mathf.Max(0.005f, 0.85f * sx.x));
+                float zEnd = Mathf.Max(zh + 0.01f, throatReach + 0.003f - rx);   // the round end reaches rx along the axis
+                skull.Add(Cone(new Vector3(0f, 0f, zh), new Vector3(0f, 0f, zEnd), rx, rx, Mathf.Clamp(rr / rx, 1f, 4f), lip));
+            }
             g.skull = skull.ToArray();
             var skullField = new SculptField(g.skull);
             if (!March(skullField, new Vector3(0f, ye, ze), Vector3.right, reach, 0.001f, out g.eye)) g.eye = es;
@@ -392,25 +540,54 @@ namespace CreatureKit
                 kind = SculptKind.Plane, op = SculptOp.Intersect, blend = lip,
                 centre = new Vector3(0f, MouthY(zFront), zFront - rF - gap), rotationDeg = new Vector3(120f, 0f, 0f),   // normal (0, -0.5, 0.87)
             });
+            g.jawFront = zFront - rF - gap;
+            // the knob under the jaw's tip: a round swelling on its underside a little behind the chin, most of it proud
+            if (chinKnob > 0f)
+            {
+                var jawSoFar = new SculptField(jaw.ToArray());
+                float zk = g.jawFront - 0.7f * chinKnob - 0.04f * BL, yk = MouthY(zk) - 0.01f;
+                for (float y = MouthY(zk) - 0.002f; y > MouthY(zk) - reach; y -= 0.001f) { if (jawSoFar.Eval(new Vector3(0f, y, zk)) > 0f) break; yk = y; }
+                g.knob = new Vector3(0f, yk + 0.2f * chinKnob, zk);
+                jaw.Add(Ell(g.knob, new Vector3(0.9f * chinKnob, chinKnob, 1.15f * chinKnob), SculptOp.Union, 0.6f * chinKnob));
+            }
             jaw.AddRange(lowerGrooves);
             g.jaw = jaw.ToArray();
+
+            g.teeth = Teeth(H, skullField, new SculptField(g.jaw), zh, zFront, g.jawFront, MouthY, lip, reach);
+
+            // cheek webs: from the gape's corner forward cheekWeb x L, an edge a little above and one a little below the
+            // mouth line, a lip's width in from the head's side (hidden inside the closed lips; it shows when they part)
+            if (cheekWeb > 0f)
+            {
+                const int kWebCols = 9;
+                g.webTop = new Vector3[kWebCols]; g.webBot = new Vector3[kWebCols];
+                for (int c = 0; c < kWebCols; c++)
+                {
+                    float z = zh + cheekWeb * L * c / (kWebCols - 1f), ym = MouthY(z);
+                    if (!March(H, new Vector3(0f, ym, z), Vector3.right, reach, 0.0005f, out Vector3 sw)) sw = new Vector3(W, ym, z);
+                    float x = Mathf.Max(0.002f, sw.x - lip);
+                    g.webTop[c] = new Vector3(x, ym + 0.6f * lip, z); g.webBot[c] = new Vector3(x, ym - 0.6f * lip, z);
+                }
+            }
 
             g.skullSculpt = new Sculpt { id = "skull", shapes = g.skull, cell = cell };
             g.jawSculpt = new Sculpt { id = "jaw", shapes = g.jaw, cell = cell };
 
             // crests: blades on the beak's top, curling back; a mirrored def a pair side by side, splayed apart
             int nc = crests?.Length ?? 0;
-            g.crest = new SculptShape[nc][]; g.spine = new Vector3[nc][]; g.crestSculpt = new Sculpt[nc];
+            g.crest = new SculptShape[nc][]; g.spine = new Vector3[nc][]; g.axis = new Vector3[nc][]; g.crestSculpt = new Sculpt[nc];
             var bladeDef = new List<int>(); var bladeFrame = new List<Matrix4x4>();
             for (int k = 0; k < nc; k++)
             {
                 CrestDef d = crests[k];
-                float t = d.thickness, sink = 0.35f * t + CrestSinkForTest * d.height;
+                float t = RootRadius(d), sink = 0.35f * t + CrestSinkForTest * d.height;
                 float splay = d.splayDeg * Mathf.Deg2Rad;
                 // in the blade's frame: upright, its root sunk below the frame's origin (the beak's top)
                 g.spine[k] = CrestLine(d, new Vector3(0f, -sink, 0f), 0.35f * t, d.height / Mathf.Cos(splay));
-                g.crest[k] = BlobCrestsForTest ? BlobCrestShapes(d, g.spine[k], Vector3.zero) : CrestShapes(d, g.spine[k], Vector3.zero);
-                g.crestSculpt[k] = new Sculpt { id = "crest", shapes = g.crest[k], cell = Mathf.Min(cell, 0.3f * t) };
+                float crestCell = Mathf.Min(cell, Mathf.Min(0.3f * d.thickness, kCrestCellOfRoot * t));
+                g.axis[k] = g.spine[k];
+                g.crest[k] = BlobCrestsForTest ? BlobCrestShapes(d, g.spine[k], Vector3.zero) : CrestShapes(d, g.spine[k], Vector3.zero, crestCell, out g.axis[k]);
+                g.crestSculpt[k] = new Sculpt { id = "crest", shapes = g.crest[k], cell = crestCell };
                 float z = zr + d.along * BL;
                 int pi = Mathf.Clamp(Mathf.RoundToInt((z - g.profZ0) / g.profDz), 0, kProf - 1);
                 float yIn = Mathf.Max(g.profC[pi], MouthY(z) + 0.5f * (g.profC[pi] + g.profH[pi] - MouthY(z)));
@@ -435,9 +612,84 @@ namespace CreatureKit
                 Vector3 o = g.bladeFrame[b2].GetColumn(3);
                 lo = Vector3.Min(lo, o - new Vector3(r, r, r)); hi = Vector3.Max(hi, o + new Vector3(r, r, r));
             }
-            g.boundsCentre = 0.5f * (lo + hi); g.boundsRadius = 0.5f * (hi - lo).magnitude + Mathf.Sin(gapeDeg * Mathf.Deg2Rad) * (zt - zh);
+            g.boundsCentre = 0.5f * (lo + hi);
+            g.boundsRadius = 0.5f * (hi - lo).magnitude + Mathf.Sin(gapeDeg * Mathf.Deg2Rad) * (zt - g.pivot.z + Mathf.Abs(g.hinge.y - g.pivot.y)) + (fangPairs > 0 ? fangLength : 0f) + (teeth > 0 ? toothLength : 0f);
             return g;
         }
+
+        // Teeth along the lip line: `teeth` per row and side - the upper row on the skull's margin pointing down, the lower
+        // row between its teeth on the jaw's margin pointing up - both leaning back toward the throat by toothRakeDeg and
+        // splayed a little outward, rooted at the lip's outer surface so their tips stand just outside the opposite lip (a
+        // toothy grin, even at rest); shorter toward the gape's corner. Then the fangs at the jaw's tip, pointing forward
+        // and up, hooking down. Each is sunk kSink of its length into the gum. Head frame, the jaw closed.
+        const float kToothSink = 0.35f, kUpperSplayDeg = 20f, kLowerSplayDeg = 26f, kToothCurveDeg = 20f, kFangSplayDeg = 15f, kFangCurveDeg = 25f;
+
+        ToothDef[] Teeth(SculptField H, SculptField skullF, SculptField jawF, float zh, float zFront, float zJaw, Func<float, float> mouthY, float lip, float reach)
+        {
+            var list = new List<ToothDef>();
+            float L = skullLength, BL = beakLength;
+            float rake = toothRakeDeg * Mathf.Deg2Rad;
+            if (teeth > 0)
+            {
+                float zA = zh + 0.1f * L;
+                for (int row = 0; row < 2; row++)
+                {
+                    bool lower = row == 1;
+                    float zB = lower ? zJaw - 0.1f * BL : zFront - 0.02f * BL;
+                    if (!(zB > zA)) continue;
+                    float s = (zB - zA) / teeth;
+                    for (int i = 0; i < teeth; i++)
+                    {
+                        float z = zA + (i + (lower ? 0.75f : 0.25f)) * s, f = (z - zA) / (zB - zA);
+                        float w = Mathf.Clamp01(f / 0.3f); w = w * w * (3f - 2f * w);
+                        float len = toothLength * (0.55f + 0.45f * w), r = toothRadius * Mathf.Sqrt(len / toothLength);
+                        float ym = mouthY(z), sg = lower ? 1f : -1f;   // sg: the way it points - the upper row down, the lower up
+                        float splay = (lower ? kLowerSplayDeg : kUpperSplayDeg) * Mathf.Deg2Rad;   // the lower row out past the upper lip's overhang
+                        Vector3 dir = new Vector3(Mathf.Sin(splay), sg * Mathf.Cos(splay) * Mathf.Cos(rake), -Mathf.Cos(splay) * Mathf.Sin(rake)).normalized;
+                        // on the lip's outer surface at the mouth line (the closed head), its root moved in until it is in the
+                        // gum (the skull's for the upper row, the jaw's for the lower: the lip's rounded edge is thinner)
+                        if (!March(H, new Vector3(0f, ym, z), Vector3.right, reach, 0.0005f, out Vector3 s0)) continue;
+                        Vector3 emerge = new Vector3(s0.x - 0.3f * r - TeethInsetForTest, ym + TeethLiftForTest, z);
+                        SculptField gum = lower ? jawF : skullF;
+                        for (int it = 0; it < 40 && gum.Eval(emerge - dir * (kToothSink * len)) > -0.25f * r; it++) emerge.x -= 0.0005f;
+                        Add(list, emerge, dir, Vector3.forward, len, r, kToothCurveDeg, lower, false);
+                    }
+                }
+            }
+            for (int k = 0; k < fangPairs; k++)
+            {
+                float len = fangLength * (k == 0 ? 1f : 0.85f), r = 0.17f * len;
+                float z = zJaw - (0.6f + 1.1f * k) * 0.035f * BL, ym = mouthY(z);
+                if (!March(H, new Vector3(0f, ym - lip, z), Vector3.right, reach, 0.0005f, out Vector3 s0)) continue;
+                float lift = fangLiftDeg * Mathf.Deg2Rad, sp = (kFangSplayDeg + 12f * k) * Mathf.Deg2Rad;
+                Vector3 dir = new Vector3(Mathf.Sin(sp) * Mathf.Cos(lift), Mathf.Sin(lift), Mathf.Cos(sp) * Mathf.Cos(lift)).normalized;
+                Vector3 emerge = new Vector3((k == 0 ? 0.5f : 0.8f) * s0.x, ym - 0.5f * lip, z);
+                Add(list, emerge, dir, Vector3.up, len, r, kFangCurveDeg, true, true);
+            }
+            return list.ToArray();
+        }
+
+        // One tooth from where it leaves the gum and its mirror image (x -> -x); up: the way its curl bends away from
+        // (it curls toward -up, projected square to dir).
+        static void Add(List<ToothDef> list, Vector3 emerge, Vector3 dir, Vector3 up, float len, float r, float curveDeg, bool lower, bool fang)
+        {
+            for (int side = 1; side >= -1; side -= 2)
+            {
+                var t = new ToothDef { dir = dir, emerge = emerge, length = len, radius = r, curveDeg = curveDeg, lower = lower, fang = fang };
+                t.up = (up - dir * Vector3.Dot(up, dir)).normalized;
+                if (side < 0) { t.dir.x = -t.dir.x; t.emerge.x = -t.emerge.x; t.up.x = -t.up.x; }
+                t.basePt = t.emerge - t.dir * (kToothSink * len);
+                // where Horn's curve ends: an arc of curveDeg in the plane of dir and up, bending toward -up
+                float b = curveDeg * Mathf.Deg2Rad, kr = len / b;
+                t.tip = t.basePt + t.up * -(kr - kr * Mathf.Cos(b)) + t.dir * (kr * Mathf.Sin(b));
+                list.Add(t);
+            }
+        }
+
+        // RED test hooks (CreatureCrestBeakHeadTests): the teeth moved this far in toward the midline / up (metres).
+        internal static float TeethInsetForTest, TeethLiftForTest;
+        internal static bool NoMouthKindForTest;   // RED: the mouth's cut faces drawn in the body skin
+        internal static bool MouthNoBoxForTest;    // RED: every cut inside the closed head on the mouth kind (eye sockets, nostrils too)
 
         // RED test hooks (CreatureCrestBeakHeadTests): the old blade of six blended blobs; crests sunk by this x height.
         internal static bool BlobCrestsForTest;
@@ -445,16 +697,21 @@ namespace CreatureKit
         internal static float CrestSinkForTest;
         internal static float BladeScaleForTest;   // > 0: a mirrored pair's -x blade drawn this much larger (an unequal pair)
 
-        const int kCrestSeg = 28, kCrestSteps = 112;
+        const int kCrestSeg = 112, kCrestSteps = 224;
 
         // The tangent's angle from straight up toward +z (forward) at u (0 root .. 1 tip): beta at the root, curling back
-        // by curlDeg with the curvature growing toward the tip (u^1.5: rises, then breaks backward like a wave).
-        static float CrestAngle(float beta, float curl, float u) => beta - curl * u * Mathf.Sqrt(u);
+        // by curl with the curvature growing toward the tip (u^1.5: rises, then breaks backward like a wave), and hooking
+        // back by hook more over the last quarter (smootherstep 0.75 .. 1: the sickle's point).
+        static float CrestAngle(float beta, float curl, float hook, float u)
+        {
+            float h = Mathf.Clamp01((u - 0.75f) / 0.25f);
+            return beta - curl * u * Mathf.Sqrt(u) - hook * h * h * h * (h * (6f * h - 15f) + 10f);   // smootherstep: the bend grows in smoothly
+        }
 
-        static float CrestPeak(float beta, float curl, float len)
+        static float CrestPeak(float beta, float curl, float hook, float len)
         {
             float y = 0f, peak = 0f, ds = len / kCrestSteps;
-            for (int i = 0; i < kCrestSteps; i++) { y += Mathf.Cos(CrestAngle(beta, curl, (i + 0.5f) / kCrestSteps)) * ds; peak = Mathf.Max(peak, y); }
+            for (int i = 0; i < kCrestSteps; i++) { y += Mathf.Cos(CrestAngle(beta, curl, hook, (i + 0.5f) / kCrestSteps)) * ds; peak = Mathf.Max(peak, y); }
             return peak;
         }
 
@@ -462,13 +719,13 @@ namespace CreatureKit
         // highest point to rise (height / cos splay, along the blade's own up) above the beak (a straight blade leans forward; a curling one stands nearly upright).
         static Vector3[] CrestLine(CrestDef d, Vector3 root, float sink, float rise)
         {
-            float curl = d.curlDeg * Mathf.Deg2Rad, len = d.length, want = rise + sink;
+            float curl = d.curlDeg * Mathf.Deg2Rad, hook = d.hookDeg * Mathf.Deg2Rad, len = d.length, want = rise + sink;
             float beta = 0f;
-            if (CrestPeak(0f, curl, len) > want)
+            if (CrestPeak(0f, curl, hook, len) > want)
             {
                 float lo = 0f, hi = 0f;
-                for (float b = 0f; b <= 85f; b += 0.5f) { hi = b * Mathf.Deg2Rad; if (CrestPeak(hi, curl, len) <= want) break; lo = hi; }
-                for (int i = 0; i < 30; i++) { float m = 0.5f * (lo + hi); if (CrestPeak(m, curl, len) > want) lo = m; else hi = m; }
+                for (float b = 0f; b <= 85f; b += 0.5f) { hi = b * Mathf.Deg2Rad; if (CrestPeak(hi, curl, hook, len) <= want) break; lo = hi; }
+                for (int i = 0; i < 30; i++) { float m = 0.5f * (lo + hi); if (CrestPeak(m, curl, hook, len) > want) lo = m; else hi = m; }
                 beta = 0.5f * (lo + hi);
             }
             var pts = new Vector3[kCrestSeg + 1];
@@ -477,32 +734,66 @@ namespace CreatureKit
             int per = kCrestSteps / kCrestSeg;
             for (int i = 0; i < kCrestSteps; i++)
             {
-                float a = CrestAngle(beta, curl, (i + 0.5f) / kCrestSteps);
+                float a = CrestAngle(beta, curl, hook, (i + 0.5f) / kCrestSteps);
                 p += new Vector3(0f, Mathf.Cos(a), Mathf.Sin(a)) * ds;
                 if ((i + 1) % per == 0) pts[(i + 1) / per] = p;
             }
             return pts;
         }
 
-        // The blade's half chord at its root (CrestDef.chord, 0 = 0.35 x its length), and its flattening (chord /
+        // The blade's half chord at its widest (CrestDef.chord, 0 = 0.35 x its length), and its flattening (chord /
         // thickness, one value for the whole blade so the cones' ends match at every join).
         static float RootChord(CrestDef d) => d.chord > 0f ? d.chord : 0.35f * d.length;
         static float Flatten(CrestDef d) => Mathf.Clamp(RootChord(d) / d.thickness, 1f, 4f);
 
-        // The blade: kCrestSeg flattened round cones along its centre line, their radii shared at the joins and tapering
-        // linearly to a point (Sculpt.MinCell) at the tip, one flattening - a smooth, thin, sharp blade; and a flared foot
-        // sunk into the beak.
-        static SculptShape[] CrestShapes(CrestDef d, Vector3[] line, Vector3 beakTop)
+        // The crest polygoniser's cell: at most this x the blade's root radius (the thin prong: a coarser cell folds it).
+        const float kCrestCellOfRoot = 0.75f, kTipOfCell = 0.5f;
+
+        // The blade's radius over its widest (thickness) at u (0 root .. 1 tip). flare 0: the plain linear taper to
+        // 0.05. A flare - a sickle: from the prong at the root (1 / flare) a smootherstep rise to the widest at flareAt
+        // (toward the end: the crescent), then a falling smootherstep down to a point over the rest - flat and
+        // curvature-free at the widest from both sides (C2: no kink in the outline's bend), so the crescent's outer edge
+        // sweeps into the point.
+        internal static float Profile(CrestDef d, float u)
+        {
+            if (!(d.flare > 0f)) return Mathf.Lerp(1f, 0.05f, u);
+            float at = d.flareAt > 0f ? d.flareAt : 0.4f, F = Mathf.Max(1f, d.flare), p;
+            if (u <= at) { float x = u / at; p = (1f + (F - 1f) * x * x * x * (x * (6f * x - 15f) + 10f)) / F; }
+            else { float x = Mathf.Clamp01((u - at) / (1f - at)); p = 1f - x * x * x * (x * (6f * x - 15f) + 10f); }
+            return Mathf.Max(0.05f, p);
+        }
+
+        // The blade's half thickness at its root (the widest without a flare).
+        static float RootRadius(CrestDef d) => d.thickness * Profile(d, 0f);
+
+        // The blade: kCrestSeg flattened round cones along its centre line, their radii shared at the joins and following
+        // Profile (a linear taper, or the flared sickle) to a point (0.05 x thickness) at the tip, one flattening - a
+        // smooth, thin, sharp blade; and a flared foot sunk into the beak. 56 cones: with the 1.5 x blade's wide chord, 28
+        // left a dip at every join on the curl's outside (the flattened end caps are only `thickness` long along the axis).
+        static SculptShape[] CrestShapes(CrestDef d, Vector3[] line, Vector3 beakTop, float crestCell, out Vector3[] axis)
         {
             float t = d.thickness, sq = Flatten(d), tip = 0.05f * t;   // a point finer than the crest's cell
             var s = new List<SculptShape>();
-            for (int i = 0; i < kCrestSeg; i++)
+            // the cones' axis: the centre line moved toward the outside of the curl (the front edge, side +1 of the
+            // blade's plane) by `outside` x the half chord there - the crescent's width outside, a thin inner edge
+            var r = new float[kCrestSeg + 1]; var c = new Vector3[kCrestSeg + 1];
+            for (int i = 0; i <= kCrestSeg; i++)
             {
-                float r0 = Mathf.Lerp(t, tip, (float)i / kCrestSeg), r1 = Mathf.Lerp(t, tip, (float)(i + 1) / kCrestSeg);
-                s.Add(Cone(line[i], line[i + 1], r0, r1, sq, 0f));   // no blend: a smooth union swells every join by blend / 4 (a ripple)
+                float u = (float)i / kCrestSeg;
+                float tp = t * Profile(d, u), fl = kTipOfCell * crestCell;
+                r[i] = d.flare > 0f ? Mathf.Sqrt(tp * tp + fl * fl) : Mathf.Lerp(t, tip, u);   // a sickle's needle point: no finer than kTipOfCell cells (finer folds the mesher), eased in (a max() kinks the outline)
+                Vector3 tg = (line[Mathf.Min(i + 1, kCrestSeg)] - line[Mathf.Max(i - 1, 0)]).normalized;
+                // the shift is a slow arch, outside x the widest half chord x sin(pi u) - 0 at the root and the point, so the
+                // crescent's outer edge sweeps into the point and its inner edge hugs the centre line there. (A shift that
+                // follows the falling chord bends the axis tighter than the chord is long: the chords cross on the inside
+                // of the curl and leave a step in the inner edge.)
+                c[i] = line[i] + new Vector3(0f, -tg.z, tg.y) * (d.outside * sq * t * Mathf.Sin(Mathf.PI * u));
             }
-            float chord = sq * t;
-            s.Add(Ell(beakTop - new Vector3(0f, 0.6f * t, 0f), new Vector3(1.3f * t, 0.9f * t, 1.15f * chord), SculptOp.Union, 0.9f * t));
+            axis = c;
+            for (int i = 0; i < kCrestSeg; i++)
+                s.Add(Cone(c[i], c[i + 1], r[i], r[i + 1], sq, 0f));   // no blend: a smooth union swells every join by blend / 4 (a ripple)
+            float rt = RootRadius(d), chord = sq * rt;
+            s.Add(Ell(beakTop - new Vector3(0f, 0.6f * rt, 0f), new Vector3(1.3f * rt, 0.9f * rt, 1.15f * chord), SculptOp.Union, 0.9f * rt));
             return s.ToArray();
         }
 
@@ -536,7 +827,7 @@ namespace CreatureKit
         {
             if (m.Rest == null) return;
             CreatureSpecies sp = m.Species;
-            int j = Mathf.Clamp(at.joint, 0, m.Joints - 1), jaw = sp.Layout.Start(c.Index);
+            int j = Mathf.Clamp(at.joint, 0, m.Joints - 1), jaw = sp.Layout.Start(c.Index), upper = jaw + 1;
             Vector3 o = m.Rest.Joints[j] + m.Rest.Rotations[j] * at.offset;
             Quaternion tilt = RestTilt(m.Rest, j);
             IPartRuntime[] rts = m.Rest.PartRuntimes;
@@ -545,12 +836,78 @@ namespace CreatureKit
             float uBase = sp.headCapLength + sp.spacing * j;   // the body's uv0.x at the head joint (metres from the front tip)
             Built g = Geo();
             if (g.dorsal == null) g.dorsal = new float[2 + g.bladeDef.Length][];
-            Emit(m, g, 0, SculptMesher.For(g.skullSculpt), B, Matrix4x4.identity, j, PartMeshEmitter.PartBody, uBase);
-            Emit(m, g, 1, SculptMesher.For(g.jawSculpt), B, Matrix4x4.identity, jaw, PartMeshEmitter.PartBody, uBase);
+            int mouth = m.Slot("mouth");
+            Emit(m, g, 0, SculptMesher.For(g.skullSculpt), B, Matrix4x4.identity, upper, PartMeshEmitter.PartBody, uBase, mouth, j, g.skullPivot.z, g.hinge.z);
+            Matrix4x4 jawRest = JawPose(restGapeDeg);   // the bind: the jaw bone at the runtime's resting gape
+            Emit(m, g, 1, SculptMesher.For(g.jawSculpt), B, jawRest, jaw, PartMeshEmitter.PartBody, uBase, mouth);
             if (g.bladeDef.Length > 0)
             {
                 int kind = m.Slot("crest");
-                for (int b = 0; b < g.bladeDef.Length; b++) Emit(m, g, 2 + b, SculptMesher.For(g.crestSculpt[g.bladeDef[b]]), B, g.bladeFrame[b], j, kind, uBase);
+                for (int b = 0; b < g.bladeDef.Length; b++) Emit(m, g, 2 + b, SculptMesher.For(g.crestSculpt[g.bladeDef[b]]), B, g.bladeFrame[b], upper, kind, uBase, -1);
+            }
+            // teeth: horns on toothKind (default the kit's ivory keratin row), the upper ones on the upper head's bone,
+            // the lower ones and the fangs riding the jaw
+            if (g.teeth.Length > 0)
+            {
+                int kind = m.Slot(toothKind);
+                List<Vector2> uv1 = m.Lists.uv1;
+                for (int k = 0; k < g.teeth.Length; k++)
+                {
+                    ToothDef t = g.teeth[k];
+                    Matrix4x4 M = t.lower ? B * jawRest : B;
+                    Vector3 wb = M.MultiplyPoint3x4(t.basePt);
+                    Quaternion q = Quaternion.LookRotation(M.MultiplyVector(t.dir), M.MultiplyVector(t.up));
+                    int first = m.VertexCount;
+                    m.Horn(wb, q, t.radius, 0f, t.length, t.curveDeg, t.lower ? jaw : upper, kind, 6, uBase - t.basePt.z, out _, out _);
+                    for (int i = first; i < m.VertexCount; i++) uv1[i] = new Vector2(kind, -1f);
+                }
+            }
+            if (g.webTop != null) EmitWebs(m, g, B, jawRest, upper, jaw, mouth, uBase);
+        }
+
+        // The cheek webs, both sides: kWebRows + 1 rows from the upper edge (the upper head's bone) to the lower (the jaw's,
+        // drawn at the rest gape), each row skinned between the two by its share - the skin stretches as the jaw drops.
+        // Two faces each: the outside in the body skin (pale, the throat's colour), the inside in the mouth's kind.
+        const int kWebRows = 4;
+
+        static void EmitWebs(PartMeshEmitter m, Built g, Matrix4x4 B, Matrix4x4 jawRest, int upper, int jaw, int mouth, float uBase)
+        {
+            int cols = g.webTop.Length, w = kWebRows + 1;
+            var pts = new Vector3[cols * w];
+            for (int side = 1; side >= -1; side -= 2)
+            {
+                for (int c = 0; c < cols; c++)
+                {
+                    Vector3 top = g.webTop[c], bot = jawRest.MultiplyPoint3x4(g.webBot[c]);
+                    top.x *= side; Vector3 bc = g.webBot[c]; bc.x *= side; bot = jawRest.MultiplyPoint3x4(bc);
+                    for (int r = 0; r < w; r++) pts[c * w + r] = Vector3.Lerp(top, bot, (float)r / kWebRows);
+                }
+                for (int face = 0; face < 2; face++)   // 0 outside (facing side * x), 1 inside
+                {
+                    float want = face == 0 ? side : -side;
+                    int first = m.VertexCount;
+                    for (int c = 0; c < cols; c++)
+                        for (int r = 0; r < w; r++)
+                        {
+                            Vector3 p = pts[c * w + r];
+                            Vector3 dz = pts[Mathf.Min(c + 1, cols - 1) * w + r] - pts[Mathf.Max(c - 1, 0) * w + r];
+                            Vector3 dr = pts[c * w + Mathf.Min(r + 1, kWebRows)] - pts[c * w + Mathf.Max(r - 1, 0)];
+                            Vector3 n = Vector3.Cross(dz, dr);
+                            if (n.x * want < 0f) n = -n;
+                            float share = (float)r / kWebRows;
+                            m.Vertex(B.MultiplyPoint3x4(p), PartMeshEmitter.Unit(B.MultiplyVector(n), B.MultiplyVector(new Vector3(want, 0f, 0f))), uBase - p.z, share,
+                                     face == 0 ? PartMeshEmitter.PartBody : mouth, face == 0 ? -0.6f : -1f, PartMeshEmitter.Blend(upper, jaw, share));
+                        }
+                    for (int c = 0; c + 1 < cols; c++)
+                        for (int r = 0; r < kWebRows; r++)
+                        {
+                            int i00 = first + c * w + r, i01 = i00 + 1, i10 = i00 + w, i11 = i10 + 1;
+                            Vector3 a = pts[c * w + r], b2 = pts[c * w + r + 1], d2 = pts[(c + 1) * w + r];
+                            bool flip = Vector3.Cross(b2 - a, d2 - a).x * want < 0f;   // wind toward the face's own side
+                            m.Tri(i00, i01, i10, flip);
+                            m.Tri(i01, i11, i10, flip);
+                        }
+                }
             }
         }
 
@@ -575,17 +932,42 @@ namespace CreatureKit
         }
 
         // local: the piece's frame in the head frame (a blade's BladeFrame; identity for the skull and jaw).
-        static void Emit(PartMeshEmitter m, Built g, int which, SculptPiece piece, Matrix4x4 B, Matrix4x4 local, int bone, int part, float uBase)
+        // mouth >= 0: the skull's and the jaw's vertices on a cut face inside the closed head (the roof, the floor, the
+        // throat's faces) go on that kind - the inside of the mouth.
+        // ramp >= 0: vertices behind ramp1 blend from that bone (the head joint's, at the neck seam ramp0) to `bone`
+        // (the upper head's) - the skull's back stays with the neck when the upper head tips up on a call.
+        static void Emit(PartMeshEmitter m, Built g, int which, SculptPiece piece, Matrix4x4 B, Matrix4x4 local, int bone, int part, float uBase, int mouth,
+                         int ramp = -1, float ramp0 = 0f, float ramp1 = 0f)
         {
             float[] dorsal = g.dorsal[which];
             if (dorsal == null || dorsal.Length != piece.Pos.Length) g.dorsal[which] = dorsal = Dorsal(g, which, piece);
+            bool[] inside = null;
+            if (mouth >= 0 && which < 2 && !NoMouthKindForTest)
+            {
+                if (g.inside == null) g.inside = new bool[2][];
+                inside = g.inside[which];
+                if (inside == null || inside.Length != piece.Pos.Length)
+                {
+                    g.inside[which] = inside = new bool[piece.Pos.Length];
+                    float tol = Mathf.Max(0.002f, 0.4f * g.skullSculpt.cell);
+                    // inside the closed head and on or in the jaw region (the cut faces, the throat; not an eye socket or a nostril)
+                    for (int i = 0; i < inside.Length; i++) inside[i] = g.headField.Eval(piece.Pos[i]) < -tol && (MouthNoBoxForTest || g.boxField.Eval(piece.Pos[i]) < 2f * tol);
+                }
+            }
             Vector4 skin = PartMeshEmitter.Rigid(bone);
             Vector3 up = PartMeshEmitter.Unit(B.GetColumn(1), Vector3.up);
             int first = m.VertexCount;
             for (int i = 0; i < piece.Pos.Length; i++)
             {
                 Vector3 p = local.MultiplyPoint3x4(piece.Pos[i]);
-                m.Vertex(B.MultiplyPoint3x4(p), PartMeshEmitter.Unit(B.MultiplyVector(local.MultiplyVector(piece.Nrm[i])), up), uBase - p.z, piece.V[i], part, dorsal[i], skin);
+                bool inMouth = inside != null && inside[i];
+                Vector4 sk = skin;
+                if (ramp >= 0 && p.z < ramp1)
+                {
+                    float w = Mathf.Clamp01((p.z - ramp0) / Mathf.Max(1e-4f, ramp1 - ramp0)); w = w * w * (3f - 2f * w);
+                    sk = PartMeshEmitter.Blend(ramp, bone, w);
+                }
+                m.Vertex(B.MultiplyPoint3x4(p), PartMeshEmitter.Unit(B.MultiplyVector(local.MultiplyVector(piece.Nrm[i])), up), uBase - p.z, piece.V[i], inMouth ? mouth : part, inMouth ? -1f : dorsal[i], sk);
             }
             int[] t = piece.Tris;
             for (int k = 0; k < t.Length; k += 3) m.Tri(first + t[k], first + t[k + 1], first + t[k + 2], false);
@@ -617,16 +999,20 @@ namespace CreatureKit
     {
         readonly CrestBeakHead p;
         readonly CreatureSim sim;
-        readonly int jaw, head;
-        readonly Vector3 hinge, eye, boundsCentre;   // in the head joint's frame (the skull's, tilted)
+        readonly int jaw, upper, head;
+        readonly Vector3 hinge, skullPivot, eye, boundsCentre;   // in the head joint's frame (the skull's, tilted)
         readonly float boundsRadius;
         float gape, wait, elapsed;
         bool calling;
         uint rng;
 
-        public float Gape => GapeOverride >= 0f ? GapeOverride : gape;   // degrees, 0 = closed
+        public float Gape => GapeOverride >= 0f ? GapeOverride : gape;   // degrees, 0 = closed; restGapeDeg between calls
         public bool Calling => calling;
         public int JawBone => jaw;
+        // The upper head's bone (skull, beak, crests, upper teeth): the head joint's, tipped up about the skull's back on
+        // a call by callPitchDeg x the call's share of the gape.
+        public int UpperBone => upper;
+        public float UpperPitch => p.gapeDeg > p.restGapeDeg ? p.callPitchDeg * Mathf.Clamp01((Gape - p.restGapeDeg) / (p.gapeDeg - p.restGapeDeg)) : 0f;
         // The skull's frame in the head joint's (CrestBeakHead.RestTilt, fixed when the individual is made).
         public readonly Quaternion Tilt;
         // Tests and tools: hold the jaw at this gape (degrees); < 0 = its own calls.
@@ -636,9 +1022,9 @@ namespace CreatureKit
 
         public CrestBeakHeadRuntime(CrestBeakHead part, CreatureSim sim, int jawBone, int headJoint)
         {
-            p = part; this.sim = sim; jaw = jawBone; head = headJoint;
+            p = part; this.sim = sim; jaw = jawBone; upper = jawBone + 1; head = headJoint;
             Tilt = part.RestTilt(sim, headJoint);
-            hinge = Tilt * part.Hinge;
+            hinge = Tilt * part.Pivot; skullPivot = Tilt * part.SkullPivot;
             Vector3 e = part.EyeSurface;
             e.x -= 0.35f * Mathf.Max(0f, sim.Species.eyeRadius);   // the eyeball sits a little into its socket
             eye = Tilt * e;
@@ -646,6 +1032,7 @@ namespace CreatureKit
             rng = (uint)(sim.Seed * 747796405u + 2891336453u + (uint)jawBone * 2654435761u);
             if (rng == 0) rng = 1;
             wait = NextWait();
+            gape = part.restGapeDeg;   // the bind pose's gape too (the rest sim is unticked): the mesh is drawn at it
         }
 
         float Rand() { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return (rng & 0xFFFFFF) / 16777216f; }
@@ -672,13 +1059,13 @@ namespace CreatureKit
             {
                 elapsed += ft;
                 float u = elapsed / p.callSeconds;
-                if (u >= 1f - 1e-4f) { calling = false; gape = 0f; wait = NextWait(); }
-                else gape = p.gapeDeg * Envelope(u);
+                if (u >= 1f - 1e-4f) { calling = false; gape = p.restGapeDeg; wait = NextWait(); }
+                else gape = p.restGapeDeg + (p.gapeDeg - p.restGapeDeg) * Envelope(u);
             }
             else
             {
                 wait -= ft;
-                if (wait <= 1e-4f) { calling = true; elapsed = Mathf.Max(0f, -wait); gape = p.gapeDeg * Envelope(elapsed / p.callSeconds); }
+                if (wait <= 1e-4f) { calling = true; elapsed = Mathf.Max(0f, -wait); gape = p.restGapeDeg + (p.gapeDeg - p.restGapeDeg) * Envelope(elapsed / p.callSeconds); }
             }
         }
 
@@ -686,7 +1073,10 @@ namespace CreatureKit
         {
             float s = sim.SizeScale;
             Quaternion r = sim.Rotations[head];
-            Matrix4x4 H = Matrix4x4.TRS(sim.Joints[head] + r * (p.at.offset * s), r, new Vector3(s, s, s));
+            Matrix4x4 H0 = Matrix4x4.TRS(sim.Joints[head] + r * (p.at.offset * s), r, new Vector3(s, s, s));
+            Quaternion up = Quaternion.AngleAxis(-UpperPitch, Vector3.right);   // nose up, about the skull's back
+            Matrix4x4 H = H0 * Matrix4x4.TRS(skullPivot - up * skullPivot, up, Vector3.one);
+            dst[o + upper] = H;
             Quaternion q = Quaternion.AngleAxis(FlipGapeForTest ? -Gape : Gape, Vector3.right);   // + = the front drops
             dst[o + jaw] = H * Matrix4x4.TRS(hinge - q * hinge, q, Vector3.one);   // about the hinge
             CreatureSpecies sp = sim.Species;

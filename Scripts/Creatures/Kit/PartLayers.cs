@@ -118,6 +118,12 @@ namespace CreatureKit
         {
             // CrestBeakHead's beak crests: glossy keratin in their own bright teal (#3FC0B0)
             new Entry(-1, "crest", "beak crests (CrestBeakHead)", new PartLayer(ShadingModel.Claw, LayerFlags.NoPattern | LayerFlags.NoGrain, TintSource.Own, 1f) { tint = new Color(0.247f, 0.753f, 0.69f) }),
+            // CrestBeakHead's teeth and fangs (toothKind's default): ivory keratin (#EBE0C6), its own colour - any species gets
+            // ivory teeth without a Layers row (the legacy "teeth" row 13 stays body skin: shipped species unchanged)
+            new Entry(-1, "ivory-teeth", "teeth and fangs, ivory (CrestBeakHead)", new PartLayer(ShadingModel.Claw, LayerFlags.NoPattern | LayerFlags.NoGrain, TintSource.Own, 1f) { tint = new Color(0.922f, 0.878f, 0.776f) }),
+            // CrestBeakHead's mouth: the roof, floor and throat faces inside the mouth and the cheek webs' inner side -
+            // moist pink-red flesh (#A8434A)
+            new Entry(-1, "mouth", "inside of the mouth (CrestBeakHead)", new PartLayer(ShadingModel.Skin, LayerFlags.NoPattern | LayerFlags.FineGrain | kSkinLayers, TintSource.Own, 1f) { tint = new Color(0.659f, 0.263f, 0.29f) }),
             // PitRow's recessed cups (spiracles, nostrils): near-black, a little moist
             new Entry(-1, "pit", "breathing holes / nostrils (PitRow)", new PartLayer(ShadingModel.Claw, LayerFlags.NoPattern | LayerFlags.NoGrain, TintSource.Own, 1f, 0.5f) { tint = new Color(0.03f, 0.02f, 0.025f) }),
             // Dewlap's throat sail: pale skin (#D9CDB8, the belly / throat colour), fine grain, no pattern
