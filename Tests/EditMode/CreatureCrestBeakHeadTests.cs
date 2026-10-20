@@ -54,7 +54,7 @@ namespace TerrainGen.Tests
         [Test] public void Head_Solids_AreClosed()
         {
             CrestBeakHead h = Part(Species());
-            Assert.AreEqual(2 + h.crests.Length, h.PieceCount);
+            Assert.AreEqual(2 + 2, h.PieceCount, "skull, jaw and the default mirrored pair of blades");
             for (int i = 0; i < h.PieceCount; i++)
             {
                 SculptPiece p = h.Piece(i);
@@ -87,30 +87,47 @@ namespace TerrainGen.Tests
 
         // ------------------------------------------------------------ crests
 
-        // The upper beak's top (head frame, x = 0) at z: the skull's field marched down from above.
-        static float BeakTop(SculptField f, float z)
+        // The upper beak's top (head frame) at x, z: the skull's field marched down from above.
+        static float BeakTop(SculptField f, float x, float z)
         {
             float y = 0.5f, step = 0.001f;
-            while (y > -0.5f && f.Eval(new Vector3(0f, y, z)) > 0f) y -= step;
+            while (y > -0.5f && f.Eval(new Vector3(x, y, z)) > 0f) y -= step;
             return y;
+        }
+
+        // Blade b's vertices and centre line in the head frame.
+        static Vector3[] BladeVerts(CrestBeakHead h, int b)
+        {
+            SculptPiece p = h.Piece(2 + b); Matrix4x4 f = h.BladeFrame(b);
+            var o = new Vector3[p.Pos.Length];
+            for (int i = 0; i < o.Length; i++) o[i] = f.MultiplyPoint3x4(p.Pos[i]);
+            return o;
+        }
+
+        static Vector3[] BladeSpine(CrestBeakHead h, int b)
+        {
+            Vector3[] sp = h.CrestSpine(b); Matrix4x4 f = h.BladeFrame(b);
+            for (int i = 0; i < sp.Length; i++) sp[i] = f.MultiplyPoint3x4(sp[i]);
+            return sp;
         }
 
         struct CrestMeasure { public float zBase, zBaseRear, beakTop, top, zOverhang; }
 
-        // Crest k in the head frame (the piece is drawn in it): its base (the vertices within 15 % of its height of its
-        // lowest point), the beak's top there, its highest point, and how far back its upper half reaches.
-        static CrestMeasure Measure(CrestBeakHead h, int k)
+        // Blade b in the head frame: its base (the vertices within 15 % of its height of its lowest point), the beak's top
+        // there (at its root's x), its highest point, and how far back its upper half reaches.
+        static CrestMeasure Measure(CrestBeakHead h, int b)
         {
-            SculptPiece p = h.Piece(2 + k);
+            Vector3[] p = BladeVerts(h, b);
+            float H = h.BladeDef(b).height;
             float lo = float.MaxValue, hi = float.MinValue;
-            foreach (Vector3 v in p.Pos) { lo = Mathf.Min(lo, v.y); hi = Mathf.Max(hi, v.y); }
-            float band = lo + 0.15f * h.crests[k].height;
+            foreach (Vector3 v in p) { lo = Mathf.Min(lo, v.y); hi = Mathf.Max(hi, v.y); }
+            float band = lo + 0.15f * H;
             float zs = 0f, zr = float.MaxValue; int n = 0;
-            foreach (Vector3 v in p.Pos) if (v.y <= band) { zs += v.z; n++; zr = Mathf.Min(zr, v.z); }
+            foreach (Vector3 v in p) if (v.y <= band) { zs += v.z; n++; zr = Mathf.Min(zr, v.z); }
             var m = new CrestMeasure { zBase = zs / Mathf.Max(1, n), zBaseRear = zr, top = hi };
-            m.beakTop = BeakTop(new SculptField(ToArray(h.SkullSolid())), m.zBase);
+            m.beakTop = BeakTop(new SculptField(ToArray(h.SkullSolid())), h.BladeFrame(b).GetColumn(3).x, m.zBase);
             m.zOverhang = float.MaxValue;
-            foreach (Vector3 v in p.Pos) if (v.y > m.beakTop + 0.5f * h.crests[k].height) m.zOverhang = Mathf.Min(m.zOverhang, v.z);
+            foreach (Vector3 v in p) if (v.y > m.beakTop + 0.5f * H) m.zOverhang = Mathf.Min(m.zOverhang, v.z);
             return m;
         }
 
@@ -118,11 +135,11 @@ namespace TerrainGen.Tests
 
         static string CrestProblem(CrestBeakHead h)
         {
-            for (int k = 0; k < h.crests.Length; k++)
+            for (int k = 0; k < h.BladeCount; k++)
             {
                 CrestMeasure m = Measure(h, k);
-                Vector3[] spine = h.CrestSpine(k);
-                float rise = m.top - m.beakTop, H = h.crests[k].height;
+                Vector3[] spine = BladeSpine(h, k);
+                float rise = m.top - m.beakTop, H = h.BladeDef(k).height;
                 TestContext.Out.WriteLine($"crest {k}: base z {m.zBase:F3} (rear {m.zBaseRear:F3}), beak top {m.beakTop:F3}, crest top {m.top:F3} (rise {rise:F3} vs height {H:F3}), upper half reaches back to z {m.zOverhang:F3}; spine tip z {spine[spine.Length - 1].z:F3} vs base {spine[0].z:F3}");
                 if (rise < 0.8f * H) return $"crest {k} stands only {rise:F3} above the beak line (< 0.8 x {H:F3})";
                 if (!(spine[spine.Length - 1].z < spine[0].z)) return $"crest {k} does not curl back: its tip z {spine[spine.Length - 1].z:F3} is not behind its base z {spine[0].z:F3}";
@@ -158,32 +175,92 @@ namespace TerrainGen.Tests
             finally { CrestBeakHead.CrestSinkForTest = 0f; }
         }
 
-        // Measured on the mesh: the rear crest (the lower along) stands taller above the beak than the front one.
-        static string RearProblem(CrestBeakHead h)
+        // The default crests are one mirrored CrestDef: two blades whose vertex sets mirror each other across the head's
+        // midplane (x -> -x; every vertex of one within 2.5 mm - about the blades' polygoniser cell, 0.3 x thickness: the
+        // grid is not symmetric - of a mirrored vertex of the other, both ways) and stand
+        // equally high above the beak (within 1 mm).
+        static string PairProblem(CrestBeakHead h, out float worst, out float dTop)
         {
-            int rear = h.crests[0].along < h.crests[1].along ? 0 : 1, front = 1 - rear;
-            CrestMeasure r = Measure(h, rear), f = Measure(h, front);
-            TestContext.Out.WriteLine($"rear crest rises {r.top - r.beakTop:F3} at z {r.zBase:F3}, front {f.top - f.beakTop:F3} at z {f.zBase:F3}");
-            if (!(r.zBase < f.zBase)) return "the rear crest is not behind the front one";
-            if (!(r.top - r.beakTop > f.top - f.beakTop)) return $"the rear crest ({r.top - r.beakTop:F3}) is not taller than the front one ({f.top - f.beakTop:F3})";
+            worst = 0f; dTop = 0f;
+            if (h.BladeCount != 2) return $"{h.BladeCount} blades, not a pair";
+            Vector3[] a = BladeVerts(h, 0), b = BladeVerts(h, 1);
+            float Far(Vector3[] from, Vector3[] to)
+            {
+                float most = 0f;
+                for (int i = 0; i < from.Length; i += 3)   // every third vertex: a dense enough sample
+                {
+                    Vector3 m = new Vector3(-from[i].x, from[i].y, from[i].z);
+                    float best = float.MaxValue;
+                    foreach (Vector3 q in to) best = Mathf.Min(best, (q - m).sqrMagnitude);
+                    most = Mathf.Max(most, Mathf.Sqrt(best));
+                }
+                return most;
+            }
+            worst = Mathf.Max(Far(a, b), Far(b, a));
+            CrestMeasure ma = Measure(h, 0), mb = Measure(h, 1);
+            dTop = Mathf.Abs((ma.top - ma.beakTop) - (mb.top - mb.beakTop));
+            TestContext.Out.WriteLine($"pair: farthest mirrored vertex {worst * 1000f:F2} mm; rises {ma.top - ma.beakTop:F4} / {mb.top - mb.beakTop:F4} (difference {dTop * 1000f:F2} mm)");
+            if (worst > 0.0025f) return $"the blades do not mirror each other: a vertex {worst * 1000f:F2} mm from its mirror image";
+            if (dTop > 0.001f) return $"the blades are not equally high: {dTop * 1000f:F2} mm apart";
             return null;
         }
 
-        [Test] public void Head_Crests_RearIsLarger()
+        [Test] public void Head_Crests_AreAMirroredEqualPair()
         {
             CrestBeakHead h = Part(Species());
-            Assert.Greater(h.crests[0].height, h.crests[1].height, "the defaults: rear (crest 0) larger");
-            Assert.IsNull(RearProblem(h));
+            Assert.AreEqual(1, h.crests.Length, "the defaults: one crest definition");
+            Assert.IsTrue(h.crests[0].mirror, "... mirrored into a pair");
+            Assert.IsNull(PairProblem(h, out _, out _));
         }
 
-        [Test] public void Red_Crests_FrontLarger()
+        [Test] public void Red_Crests_UnequalPair()
+        {
+            CrestBeakHead.BladeScaleForTest = 1.15f;
+            try { Assert.IsNotNull(PairProblem(Part(Species()), out _, out _), "a pair with one blade 15 % larger must fail"); }
+            finally { CrestBeakHead.BladeScaleForTest = 0f; }
+        }
+
+        // Seen from the front, the pair is a V: each blade's tip is farther from the midplane than its root by at least
+        // sin(max(splayDeg, 25 deg) / 2) x height, the tips on opposite sides, and the roots close together (within 2 x thickness).
+        const float kMinSplayDeg = 25f;   // the reference's V: each blade at least this far from upright
+
+        static string VProblem(CrestBeakHead h)
+        {
+            if (h.BladeCount != 2) return $"{h.BladeCount} blades, not a pair";
+            CrestDef d = h.BladeDef(0);
+            float want = Mathf.Sin(0.5f * Mathf.Max(d.splayDeg, kMinSplayDeg) * Mathf.Deg2Rad) * d.height;   // a clear V: at least kMinSplayDeg each
+            var root = new float[2]; var tip = new float[2];
+            for (int b = 0; b < 2; b++)
+            {
+                Vector3[] sp = BladeSpine(h, b);
+                root[b] = sp[0].x; tip[b] = sp[sp.Length - 1].x;
+                TestContext.Out.WriteLine($"blade {b}: root x {root[b] * 1000f:F1} mm, tip x {tip[b] * 1000f:F1} mm (out by {(Mathf.Abs(tip[b]) - Mathf.Abs(root[b])) * 1000f:F1} mm, want >= {want * 1000f:F1})");
+                if (!(Mathf.Abs(tip[b]) - Mathf.Abs(root[b]) >= want)) return $"blade {b} does not lean out: its tip is only {(Mathf.Abs(tip[b]) - Mathf.Abs(root[b])) * 1000f:F1} mm farther from the midplane than its root (< {want * 1000f:F1})";
+            }
+            if (!(tip[0] * tip[1] < 0f)) return "the tips are not on opposite sides of the midplane";
+            if (Mathf.Abs(root[0] - root[1]) > 2f * d.thickness) return $"the roots are {Mathf.Abs(root[0] - root[1]) * 1000f:F1} mm apart (> 2 x thickness)";
+            return null;
+        }
+
+        [Test] public void Head_Crests_FormAV()
+        {
+            Assert.IsNull(VProblem(Part(Species())));
+        }
+
+        [Test] public void Red_Crests_NoSplay()
         {
             CrestBeakHead head = Head();
-            // the two crests' shapes swapped, each kept where it stands
-            CrestDef r = head.crests[0], f = head.crests[1];
-            head.crests[0] = f; head.crests[0].along = r.along;
-            head.crests[1] = r; head.crests[1].along = f.along;
-            Assert.IsNotNull(RearProblem(Part(Species(head))), "a front crest taller than the rear must fail");
+            head.crests[0].splayDeg = 0f;
+            string p = VProblem(Part(Species(head)));
+            Assert.IsNotNull(p, "an unsplayed pair (two parallel blades) must fail the V test");
+            StringAssert.Contains("lean out", p);
+        }
+
+        // The fixture walks its tightest circle without a folded triangle (it once folded a body sliver: FlowBody's auto
+        // rigid head took the neck and chest as one block - FlowBody.AutoHead).
+        [Test] public void Head_Fixture_MaxBend()
+        {
+            Assert.IsNull(KitChecks.MaxBendProblem(Species()));
         }
 
         // The blade's edges seen from the side. Along the centre line from 0.3 to 0.97 of its length (120 stations, clear of the flared foot; rays
@@ -202,7 +279,7 @@ namespace TerrainGen.Tests
             const int N = 120, K = 8;
             worstRipple = 0f;
             string bump = null, blunt = null;
-            for (int k = 0; k < h.crests.Length; k++)
+            for (int k = 0; k < h.BladeCount; k++)
             {
                 var f = new SculptField(ToArray(h.CrestSolid(k)));
                 Vector3[] sp = h.CrestSpine(k);

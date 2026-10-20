@@ -329,6 +329,38 @@ namespace TerrainGen.Tests
             finally { FlowBody.FlipNormalsForTest = false; }
         }
 
+        // ------------------------------------------------------------ auto rigid head
+
+        // A neck narrowing gently from the head (< 5 % per joint) and swelling into the chest, then the chest narrowing
+        // into the tail inside the front half: no rigid head (SpineBody's rule took joints 0..10 - the whole neck and
+        // chest - as one rigid block, and the walk's bends all fell on the chest-tail joint).
+        internal static FlowBody GentleNeck()
+        {
+            FlowBody b = SteepNeck();
+            b.profile[0].halfWidth = 0.04f; b.profile[0].halfHeight = 0.042f;
+            b.profile[1].halfWidth = 0.036f; b.profile[1].halfHeight = 0.042f;
+            return b;
+        }
+
+        [Test] public void FlowBody_AutoHead_NotTheChestNarrowingIntoTheTail()
+        {
+            FlowBody b = GentleNeck();
+            SpineJoint[] js = b.BuildJoints();
+            TestContext.Out.WriteLine($"FlowBody.AutoHead {FlowBody.AutoHead(js)}, SpineBody.AutoHead {CreatureKit.SpineBody.AutoHead(js)}");
+            Assert.AreEqual(0, b.RigidHeadJoints, "no head joints in front of a neck that swells into the chest");
+            Assert.AreEqual(0, FlowBody.AutoHead(SteepNeck().BuildJoints()), "the steep neck: unchanged (its first step narrows at joint 1)");
+            Assert.IsNull(KitChecks.MaxBendProblem(Species(b)));
+        }
+
+        // RED: SpineBody's rule on the same profile makes a long rigid block and folds a sliver at its end.
+        [Test] public void Red_AutoHead_SpineBodyRule()
+        {
+            FlowBody b = GentleNeck();
+            b.rigidHeadJoints = CreatureKit.SpineBody.AutoHead(b.BuildJoints());
+            Assert.Greater(b.rigidHeadJoints, 5, "SpineBody's rule reads the chest-tail narrowing as the neck");
+            Assert.IsNotNull(KitChecks.MaxBendProblem(Species(b)), "that rigid block must fold the body in the tight circle");
+        }
+
         // ------------------------------------------------------------ colour kinds
 
         [Test] public void FlowBody_ColourKinds_TailAndDorsalStripe()

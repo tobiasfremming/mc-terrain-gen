@@ -22,6 +22,10 @@ namespace CreatureKit
         // link i's static offset over link i - 1 (degrees; a glide's bow, a billow)
         public void SetOffset(int i, float deg) => offset[i] = deg;
 
+        // A hard stop from outside the chain (a part's own limit, e.g. Dewlap's plane): link i set to `deg` and its rate
+        // zeroed, as a contact would. The chain's own rule is unchanged.
+        public void Hold(int i, float deg) { a[i] = deg; v[i] = 0f; }
+
         public AngleChain(int links)
         {
             int n = Mathf.Max(2, links);

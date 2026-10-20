@@ -8,6 +8,18 @@ public static class CreatureRestPose
     internal static CreatureSim Sim(CreatureSpecies sp) =>
         new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
 
+    // The bind's rest sim: the rest sim, its spine straightened for a tall-stance winged species
+    // (WingedMeshBuilder.StraightenBind; no-op otherwise). The one source the mesh (PartMeshEmitter), the bind bones
+    // (BoneWorld, WingedMeshBuilder.RestBoneWorld) and parts that build bind geometry of their own (Dewlap) share.
+    // wings: the wings drawn (null = the species' own).
+    internal static CreatureSim BindSim(CreatureSpecies sp, WingSpec[] wings = null)
+    {
+        CreatureSim sim = Sim(sp);
+        wings = wings ?? sp.wings;
+        if (wings != null && wings.Length > 0) WingedMeshBuilder.StraightenBind(sp, wings, sim);
+        return sim;
+    }
+
     // A winged species' rest pose has its wings spread (WingedMeshBuilder), not walked on.
     public static Matrix4x4[] BoneWorld(CreatureSpecies sp)
     {
@@ -15,8 +27,7 @@ public static class CreatureRestPose
         if (sp.WingCount == 0) return BoneWorld(Sim(sp));
         // = WingedMeshBuilder.RestBoneWorld(sp, sp.wings), then the parts whose bones follow the wing bones re-pose
         // them on the spread wings (CreatureKit.KitRuntime.AfterSpreadWings; none for the shipped species)
-        CreatureSim sim = Sim(sp);
-        WingedMeshBuilder.StraightenBind(sp, sp.wings, sim);
+        CreatureSim sim = BindSim(sp, sp.wings);
         Matrix4x4[] m = WingedMeshBuilder.RestBoneWorld(sp, sp.wings, sim, out _);
         CreatureKit.KitRuntime.AfterSpreadWings(sim, m);
         return m;

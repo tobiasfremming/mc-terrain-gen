@@ -50,8 +50,7 @@ public static class WingedMeshBuilder
     // Bone world matrices of the rest (bind) pose, WingBoneLayout order.
     public static Matrix4x4[] RestBoneWorld(CreatureSpecies sp, WingSpec[] wings)
     {
-        CreatureSim sim = CreatureRestPose.Sim(sp);
-        StraightenBind(sp, wings, sim);
+        CreatureSim sim = CreatureRestPose.BindSim(sp, wings ?? new WingSpec[0]);
         return RestBoneWorld(sp, wings, sim, out _);
     }
 

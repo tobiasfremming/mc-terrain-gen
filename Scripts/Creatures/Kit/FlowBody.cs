@@ -52,7 +52,7 @@ namespace CreatureKit
         [Param(ParamUnit.Metres, "fine tail tip behind the last joint")] public float tailTipLength = 0.1f;
         [Param(ParamUnit.Count, "joints, head to tail", Min = 3, Max = 128, Example = "fixture 24")] public int jointCount = 24;
         [Param(ParamUnit.Struct, "profile keys (>= 2, t = 0 and t = 1 included, increasing t): monotone cubic to every joint and ring")] public FlowKey[] profile = new FlowKey[0];
-        [Param(ParamUnit.Count, "rigid head: the first N joints move as one rigid body; -1 = auto from the profile (SpineBody.AutoHead), 0 = off", Min = -1, Max = 16, Default = "-1 (auto)")] public int rigidHeadJoints = -1;
+        [Param(ParamUnit.Count, "rigid head: the first N joints move as one rigid body; -1 = auto from the profile (FlowBody.AutoHead: the joints before the neck narrows, if it narrows before the body widens), 0 = off", Min = -1, Max = 16, Default = "-1 (auto)")] public int rigidHeadJoints = -1;
         [Param(ParamUnit.Fraction, "hump exponent on max(0, sin phi): higher = a sharper ridge", Min = 1, Max = 64, Default = "8")] public float humpSharpness = 8f;
         [Param(ParamUnit.Fraction, "keel exponent on max(0, -sin phi): higher = a narrower keel", Min = 1, Max = 64, Default = "6")] public float keelSharpness = 6f;
         [Param(ParamUnit.Fraction, "superellipse exponent at blade 1 (2 = ellipse; 4 = a rounded ribbon)", Min = 2, Max = 12, Default = "4")] public float bladeExponent = 4f;
@@ -71,7 +71,25 @@ namespace CreatureKit
         public float Spacing => spacing;
         public float HeadCapLength => headCapLength;
         public float TailTipLength => tailTipLength;
-        public int RigidHeadJoints => rigidHeadJoints >= 0 ? Mathf.Min(rigidHeadJoints, Mathf.Max(0, jointCount - 1)) : SpineBody.AutoHead(BuildJoints());
+        public int RigidHeadJoints => rigidHeadJoints >= 0 ? Mathf.Min(rigidHeadJoints, Mathf.Max(0, jointCount - 1)) : AutoHead(BuildJoints());
+
+        // The auto rigid head: SpineBody.AutoHead's rule (the joints before the first one >= 5 % narrower than its
+        // predecessor, in the front half; a head of one joint: 0), but the search stops where the body first widens by
+        // >= 5 %: a neck that swells into a chest has no head of its own joints in front of it, and the chest narrowing
+        // into a ribbon tail (still in the front half) is not a neck - SpineBody's rule made all of joints 0..10 one
+        // rigid block there, and every bend of the walk then fell on the chest-tail joint (a sliver of the body folded,
+        // KitChecks.MaxBendProblem on CreatureCrestBeakHeadTests' fixture).
+        public static int AutoHead(SpineJoint[] js)
+        {
+            const float kStep = 0.05f;
+            int n = js != null ? js.Length : 0;
+            for (int i = 1; i <= n / 2; i++)
+            {
+                if (js[i].halfWidth > (1f + kStep) * js[i - 1].halfWidth) return 0;
+                if (js[i].halfWidth < (1f - kStep) * js[i - 1].halfWidth) return i >= 2 ? i : 0;
+            }
+            return 0;
+        }
 
         float HeadLen => Mathf.Max(headCapLength, 1e-3f);
         float TailLen => Mathf.Max(tailTipLength, 1e-3f);
@@ -170,20 +188,44 @@ namespace CreatureKit
             return offset.magnitude;
         }
 
-        // The unscaled section at spine place t.
-        Vector2 Shape(float t, float phi)
+        // The section's profile values at spine place t (six monotone cubics - most of a mesh build's cost: a ring asks
+        // for the same three t for every vertex, so the last few are memoised; the values are exactly the same).
+        struct ShapeAt { public float t, a, b, e, hump, keel, flank; }
+        [NonSerialized] readonly ShapeAt[] shapeMemo = new ShapeAt[4];
+        int shapeMemoCount, shapeMemoNext;
+
+        ShapeAt ShapeParams(float t)
         {
+            if (memoOn) for (int i = 0; i < shapeMemoCount; i++) if (shapeMemo[i].t == t) return shapeMemo[i];
             float a = Mathf.Max(PartMeshEmitter.MinRadius, Profile(t, ChHalfWidth));
             float hh = Mathf.Max(PartMeshEmitter.MinRadius, Profile(t, ChHalfHeight));
             float blade = Mathf.Clamp01(Profile(t, ChBlade));
-            float b = Mathf.Lerp(Mathf.Min(hh, ovalMaxAspect * a), hh, blade);
-            float n = Mathf.Lerp(2f, bladeExponent, blade), e = 2f / n;
+            float n = Mathf.Lerp(2f, bladeExponent, blade);
+            var r = new ShapeAt
+            {
+                t = t, a = a, b = Mathf.Lerp(Mathf.Min(hh, ovalMaxAspect * a), hh, blade), e = 2f / n,
+                hump = Mathf.Max(0f, Profile(t, ChHump)), keel = Mathf.Max(0f, Profile(t, ChKeel)), flank = Mathf.Max(0f, Profile(t, ChFlank)),
+            };
+            if (memoOn) { shapeMemo[shapeMemoNext] = r; shapeMemoNext = (shapeMemoNext + 1) & 3; shapeMemoCount = Mathf.Min(4, shapeMemoCount + 1); }
+            return r;
+        }
+
+        // The memos live only while this body emits its rings (cleared at the start; a clone shares the arrays, and other
+        // callers - tests editing the data, parts asking for the surface - always compute afresh).
+        [NonSerialized] bool memoOn;
+        void ClearShapeMemo() { shapeMemoCount = 0; shapeMemoNext = 0; }
+
+        // The unscaled section at spine place t.
+        Vector2 Shape(float t, float phi)
+        {
+            ShapeAt q = ShapeParams(t);
+            float a = q.a, b = q.b, e = q.e;
             float cs = Mathf.Cos(phi), sn = Mathf.Sin(phi);
             float x = a * Mathf.Sign(cs) * Mathf.Pow(Mathf.Abs(cs), e);
             float y = b * Mathf.Sign(sn) * Mathf.Pow(Mathf.Abs(sn), e);
-            y += Mathf.Max(0f, Profile(t, ChHump)) * Mathf.Pow(Mathf.Max(0f, sn), humpSharpness);
-            y -= Mathf.Max(0f, Profile(t, ChKeel)) * Mathf.Pow(Mathf.Max(0f, -sn), keelSharpness);
-            x += Mathf.Sign(cs) * Mathf.Max(0f, Profile(t, ChFlank)) * cs * cs;
+            y += q.hump * Mathf.Pow(Mathf.Max(0f, sn), humpSharpness);
+            y -= q.keel * Mathf.Pow(Mathf.Max(0f, -sn), keelSharpness);
+            x += Mathf.Sign(cs) * q.flank * cs * cs;
             return new Vector2(x, y);
         }
 
@@ -205,6 +247,11 @@ namespace CreatureKit
         public override void EmitMesh(PartMeshEmitter m, in PartCtx c)
         {
             if (m.Rest == null) return;
+            ClearShapeMemo();
+            frameMemoCount = 0; frameMemoNext = 0; frameMemoOf = m;
+            memoOn = true;
+            try
+            {
             var rings = new Rings
             {
                 b = this, m = m,
@@ -212,6 +259,8 @@ namespace CreatureKit
                 kindStripe = dorsalStripeTo > 0f ? m.Slot("dorsalstripe") : -1,
             };
             SpineBody.RingSequence(m, rings, jointCount, HeadLen, spacing, SpineLen, TailLen, Mathf.Max(1, ringsPerSegment), ringSegments);
+            }
+            finally { memoOn = false; frameMemoOf = null; }
         }
 
         struct Rings : SpineBody.IBodyRings
@@ -238,7 +287,24 @@ namespace CreatureKit
 
         // The rest centre line and section frame at arc s (metres from the front tip): the rest spine (SpineAt) between
         // joint 0 and the last joint, carried straight on along its end tangents over the head cap and the tail tip.
+        [NonSerialized] readonly float[] frameMemoS = new float[4];
+        [NonSerialized] readonly Frame[] frameMemo = new Frame[4];
+        int frameMemoCount, frameMemoNext;
+        [NonSerialized] PartMeshEmitter frameMemoOf;
+
+        // FrameAt, memoised for the last few arcs of one emitter's rest pose (a ring asks for s, s - h and s + h for every
+        // vertex; the frames are exactly the same).
         Frame FrameAt(PartMeshEmitter m, float s)
+        {
+            if (!memoOn || !ReferenceEquals(m, frameMemoOf)) return FrameAtUncached(m, s);
+            for (int i = 0; i < frameMemoCount; i++) if (frameMemoS[i] == s) return frameMemo[i];
+            Frame f = FrameAtUncached(m, s);
+            frameMemoS[frameMemoNext] = s; frameMemo[frameMemoNext] = f;
+            frameMemoNext = (frameMemoNext + 1) & 3; frameMemoCount = Mathf.Min(4, frameMemoCount + 1);
+            return f;
+        }
+
+        Frame FrameAtUncached(PartMeshEmitter m, float s)
         {
             float lh = HeadLen, tailStart = lh + SpineLen;
             SpineSection q;

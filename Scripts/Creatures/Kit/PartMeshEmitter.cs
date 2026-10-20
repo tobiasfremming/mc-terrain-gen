@@ -62,12 +62,12 @@ namespace CreatureKit
         {
             Species = sp;
             WingSpecs = wings ?? new WingSpec[0];
-            Rest = CreatureRestPose.Sim(sp);
+            // the bind's rest (CreatureRestPose.BindSim): a tall stance's bind keeps a straight spine
+            // (WingedMeshBuilder.StraightenBind); no-op otherwise
+            Rest = CreatureRestPose.BindSim(sp, WingSpecs);
             Joints = sp.JointCount;
             if (WingSpecs.Length > 0)
             {
-                // a tall stance's bind keeps a straight spine (WingedMeshBuilder.StraightenBind); no-op otherwise
-                WingedMeshBuilder.StraightenBind(sp, WingSpecs, Rest);
                 Bones = WingedMeshBuilder.RestBoneWorld(sp, WingSpecs, Rest, out Wings);
                 KitRuntime.AfterSpreadWings(Rest, Bones);   // parts whose bones follow the wing bones (CreatureRestPose)
             }
@@ -79,6 +79,14 @@ namespace CreatureKit
 
         // RED test hook (CreatureMeshEmitterRedTests): a different emit order must change the bytes.
         internal static bool ReverseOrderForTest;
+
+        // An emitter on the species' bind rest (CreatureRestPose.BindSim, the species' own wings) without drawing: for a
+        // part that builds bind geometry of its own from the drawn surfaces (Dewlap).
+        internal static PartMeshEmitter ForBind(CreatureSpecies sp)
+        {
+            sp = sp.Compiled.Runtime;
+            return new PartMeshEmitter(sp, sp.wings);
+        }
 
         // The species' mesh in its rest pose. wings: the wings to draw (null = the species' own).
         public static Mesh Build(CreatureSpecies sp, WingSpec[] wings = null)
