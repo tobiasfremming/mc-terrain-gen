@@ -137,6 +137,23 @@ public sealed class CreatureWings
             restJ[i] = new Vector3(0f, straight ? lowest : sp.joints[i].clearance, -sp.spacing * (i - g0));
             restR[i] = Quaternion.identity;
         }
+        // CreatureSpecies.restAtSpacing (opt-in; FlowBody.restAtStance): the bind keeps the stance - each rest segment one
+        // spacing long between the joints' clearances (CreatureSim's rest), never straightened (StraightBind) - so the rib
+        // rest lengths come from those joints and their frames (the rest sim's on flat ground), not from the flat run
+        if (sp.restAtSpacing)
+        {
+            float run = 0f;
+            for (int i = 0; i < restJ.Length; i++)
+            {
+                if (i > 0) run += CreatureSim.RestRun(sp, i, sp.spacing, 1f);
+                restJ[i] = new Vector3(0f, sp.joints[i].clearance, -run);
+            }
+            for (int i = 1; i < restJ.Length; i++)
+            {
+                Vector3 f = (restJ[i - 1] - restJ[i]).normalized;
+                restR[i] = Quaternion.LookRotation(f, Vector3.ProjectOnPlane(Vector3.up, f).normalized);
+            }
+        }
         for (int w = 0; w < c; w++)
         {
             PoseWing(w, restJ, restR, 1f);
@@ -157,7 +174,9 @@ public sealed class CreatureWings
     // The bind (rest) pose keeps a straight spine at the lowest leg attach's clearance (WingSpec.groundTallStance).
     internal static bool StraightBind(CreatureSpecies sp, WingSpec[] wings)
     {
-        if (wings == null) return false;
+        // a species bound at its stance (CreatureSpecies.restAtSpacing: the rest's segments are spacing long between the
+        // clearances) keeps it: levelled, those runs would shorten every sloped segment
+        if (wings == null || sp.restAtSpacing) return false;
         for (int w = 0; w < wings.Length; w++) if (wings[w] != null && wings[w].groundTallStance) return true;
         return false;
     }

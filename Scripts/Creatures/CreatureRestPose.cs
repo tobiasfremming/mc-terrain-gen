@@ -9,7 +9,7 @@ public static class CreatureRestPose
         new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
 
     // The bind's rest sim: the rest sim, its spine straightened for a tall-stance winged species
-    // (WingedMeshBuilder.StraightenBind; no-op otherwise). The one source the mesh (PartMeshEmitter), the bind bones
+    // (WingedMeshBuilder.StraightenBind; no-op otherwise, and for a species bound at its stance: restAtSpacing). The one source the mesh (PartMeshEmitter), the bind bones
     // (BoneWorld, WingedMeshBuilder.RestBoneWorld) and parts that build bind geometry of their own (Dewlap) share.
     // wings: the wings drawn (null = the species' own).
     internal static CreatureSim BindSim(CreatureSpecies sp, WingSpec[] wings = null)

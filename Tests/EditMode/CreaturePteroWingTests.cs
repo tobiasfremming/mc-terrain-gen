@@ -59,6 +59,8 @@ namespace TerrainGen.Tests
                 for (int i = 0; i < V.Length; i++) { Vector4 s = Uv2[i]; P[i] = s.z * skin[(int)s.x].MultiplyPoint3x4(V[i]) + s.w * skin[(int)s.y].MultiplyPoint3x4(V[i]); }
             }
             public int Part(int i) => Mathf.RoundToInt(Uv1[i].x);
+            // bone b's skin matrix (world x bind) of the last pose
+            public Matrix4x4 Skin(int b) => skin[b];
             // inverted triangles of part `part` (-1 = any) in the last pose, and the first one described
             public int Inverted(int part, out string first)
             {

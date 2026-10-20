@@ -238,7 +238,7 @@ public sealed class CreatureSim
 
     // restAtSpacing: the ground run of segment i (joint i-1 to i) that makes it `step` long between the two joints'
     // clearances; a near-vertical segment keeps a quarter step of run (the chain never folds back on itself).
-    static float RestRun(CreatureSpecies sp, int i, float step, float sizeScale)
+    internal static float RestRun(CreatureSpecies sp, int i, float step, float sizeScale)
     {
         float rise = (sp.joints[i].clearance - sp.joints[i - 1].clearance) * sizeScale, min = 0.25f * step;
         return Mathf.Sqrt(Mathf.Max(step * step - rise * rise, min * min));

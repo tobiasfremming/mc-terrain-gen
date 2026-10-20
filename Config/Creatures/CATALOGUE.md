@@ -27,6 +27,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | **DrakeLeg** | Limb | exists | 3 | 1, 2 | dragons, wyverns, raptors, birds: any digitigrade hind leg standing on toes with talons | - |
 | **Leg2Bone** | Limb | exists | 3 | 1, 2 | lizards, mammals, birds' legs, wing arms | DesertMonitor, Hexadrake, KitMonitor, Pterodactyl, ShaggyMonitor, SkyDragon, TestHexapod, WingedSerpent |
 | **SprawlLeg** | Limb | exists | 3 | 1, 2 | crocodilians, monitors, tegus, salamanders, any heavy-bodied sprawling or semi-erect walker | Crocodile, KomodoDragon |
+| **FleshWing** | Wing | exists | as Wing + fingers x (spanSegments - 1) + 1 (the fan sector) | 0 | meaty manta-like wings that fold into tall soft blades and are walked on (the Apex); not a membrane between bony fingers. The steep folded blades come from the arm's proportions: a short humerus and a long forearm (upper << lower, e.g. 0.2 / 0.5 on a 0.5 m chest), the wrist's restOffset behind the shoulder (z ~ -0.22) and close in (x ~ 0.06), pole (0.2, 1, -0.4): the forearm stands near vertical and the folded fingers run up along it, side by side over the back | - |
 | **PteroWing** | Wing | exists | as Wing + 6 (wing-finger phalanges 2-4, the pteroid, 2 propatagium patches) | 8, 1, 2 | pterosaurs (azhdarchids, pteranodons): a long single wing finger, a pteroid and propatagium, walking on the folded wings' knuckles | Pterodactyl |
 | **Wing** | Wing | exists | 6 + max(1, spec.flankPatches), +1 with spec.groundTallStance | 8, 1, 2 | bats, pterosaurs, dragons; the Fly module makes it fly | Hexadrake, SkyDragon, WingedSerpent |
 | **Eyes** | Sense | exists | 2 | 3 | always (every shipped species has two eye bones) | Crocodile, DaddyLongLegs, Delver, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, GolfballStrider, Hexadrake, KitMonitor, KomodoDragon, Pterodactyl, RockCrab, Scolopendra, ShaggyMonitor, SkyDragon, SkyManta, StriderMatriarch, Swinger, Tarantula, TentacleCrab, TestHexapod, TestSnake, TreeOctopus, TreeSpider, WingedSerpent |
@@ -546,6 +547,46 @@ Heavy sprawling vertebrate limb: walks as a Leg2Bone (TwoBoneIK, pole, limits, a
 | `clawCurveDeg` | float | Degrees | - | claw curl over its length, 0 = 60 |  |  |
 | `clawThickness` | float | Fraction | - | claw base radius, x the digit's tip radius | 0.2..1.5 | default 0.8 |
 | `toeWeb` | float | Fraction | - | webbing between the digits, share of their length (0 = none) | 0..1 |  |
+
+### FleshWing
+
+A soft, thick, folding wing on an arm limb (a Leg2Bone it names), flown, folded and walked on like a Wing (CreatureFlight + CreatureWings): two skins offset by a thickness law (thick root and arm, thin tip and trailing edge) joined by a rounded rim, a fleshy arm inside the leading edge, a blunt soft pad at the wrist that it walks on, lengthwise stripes along the rays; span chains along the fingers and a chord chain across the rays (the outer wing lags and whips, the trailing edge feathers and billows). System: CreatureFlight + CreatureWings (beat, fold, wing-walk) + FleshWingRuntime (span and chord chains; stage Late) + FleshWingMesh.
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `arm` | string | PartRef | - | the Leg2Bone this wing rides on (its role becomes WingArm); a mirrored wing names the unmirrored id and gets .L / .R |  |  |
+| `spec` | WingSpec | Spec | - | the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, thumbPlant, fanRearRollsWithFan, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius |  |  |
+| `rootThickness` | float | Metres | x s | thickness at the root (the body and the arm), dorsal to ventral skin |  | apex 0.07 |
+| `tipThickness` | float | Metres | x s | thickness toward the tip (the law never goes below half of it) |  | apex 0.012 |
+| `edgeRound` | float | Fraction | - | the rim's roundness: the free edge rolls into a bead at least this x tipThickness in radius | 0.4..2 |  |
+| `armBulk` | float | Metres | x s | the fleshy arm's radius at the shoulder (it tapers to the wrist) |  | apex 0.06 |
+| `leadFlesh` | float | Fraction | - | the leading edge's flesh, part of the sail's thickness: the arm's flesh runs on along the leading finger, this x armBulk extra half thickness at the root's leading edge, tapering with the span (0 = the plain thickness law) | 0..1.5 |  |
+| `rootSwell` | float | Metres | x s | extra thickness swelling the root next to the body (the wing muscles), fading out by a quarter of the span |  | apex 0.03 |
+| `stripes` | int | Count | - | dark stripes across the sail, running along the rays (0 = none) | 0..24 |  |
+| `stripeDepth` | float | Metres | x s | the stripes' shallow ridges: each stripe stands this much proud of the skin |  | apex 0.003 |
+| `padRadius` | float | Metres | x s | the wrist pad's radius: the blunt soft club the folded wing stands on |  | apex 0.06 |
+| `clubLength` | float | Metres | x s | the club's length along the stance's up from the walked contact (the sail rolled round the arm's end; at least 2.2 x padRadius); the forearm swells into it over as much |  | apex 0.16 |
+| `hookLength` | float | Metres | x s | a hook curling forward and down off the club's front (the hand's claw showing through; 0 = none) |  | apex 0.05 |
+| `innerColour` | float | Fraction | - | the inner part of the sail in the body's dorsal colour, as a fraction of the rays' length from the wrist (the rest is wingfan with stripes) | 0..1 |  |
+| `spanSegments` | int | Count | - | segments per finger (span chain links); >= 2 to whip | 1..4 |  |
+| `bindFold` | float | Fraction | - | the bind pose's fold (0 = the spread glide pose): the mesh is built part-folded so neither the spread nor the ground fold asks two-ray skinning for too large a ratio | 0..0.8 |  |
+| `spanHz` | float | Hz | / sqrt(s) | span chain: natural frequency of a finger segment following the one before (x 1/sqrt size) |  | apex 1.4 |
+| `spanDamping` | float | Fraction | - | span chain: damping ratio (< 0.7: the tip overshoots - the whip) | 0.1..2 |  |
+| `spanMaxDeg` | float | Degrees | - | span chain: the most a segment bends over the one before, either way | 1..30 |  |
+| `chordHz` | float | Hz | / sqrt(s) | chord chain: natural frequency of a ray following the ray ahead |  | apex 1.8 |
+| `chordDamping` | float | Fraction | - | chord chain: damping ratio | 0.1..2 |  |
+| `featherDeg` | float | Degrees | - | chord chain: the feathering the beat asks of the first ray behind the leading finger at the fastest stroke (+ trailing edge up on the downstroke) | 0..30 |  |
+| `chordMaxDeg` | float | Degrees | - | chord chain: the most a ray turns over the ray ahead | 1..25 |  |
+| `billowDeg` | float | Degrees | - | gliding, the sail billows: each ray lifts this much over the ray ahead (and each finger segment over the one before) | 0..10 |  |
+| `columns` | int | Count | - | mesh: columns per sail zone (across the rays) | 2..24 |  |
+| `rows` | int | Count | - | mesh: rows along the rays (rounded up to a multiple of spanSegments) | 4..48 |  |
 
 ### PteroWing
 
@@ -2249,3 +2290,5 @@ Creature.shader shades a part id by its row of the species' look-layer table (Ki
 | (per species) | `crest` | beak crests (CrestBeakHead) | Claw (NoPattern, NoGrain, tint Own 1) |
 | (per species) | `pit` | breathing holes / nostrils (PitRow) | Claw (NoPattern, NoGrain, tint Own 1) |
 | (per species) | `dewlap` | throat sail (Dewlap) | Skin (NoPattern, FineGrain, Sheen, Shimmer, tint Own 1) |
+| (per species) | `wingfan` | flesh wing sail (FleshWing) | Skin (NoPattern, FineGrain, Sheen, Shimmer, tint Own 1) |
+| (per species) | `wingstripe` | flesh wing stripes (FleshWing) | Skin (NoPattern, FineGrain, Sheen, Shimmer, tint Own 1) |

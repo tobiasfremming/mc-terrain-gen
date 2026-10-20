@@ -122,6 +122,10 @@ namespace CreatureKit
             new Entry(-1, "pit", "breathing holes / nostrils (PitRow)", new PartLayer(ShadingModel.Claw, LayerFlags.NoPattern | LayerFlags.NoGrain, TintSource.Own, 1f, 0.5f) { tint = new Color(0.03f, 0.02f, 0.025f) }),
             // Dewlap's throat sail: pale skin (#D9CDB8, the belly / throat colour), fine grain, no pattern
             new Entry(-1, "dewlap", "throat sail (Dewlap)", new PartLayer(ShadingModel.Skin, LayerFlags.NoPattern | LayerFlags.FineGrain | kSkinLayers, TintSource.Own, 1f) { tint = new Color(0.851f, 0.804f, 0.722f) }),
+            // FleshWing's outer sail (#1F6B66, the teal-green of the reference's wing fan) and its dark lengthwise stripes
+            // (#163F45): soft skin, fine grain, no pattern
+            new Entry(-1, "wingfan", "flesh wing sail (FleshWing)", new PartLayer(ShadingModel.Skin, LayerFlags.NoPattern | LayerFlags.FineGrain | kSkinLayers, TintSource.Own, 1f) { tint = new Color(0.122f, 0.42f, 0.4f) }),
+            new Entry(-1, "wingstripe", "flesh wing stripes (FleshWing)", new PartLayer(ShadingModel.Skin, LayerFlags.NoPattern | LayerFlags.FineGrain | kSkinLayers, TintSource.Own, 1f) { tint = new Color(0.086f, 0.247f, 0.271f) }),
         };
 
         // The registry entry of a kind (by name: Registry, then NamedKinds); false when it is none of them.

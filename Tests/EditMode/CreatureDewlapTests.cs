@@ -278,7 +278,7 @@ namespace TerrainGen.Tests
         // A tall-stance winged FlowBody (the shipped Pterodactyl's parts, its SpineBody swapped for a FlowBody of the same
         // profile): its bind straightens the spine (WingedMeshBuilder.StraightenBind, via CreatureRestPose.BindSim), and
         // the Dewlap's bind geometry must come from that same rest, or its links miss the drawn rows.
-        static CreatureSpecies PteroFlow(bool dewlap)
+        static CreatureSpecies PteroFlow(bool dewlap, bool restAtStance = false)
         {
             CreatureSpecies asset = CreatureKitAssets.LoadAsset("Pterodactyl");
             var parts = new List<CreaturePart>();
@@ -289,22 +289,24 @@ namespace TerrainGen.Tests
                     var keys = new FlowKey[sb.profile.Length];
                     for (int i = 0; i < keys.Length; i++)
                         keys[i] = new FlowKey { t = sb.profile[i].t, halfWidth = sb.profile[i].halfWidth, halfHeight = sb.profile[i].halfHeight, clearance = sb.profile[i].clearance, bendLimitDeg = sb.profile[i].bendLimitDeg };
-                    parts.Add(new FlowBody { id = sb.id, jointCount = sb.JointCount, spacing = sb.spacing, headCapLength = sb.headCapLength, tailTipLength = sb.tailTipLength, profile = keys });
+                    // restAtStance off: a body bound at its stance keeps it (CreatureWings.StraightBind), only the flat rest
+                    // is straightened - the path this fixture proves the Dewlap follows
+                    parts.Add(new FlowBody { id = sb.id, jointCount = sb.JointCount, spacing = sb.spacing, headCapLength = sb.headCapLength, tailTipLength = sb.tailTipLength, profile = keys, restAtStance = restAtStance });
                 }
                 else parts.Add(p.Clone());
             }
             if (dewlap) parts.Add(new Dewlap { id = "dewlap", fromJoint = 1, toJoint = 5, stations = 4, links = 3, depthAt = new[] { 0.08f, 0.12f, 0.12f, 0.08f } });
-            return FlowKit.Build(dewlap ? "PteroFlowDewlap" : "PteroFlow", asset.scale, parts, asset.modules);
+            return FlowKit.Build((dewlap ? "PteroFlowDewlap" : "PteroFlow") + (restAtStance ? "Stance" : ""), asset.scale, parts, asset.modules);
         }
 
-        static string TallStanceRows(out float worst, out float straightened)
+        static string TallStanceRows(out float worst, out float straightened, bool restAtStance = false)
         {
-            CreatureSpecies sp = PteroFlow(true);
+            CreatureSpecies sp = PteroFlow(true, restAtStance);
             Assert.IsTrue(sp.WingCount > 0, "winged");
             straightened = 0f;
             CreatureSim plain = CreatureRestPose.Sim(sp), bind = CreatureRestPose.BindSim(sp);
             for (int i = 0; i < sp.JointCount; i++) straightened = Mathf.Max(straightened, (plain.Joints[i] - bind.Joints[i]).magnitude);
-            Mesh m = FlowKit.Mesh(PteroFlow(false));
+            Mesh m = FlowKit.Mesh(PteroFlow(false, restAtStance));
             int first = m.vertexCount;
             Object.DestroyImmediate(m);
             return RowsProblem(sp, first, out worst);
@@ -315,6 +317,16 @@ namespace TerrainGen.Tests
             string e = TallStanceRows(out float worst, out float straightened);
             TestContext.Out.WriteLine($"the bind straightens the spine by up to {straightened * 1000f:F0} mm; largest miss {worst * 1000f:F2} mm");
             Assert.Greater(straightened, 0.02f, "the tall stance's bind really differs from the plain rest");
+            Assert.IsNull(e);
+        }
+
+        // The same winged FlowBody bound at its stance (restAtStance on): the bind keeps the stance (no straightening:
+        // CreatureWings.StraightBind) and the Dewlap's links still run along the drawn rows.
+        [Test] public void Dewlap_TallStanceWings_RestAtStance_LinksFollowTheBind()
+        {
+            string e = TallStanceRows(out float worst, out float straightened, true);
+            TestContext.Out.WriteLine($"bound at its stance: the bind moves the spine by {straightened * 1000f:F2} mm; largest miss {worst * 1000f:F2} mm");
+            Assert.Less(straightened, 1e-5f, "a stance-bound body is not straightened");
             Assert.IsNull(e);
         }
 

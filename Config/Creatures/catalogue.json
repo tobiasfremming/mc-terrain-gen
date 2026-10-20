@@ -3294,6 +3294,318 @@
       ]
     },
     {
+      "name": "FleshWing",
+      "kind": "Wing",
+      "status": "exists",
+      "bones": "as Wing + fingers x (spanSegments - 1) + 1 (the fan sector)",
+      "materialLayers": [
+        0
+      ],
+      "system": "CreatureFlight + CreatureWings (beat, fold, wing-walk) + FleshWingRuntime (span and chord chains; stage Late) + FleshWingMesh",
+      "useWhen": "meaty manta-like wings that fold into tall soft blades and are walked on (the Apex); not a membrane between bony fingers. The steep folded blades come from the arm's proportions: a short humerus and a long forearm (upper << lower, e.g. 0.2 / 0.5 on a 0.5 m chest), the wrist's restOffset behind the shoulder (z ~ -0.22) and close in (x ~ 0.06), pole (0.2, 1, -0.4): the forearm stands near vertical and the folded fingers run up along it, side by side over the back",
+      "summary": "A soft, thick, folding wing on an arm limb (a Leg2Bone it names), flown, folded and walked on like a Wing (CreatureFlight + CreatureWings): two skins offset by a thickness law (thick root and arm, thin tip and trailing edge) joined by a rounded rim, a fleshy arm inside the leading edge, a blunt soft pad at the wrist that it walks on, lengthwise stripes along the rays; span chains along the fingers and a chord chain across the rays (the outer wing lags and whips, the trailing edge feathers and billows).",
+      "usedBy": [],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "arm",
+          "type": "string",
+          "unit": "PartRef",
+          "size": "-",
+          "meaning": "the Leg2Bone this wing rides on (its role becomes WingArm); a mirrored wing names the unmirrored id and gets .L / .R",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "spec",
+          "type": "WingSpec",
+          "unit": "Spec",
+          "size": "-",
+          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, thumbPlant, fanRearRollsWithFan, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "rootThickness",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "thickness at the root (the body and the arm), dorsal to ventral skin",
+          "range": "",
+          "example": "apex 0.07"
+        },
+        {
+          "name": "tipThickness",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "thickness toward the tip (the law never goes below half of it)",
+          "range": "",
+          "example": "apex 0.012"
+        },
+        {
+          "name": "edgeRound",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the rim's roundness: the free edge rolls into a bead at least this x tipThickness in radius",
+          "range": "0.4..2",
+          "example": ""
+        },
+        {
+          "name": "armBulk",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the fleshy arm's radius at the shoulder (it tapers to the wrist)",
+          "range": "",
+          "example": "apex 0.06"
+        },
+        {
+          "name": "leadFlesh",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the leading edge's flesh, part of the sail's thickness: the arm's flesh runs on along the leading finger, this x armBulk extra half thickness at the root's leading edge, tapering with the span (0 = the plain thickness law)",
+          "range": "0..1.5",
+          "example": ""
+        },
+        {
+          "name": "rootSwell",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "extra thickness swelling the root next to the body (the wing muscles), fading out by a quarter of the span",
+          "range": "",
+          "example": "apex 0.03"
+        },
+        {
+          "name": "stripes",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "dark stripes across the sail, running along the rays (0 = none)",
+          "range": "0..24",
+          "example": ""
+        },
+        {
+          "name": "stripeDepth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the stripes' shallow ridges: each stripe stands this much proud of the skin",
+          "range": "",
+          "example": "apex 0.003"
+        },
+        {
+          "name": "padRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the wrist pad's radius: the blunt soft club the folded wing stands on",
+          "range": "",
+          "example": "apex 0.06"
+        },
+        {
+          "name": "clubLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the club's length along the stance's up from the walked contact (the sail rolled round the arm's end; at least 2.2 x padRadius); the forearm swells into it over as much",
+          "range": "",
+          "example": "apex 0.16"
+        },
+        {
+          "name": "hookLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "a hook curling forward and down off the club's front (the hand's claw showing through; 0 = none)",
+          "range": "",
+          "example": "apex 0.05"
+        },
+        {
+          "name": "innerColour",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the inner part of the sail in the body's dorsal colour, as a fraction of the rays' length from the wrist (the rest is wingfan with stripes)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "spanSegments",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "segments per finger (span chain links); >= 2 to whip",
+          "range": "1..4",
+          "example": ""
+        },
+        {
+          "name": "bindFold",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the bind pose's fold (0 = the spread glide pose): the mesh is built part-folded so neither the spread nor the ground fold asks two-ray skinning for too large a ratio",
+          "range": "0..0.8",
+          "example": ""
+        },
+        {
+          "name": "spanHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "span chain: natural frequency of a finger segment following the one before (x 1/sqrt size)",
+          "range": "",
+          "example": "apex 1.4"
+        },
+        {
+          "name": "spanDamping",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "span chain: damping ratio (< 0.7: the tip overshoots - the whip)",
+          "range": "0.1..2",
+          "example": ""
+        },
+        {
+          "name": "spanMaxDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "span chain: the most a segment bends over the one before, either way",
+          "range": "1..30",
+          "example": ""
+        },
+        {
+          "name": "chordHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "chord chain: natural frequency of a ray following the ray ahead",
+          "range": "",
+          "example": "apex 1.8"
+        },
+        {
+          "name": "chordDamping",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "chord chain: damping ratio",
+          "range": "0.1..2",
+          "example": ""
+        },
+        {
+          "name": "featherDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "chord chain: the feathering the beat asks of the first ray behind the leading finger at the fastest stroke (+ trailing edge up on the downstroke)",
+          "range": "0..30",
+          "example": ""
+        },
+        {
+          "name": "chordMaxDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "chord chain: the most a ray turns over the ray ahead",
+          "range": "1..25",
+          "example": ""
+        },
+        {
+          "name": "billowDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "gliding, the sail billows: each ray lifts this much over the ray ahead (and each finger segment over the one before)",
+          "range": "0..10",
+          "example": ""
+        },
+        {
+          "name": "columns",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: columns per sail zone (across the rays)",
+          "range": "2..24",
+          "example": ""
+        },
+        {
+          "name": "rows",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: rows along the rays (rounded up to a multiple of spanSegments)",
+          "range": "4..48",
+          "example": ""
+        }
+      ]
+    },
+    {
       "name": "PteroWing",
       "kind": "Wing",
       "status": "exists",
