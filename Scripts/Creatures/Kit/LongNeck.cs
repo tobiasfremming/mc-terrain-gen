@@ -1,15 +1,18 @@
 // Creature kit: LongNeck - a long neck carried off the trunk on bones of its own, its last bone the head's: an
 // azhdarchid's, a giraffe's, a sauropod's, a swan's, a plesiosaur's. The spine body's chain ends at the chest (its
-// joint `at.joint`); the neck is not dragged along the walking path but held in a posture and steered:
-//   posture   an S from the chest: the base rises at baseDeg above the heading, the head arrives at headDeg; on the ground
-//             (raised) and in the air (flightBaseDeg / flightHeadDeg: stretched forward), blended by the flight's air
-//             weight at the root; a call raises it (callDeg, and the head part may open its mouth: Calling);
-//   head      a critically damped follower of that posture's head point (stabiliseSeconds): the head glides while the
-//             body bobs, turns and lags a little behind a turn; it glances about when idle (glanceDeg) and turns toward
-//             an aim point (IHeadAim: a hunting behaviour) up to aimYawDeg; strike reaches it toward the aim point,
-//             stretched (strikeReach), never below headClearance over the ground;
-//   shape     a cubic Hermite from the root (along the base direction) to the head (along the head direction), its
-//             tangents those of a circular arc (no loop, no bump); bones at equal arc fractions,
+// joint `at.joint`); the neck is not dragged along the walking path but carried by the chest as a chain (root to tip):
+//   posture   an S from the chest, measured in the chest's own frame (its heading, its pitch): the base rises baseDeg over
+//             the chest's line on the ground, flightBaseDeg in the air (following basePitchFollow of the chest's pitch:
+//             raised over a nose-down body; a folded-wing dive stretches it along the body), never more than maxBaseDeg
+//             over the chest's line (no neck leaning back); the head arrives at headDeg (ground) or near level in the
+//             air (headPitchFollow of the pitch, within headLevelDeg); a call raises it (callDeg, Calling);
+//   head      a critically damped follower of that posture's head point (stabiliseSeconds): the head trails the
+//             chest's turns by at most maxLagDeg (follow-through), its height filtered against the wingbeat's bob; it
+//             glances about when idle (glanceDeg) and turns toward an aim point (IHeadAim: a hunting behaviour); in the
+//             air the neck points at it within strikeConeDeg of its forward and a strike stretches the head along the
+//             neck (strikeReach) - never under or behind the neck; never below headClearance over the ground;
+//   shape     a cubic Hermite from the root (along the base direction, riding the chest's pitch) to the head (along the
+//             head direction), its tangents those of a circular arc (no loop, no bump); bones at equal arc fractions,
 //             the last at the head along the head direction.
 // Mesh: elliptical rings (pale throat: the belly shading) tapering from the root (buried in the chest, rigid to the
 // first bone: a ball socket - the base swings ~60 deg between the stance and flight) to the head (closed inside it),
@@ -38,8 +41,8 @@ namespace CreatureKit
           UseWhen = "long necks that are carried, not dragged: pterosaurs, giraffes, sauropods, swans, plesiosaurs; any head held up off the body")]
     public sealed partial class LongNeck : CreaturePart
     {
-        [Param(ParamUnit.Count, "bones: neck segments + the head's (the last)", Min = 4, Max = 24, Example = "apex 11")] public int segments = 10;
-        [Param(ParamUnit.Metres, "neck length, root to the head bone", Example = "apex 0.9")] public float length = 0.8f;
+        [Param(ParamUnit.Count, "bones: neck segments + the head's (the last)", Min = 4, Max = 24, Example = "pterodactyl 11")] public int segments = 10;
+        [Param(ParamUnit.Metres, "neck length, root to the head bone", Example = "pterodactyl 0.9")] public float length = 0.8f;
         [Param(ParamUnit.Metres, "half width at the root (it flares into the chest)")] public float rootRadius = 0.06f;
         [Param(ParamUnit.Metres, "half width at the head")] public float headRadius = 0.035f;
         [Param(ParamUnit.Fraction, "cross-section height / width", Min = 0.6f, Max = 1.6f)] public float depth = 1.1f;
@@ -59,7 +62,13 @@ namespace CreatureKit
         [Param(ParamUnit.Degrees, "the most the head turns toward an aim point off the heading", Min = 0, Max = 120)] public float aimYawDeg = 70f;
         [Param(ParamUnit.Fraction, "striking: the head's reach toward the aim point, x the neck length", Min = 0.5f, Max = 1)] public float strikeReach = 0.97f;
         [Param(ParamUnit.Metres, "the head never comes lower than this over the ground under the chest")] public float headClearance = 0.08f;
-        [Param(ParamUnit.Metres, "the head part's reach past the head bone along the head (a beak's tip): a strike lands this point on the aim point", Example = "apex 0.6")] public float tipReach = 0f;
+        [Param(ParamUnit.Degrees, "the base's highest elevation above the chest's line (a call or a glance never leans the neck back past this)", Min = 30, Max = 89)] public float maxBaseDeg = 80f;
+        [Param(ParamUnit.Fraction, "in the air: how much of the chest's pitch the neck's base follows (1 = it continues the chest's line; less raises it over a nose-down body)", Min = 0, Max = 1)] public float basePitchFollow = 0.6f;
+        [Param(ParamUnit.Fraction, "in the air: how much of the chest's pitch the head follows (0 = always level)", Min = 0, Max = 1)] public float headPitchFollow = 0.3f;
+        [Param(ParamUnit.Degrees, "in the air: the head's elevation stays within this of level (aiming and striking excepted)", Min = 5, Max = 90)] public float headLevelDeg = 22f;
+        [Param(ParamUnit.Degrees, "in the air, aiming and striking: the neck, the reach and the head's turn stay within this cone round the neck's forward (the head never swings below or behind the neck); on the ground it pecks anywhere within aimYawDeg", Min = 10, Max = 180)] public float strikeConeDeg = 40f;
+        [Param(ParamUnit.Degrees, "follow-through: the most the head lags its posture (seen from the neck's root)", Min = 5, Max = 180)] public float maxLagDeg = 15f;
+        [Param(ParamUnit.Metres, "the head part's reach past the head bone along the head (a beak's tip): a strike lands this point on the aim point", Example = "pterodactyl 0.6")] public float tipReach = 0f;
         [Param(ParamUnit.Count, "mesh: vertices round each ring", Min = 8, Max = 32)] public int ringSides = 16;
         [Param(ParamUnit.Count, "mesh: rings per neck segment", Min = 1, Max = 8)] public int ringsPerSegment = 4;
 
@@ -167,6 +176,9 @@ namespace CreatureKit
     {
         const int kSamples = 24;
         const float kMaxTurn = 80f * Mathf.Deg2Rad, kMaxLead = 32f * Mathf.Deg2Rad;
+        // the chest's pitch the neck follows (a stoop dives it, a pull-out raises it), the base's highest elevation
+        // over the level (never past vertical), the stabiliser's most offset (x the neck's length)
+        const float kPitchMin = -75f, kPitchMax = 45f, kMaxBaseWorld = 85f, kMaxBob = 0.25f, kPitchSeconds = 0.25f, kOffChest = 70f;
 
         readonly LongNeck p;
         readonly CreatureSim sim;
@@ -177,9 +189,9 @@ namespace CreatureKit
         readonly float[] cum = new float[kSamples + 1];
         bool stepped;
         Vector3 head, headDir;
-        // the follower works on the head relative to a stabilised root (its velocity low-passed: no lag while the body
-        // travels, the beat's bob filtered out) - a follower of the world point lagged a flying body by 2 tau v
-        Vector3 rel, relVel, rootS, rootV, rootA, rootPrev;
+        // the follower works on the head relative to the root, its height stabilised (yS: the beat's bob filtered out)
+        Vector3 rel, relVel;
+        float yS, yV, yA, yPrev, baseEl, pitchS, pitchV, pitchNow, airNow, follow, dive;
         float glanceYaw, glancePitch, glanceYawT, glancePitchT, glanceIn;
         float callIn, callLeft;
         uint rng;
@@ -212,42 +224,39 @@ namespace CreatureKit
         public void Aim(Vector3 point, float strikeAmount) { aiming = true; aimPoint = point; strikeT = Mathf.Clamp01(strikeAmount); }
         public void Release() { aiming = false; strikeT = 0f; }
 
-        // the root, the heading and the up at the root (world)
-        // the root, the heading and the up the posture's elevations are measured from, the world's up, the air weight.
-        // On the ground: the chest's heading, level. In the air: the flight path itself (a stoop dives head first, a
-        // climb looks up it) - a flaring chest can point nearly straight down, so never the chest's own axis there
-        void Frame(out Vector3 root, out Vector3 h, out Vector3 up, out Vector3 wup, out float air)
+        // The root, the level heading and the up the posture's elevations are measured from, the chest's pitch in that
+        // frame and the air weight. The neck is carried by the chest: the heading is the chest's own (in the air, with
+        // the flight's horizontal heading mixed in, so a chest pitched near vertical still has one), its base rises from
+        // the chest's pitch. Never the flight path low-passed: in the aviary's tight circles a path lagged by seconds
+        // pointed the neck backward over the shoulders, the head hanging behind and below the body.
+        void Frame(out Vector3 root, out Vector3 h, out Vector3 up, out float pitch, out float air)
         {
             float s = sim.SizeScale;
             Quaternion r = sim.Rotations[joint];
             root = sim.Joints[joint] + r * (offset * s);
             CreatureFlight fl = sim.Flight;
             air = fl != null ? fl.AirWeight[joint] : 0f;
-            wup = fl != null && fl.Mode != FlightMode.Ground ? fl.Model.Up : sim.Up[joint];
-            if (wup.sqrMagnitude < 0.5f) wup = Vector3.up;
-            up = wup;
+            up = fl != null && fl.Mode != FlightMode.Ground ? fl.Model.Up : sim.Up[joint];
+            if (up.sqrMagnitude < 0.5f) up = Vector3.up;
             Vector3 f = r * Vector3.forward;
-            if (air > 0.5f)
-            {
-                // the path's direction low-passed (pathDir, Step): the beat's bob turns the momentary velocity up and down
-                Vector3 v = pathDir;
-                if (v.sqrMagnitude > 0.5f)
-                {
-                    h = v.normalized;
-                    Vector3 u = wup - h * Vector3.Dot(wup, h);
-                    if (u.sqrMagnitude > 1e-4f) { up = u.normalized; return; }
-                }
-                f = fl.Model.Forward;
-            }
-            h = f - wup * Vector3.Dot(f, wup);
+            h = f - up * Vector3.Dot(f, up);
+            if (air > 0f) h += fl.Model.Forward * (0.25f * air);
             if (h.sqrMagnitude < 1e-8f) h = sim.Heading;
             h = PartMeshEmitter.Unit(h, Vector3.forward);
+            pitch = Mathf.Clamp(Mathf.Atan2(Vector3.Dot(f, up), Vector3.Dot(f, h)) * Mathf.Rad2Deg, kPitchMin, kPitchMax);
         }
 
         static Vector3 Dir(Vector3 h, Vector3 up, float elevDeg)
         {
             float e = elevDeg * Mathf.Deg2Rad;
             return h * Mathf.Cos(e) + up * Mathf.Sin(e);
+        }
+
+        // `dir` kept within `maxRad` of `axis` (both unit)
+        static Vector3 Cone(Vector3 dir, Vector3 axis, float maxRad)
+        {
+            float a = Mathf.Acos(Mathf.Clamp(Vector3.Dot(dir, axis), -1f, 1f));
+            return a <= maxRad ? dir : Vector3.RotateTowards(axis, dir, maxRad, 0f).normalized;
         }
 
         // the posture's head point and head direction
@@ -260,20 +269,24 @@ namespace CreatureKit
             dir = Dir(h, up, headDeg);
         }
 
-        Vector3 pathDir;   // the flight path's direction, low-passed (in the air)
+        // the base's and the head's elevations (over the level heading) for this pitch of the chest and air weight:
+        // the base rises from the chest's line (never more than maxBaseDeg above it, nor past vertical); the head is
+        // level-referenced, following a share of the chest's pitch in the air and held within headLevelDeg of level there
+        void Elevations(float pitch, float air, out float baseEl, out float headEl)
+        {
+            float callUp = p.callDeg * Calling;
+            baseEl = pitch * Mathf.Lerp(1f, follow, air) + Mathf.Lerp(p.baseDeg, p.flightBaseDeg, air) + callUp + glancePitch;
+            baseEl = Mathf.Min(baseEl, Mathf.Min(pitch + p.maxBaseDeg, kMaxBaseWorld));
+            headEl = Mathf.Lerp(p.headDeg + 1.4f * callUp + glancePitch, p.flightHeadDeg + Mathf.Lerp(p.headPitchFollow, 1f, dive) * pitch, air);
+            float lim = Mathf.Lerp(90f, Mathf.Lerp(p.headLevelDeg, 90f, dive), air);
+            headEl = Mathf.Clamp(headEl, -lim, lim);
+        }
 
         public void Step(in StepCtx c, float dt)
         {
             if (!(dt > 0f)) return;
             float s = sim.SizeScale, T = sim.TimeScale;
-            CreatureFlight flp = sim.Flight;
-            if (flp != null && flp.Mode != FlightMode.Ground && flp.Model.Velocity.sqrMagnitude > 1e-4f * s)
-            {
-                Vector3 vd = flp.Model.Velocity.normalized;
-                pathDir = pathDir.sqrMagnitude > 0.5f ? Vector3.Slerp(pathDir, vd, 1f - Mathf.Exp(-dt / (1.5f * T))).normalized : vd;
-            }
-            else pathDir = Vector3.zero;
-            Frame(out Vector3 root, out Vector3 h, out Vector3 up, out Vector3 wup, out float air);
+            Frame(out Vector3 root, out Vector3 h, out Vector3 up, out float pitch, out float air);
             bool ground = air < 0.5f;
             // glances (idle, on the ground)
             glanceIn -= dt;
@@ -297,57 +310,104 @@ namespace CreatureKit
             Calling += (callT - Calling) * (1f - Mathf.Exp(-dt / (0.15f * T)));
             strike += (strikeT - strike) * (1f - Mathf.Exp(-dt / (0.12f * T)));
 
-            float baseDeg = Mathf.Lerp(p.baseDeg, p.flightBaseDeg, air) + p.callDeg * Calling + glancePitch;
-            float headDeg = Mathf.Lerp(p.headDeg, p.flightHeadDeg, air) + 1.4f * p.callDeg * Calling + glancePitch;
+            // the chest's pitch through a critically damped low-pass: the wingbeat rocks the chest, the head's posture
+            // follows only its mean (the base follows the chest itself: WriteBones bends the neck to absorb the rock)
+            if (!stepped) { pitchS = pitch; pitchV = 0f; }
+            {
+                float wp = 1f / (kPitchSeconds * T);
+                int np = Mathf.Max(1, Mathf.CeilToInt(dt * wp / 0.2f));
+                float hp = dt / np;
+                for (int i = 0; i < np; i++) { pitchV += (wp * wp * (pitch - pitchS) - 2f * wp * pitchV) * hp; pitchS += pitchV * hp; }
+            }
+            pitchNow = pitch; airNow = air;
+            // a folded-wing dive (a stoop) stretches the neck along the diving body, toward what it dives at
+            dive = sim.Flight != null ? Mathf.Clamp01(sim.Flight.DiveFold / 0.3f) : 0f;
+            follow = Mathf.Lerp(p.basePitchFollow, 1f, dive);
+            Elevations(pitchS, air, out baseEl, out float headEl);
             Vector3 hy = Quaternion.AngleAxis(glanceYaw, up) * h;
-            Posture(root, hy, up, baseDeg, headDeg, p.reach, out Vector3 want, out Vector3 wantDir);
+            Posture(root, hy, up, baseEl, headEl, p.reach, out Vector3 want, out Vector3 wantDir);
             if (aiming)
             {
-                // turn toward the aim point (clamped off the heading); striking, stretch onto it
+                // on the ground: the head turns toward the aim point (clamped off the heading) and a strike pecks at it.
+                // In the air the neck itself points at it, the reach and the head's turn inside strikeConeDeg round the
+                // neck's forward (the posture's chord): a mark below or behind (passed in a pull-out) never swings the
+                // head under or behind the neck, a strike stretches the head along the neck
                 Vector3 to = aimPoint - root;
                 Vector3 toH = to - up * Vector3.Dot(to, up);
                 float yaw = toH.sqrMagnitude > 1e-8f ? Vector3.SignedAngle(h, toH, up) : 0f;
-                yaw = Mathf.Clamp(yaw, -p.aimYawDeg, p.aimYawDeg);
+                float yawMax = p.aimYawDeg * (1f - air);
+                yaw = Mathf.Clamp(yaw, -yawMax, yawMax);
                 Vector3 ha = Quaternion.AngleAxis(yaw, up) * h;
-                Posture(root, ha, up, baseDeg, headDeg, p.reach, out Vector3 look, out Vector3 lookDir);
+                Posture(root, ha, up, baseEl, headEl, p.reach, out Vector3 look, out Vector3 lookDir);
+                float cone = Mathf.Lerp(Mathf.PI, p.strikeConeDeg * Mathf.Deg2Rad, air);
+                Vector3 fwd = PartMeshEmitter.Unit(look - root, ha);
+                Vector3 axis = Cone(PartMeshEmitter.Unit(to, fwd), fwd, cone);
+                look = Vector3.Lerp(look, root + axis * (look - root).magnitude, air);
                 float L = p.length * s * p.strikeReach;
                 // the head bone stops a tip short of the point (the beak's tip lands on it)
-                Vector3 reachPt = root + PartMeshEmitter.Unit(to, ha) * Mathf.Min(L, Mathf.Max(0f, to.magnitude - p.tipReach * s));
+                Vector3 reachPt = root + axis * Mathf.Min(L, Mathf.Max(0f, to.magnitude - p.tipReach * s));
                 want = Vector3.Lerp(look, reachPt, strike);
-                wantDir = Vector3.Slerp(lookDir, PartMeshEmitter.Unit(to, lookDir), Mathf.Max(strike, 0.5f)).normalized;
+                Vector3 aimDir = Cone(PartMeshEmitter.Unit(to, lookDir), lookDir, cone);
+                wantDir = Vector3.Slerp(lookDir, aimDir, Mathf.Max(strike, 0.5f)).normalized;
+            }
+            // in the air the head's point stays within kOffChest of the chest's line seen from the root (a stall's
+            // lurch pitches the chest under a head the stabiliser holds up: the neck stood straight up off its back)
+            Vector3 cf = sim.Rotations[joint] * Vector3.forward;
+            float offChest = Mathf.Lerp(180f, kOffChest, air) * Mathf.Deg2Rad;
+            if (air > 0f)
+            {
+                Vector3 rw = want - root;
+                float m = rw.magnitude;
+                if (m > 1e-6f) want = root + Cone(rw / m, cf, offChest) * m;
             }
             // never below the head clearance over the ground under the chest
-            float floorH = GroundHeight(root, wup) + p.headClearance * s;
-            float wh = Vector3.Dot(want, wup);
-            if (wh < floorH) want += wup * (floorH - wh);
-            if (!stepped) { rel = want - root; relVel = Vector3.zero; rootS = rootPrev = root; rootV = rootA = Vector3.zero; headDir = wantDir; stepped = true; }
-            float w0 = 1f / Mathf.Max(1e-3f, p.stabiliseSeconds * T * (1f - 0.6f * strike));
+            float floorH = GroundHeight(root, up) + p.headClearance * s;
+            float wh = Vector3.Dot(want, up);
+            if (wh < floorH) want += up * (floorH - wh);
+            float y = Vector3.Dot(root, up);
+            if (!stepped) { rel = want - root; relVel = Vector3.zero; yS = yPrev = y; yV = yA = 0f; headDir = wantDir; stepped = true; }
+            float w0 = 1f / Mathf.Max(1e-3f, p.stabiliseSeconds * T * (1f - 0.8f * strike));
             float hk = Mathf.Min(dt, 0.2f / w0);
             int n = Mathf.Max(1, Mathf.CeilToInt(dt / hk));
             float sh = dt / n;
-            Vector3 vRoot = (root - rootPrev) / dt; rootPrev = root;
+            float vy = (y - yPrev) / dt; yPrev = y;
             Vector3 relWant = want - root;
             for (int i = 0; i < n; i++)
             {
-                // the root's velocity through a critically damped low-pass, integrated, pulled back onto the root
-                rootA += (w0 * w0 * (vRoot - rootV) - 2f * w0 * rootA) * sh;
-                rootV += rootA * sh;
-                rootS += rootV * sh;
-                // the head's offset from the root, critically damped toward the posture's
+                // the stabiliser: the root's height through a critically damped low-pass of its vertical velocity
+                // (the wingbeat's bob filtered out, a climb followed without lag) - only the height: a low-passed
+                // horizontal velocity lagged the root by metres round a turn
+                yA += (w0 * w0 * (vy - yV) - 2f * w0 * yA) * sh;
+                yV += yA * sh;
+                yS += yV * sh;
+                // the head's offset from the root, critically damped toward the posture's (the follow-through)
                 Vector3 acc = w0 * w0 * (relWant - rel) - 2f * w0 * relVel;
                 relVel += acc * sh;
                 rel += relVel * sh;
             }
-            rootS += (root - rootS) * Mathf.Min(1f, 2f / T * dt);
-            head = rootS + rel;
+            yS += (y - yS) * Mathf.Min(1f, 2f / T * dt);
+            float bob = kMaxBob * p.length * s;
+            yS = Mathf.Clamp(yS, y - bob, y + bob);
+            // the follow-through never lags the posture by more than maxLagDeg seen from the root (the chain: the
+            // head trails the neck, never swings round behind or under it)
+            float lagMax = p.maxLagDeg * Mathf.Deg2Rad * (1f - 0.7f * strike);   // a strike is a snap: little follow-through
+            if (relWant.sqrMagnitude > 1e-10f && rel.sqrMagnitude > 1e-10f)
+            {
+                Vector3 rw = relWant.normalized, rn = rel.normalized;
+                if (Mathf.Acos(Mathf.Clamp(Vector3.Dot(rw, rn), -1f, 1f)) > lagMax) rel = Vector3.RotateTowards(rw, rn, lagMax, 0f).normalized * rel.magnitude;
+            }
+            head = root + up * ((yS - y) * (1f - strike)) + rel;   // a strike is aimed: no bob filter on it
             headDir = Vector3.Slerp(headDir, wantDir, 1f - Mathf.Exp(-dt * w0)).normalized;
-            // the head stays within the neck's reach of the root
+            headDir = Cone(headDir, wantDir, lagMax);
+            // the head stays within the neck's reach of the root (and, in the air, the follow-through and the bob filter
+            // keep it within kOffChest of the chest's line too)
             Vector3 rh = head - root;
+            if (air > 0f && rh.sqrMagnitude > 1e-10f) { float m = rh.magnitude; rh = Cone(rh / m, cf, offChest) * m; head = root + rh; }
             float dist = rh.magnitude, Lm = p.length * s;
             if (dist > 0.995f * Lm) head = root + rh * (0.995f * Lm / dist);
             else if (dist < 0.4f * Lm && dist > 1e-6f) head = root + rh * (0.4f * Lm / dist);
-            float hh = Vector3.Dot(head, wup);
-            if (hh < floorH) head += wup * (floorH - hh);
+            float hh = Vector3.Dot(head, up);
+            if (hh < floorH) head += up * (floorH - hh);
         }
 
         float GroundHeight(Vector3 root, Vector3 up)
@@ -369,7 +429,8 @@ namespace CreatureKit
             Vector3 rh = H - root;
             Vector3 rhH = rh - up * Vector3.Dot(rh, up);
             Vector3 hb = rhH.sqrMagnitude > 1e-8f ? Vector3.Slerp(h, rhH.normalized, 0.5f).normalized : h;
-            float baseDeg = stepped ? Mathf.Lerp(p.baseDeg, p.flightBaseDeg, sim.Flight != null ? sim.Flight.AirWeight[joint] : 0f) + p.callDeg * Calling : p.bindBaseDeg;
+            // the base rides the chest's own pitch (its rock about the low-passed pitch the posture follows)
+            float baseDeg = stepped ? Mathf.Min(baseEl + (pitchNow - pitchS) * Mathf.Lerp(1f, follow, airNow), Mathf.Min(pitchNow + p.maxBaseDeg, kMaxBaseWorld)) : p.bindBaseDeg;
             Vector3 t0 = Dir(hb, up, baseDeg);
             // tangent scale of a circular arc from the base direction to the head direction (Hermite tangent = 3 x the
             // Bezier control length (4/3) r tan(d/4), chord 2 r sin(d/2)): never a loop or a bump; the arc is the neck's

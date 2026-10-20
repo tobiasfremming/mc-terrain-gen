@@ -316,25 +316,7 @@ public sealed class CreatureWorld : MonoBehaviour
     // no extra scaling: the gait's stride limit derives from the size-scaled leg geometry.
     internal static CreatureInstance Individual(CreatureSpecies sp, int seed) => Individual(sp, seed, sp.scale);
 
-    internal static CreatureInstance Individual(CreatureSpecies sp, int seed, float scale)
-    {
-        CreatureLook look = sp.look;
-        uint h = (uint)seed * 2654435761u + 0x7F4A7C15u;
-        float a = Rand(ref h), b = Rand(ref h), c = Rand(ref h), d = Rand(ref h);
-        return new CreatureInstance
-        {
-            seed = 1024f * a,
-            hueShift = look.hueJitter * (2f * b - 1f),
-            valueShift = look.valueJitter * (2f * c - 1f),
-            sizeScale = scale * (1f + look.sizeJitter * (2f * d - 1f)),
-        };
-    }
-
-    static float Rand(ref uint s)
-    {
-        s ^= s >> 16; s *= 0x7FEB352Du; s ^= s >> 15; s *= 0x846CA68Bu; s ^= s >> 16;
-        return (s & 0xFFFFFFu) / 16777216f;
-    }
+    internal static CreatureInstance Individual(CreatureSpecies sp, int seed, float scale) => CreatureKit.LabGroup.Individual(sp, seed, scale);
 
     void Update()
     {

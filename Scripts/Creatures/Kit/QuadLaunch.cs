@@ -13,9 +13,9 @@ namespace CreatureKit
             Needs = "Fly", KitOnly = true)]
     public sealed class QuadLaunch : CreatureModule
     {
-        [Param(ParamUnit.Seconds, "the crouch before the vault", Min = 0.05f, Max = 2, Example = "apex 0.4")] public float crouchSeconds = 0.4f;
-        [Param(ParamUnit.Metres, "how far the body sinks in the crouch (every joint's clearance)", Example = "apex 0.12")] public float crouchDepth = 0.12f;
-        [Param(ParamUnit.MetresPerSecond, "the vault's upward speed (the shipped launch: 2.4)", Example = "apex 4")] public float vaultSpeed = 4f;
+        [Param(ParamUnit.Seconds, "the crouch before the vault", Min = 0.05f, Max = 2, Example = "pterodactyl 0.4")] public float crouchSeconds = 0.4f;
+        [Param(ParamUnit.Metres, "how far the body sinks in the crouch (every joint's clearance)", Example = "pterodactyl 0.12")] public float crouchDepth = 0.12f;
+        [Param(ParamUnit.MetresPerSecond, "the vault's upward speed (the shipped launch: 2.4)", Example = "pterodactyl 4")] public float vaultSpeed = 4f;
 
         public override string Validate(in SpeciesCtx c)
         {

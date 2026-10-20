@@ -20,6 +20,10 @@ namespace CreatureKit
     //   Explicit: every limb sets gaitGroup itself.
     public enum GaitPattern { Explicit = 0, Diagonal = 1, Tripod = 2, Tetrapod = 3, Alternate = 4, Wave = 5 }
 
+    // Which way the body travels: Forward (head first, every shipped species) or Sideways (a crab: along the body's
+    // lateral axis, the side that needs the smaller turn; forward only toward a target dead ahead, slowly).
+    public enum TravelMode { Forward = 0, Sideways = 1 }
+
     [Serializable]
     public struct GaitBobDef
     {
@@ -53,10 +57,17 @@ namespace CreatureKit
         [Param(ParamUnit.Flag, "Wave: the lift-offs run tail to head (a millipede's direct wave) instead of head to tail (a centipede's retrograde wave)")] public bool waveTailToHead;
         [Param(ParamUnit.Struct, "vertical body bounce kicked by each lift-off")] public GaitBobDef bob;
         [Param(ParamUnit.Struct, "speed bursts: every so often the cruise speed surges (a predator's dash), seeded per individual; factor 0 = off")] public GaitBurstDef burst;
+        [Param(ParamUnit.Enum, "Forward (head first) or Sideways (a crab: the body stays across its travel; turns pivot about the girdles' middle; needs a rigid body)")] public TravelMode travel;
+        [Param(ParamUnit.Fraction, "Sideways: speed factor when it walks forward toward a target dead ahead (0 = 0.35, < 0 = never forward)", Min = -1, Max = 1)] public float forwardFactor;
 
         public override string Validate(in SpeciesCtx c)
         {
             if (c.Soft) return "Walk needs a SpineBody";
+            if (travel == TravelMode.Sideways)
+                foreach (CreaturePart p in c.Parts)
+                    if (p is SpineBody b)
+                        foreach (SpineJoint j in b.BuildJoints())
+                            if (!j.rigid) return "Walk.travel Sideways needs a rigid body (every SpineBody joint rigid): the chain follows the head's path";
             if (pattern == GaitPattern.Wave && (waveGroups < 2 || waveGroups > 15)) return "Walk.waveGroups must be 2..15 for the Wave pattern";
             if (burst.factor > 1f && (!(burst.every > 0f) || !(burst.seconds > 0f))) return "Walk.burst: every and seconds must be > 0 when factor > 1";
             return null;

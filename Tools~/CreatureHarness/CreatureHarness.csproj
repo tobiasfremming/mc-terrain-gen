@@ -89,7 +89,7 @@
     <Compile Include="$(TG)\Scripts\Creatures\**\*.cs" Exclude="@(UnityOnlySources)" />
     <Compile Include="$(TG)\Tests\EditMode\Creature*.cs;$(TG)\Tests\EditMode\Arthropod*.cs;$(TG)\Tests\EditMode\Octopus*.cs;$(TG)\Tests\EditMode\Winged*.cs;$(TG)\Tests\EditMode\LegacyLegs*.cs;$(TG)\Tests\EditMode\GcAllocs.cs;$(TG)\Tests\EditMode\TestFields.cs"
              Exclude="@(UnityOnlyTests)" />
-    <Compile Include="MiniNUnit.cs;Program.cs;HarnessSelfTests.cs;Stubs\Harness*.cs;Stubs\UnityOnlyMirrors.cs;Stubs\TerrainGenRuntime.cs" />
+    <Compile Include="MiniNUnit.cs;Program.cs;HarnessSelfTests.cs;HarnessTools.cs;Stubs\Harness*.cs;Stubs\UnityOnlyMirrors.cs;Stubs\TerrainGenRuntime.cs" />
     <Compile Include="Stubs\UnityEngine*.cs" Condition="'$(RealUnity)' != 'true'" />
     <!-- scratch experiments without touching the tree: -p:HarnessExtra=<folder> compiles <folder>/*.cs in too
          (a class in namespace TerrainGen.Tests.* with [Test] methods runs like any test) -->

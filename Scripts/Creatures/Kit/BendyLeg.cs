@@ -2,6 +2,7 @@
 // GENERATED from a few numbers instead of written out one by one:
 //   length, segmentCount     the whole leg, cut into 3..7 segments (the last one the tarsus, tarsusShare of it)
 //   riseDeg, archDeg         the first segment rises at riseDeg; the solved segments then turn down by archDeg in all
+//   femurLiftDeg             (optional) an upward turn at the first joint: a low coxa under a big body, a steep femur
 //   kneeAt, kneeSpread       where along the leg the turn is concentrated, and how widely (1 = an even curve: a bent
 //                            rod; small = one sharp knee)
 //   kinkDeg, lengthJitter,   irregular kinks at the joints (zero-sum, so the arch stays archDeg) and uneven segment
@@ -31,6 +32,7 @@ namespace CreatureKit
         [Param(ParamUnit.Fraction, "uneven segment lengths: each solved segment x (1 +- this), seeded", Min = 0f, Max = 0.6f)] public float lengthJitter;
         [Param(ParamUnit.Degrees, "elevation of the first segment above the horizontal", Min = -30f, Max = 89f, Default = "60")] public float riseDeg = 60f;
         [Param(ParamUnit.Degrees, "total downward turn of the solved segments (the knee arch)", Min = 0f, Max = 200f, Default = "120")] public float archDeg = 120f;
+        [Param(ParamUnit.Degrees, "upward turn at the first joint (a low coxa that clears a big body, then a steep femur up to a high knee); added to the arch's turns", Min = 0f, Max = 100f)] public float femurLiftDeg;
         [Param(ParamUnit.Fraction, "where along the solved leg the turn is concentrated (0 root .. 1 ankle)", Min = 0f, Max = 1f, Default = "0.35")] public float kneeAt = 0.35f;
         [Param(ParamUnit.Fraction, "how widely the turn spreads (1 = an even curve, small = one sharp knee)", Min = 0f, Max = 1f, Default = "0.3")] public float kneeSpread = 0.3f;
         [Param(ParamUnit.Degrees, "irregular extra bend at each joint (+-, seeded, zero-sum)", Min = 0f, Max = 45f)] public float kinkDeg;
@@ -53,6 +55,12 @@ namespace CreatureKit
         [Param(ParamUnit.Fraction, "lifted tip whip: how loosely the swinging tip follows its foot (0 = exactly)", Min = 0f, Max = 1f, Default = "0.5")] public float whip = 0.5f;
         [Param(ParamUnit.Fraction, "neighbour coupling of the wobble (a continuous rod), x the spring", Min = 0f, Max = 2f, Default = "0.6")] public float coupling = 0.6f;
         [Param(ParamUnit.Fraction, "largest deflection of any joint, x the leg length", Min = 0f, Max = 0.5f, Default = "0.12")] public float maxDeflect = 0.12f;
+        // ---- the stride (BendyLegSystem re-poses the IK's leg in its plane; 0 = the IK's own pose) ----
+        [Param(ParamUnit.Fraction, "knees first: how stiff the hip's elevation is against the knees (0 = off, the IK pitches the whole leg; 4..12 = the knees and distal joints take the motion, a harvestman's stride)", Min = 0f, Max = 50f)] public float hipStiffness;
+        [Param(ParamUnit.Degrees, "mid-swing: the hip lifts the leg by this much (knees first only)", Min = 0f, Max = 60f)] public float swingHipDeg;
+        [Param(ParamUnit.Degrees, "mid-swing: the arch folds by this much more, spread over the knee joints (knees first only)", Min = 0f, Max = 120f)] public float swingKneeDeg;
+        // ---- clearance ----
+        [Param(ParamUnit.Metres, "kept this far outside any body obstacle (a DimpledOrb), plus the leg's radius; 0 = no collision with the body", Min = 0f, Max = 1f)] public float bodyMargin;
 
         public override int BoneCount(in SpeciesCtx c) => segmentCount;
         public override int MeshOrder => 100;   // a new type: after every shipped vertex
@@ -106,7 +114,7 @@ namespace CreatureKit
                 along += seg[i].length;
                 float t = along / ls;
                 ref LegSegment s = ref seg[i + 1];
-                s.restBendDeg = -archDeg * g[i] / sg + (jn > 1 ? kink[i] - mean : 0f);
+                s.restBendDeg = -archDeg * g[i] / sg + (jn > 1 ? kink[i] - mean : 0f) + (i == 0 ? femurLiftDeg : 0f);
                 s.liftWeight = -(g[i] / gmax) * (1f - 2f * t);
             }
             // the reach synergy scales every joint's bend in its own direction (kinks too): s < 0 straightens the whole
@@ -261,11 +269,14 @@ namespace CreatureKit
             if (!(rootRadius > 0f) || tipRadius < 0f) return $"{id}: rootRadius > 0, tipRadius >= 0";
             if (tarsusShare < 0.03f || tarsusShare > 0.5f) return $"{id}: tarsusShare must be in 0.03..0.5";
             if (lengthJitter < 0f || lengthJitter > 0.6f) return $"{id}: lengthJitter must be in 0..0.6";
+            if (femurLiftDeg < 0f || femurLiftDeg > 100f) return $"{id}: femurLiftDeg must be in 0..100";
             if (rangeDeg < 5f) return $"{id}: rangeDeg must be >= 5";
             if (!(wobbleHz > 0f) || wobbleDamping < 0f || inertia < 0f || coupling < 0f) return $"{id}: wobbleHz > 0, wobbleDamping, inertia, coupling >= 0";
             if (whip < 0f || whip > 1f) return $"{id}: whip must be in 0..1";
             if (smooth < 0f || smooth > 0.9f) return $"{id}: smooth must be in 0..0.9";
             if (maxDeflect < 0f || maxDeflect > 0.5f) return $"{id}: maxDeflect must be in 0..0.5";
+            if (hipStiffness < 0f || swingHipDeg < 0f || swingKneeDeg < 0f || bodyMargin < 0f) return $"{id}: hipStiffness, swingHipDeg, swingKneeDeg, bodyMargin must be >= 0";
+            if ((swingHipDeg > 0f || swingKneeDeg > 0f) && !(hipStiffness > 0f)) return $"{id}: swingHipDeg / swingKneeDeg shape the knees-first stride: set hipStiffness > 0";
             if (role == LimbRole.Folded || role == LimbRole.WingArm) return $"{id}: a BendyLeg walks or feels (not a wing's arm)";
             LegSpec l = ToLegSpec();
             var m = new ArthropodLegModel(l.segments, l.ModelParams);

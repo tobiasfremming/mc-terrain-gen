@@ -35,6 +35,15 @@ namespace CreatureKit
 
         CompiledSpecies(string name, bool soft) { Name = name; Soft = soft; }
 
+        // Archetypes: the asset's own parts by id (they override generated ones), the explicit parts that took a
+        // generated part's place (not expanded again at their own), and which archetype generated each final part id.
+        readonly Dictionary<string, CreaturePart> explicitById = new Dictionary<string, CreaturePart>();
+        readonly HashSet<CreaturePart> consumed = new HashSet<CreaturePart>();
+        readonly Dictionary<string, string> generatedBy = new Dictionary<string, string>();
+
+        // The id of the archetype part that generated this (final, expanded) part id; null for an explicit part.
+        public string GeneratedBy(string id) => id != null && generatedBy.TryGetValue(id, out string a) ? a : null;
+
         // ------------------------------------------------------------ compose
 
         public static CompiledSpecies Compose(string name, IList<CreaturePart> parts, IList<CreatureModule> modules)
@@ -43,12 +52,23 @@ namespace CreatureKit
             if (parts != null) foreach (CreaturePart p in parts) if (p is SoftBody) soft = true;
             var c = new CompiledSpecies(name, soft);
             if (modules != null) foreach (CreatureModule m in modules) { if (m == null) c.Problems.Add("a module is null (missing type?)"); else c.Modules.Add(m.Clone()); }
+            // archetypes: the ids the asset lists itself override the generated parts
+            bool archetype = false;
+            if (parts != null)
+                foreach (CreaturePart p in parts)
+                {
+                    if (p is IArchetype) archetype = true;
+                    else if (p != null && p.id != null && !c.explicitById.ContainsKey(p.id)) c.explicitById[p.id] = p;
+                }
+            if (!archetype) c.explicitById.Clear();
             if (parts != null)
                 for (int i = 0; i < parts.Count; i++)
                 {
                     if (parts[i] == null) { c.Problems.Add($"parts[{i}] is null (missing type?)"); continue; }
+                    if (c.consumed.Contains(parts[i])) continue;   // already expanded in a generated part's place
                     c.Expand(parts[i].Clone(), 0);
                 }
+            if (archetype) c.TuckLast();
             foreach (CreaturePart p in c.Parts)
             {
                 if (p.Kind == PartKind.Body) { if (c.Body == null) c.Body = p; else c.Problems.Add($"{p.id}: a second Body part (exactly one SpineBody or SoftBody)"); }
@@ -66,6 +86,16 @@ namespace CreatureKit
         void Expand(CreaturePart p, int depth)
         {
             if (depth > 4) { Problems.Add($"{p.id}: Repeat nested too deep"); return; }
+            if (p is IArchetype arch)   // a body plan: its generated parts, explicit ones in their place
+            {
+                string e = p.Validate(Ctx);
+                if (e != null) { Problems.Add(e); return; }
+                var gen = new List<CreaturePart>();
+                try { arch.Generate(gen, Modules); }
+                catch (InvalidOperationException x) { Problems.Add($"{p.id}: {x.Message}"); return; }
+                foreach (CreaturePart q in gen) ExpandGenerated(q, p.id, depth + 1);
+                return;
+            }
             if (p is Repeat r)
             {
                 if (r.template == null) { Problems.Add($"{r.id}: Repeat has no template"); return; }
@@ -99,6 +129,44 @@ namespace CreatureKit
                 return;
             }
             Parts.Add(p);
+        }
+
+        // A generated part, or the explicit part with its id in its place; a mirrored generated part whose one side is
+        // listed explicitly keeps its other side and takes the explicit side in that side's slot.
+        void ExpandGenerated(CreaturePart q, string archetypeId, int depth)
+        {
+            if (q.id != null && explicitById.TryGetValue(q.id, out CreaturePart mine))
+            {
+                consumed.Add(mine);
+                Expand(mine.Clone(), depth);
+                return;
+            }
+            int from = Parts.Count;
+            Expand(q, depth);
+            int to = Parts.Count;
+            for (int i = from; i < to; i++)
+            {
+                if (explicitById.TryGetValue(Parts[i].id, out CreaturePart side) && !side.mirror)
+                {
+                    consumed.Add(side);
+                    Parts[i] = side.Clone();
+                    continue;
+                }
+                generatedBy[Parts[i].id] = archetypeId;
+            }
+        }
+
+        // A Tuck poses the other parts' bones after they wrote them, so it must be the last part: one that came from an
+        // archetype (generated, or explicit in a generated one's place) moves behind the parts the asset added after the plan.
+        void TuckLast()
+        {
+            for (int i = Parts.Count - 2; i >= 0; i--)
+                if (Parts[i] is Tuck t && (GeneratedBy(t.id) != null || (explicitById.TryGetValue(t.id, out CreaturePart e) && consumed.Contains(e))))
+                {
+                    Parts.RemoveAt(i);
+                    Parts.Add(t);
+                    return;
+                }
         }
 
         // Repeat taper: lengths (and the stride that goes with them) x f. Times stay: the copies step together.
@@ -293,6 +361,7 @@ namespace CreatureKit
                 dst.gaitSwayDeg = walk.gaitSwayDeg; dst.gaitRollDeg = walk.gaitRollDeg; dst.subSteps = walk.subSteps;
                 dst.gaitBob = new GaitBob { amplitude = walk.bob.amplitude, hz = walk.bob.hz, damping = walk.bob.damping };
                 dst.waveGait = walk.pattern == GaitPattern.Wave;
+                dst.sideways = walk.travel == TravelMode.Sideways; dst.sidewaysForward = walk.forwardFactor;
                 dst.gaitBurst = new GaitBurst { factor = walk.burst.factor, every = walk.burst.every, seconds = walk.burst.seconds };
             }
             Slither sl = Module<Slither>();

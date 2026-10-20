@@ -82,7 +82,8 @@ namespace TerrainGen.Tests
 
         // The generic checks, by name (CreatureKitTests' test names without the species).
         public const string Validate = "Validate", NoMissingTypes = "NoMissingTypes", Layout = "Layout", MeshTime = "MeshTime",
-            MaxBend = "MaxBend", Bounds = "Bounds", Wander = "Wander", Gait = "Gait", Size = "Size", Gc = "Gc", Perf = "Perf", Lab = "Lab";
+            MaxBend = "MaxBend", Bounds = "Bounds", Wander = "Wander", Gait = "Gait", Size = "Size", Gc = "Gc", Perf = "Perf", Lab = "Lab",
+            PoseSweep = "PoseSweep", Group = "Group";
 
         // Why a check does not apply to a species (null = it runs). Reasons are about the species, never "it
         // fails": a failing check is a finding, fixed in the species or the code, not skipped here.
@@ -91,7 +92,7 @@ namespace TerrainGen.Tests
             if (sp.bodyPlan == CreatureBodyPlan.Cephalopod)
                 switch (check)
                 {
-                    case MaxBend: case Bounds: case Wander: case Gait: case Size: case Gc: case Perf:
+                    case MaxBend: case Bounds: case Wander: case Gait: case Size: case Gc: case Perf: case PoseSweep: case Group:
                         return "cephalopod: OctopusCreature (body + controller + brain) is not a CreatureSim; its arm, " +
                                "soft-body, cloak and containment tests are Octopus*Tests until the octopus joins the kit (T1.2/T3.3)";
                 }

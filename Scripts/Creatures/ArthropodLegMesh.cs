@@ -117,6 +117,20 @@ public static class ArthropodLegMesh
         return first;
     }
 
+    // Ring flattened along y (height r x squash, width r): a flattened segment's section; normals of the ellipse.
+    static int Ellipse(CreatureMeshLists m, Vector3 c, Vector3 x, Vector3 y, Vector3 t, float r, float squash, float tilt, float u, int part, Vector4 skin, int sides)
+    {
+        int first = m.pos.Count;
+        for (int k = 0; k <= sides; k++)
+        {
+            float phi = 2f * Mathf.PI * k / sides;
+            float cs = k == sides ? 1f : Mathf.Cos(phi), sn = k == sides ? 0f : Mathf.Sin(phi);
+            Vector3 p = x * cs + y * (sn * squash), n = (x * cs + y * (sn / squash)).normalized;
+            Vertex(m, c + p * r, (n + t * tilt).normalized, u, (float)k / sides, part, skin);
+        }
+        return first;
+    }
+
     static int Pole(CreatureMeshLists m, Vector3 p, Vector3 normal, float u, int part, Vector4 skin, int sides)
     {
         int first = m.pos.Count;
@@ -153,6 +167,7 @@ public static class ArthropodLegMesh
     {
         Vector3 t = q * Vector3.forward, x = q * Vector3.right, y = q * Vector3.up;
         float L = (b - a).magnitude, r1 = R1(s);
+        float squash = 1f - Mathf.Clamp(s.flatten, 0f, 0.8f);   // 1 = round (every shipped leg: Ring, byte-identical)
         float r0 = attach >= 0 ? R0(s) : Mathf.Max(kMinRadius, kNeck * R0(s));   // the coxa's start is buried in the body
         float swell = L > kSpindleMin * Mathf.Max(R0(s), r1) ? kSwell : 0f;
         // radius along the tube (0 <= sg <= L) and its slope
@@ -221,7 +236,8 @@ public static class ArthropodLegMesh
             Sample sm = samples[i];
             Vector3 c = a + t * sm.sigma;
             int cur = sm.pole ? Pole(m, c, i == 0 ? -t : t, arc + sm.sigma, sm.part, sm.skin, sides)
-                              : Ring(m, c, x, y, t, sm.r, sm.tilt, arc + sm.sigma, sm.part, sm.skin, sides);
+                    : squash < 1f ? Ellipse(m, c, x, y, t, sm.r, squash, sm.tilt, arc + sm.sigma, sm.part, sm.skin, sides)
+                    : Ring(m, c, x, y, t, sm.r, sm.tilt, arc + sm.sigma, sm.part, sm.skin, sides);
             if (prev >= 0 && !sm.restart) Stitch(m, prev, cur, sides, prevPole, sm.pole);
             prev = cur; prevPole = sm.pole;
         }

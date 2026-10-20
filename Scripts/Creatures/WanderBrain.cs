@@ -101,7 +101,8 @@ public sealed class WanderBrain : ICreatureBrain
     Vector3 Wander(CreatureSim sim, float dt)
     {
         Vector3 head = sim.Joints[0];
-        Vector3 heading = sim.Rotations[0] * Vector3.forward;
+        // the way it is going: a sideways walker's travel (its bearing rule and glances follow the travel, not its face)
+        Vector3 heading = sim.TravelSide != 0 ? sim.Travel : sim.Rotations[0] * Vector3.forward;
         if (goal == Vector3.zero && !walking && pauseLeft <= 0f) { PickGoal(head, heading); walking = true; }
 
         if (walking)

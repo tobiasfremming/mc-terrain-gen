@@ -97,6 +97,8 @@ namespace CreatureKit
                     float len = length * (1f + lengthJitter * (2f * KitSweep.Hash01(key + 3, i) - 1f));
                     Vector3 radial = U * Mathf.Cos(th) + F * Mathf.Sin(th);
                     float r = TubeRadius(s, k == 0, u);
+                    // a flattened segment (an ellipse, height r x (1 - flatten) along the leg plane's up): its radius this way round
+                    if (s.flatten > 0f) { float sq = 1f - Mathf.Min(0.8f, s.flatten), cu = Mathf.Cos(th), su = Mathf.Sin(th); r *= sq / Mathf.Sqrt(cu * cu + sq * sq * su * su); }
                     Vector3 basePt = o + Z * (u * s.length) + radial * r;
                     float lean = leanDeg * Mathf.Deg2Rad;
                     Vector3 dir = radial * Mathf.Cos(lean) + Z * Mathf.Sin(lean);

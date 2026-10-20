@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 39d3296fcbe55a0429fe582610f52ec3, type: 3}
-  m_Name: Apex
+  m_Name: Pterodactyl
   m_EditorClassIdentifier: TerrainGen.Runtime::CreatureSpecies
   scale: 3.6
   kitVersion: 1
@@ -239,6 +239,15 @@ MonoBehaviour:
         camber: 0.04
         membraneColumns: 12
         membraneRows: 18
+        chain: 1
+        spanHz: 1.6
+        spanDamping: 0.45
+        spanMaxDeg: 14
+        chordHz: 1.4
+        chordDamping: 0.5
+        chordFeatherDeg: 16
+        chordMaxDeg: 10
+        billowDeg: 2
         bindFold: 0.65
     - rid: 1004
       type: {class: Eyes, ns: CreatureKit, asm: TerrainGen.Runtime}
@@ -268,9 +277,9 @@ MonoBehaviour:
         headRadius: 0.04
         depth: 1.15
         baseDeg: 70
-        headDeg: 18
-        flightBaseDeg: 6
-        flightHeadDeg: -2
+        headDeg: -5
+        flightBaseDeg: 18
+        flightHeadDeg: 2
         bindBaseDeg: 30
         bindHeadDeg: 5
         reach: 0.96
@@ -283,6 +292,12 @@ MonoBehaviour:
         aimYawDeg: 70
         strikeReach: 0.97
         headClearance: 0.08
+        maxBaseDeg: 80
+        basePitchFollow: 0.6
+        headPitchFollow: 0.3
+        headLevelDeg: 22
+        strikeConeDeg: 40
+        maxLagDeg: 15
         tipReach: 0.6
         ringSides: 16
         ringsPerSegment: 4

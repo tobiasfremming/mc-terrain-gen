@@ -19,8 +19,8 @@ namespace TerrainGen.Tests
 #if UNITY_EDITOR
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
         {
-            { "WingedSerpent", 0x0UL },   // capture in Unity: thumb-claw stance 2026-10-20: the hand flexes, the wrist raised
-            { "SkyDragon", 0x0UL },       // capture in Unity: dragon v5 2026-10-20: digitigrade dragon legs, muscled wing arms, leg wings, thumb-claw stance
+            { "WingedSerpent", 0xA12A90E386842AEEUL },   // Unity 2026-10-20: thumb-claw stance 2026-10-20: the hand flexes, the wrist raised
+            { "SkyDragon", 0xB70888542F7AEBEDUL },   // Unity 2026-10-20: dragon v5 2026-10-20: digitigrade dragon legs, muscled wing arms, leg wings, thumb-claw stance
         };
 #else
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>
@@ -94,7 +94,7 @@ namespace TerrainGen.Tests
         {
             // da59bfc (2026-10-19): rigid head (+ feat/wyvern-trees data for the serpent); KitMonitor = DesertMonitor's bones
             { "DesertBeetle", 0xAD6A59384730D9D6UL /* capture in Unity: leg look beetle legs (2026-10-19); was 0x6F8C1E247D6717C9 */ }, { "DaddyLongLegs", 0x528567DD58C2C0E5UL }, { "Tarantula", 0x109D36AB222C53A6UL /* R38; was 0x3FFDCDB621DEB7FD */ },
-            { "WingedSerpent", 0x0UL /* capture in Unity: thumb-claw stance 2026-10-20: the hand flexes, the wrist raised */ }, { "SkyDragon", 0x0UL /* capture in Unity: dragon v5 2026-10-20: digitigrade dragon legs, muscled wing arms, leg wings, thumb-claw stance */ }, { "KitMonitor", 0x61949DEA4F41A162UL /* capture in Unity: leg look 2026-10-19: ankle, swing-only upper bone, toe peel; was 0x90BEBD53968C4A95 */ },
+            { "WingedSerpent", 0xC7F4812FC328C525UL /* Unity 2026-10-20: thumb-claw stance 2026-10-20: the hand flexes, the wrist raised */ }, { "SkyDragon", 0xD52F82731CF3D819UL /* Unity 2026-10-20: dragon v5 2026-10-20: digitigrade dragon legs, muscled wing arms, leg wings, thumb-claw stance */ }, { "KitMonitor", 0x61949DEA4F41A162UL /* capture in Unity: leg look 2026-10-19: ankle, swing-only upper bone, toe peel; was 0x90BEBD53968C4A95 */ },
         };
 #else
         static readonly Dictionary<string, ulong> Golden = new Dictionary<string, ulong>

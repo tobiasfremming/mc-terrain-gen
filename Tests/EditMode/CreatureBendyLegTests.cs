@@ -151,7 +151,7 @@ namespace TerrainGen.Tests
         }
 
         // leg l's bone range, or -1 when the vertex's heavier bone is not a leg bone
-        static int LegOf(CreatureSpecies rt, int bone)
+        internal static int LegOf(CreatureSpecies rt, int bone)
         {
             for (int l = 0; l < rt.legs.Length; l++)
                 if (bone >= rt.LegBone(l, 0) && bone < rt.LegBone(l, 0) + rt.legs[l].SegmentCount) return l;
@@ -423,6 +423,177 @@ namespace TerrainGen.Tests
             }
             return checkedFrames > 300 ? null : "too few frames checked";
         }
+
+        // ------------------------------------------------------------ the stride: knees first (2026-10-20)
+
+        // Per walking leg over a steady 10 s walk (after 2 s), from the DRAWN points: the range of the hip's yaw (the
+        // first segment's horizontal heading against the body's) and pitch (its elevation), and the largest range of any
+        // interior joint angle. A leg that swings rigidly about its hip has big hip ranges and small joint ranges.
+        internal struct Stride { public float yaw, pitch, joint; }
+
+        internal static Stride[] StrideRanges(CreatureSpecies rt, bool kneesFirstOff, float scale = 1f, bool clearanceOff = false)
+        {
+            CreatureSim w = Sim(rt, scale);
+            BendyLegSystem sys = System(w);
+            sys.KneesFirstOff = kneesFirstOff; sys.ClearanceOff = clearanceOff;
+            int c = sys.LegCount;
+            var r = new Stride[c];
+            var lo = new float[c, 3, 8]; var hi = new float[c, 3, 8];
+            for (int i = 0; i < c; i++) for (int a = 0; a < 3; a++) for (int k = 0; k < 8; k++) { lo[i, a, k] = float.MaxValue; hi[i, a, k] = float.MinValue; }
+            var ref0 = new Vector3[c];
+            for (int f = 0; f < 720; f++)
+            {
+                w.Tick(Mathf.Sqrt(scale) / 60f, w.Joints[0] + Vector3.forward * (3f * scale));
+                if (f < 120) continue;
+                for (int i = 0; i < c; i++)
+                {
+                    int l = sys.SimLeg(i);
+                    if (rt.legs[l].feeler) continue;
+                    // in the body's heading frame (world up; a lurching body's pitch and roll are not the hip's)
+                    Vector3 up = w.Up[rt.legs[l].attachJoint];
+                    Vector3 fwd = Vector3.ProjectOnPlane(w.Rotations[rt.legs[l].attachJoint] * Vector3.forward, up);
+                    Quaternion body = Quaternion.LookRotation(fwd.sqrMagnitude > 1e-8f ? fwd : Vector3.forward, up);
+                    Vector3 s0 = Quaternion.Inverse(body) * (sys.Displayed(i, 1) - sys.Displayed(i, 0));
+                    Vector3 h = new Vector3(s0.x, 0f, s0.z);
+                    if (f == 120) ref0[i] = h;
+                    float pitch = Mathf.Atan2(s0.y, h.magnitude) * Mathf.Rad2Deg;
+                    lo[i, 1, 0] = Mathf.Min(lo[i, 1, 0], pitch); hi[i, 1, 0] = Mathf.Max(hi[i, 1, 0], pitch);
+                    if (h.magnitude > 0.3f * s0.magnitude)   // the heading of a near-vertical segment means nothing
+                    {
+                        float yaw = Vector3.SignedAngle(ref0[i], h, Vector3.up);
+                        lo[i, 0, 0] = Mathf.Min(lo[i, 0, 0], yaw); hi[i, 0, 0] = Mathf.Max(hi[i, 0, 0], yaw);
+                    }
+                    for (int k = 1; k + 1 < sys.PointCount(i); k++)
+                    {
+                        float ang = Vector3.Angle(sys.Displayed(i, k) - sys.Displayed(i, k - 1), sys.Displayed(i, k + 1) - sys.Displayed(i, k));
+                        lo[i, 2, k] = Mathf.Min(lo[i, 2, k], ang); hi[i, 2, k] = Mathf.Max(hi[i, 2, k], ang);
+                    }
+                }
+            }
+            for (int i = 0; i < c; i++)
+            {
+                if (rt.legs[sys.SimLeg(i)].feeler) { r[i].joint = -1f; continue; }
+                r[i].yaw = hi[i, 0, 0] - lo[i, 0, 0]; r[i].pitch = hi[i, 1, 0] - lo[i, 1, 0];
+                for (int k = 1; k + 1 < sys.PointCount(i); k++) r[i].joint = Mathf.Max(r[i].joint, hi[i, 2, k] - lo[i, 2, k]);
+            }
+            return r;
+        }
+
+        // Null when the knees take the stride: every walking leg's busiest joint moves at least as much as its hip's
+        // yaw and its hip's pitch, and over all legs the joints move 1.75 x the hip (the larger of yaw and pitch).
+        internal static string KneeProblem(Stride[] r)
+        {
+            float joints = 0f, hips = 0f;
+            for (int i = 0; i < r.Length; i++)
+            {
+                if (r[i].joint < 0f) continue;
+                if (r[i].joint < r[i].yaw || r[i].joint < r[i].pitch)
+                    return $"leg {i}: busiest joint {r[i].joint:F1} deg < hip yaw {r[i].yaw:F1} / pitch {r[i].pitch:F1}: the leg swings about its hip";
+                joints += r[i].joint; hips += Mathf.Max(r[i].yaw, r[i].pitch);
+            }
+            return joints >= 1.75f * hips ? null : $"joints {joints:F0} deg < 1.75 x hips {hips:F0} deg";
+        }
+
+        [Test] public void BendyLeg_Stride_KneesTakeTheMotion()
+        {
+            CreatureSpecies rt = CreatureKitAssets.Load(kSpecies).Compiled.Runtime;
+            Assert.IsNull(KneeProblem(StrideRanges(rt, false)));
+        }
+
+        // RED: the IK's own pose (knees first off) swings the legs about the hip, as the user saw.
+        [Test] public void BendyLeg_Red_IKPoseSwingsAboutTheHip()
+        {
+            CreatureSpecies rt = CreatureKitAssets.Load(kSpecies).Compiled.Runtime;
+            Assert.IsNotNull(KneeProblem(StrideRanges(rt, true)));
+        }
+
+        // Mid-swing the knee (the highest leg point) rises clearly above where it stands: >= 5 % of the leg length.
+        [Test] public void BendyLeg_Swing_KneeRises()
+        {
+            CreatureSpecies rt = CreatureKitAssets.Load(kSpecies).Compiled.Runtime;
+            CreatureSim w = Sim(rt);
+            BendyLegSystem sys = System(w);
+            int c = sys.LegCount;
+            var stand = new float[c]; var standN = new int[c]; var swing = new float[c];
+            for (int f = 0; f < 720; f++)
+            {
+                w.Tick(1f / 60f, w.Joints[0] + Vector3.forward * 3f);
+                if (f < 120) continue;
+                for (int i = 0; i < c; i++)
+                {
+                    int l = sys.SimLeg(i);
+                    float top = float.MinValue;
+                    for (int k = 1; k + 1 < sys.PointCount(i); k++) top = Mathf.Max(top, sys.Displayed(i, k).y - sys.Displayed(i, 0).y);
+                    if (w.Legs[l].stepping) swing[i] = Mathf.Max(swing[i], top); else { stand[i] += top; standN[i]++; }
+                }
+            }
+            for (int i = 0; i < c; i++)
+            {
+                int l = sys.SimLeg(i);
+                if (rt.legs[l].feeler) continue;
+                float len = 0f;
+                foreach (LegSegment s in rt.legs[l].segments) len += s.length;
+                float rise = swing[i] - stand[i] / Mathf.Max(1, standN[i]);
+                Assert.Greater(rise, 0.05f * len, $"leg {l}: the knee rises only {rise * 100f:F1} cm in the swing");
+            }
+        }
+
+        // ------------------------------------------------------------ clearance: legs never enter the orb (2026-10-20)
+
+        // Null, or the first skinned leg vertex inside the orb's ellipsoid on a long weave (turns, starts and stops, long
+        // ticks, the Stumble part's lurches): every leg vertex in the orb's frame, (x/a)^2 + (y/b)^2 + (z/c)^2 >= 1.
+        internal static string OrbProblem(CreatureSpecies sp, bool clearanceOff, List<Object> trash, float seconds = 30f)
+        {
+            CreatureSpecies rt = sp.Compiled.Runtime;
+            float scale = rt.scale, tdt = Mathf.Sqrt(scale) / 60f;
+            Mesh mesh = CreatureKitAssets.BuildMesh(sp);
+            trash.Add(mesh);
+            Vector3[] v = mesh.vertices;
+            var uv1 = new List<Vector2>(); var uv2 = new List<Vector4>();
+            mesh.GetUVs(1, uv1); mesh.GetUVs(2, uv2);
+            Matrix4x4[] bind = CreatureRestPose.BindPoses(rt);
+            var world = new Matrix4x4[rt.BoneCount]; var skin = new Matrix4x4[rt.BoneCount];
+            CreatureSim w = Sim(rt, scale);
+            BendyLegSystem sys = System(w);
+            sys.ClearanceOff = clearanceOff;
+            DimpledOrbRuntime orb = null;
+            foreach (IPartRuntime r in w.PartRuntimes) if (r is DimpledOrbRuntime o) orb = o;
+            if (orb == null) return "no orb";
+            var legVerts = new List<int>();
+            for (int i = 0; i < v.Length; i++)
+                if (Mathf.RoundToInt(uv1[i].x) == PartMeshEmitter.PartLeg && LegOf(rt, (int)uv2[i].x) >= 0) legVerts.Add(i);
+            if (legVerts.Count < 1000) return "too few leg vertices";
+            int frames = Mathf.RoundToInt(seconds * 60f), checkedFrames = 0;
+            float worst = float.MaxValue; string where = null;
+            for (int f = 0; f < frames; f++)
+            {
+                bool stop = (f / 300) % 3 == 2;
+                w.Tick(f % 97 == 0 ? 0.08f * Mathf.Sqrt(scale) : tdt, stop ? w.Joints[0] : Weave(w, f / 60f, scale));
+                if (f % 2 != 0) continue;
+                w.WriteBoneWorld(world, 0);
+                for (int b = 0; b < skin.Length; b++) skin[b] = world[b] * bind[b];
+                orb.Ellipsoid(out Vector3 c, out Quaternion rot, out Vector3 h);
+                Quaternion inv = Quaternion.Inverse(rot);
+                foreach (int i in legVerts)
+                {
+                    Vector4 s = uv2[i];
+                    Vector3 p = s.z * skin[(int)s.x].MultiplyPoint3x4(v[i]) + s.w * skin[(int)s.y].MultiplyPoint3x4(v[i]);
+                    Vector3 q = inv * (p - c);
+                    float e = Mathf.Sqrt(Sq(q.x / h.x) + Sq(q.y / h.y) + Sq(q.z / h.z));
+                    if (e < worst) { worst = e; where = $"frame {f}: leg {LegOf(rt, (int)s.x)} vertex {i} at {e:F3} of the orb's radius"; }
+                }
+                checkedFrames++;
+            }
+            if (checkedFrames < 300) return "too few frames checked";
+            return worst >= 1f ? null : where;
+        }
+
+        static float Sq(float x) => x * x;
+
+        [Test] public void BendyLeg_NeverInsideTheOrb() => Assert.IsNull(OrbProblem(CreatureKitAssets.Load(kSpecies), false, trash));
+
+        // RED: without the clearance pass (the legs' flex and stride alone) a leg enters the orb.
+        [Test] public void BendyLeg_Red_NoClearance_EntersTheOrb() => Assert.IsNotNull(OrbProblem(CreatureKitAssets.Load(kSpecies), true, trash));
 
         // Froude: at 0.9x and 1.1x, ticked at dt x sqrt(s), the flex is the same motion scaled by s.
         [Test] public void BendyLeg_Wobble_FroudeSimilar()

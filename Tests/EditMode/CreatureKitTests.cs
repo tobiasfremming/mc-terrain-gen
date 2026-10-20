@@ -109,6 +109,31 @@ namespace TerrainGen.Tests
 
         // 11. Perf: timing, in CreatureKitPerfTests (TerrainGen.Tests.Perf).
 
+        // 13. Pose sweep: the mesh skinned through every phase the species has (its own brain and modules: wing-walk,
+        // launch, beats, glide, stoop, flare, touchdown; burrow; tuck; display ...): no triangle inverts, no normal
+        // flips or pinches, no spine kink; every required phase reached (CreatureKitPoseSweep.cs).
+        [Test] public void PoseSweep()
+        {
+            Applies(CreatureKitAssets.PoseSweep);
+            KitPoseSweep.Result r = KitPoseSweep.Run(sp, sp.scale, 1);
+            TestContext.Out.WriteLine($"{name}: {r.Samples} samples over {r.Seconds:F0} s; phases seen: {(r.Seen.Count > 0 ? string.Join(", ", r.Seen) : "walk only")}");
+            TestContext.Out.Write(r.Table());
+            Assert.IsNull(r.Problem, name);
+        }
+
+        // 14. Group: a species the lab keeps as a group (roster count > 1), spawned as the lab spawns it with its own
+        // brains, three minutes: no two members' bodies (capsules fitted to the real mesh, per bone) ever touch while in
+        // sight (CreatureKitGroupCheck.cs).
+        [Test] public void Group()
+        {
+            Applies(CreatureKitAssets.Group);
+            int count = KitGroupCheck.RosterCount(name, out int k);
+            if (count < 2) Assert.Ignore($"not a group in the lab (roster count {count})");
+            KitGroupCheck.Result r = KitGroupCheck.Run(sp, count, k);
+            TestContext.Out.WriteLine($"{name}: {count} members, {r.Samples} samples over {r.Seconds:F0} s; closest {r.Closest:F3} m ({r.ClosestAt})");
+            Assert.IsNull(r.Problem, name);
+        }
+
         // 12. The lab can house it: a habitat from its data and an enclosure (or aviary) it fits.
         [Test] public void Lab()
         {
@@ -150,6 +175,68 @@ namespace TerrainGen.Tests
             int allocs = KitChecks.TickAllocs(Monitor(), true);
             TestContext.Out.WriteLine("RED: an allocating tick counted " + allocs);
             Assert.Greater(allocs, 0, "an allocating tick counted 0: the GC check would be vacuous");
+        }
+
+        // The pose sweep bites where MaxBend (one walking circle) cannot: the body mirrored (turned inside out) only
+        // while the manta glides - its sweep is clean otherwise - must be reported with its phase and a part.
+        [Test] public void Red_PoseSweep_InsideOutInGlide_Fails()
+        {
+            CreatureSpecies sp = CreatureKitAssets.Load("SkyManta");
+            Assert.IsNull(KitPoseSweep.Run(sp, sp.scale, 1, 40f).Problem, "control: the manta's sweep is clean");
+            var mirror = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(1f, 1f, -1f));
+            int mirrored = 0;
+            KitPoseSweep.Result r = KitPoseSweep.Run(sp, sp.scale, 1, 40f, true, (sim, label, bones) =>
+            {
+                if (!label.Contains("soar=glide")) return;
+                for (int b = 0; b < bones.Length; b++) bones[b] = bones[b] * mirror;
+                mirrored++;
+            });
+            TestContext.Out.WriteLine($"RED ({mirrored} frames mirrored): " + r.Problem);
+            Assert.Greater(mirrored, 0, "the manta glided in 40 s");
+            Assert.IsNotNull(r.Problem, "a body turned inside out in the glide passed the sweep");
+            StringAssert.Contains("soar=glide", r.Problem);
+            StringAssert.Contains(" of ", r.Problem);
+        }
+
+        // Too short a run never reaches the landing: the coverage rule reports it instead of passing vacuously.
+        [Test] public void Red_PoseSweep_ShortRun_MissesPhases()
+        {
+            CreatureSpecies sp = CreatureKitAssets.Load("Hexadrake");
+            KitPoseSweep.Result r = KitPoseSweep.Run(sp, sp.scale, 1, 5f);
+            TestContext.Out.WriteLine("RED: " + r.Problem);
+            Assert.IsNotNull(r.Problem);
+            Assert.IsTrue(r.Missing.Contains("flight=touchdown"), "missing: " + string.Join(", ", r.Missing));
+        }
+
+        // The drawn-feet gait rule bites: BendyLegSystem's planted tips unpinned (the flex applied on the ground) slide.
+        [Test] public void Red_Gait_DrawnTipUnpinned_Fails()
+        {
+            CreatureSpecies sp = CreatureKitAssets.Load("GolfballStrider");
+            Assert.IsNull(KitChecks.DrawnFeetProblem(sp, out _, out _), "control: the pinned strider passes");
+            CreatureKit.BendyLegSystem.UnpinForTest = true;
+            try
+            {
+                string p = KitChecks.DrawnFeetProblem(sp, out float drift, out _);
+                TestContext.Out.WriteLine("RED: " + p);
+                Assert.IsNotNull(p, $"unpinned drawn tips passed (drift {drift * 100f:F2} %)");
+            }
+            finally { CreatureKit.BendyLegSystem.UnpinForTest = false; }
+        }
+
+        // The group check bites: five crabs all steered at the same point pile into each other.
+        [Test] public void Red_Group_AllToTheCentre_Touch()
+        {
+            CreatureSpecies sp = CreatureKitAssets.Load("RockCrab");
+            KitGroupCheck.Result r = KitGroupCheck.Run(sp, 5, 0, 30f, true, (sim, area, seed) => new PointBrain(area.center));
+            TestContext.Out.WriteLine("RED: " + r.Problem);
+            Assert.IsNotNull(r.Problem, "five crabs walking into one point never touched");
+        }
+
+        sealed class PointBrain : ICreatureBrain
+        {
+            readonly Vector3 p;
+            public PointBrain(Vector3 p) { this.p = p; }
+            public Vector3 Target(CreatureSim sim, float dt) => p;
         }
 
         // A mesh index past the layout must be reported.
@@ -324,7 +411,8 @@ namespace TerrainGen.Tests
                     Vector3 now = Vector3.Cross(pos[i1] - pos[i0], pos[i2] - pos[i0]);
                     Vector3 want = skin[(int)uv2[i0].x].MultiplyVector(rest);
                     if (!(Vector3.Dot(now, want) > 0f))
-                        return $"t={t}: triangle {k / 3} (part {Mathf.RoundToInt(uv1[i0].x)}, bones {uv2[i0]}) inverted (dot {Vector3.Dot(now, want):E2})";
+                        return $"t={t}: triangle {k / 3} of {KitPoseSweep.BonePart(sp, (int)uv2[i0].x)} (layer {Mathf.RoundToInt(uv1[i0].x)}, bones {uv2[i0]}) inverted (dot {Vector3.Dot(now, want):E2}) " +
+                               $"at {pos[i0]} {pos[i1]} {pos[i2]}";
                 }
                 frames++;
             }
@@ -473,7 +561,88 @@ namespace TerrainGen.Tests
             TestContext.Out.WriteLine($"{sp.name}: steps per leg {string.Join(", ", steps)}; ticks with a group in the air {airborne}/900, two groups at once {overlap}");
             for (int l = 0; l < n; l++) if (!Feeler(sp, l) && steps[l] < 3) return $"leg {l} stepped {steps[l]} times in 15 s of walking";
             if (overlap > 0) return $"two gait groups in the air at once on {overlap} ticks";
-            return null;
+            return DrawnFeetProblem(sp, out _, out _);
+        }
+
+        // ------------------------------------------------------------ 8b. gait on the drawn feet
+
+        // How far a planted DRAWN tip may drift from its sim foot over one plant, x the leg's length (kit services
+        // 2026-10-20: a part that re-poses the leg bones after CreatureLegs - BendyLegSystem's flex, a posture - could
+        // slide the foot in the picture while the sim foot stays put; the sim-foot check above never sees it).
+        internal const float kDrawnDrift = 0.01f;
+
+        // The drawn tip of leg l: where the rest sim's foot sits in the leg's last bone (fresh unticked sim, scale 1:
+        // CreatureRestPose), carried by that bone now. Generic over every limb type: no part knowledge.
+        internal static Vector3[] DrawnTipsLocal(CreatureSpecies sp)
+        {
+            var rest = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward);
+            var bones = new Matrix4x4[sp.BoneCount];
+            rest.WriteBoneWorld(bones, 0);
+            var tips = new Vector3[sp.legs.Length];
+            for (int l = 0; l < tips.Length; l++)
+                tips[l] = bones[sp.LegBone(l, sp.legs[l].SegmentCount - 1)].inverse.MultiplyPoint3x4(rest.Legs[l].foot);
+            return tips;
+        }
+
+        // What stands on the ground for leg l in the picture: a wing-walking arm stands on its thumb claw (WingSpec.
+        // groundWristLift: the hand bone flexes until the claw's tip is on the foot point - CreatureWings.ThumbTip); any
+        // other leg on its last bone's tip (DrawnTipsLocal).
+        internal static Vector3 DrawnTip(CreatureSim sim, Matrix4x4[] bones, Vector3[] local, int l)
+        {
+            CreatureSpecies sp = sim.Species;
+            if (sim.Flight != null)
+                for (int w = 0; w < sp.WingCount; w++)
+                    if (sp.wings[w].leg == l && sp.wings[w].groundWristLift > 0f) return sim.Flight.Wings.ThumbTip(w);
+            return bones[sp.LegBone(l, sp.legs[l].SegmentCount - 1)].MultiplyPoint3x4(local[l]);
+        }
+
+        // The weaving walk again, bones drawn every tick: each planted walking leg's drawn tip keeps its offset from
+        // the planted sim foot (the offset at touch-down; drift < kDrawnDrift x leg length). Returns the largest drift
+        // and offset (x leg length) seen.
+        internal static string DrawnFeetProblem(CreatureSpecies sp, out float maxDrift, out float maxOffset)
+        {
+            maxDrift = 0f; maxOffset = 0f;
+            int n = sp.legs.Length;
+            float s = sp.scale;
+            Vector3[] local = DrawnTipsLocal(sp);
+            var sim = Flat(sp, s);
+            var bones = new Matrix4x4[sp.BoneCount];
+            var off0 = new Vector3[n]; var was = new bool[n];
+            string where = null;
+            int samples = 0;
+            for (int t = 0; t < 900; t++)
+            {
+                sim.Tick(kDt, Weave(sim, t));
+                sim.WriteBoneWorld(bones, 0);
+                bool folded = LegsFolded(sim);
+                for (int l = 0; l < n; l++)
+                {
+                    LegState st = sim.Legs[l];
+                    bool now = !Feeler(sp, l) && Planted(st) && !folded;
+                    if (now)
+                    {
+                        Vector3 tip = DrawnTip(sim, bones, local, l);
+                        Vector3 off = tip - st.foot;
+                        float len = sp.legs[l].TotalLength * s;
+                        if (!was[l]) off0[l] = off;
+                        float drift = (off - off0[l]).magnitude / len;
+                        maxOffset = Mathf.Max(maxOffset, off.magnitude / len);
+                        if (drift > maxDrift) { maxDrift = drift; where = $"leg {l} ({KitPoseSweep.BonePart(sp, sp.LegBone(l, 0))}) t={sim.Time:F2} s, drawn tip {tip} vs foot {st.foot}"; }
+                        samples++;
+                    }
+                    was[l] = now;
+                }
+            }
+            TestContext.Out.WriteLine($"{sp.name}: drawn planted tips: drift max {maxDrift * 100f:F2} % of the leg, offset max {maxOffset * 100f:F2} % ({samples} samples)");
+            if (samples < 1000) return $"only {samples} planted drawn-tip samples: the check does not bite";
+            return maxDrift <= kDrawnDrift ? null : $"a planted foot slides in the picture: its drawn tip drifted {maxDrift * 100f:F2} % of the leg's length from its sim foot ({where})";
+        }
+
+        // A posture that folds the legs off their feet by design (a Tuck's curl): the sim feet wait where they were.
+        static bool LegsFolded(CreatureSim sim)
+        {
+            foreach (CreatureKit.IPartRuntime r in sim.PartRuntimes) if (r is CreatureKit.TuckRuntime t && t.Progress > 0f) return true;
+            return false;
         }
 
         // A foot on the ground: not stepping, or waiting out its lift-off delay (arthropod metachronal wave).

@@ -96,6 +96,16 @@ public sealed class CreatureSim
     Vector3 headUp;                  // the head's up the heading was last made tangent to (parallel transport)
     float commanded;
     float bobY, bobV;                // gait bob (species gaitBob): the body's height offset (m, + up) and its rate
+    // Sideways walking (species sideways): the travel side (+1 right, -1 left, 0 forward) and the side a flip brakes
+    // for; a turn pivots the (rigid) body about pivotJoint, the girdles' middle.
+    readonly bool sideways;
+    readonly int pivotJoint;
+    int travelSide = 1, pendingSide = 1;
+    const float kForwardPenaltyDeg = 50f;   // walking forward must save this much turning over a sideways walk
+    const float kSideHysteresisDeg = 20f;   // the side it walks to now is kept unless another saves this much turning
+    const float kFlipSpeed = 0.1f;          // x the top speed: a change of side waits until it has braked below this
+    const float kSideKeepDist = 0.15f;      // body lengths: nearer the target, neither the side nor the heading changes
+    const float kForwardReach = 2f;         // body lengths: it walks forward only to a target this near (a short shuffle)
 
     // Climbing (CreatureClimb): only for a species with climb.canClimb on an ISurfaceProbe ground. Up is the up
     // each joint grounds along (gravity's while the creature walks), ClimbWeight how far it follows the
@@ -111,6 +121,10 @@ public sealed class CreatureSim
     // are still climbed.
     public bool ClimbAllowed = true;
     public Vector3 Heading => heading;
+    // Sideways walking (species sideways, the kit's Walk.travel Sideways; off: TravelSide 0, Travel = Heading): the side
+    // the body travels to (+1 its right, -1 its left, 0 forward) and that direction.
+    public int TravelSide => sideways ? travelSide : 0;
+    public Vector3 Travel => sideways ? TravelOf(heading, headUp) : heading;
     // The surfaces the creature probes (null when it cannot climb): casts for climb goals.
     public ISurfaceProbe Surface => climb != null ? climb.Surface : null;
     internal CreatureClimb Climb => climb;
@@ -133,6 +147,8 @@ public sealed class CreatureSim
         for (int m = 0; m < modes.Length; m++) if (modes[m] is T t) return t;
         return null;
     }
+    // Every locomotion mode, highest priority first (tools: the pose sweep's phase channels). Read-only.
+    public ILocomotionMode[] LocomotionModes => modes;
     public FlightMode Mode => flight != null ? flight.Mode : FlightMode.Ground;
     // Per joint: the last grounding found ground within its window (a perched tail over a branch end does not).
     public readonly bool[] Supported;
@@ -172,6 +188,13 @@ public sealed class CreatureSim
         pitchLift = new float[n];
         swayY = new float[n]; rollDeg = new float[n];
         girdles = FindGirdles(sp);
+        sideways = sp.sideways;
+        if (sideways)
+        {
+            float g = 0f;
+            for (int k = 0; k < girdles.Length; k++) g += girdles[k];
+            pivotJoint = girdles.Length > 0 ? Mathf.Clamp(Mathf.RoundToInt(g / girdles.Length), 0, n - 1) : (n - 1) / 2;
+        }
         swaySignal = new float[girdles.Length]; rollSignal = new float[girdles.Length]; swayAmp = new float[girdles.Length];
         float tanSway = Mathf.Tan(Mathf.Clamp(sp.gaitSwayDeg, 0f, 45f) * Mathf.Deg2Rad);
         for (int g = 0; g < girdles.Length; g++)
@@ -195,6 +218,7 @@ public sealed class CreatureSim
         if (sp.RigidHead >= 2) { rigidHead = new RigidHead(sp, sp.RigidHead); headK = rigidHead.K; headTarget = new Vector3[headK]; }
         legs = new CreatureLegs(sp, ground, upAt, Joints, Rotations, sizeScale, TimeScale, climb);
         legs.StopDecel = 3f * sp.accel; // the gait's braking (GroundSubStep)
+        if (sideways) { legs.Sideways = true; legs.TravelLocal = new Vector3(travelSide, 0f, 0f); }
         Legs = legs.State;
         Supported = new bool[n];
         if (sp.CanFly) ProbedGround = new Vector3[n];
@@ -315,7 +339,8 @@ public sealed class CreatureSim
             float sway = maxSpeed > 1e-4f ? Mathf.Clamp01(commanded / (0.3f * maxSpeed)) : 1f;
             float und = sway * sp.undulationDeg * Mathf.Sin(2f * Mathf.PI * sp.undulationHz / TimeScale * Time);
             if (und != 0f) desired = Quaternion.AngleAxis(und, up) * desired;
-            float ang = Vector3.SignedAngle(heading, desired, up);
+            // sideways: the heading that puts the travel side on the target (the side chosen, a flip braked for)
+            float ang = Vector3.SignedAngle(heading, sideways ? SideHeading(desired, up, dist) : desired, up);
             turnAngle = Mathf.Abs(ang);
             // Turning in place swings the rigid head and drags the front of the body, so a leg at its
             // stretch or joint-range limit throttles the turn as well as the speed.
@@ -323,7 +348,8 @@ public sealed class CreatureSim
             turned = Mathf.Clamp(ang, -maxTurn, maxTurn);
             heading = Quaternion.AngleAxis(turned, up) * heading;
         }
-        float want = Mathf.Min(maxSpeed, 2.5f * dist) * (1f - sp.turnSlowdown * turnAngle / 180f);
+        float top = sideways && travelSide == 0 ? maxSpeed * sp.SidewaysForward : maxSpeed;
+        float want = Mathf.Min(top, 2.5f * dist) * (1f - sp.turnSlowdown * turnAngle / 180f);
         // A creature cannot outrun its legs: the gait caps the speed, and slows it when a planted foot
         // nears full stretch. The cap is approached with accel-limited easing (braking 3x harder).
         float cap = Mathf.Min(maxSpeed * legs.Throttle, legs.MaxSpeed);
@@ -334,9 +360,16 @@ public sealed class CreatureSim
         if (cap < goal) { goal = cap; if (goal < commanded) rate = 3f * sp.accel; }
         // an overhang ahead, or the enclosure's height cap reached going up: brake to a stop (turning is free)
         if (climbing && (climb.Blocked || AboveCap(head, heading))) { goal = 0f; rate = 3f * sp.accel; }
+        // sideways, a change of side brakes to a stop first, then the travel turns
+        if (sideways && pendingSide != travelSide)
+        {
+            if (commanded <= kFlipSpeed * maxSpeed) { travelSide = pendingSide; legs.TravelLocal = travelSide == 0 ? Vector3.forward : new Vector3(travelSide, 0f, 0f); }
+            else { goal = 0f; rate = 3f * sp.accel; }
+        }
         commanded = Mathf.MoveTowards(commanded, goal, rate * dt);
         Vector3 start = head;
-        head += heading * (commanded * dt);
+        if (sideways) head = Pivoted(start, turned, up) + TravelOf(heading, up) * (commanded * dt);
+        else head += heading * (commanded * dt);
         if (Bounds.HasValue) head = Bounds.Value.ClampToSafe(head);
         Speed = (head - start).magnitude / dt;
         Path[0] = head;
@@ -358,7 +391,8 @@ public sealed class CreatureSim
                 f = last || tryNo + 2 == kSwingTries ? 0f : 0.5f * f;
                 Array.Copy(pathStart, Path, n);
                 heading = Quaternion.AngleAxis(turned * f, up) * heading0;
-                head = start + heading * (commanded * dt * (last ? 0f : 1f));
+                if (sideways) head = Pivoted(start, turned * f, up) + TravelOf(heading, up) * (commanded * dt * (last ? 0f : 1f));
+                else head = start + heading * (commanded * dt * (last ? 0f : 1f));
                 if (Bounds.HasValue) head = Bounds.Value.ClampToSafe(head);
                 Speed = (head - start).magnitude / dt;
                 Path[0] = head;
@@ -450,6 +484,45 @@ public sealed class CreatureSim
         int started = legs.Update(dt, Speed);
         StepsTaken += started;
         if (sp.gaitBob.amplitude > 0f) Bob(dt, started > 0);
+    }
+
+    // ---- sideways walking ----
+
+    // The travel direction for a heading: forward, or the body's right (+1) / left (-1) in the plane across up.
+    Vector3 TravelOf(Vector3 h, Vector3 up) => travelSide == 0 ? h : Norm(Vector3.Cross(up, h) * travelSide, h);
+
+    // The heading that makes travel side s point along `desired` (unit, across up).
+    static Vector3 HeadingFor(Vector3 desired, Vector3 up, int s) => s == 0 ? desired : Vector3.Cross(desired, up) * s;
+
+    // The side to travel to (the one needing the least turn: forward pays kForwardPenaltyDeg and only to a target within
+    // kForwardReach, the side it is heading for now keeps kSideHysteresisDeg), set as pendingSide; returns its heading.
+    Vector3 SideHeading(Vector3 desired, Vector3 up, float dist)
+    {
+        // a target this near (arriving, or held where it stands: Halt) is not turned for - the direction to it is noise
+        // (half a sub-step behind the head it is straight back: a 180 deg turn whose sign is a rounding)
+        if (!(dist > kSideKeepDist * Species.BodyLength * SizeScale)) return heading;
+        {
+            float best = float.PositiveInfinity;
+            int pick = pendingSide;
+            for (int s = 1; s >= -1; s--)
+            {
+                if (s == 0 && (!(Species.SidewaysForward > 0f) || dist > kForwardReach * Species.BodyLength * SizeScale)) continue;
+                float cost = Mathf.Abs(Vector3.SignedAngle(heading, HeadingFor(desired, up, s), up));
+                if (s == 0) cost += kForwardPenaltyDeg;
+                if (s == pendingSide) cost -= kSideHysteresisDeg;
+                if (cost < best) { best = cost; pick = s; }
+            }
+            pendingSide = pick;
+        }
+        return Norm(HeadingFor(desired, up, pendingSide), heading);
+    }
+
+    // p turned by deg about up round the pivot joint's path point (a sideways body turns about its middle).
+    Vector3 Pivoted(Vector3 p, float deg, Vector3 up)
+    {
+        if (deg == 0f) return p;
+        Vector3 c = Path[pivotJoint];
+        return c + Quaternion.AngleAxis(deg, up) * (p - c);
     }
 
     // The gait bob: a damped spring on the body's height, kicked downward when legs lift off (the body sags

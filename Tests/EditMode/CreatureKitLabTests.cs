@@ -33,6 +33,27 @@ namespace TerrainGen.Tests
             }
         }
 
+        // A variant is a new animal, never a replacement (2026-10-20, the user: "I wanted a new large variant, not to
+        // overwrite it"): the StriderMatriarch joins the lab next to the small GolfballStrider, which keeps its own
+        // asset, its scale 1 and its own enclosure.
+        [Test] public void Roster_KeepsTheGolfballStrider_NextToItsMatriarch()
+        {
+            CreatureSpecies small = null, giant = null; float smallOverride = 0f;
+            foreach (CreatureLabRoster.Entry e in Roster().entries)
+            {
+                if (e.species == null) continue;
+                if (e.species.name == "GolfballStrider") { small = e.species; smallOverride = e.scaleOverride; }
+                if (e.species.name == "StriderMatriarch") giant = e.species;
+            }
+            Assert.IsNotNull(small, "the small GolfballStrider is in the lab");
+            Assert.IsNotNull(giant, "the StriderMatriarch is in the lab");
+            Assert.AreNotSame(small, giant, "two assets, not one");
+            Assert.AreEqual(1f, small.Compiled.Runtime.scale, 1e-6f, "the small one keeps its size");
+            Assert.That(smallOverride <= 1.5f, "no override blows the small one up");
+            Assert.Greater(giant.Compiled.Runtime.scale, 4f * small.Compiled.Runtime.scale, "the matriarch is the giant");
+            Assert.AreNotEqual(Habitat.Grove, LabHabitat.For(small), "the small one gets an enclosure of its own");
+        }
+
         // Adding to the roster is the last step of the new-animal workflow: a species asset that is not a test
         // fixture and not in the roster is reported (a warning: a work-in-progress animal may wait).
         [Test] public void Roster_ContainsEveryNonTestSpecies()
@@ -60,7 +81,8 @@ namespace TerrainGen.Tests
                 { "Crocodile", Habitat.Plain }, { "KomodoDragon", Habitat.Plain }, { "GolfballStrider", Habitat.Plain },
                 { "SkyManta", Habitat.Aviary },
                 { "Delver", Habitat.Plain },
-                { "Apex", Habitat.Aviary },
+                { "Pterodactyl", Habitat.Aviary },
+                { "StriderMatriarch", Habitat.Plain },
             };
             foreach (string n in CreatureKitAssets.Species())
             {

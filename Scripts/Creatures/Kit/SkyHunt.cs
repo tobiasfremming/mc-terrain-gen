@@ -1,4 +1,4 @@
-// Creature kit: SkyHunt - a soaring predator's hunt (the Apex): it climbs high, circles there in long glides broken
+// Creature kit: SkyHunt - a soaring predator's hunt (the Pterodactyl): it climbs high, circles there in long glides broken
 // by bursts of slow deep beats, picks prey below (HuntPrey: another creature in its area; with none, a practice
 // mark on the ground), lines up on it and stoops - wings folded, the body pitched down its path, the neck reaching -
 // then pulls out just over the target, the head striking with the beak agape, and climbs away to circle again. Hunts
@@ -42,14 +42,14 @@ namespace CreatureKit
             Needs = "Fly (+ a LongNeck: the strike)", KitOnly = true)]
     public sealed class SkyHunt : CreatureModule
     {
-        [Param(ParamUnit.Metres, "circling height over the ground (the aviary is made 1.25 x this tall)", Example = "apex 9")] public float soarAltitude = 9f;
-        [Param(ParamUnit.Metres, "the soaring band: glides down this far below soarAltitude, beats back up", Example = "apex 1.2")] public float soarBand = 1.2f;
+        [Param(ParamUnit.Metres, "circling height over the ground (the aviary is made 1.25 x this tall)", Example = "pterodactyl 9")] public float soarAltitude = 9f;
+        [Param(ParamUnit.Metres, "the soaring band: glides down this far below soarAltitude, beats back up", Example = "pterodactyl 1.2")] public float soarBand = 1.2f;
         [Param(ParamUnit.Fraction, "circle radius, x the area's safe radius", Min = 0.2f, Max = 0.9f)] public float circleRadius = 0.55f;
         [Param(ParamUnit.Seconds, "a hunting bout's length (then the other flight behaviour has the brain)")] public float boutSeconds = 50f;
         [Param(ParamUnit.Seconds, "rest between bouts")] public float restSeconds = 25f;
         [Param(ParamUnit.Seconds, "mean time between stoops within a bout")] public float stoopInterval = 12f;
         [Param(ParamUnit.Degrees, "the stoop is at least this steep (the line from where it folds to the pull-out over the mark)", Min = 15, Max = 85)] public float stoopDeg = 38f;
-        [Param(ParamUnit.Metres, "pulls out this high over the target (the head reaches below it)", Example = "apex 0.9")] public float pullUpHeight = 0.9f;
+        [Param(ParamUnit.Metres, "pulls out this high over the target (the head reaches below it)", Example = "pterodactyl 0.9")] public float pullUpHeight = 0.9f;
         [Param(ParamUnit.Fraction, "the wings' fold in the stoop at its steepest", Min = 0.3f, Max = 1)] public float stoopFold = 0.9f;
         [Param(ParamUnit.Flag, "with no prey in its area it stoops at a practice mark on the ground")] public bool practice = true;
         [Param(ParamUnit.Fraction, "utility while hunting (FlightExcursion 0.2, Wander 0.1)", Min = 0.25f, Max = 2)] public float utility = 0.4f;
@@ -77,6 +77,7 @@ namespace CreatureKit
         float boutUntil = -1f, restUntil = -1f, stoopIn, phaseTime;
         bool beating;   // the soaring band: beating back up (else gliding down)
         CreatureSim prey;
+        float lastHm = float.MaxValue;   // the beak's distance to the mark last tick (stoop)
         Vector3 mark;   // the target point (prey: its head, updated; practice: fixed)
         float defaultLevel = -1f;
         float stalkSpeed;
@@ -88,7 +89,7 @@ namespace CreatureKit
         public float LastMiss { get; private set; }          // closest head-to-target distance of the last stoop (m)
         public float LastLowest { get; private set; }        // lowest girdle height over the ground in the last stoop (m)
         public Vector3 Target => mark;
-        public int LastPull { get; private set; } = -1;      // why the last stoop pulled out: 0 height, 1 past the mark, 2 time, 3 broken off high
+        public int LastPull { get; private set; } = -1;      // why the last stoop pulled out: 0 height, 1 past the mark, 2 time, 3 broken off high, 4 struck
         public float PullAbove { get; private set; }         // its height over the mark then (m)
         public bool HasPrey => prey != null;
         float miss, lowest;
@@ -179,12 +180,12 @@ namespace CreatureKit
                         Vector3 to = mark - m.Position;
                         Vector3 toH = to - up * Vector3.Dot(to, up);
                         float above = -Vector3.Dot(to, up) - h.pullUpHeight * s;
-                        float dGuide = toH.magnitude - 0.15f * NeckReach(sim);
+                        float dGuide = toH.magnitude - kStrikeLead * NeckReach(sim);
                         float dPred = m.HorizontalSpeed * Mathf.Sqrt(2f * Mathf.Max(0f, above) / FlightModel.G);
                         float dep = Mathf.Atan2(Mathf.Max(0f, above), Mathf.Max(1e-4f, dGuide)) * Mathf.Rad2Deg;
                         float off = Vector3.Angle(m.Forward, toH);
                         aim?.Aim(mark, 0f);
-                        if (above > 0f && off < 20f && dGuide <= kFallShare * dPred && dGuide > 0.45f * dPred && dep >= h.stoopDeg) { Current = Phase.Stoop; phaseTime = 0f; Stoops++; miss = float.MaxValue; lowest = float.MaxValue; }
+                        if (above > 0f && off < 20f && dGuide <= kFallShare * dPred && dGuide > 0.45f * dPred && dep >= h.stoopDeg) { Current = Phase.Stoop; phaseTime = 0f; Stoops++; miss = float.MaxValue; lowest = float.MaxValue; lastHm = float.MaxValue; }
                         else if (phaseTime > 20f * T || dGuide < 0.4f * dPred || alt < soar - 3f * h.soarBand * s) { Current = Phase.Circle; stoopIn = 2f * T; aim?.Release(); }   // overflew it or sank: go round
                         // far off it cruises up to the mark, slowing to its minimum speed for the last stretch (a slow
                         // fall carries it onto the mark inside the aviary)
@@ -215,7 +216,7 @@ namespace CreatureKit
                     float rPull = sp0 * sp0 / (kPullG * FlightModel.G);
                     // (x kPullShare: the wings' own grip stops most of the fall at once - measured, the full circle overshot 4-5 x)
                     float drop = gam0 > 0f ? kPullShare * rPull * (1f - Mathf.Cos(gam0)) : 0f, run = gam0 > 0f ? kPullShare * rPull * Mathf.Sin(gam0) : 0f;
-                    Vector3 guide = mark - fH * (0.15f * neckReach + run);
+                    Vector3 guide = mark - fH * (kStrikeLead * neckReach + run);
                     Vector3 to = guide - m.Position;
                     Vector3 toH = to - up * Vector3.Dot(to, up);
                     float above = Vector3.Dot(m.Position - mark, up);
@@ -240,13 +241,20 @@ namespace CreatureKit
                     fl.SetGoals(Vector3.Dot(mark, up), m.HorizontalSpeed, fl.TurnToward(guide), guide);
                     // the strike: the head stretches for the mark once it is within reach and a half (it lands as the
                     // swoop carries the body past)
-                    aim?.Aim(mark, (mark - m.Position).magnitude < 1.6f * neckReach ? 1f : 0f);
+                    aim?.Aim(mark, (mark - m.Position).magnitude < 2.5f * neckReach ? 1f : 0f);
                     Track(sim, up, ground);
                     // pull out: low enough over the target for the falling speed (opening wings take the fall out in
                     // about 0.06 s per unit of size: their grip and lift grow with the speed), or past it, or too long
                     float pull = h.pullUpHeight * s + drop;
                     Vector3 toMark = mark - m.Position; toMark -= up * Vector3.Dot(toMark, up);
-                    int why = above < pull ? 0 : Vector3.Dot(toMark, fH) < -1.5f * neckReach ? 1 : phaseTime > 8f * T ? 2 : -1;
+                    // or struck: the beak's tip is on the mark (the neck carried ahead strikes down the dive's line, then
+                    // the swoop takes it away - a mark left to pass under the body is beyond a forward neck's reach)
+                    float hm = aim != null ? (aim.StrikePoint - mark).magnitude : float.MaxValue;
+                    bool struck = hm < kHit * NeckLength(sim);
+                    // the beak closing on the mark: the stoop holds on a little lower for the strike to land
+                    bool closing = hm < kClosing * NeckLength(sim) && hm < lastHm;
+                    lastHm = hm;
+                    int why = struck ? 4 : above < pull ? 0 : Vector3.Dot(toMark, fH) < -1.5f * neckReach ? 1 : phaseTime > 8f * T ? 2 : -1;
                     if (why >= 0)
                     {
                         // overshot while still high: it breaks the stoop off (pulls out and circles again), not a stoop at the mark
@@ -350,6 +358,12 @@ namespace CreatureKit
         const float kFallShare = 0.75f;     // the stoop's fall is slower than a free fall (the folding wings still lift): it starts at this share of the free-fall run
         const float kBrakeG = 1.2f;         // the stoop's line check, x g
         const float kPullShare = 0.25f;     // the share of that circle the pull-out really loses / runs on
+        // the stoop aims the swoop's bottom this share of the neck's reach short of the mark: the mark lies ahead and
+        // below there, inside the neck's strike cone (a mark passed under the body is out of the forward-carried neck's reach)
+        const float kStrikeLead = 0.15f;
+        const float kHit = 0.12f;           // a strike lands: the beak's tip this close to the mark, x the neck's length
+        const float kClosing = 0.8f;        // the beak closing within this (x the neck's length): the pull-out waits ...
+        const float kHoldShare = 0.75f;     // ... down to this share of its height
 
         // prey: its head, led by its own speed (smoothed) over the time the stoop still takes
         void UpdateMark(in EnclosureArea a, Vector3 up, float ground)

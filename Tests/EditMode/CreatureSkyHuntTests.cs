@@ -5,7 +5,7 @@ using CreatureKit;
 
 namespace TerrainGen.Tests
 {
-    // QuadLaunch and SkyHunt (creature kit, the Apex) in its lab aviary, with the brain the lab gives it (BrainFactory:
+    // QuadLaunch and SkyHunt (creature kit, the Pterodactyl) in its lab aviary, with the brain the lab gives it (BrainFactory:
     // a ModularBrain over SkyHunt, FlightExcursion and Wander). Proven at 0.9x and 1.1x: the quad launch crouches then
     // vaults into the air; the hunt holds its soaring height (gliding most of the time) inside the aviary; a stoop at a
     // practice mark and at prey on the ground reaches the target with the head and pulls out without any joint or the
@@ -15,13 +15,13 @@ namespace TerrainGen.Tests
     {
         const float kDt = 1f / 60f;
 
-        static CreatureSpecies Apex() => CreaturePteroWingTests.Apex();
+        static CreatureSpecies Pterodactyl() => CreaturePteroWingTests.Pterodactyl();
 
         static CreatureSpecies HuntWith(System.Action<SkyHunt> edit)
         {
-            CreatureSpecies a = CreatureKitAssets.LoadAsset("Apex");
+            CreatureSpecies a = CreatureKitAssets.LoadAsset("Pterodactyl");
             var sp = ScriptableObject.CreateInstance<CreatureSpecies>();
-            sp.name = "ApexHuntEdit"; sp.scale = a.scale; sp.kitVersion = a.kitVersion;
+            sp.name = "PterodactylHuntEdit"; sp.scale = a.scale; sp.kitVersion = a.kitVersion;
             foreach (CreaturePart p in a.parts) sp.parts.Add(p.Clone());
             foreach (CreatureModule m in a.modules) { CreatureModule c = m.Clone(); if (c is SkyHunt h) edit(h); sp.modules.Add(c); }
             return sp.Compiled.Runtime;
@@ -61,7 +61,7 @@ namespace TerrainGen.Tests
 
         [Test] public void Brain_IsModular_WithTheHunt()
         {
-            CreatureSpecies sp = Apex();
+            CreatureSpecies sp = Pterodactyl();
             var r = new Run(sp, sp.scale, 1);
             Assert.IsNotNull(r.Brain, "a ModularBrain");
             Assert.IsNotNull(r.Hunt, "with the SkyHunt behaviour");
@@ -77,7 +77,7 @@ namespace TerrainGen.Tests
         [TestCase(0.9f)] [TestCase(1.1f)]
         public void QuadLaunch_CrouchesThenVaults(float k)
         {
-            CreatureSpecies sp = Apex();
+            CreatureSpecies sp = Pterodactyl();
             float s = sp.scale * k, T = Mathf.Sqrt(s);
             var sim = CreaturePteroWingTests.Sim(sp, s);
             for (int t = 0; t < 120; t++) sim.Tick(kDt, sim.Joints[0]);
@@ -103,7 +103,7 @@ namespace TerrainGen.Tests
         [TestCase(0.9f)] [TestCase(1.1f)]
         public void Soar_HoldsAltitude_GlidesMost(float k)
         {
-            CreatureSpecies sp = Apex();
+            CreatureSpecies sp = Pterodactyl();
             float s = sp.scale * k, T = Mathf.Sqrt(s);
             var r = new Run(sp, s, 2);
             float soarTime = 0f, glide = 0f, lo = float.MaxValue, hi = 0f;
@@ -131,7 +131,7 @@ namespace TerrainGen.Tests
         public void Stoop_Practice_ReachesAndPullsOut(float k, int seed)
         {
             HuntPrey.Source = null;
-            CreatureSpecies sp = Apex();
+            CreatureSpecies sp = Pterodactyl();
             string p = StoopProblem(sp, sp.scale * k, seed, null);
             Assert.IsNull(p, p);
         }
@@ -139,7 +139,7 @@ namespace TerrainGen.Tests
         // A stoop at prey on the ground: a monitor walking in the aviary.
         [Test] public void Stoop_OnPrey_ReachesItsHead()
         {
-            CreatureSpecies sp = Apex();
+            CreatureSpecies sp = Pterodactyl();
             CreatureSpecies mon = CreatureKitAssets.Load("DesertMonitor");
             var prey = new CreatureSim(mon, new FlatGroundProbe(), _ => Vector3.up, new Vector3(4f, 0f, 3f), Vector3.right, mon.scale, 9);
             try { string p = StoopProblem(sp, sp.scale, 5, prey); Assert.IsNull(p, p); }
@@ -206,7 +206,7 @@ namespace TerrainGen.Tests
         [Test] public void Bouts_LandAndLaunchAgain()
         {
             HuntPrey.Source = null;
-            CreatureSpecies sp = Apex();
+            CreatureSpecies sp = Pterodactyl();
             float s = sp.scale, T = Mathf.Sqrt(s);
             var r = new Run(sp, s, 6);
             for (int t = 0; t < (int)(900f * T / kDt) && !(r.Sim.Flight.Landings >= 1 && r.Sim.Flight.Launches >= 2 && r.Hunt.Stoops >= 1); t++) r.Tick();
@@ -220,7 +220,7 @@ namespace TerrainGen.Tests
         {
             GcAllocs.AssertCounterWorks();
             HuntPrey.Source = null;
-            CreatureSpecies sp = Apex();
+            CreatureSpecies sp = Pterodactyl();
             var r = new Run(sp, sp.scale, 2);
             var bones = new Matrix4x4[sp.BoneCount];
             for (int t = 0; t < 2400; t++) { r.Tick(); r.Sim.WriteBoneWorld(bones, 0); }

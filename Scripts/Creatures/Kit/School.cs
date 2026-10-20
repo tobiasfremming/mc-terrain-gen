@@ -4,10 +4,11 @@
 // neighbours inside `separation` spans (strongest, and in 3D), the enclosure's wall, and its obstacles (the aviary's
 // trees and rocks: their perch spots as spheres to keep clear of, their trunks as cylinders below them). It vetoes the
 // locomotion's manoeuvres (Soar.ManoeuvreAllowed) while a neighbour is near.
-// Members find each other through SchoolGroups, keyed by the species and the enclosure: every individual of a lab
-// group shares it. A member counts while its sim's clock runs with the asker's (a sim nobody ticks any more drops
-// out), so a group respawned in place or a test's fresh sims never steer round ghosts. Joining allocates (once);
-// the per-frame steering does not. Main thread.
+// Members find each other through the kit's group service (KitGroup, Kit/Services/KitGroups.cs), keyed by the species
+// and the enclosure: every individual of a lab group shares it. A member counts while its sim's clock runs with the
+// asker's (a sim nobody ticks any more drops out), so a group respawned in place or a test's fresh sims never steer
+// round ghosts; the school's waypoint is the group's shared state (SchoolGroup). Joining allocates (once); the
+// per-frame steering does not. Main thread.
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -38,48 +39,13 @@ namespace CreatureKit
         public override IBehaviour CreateBehaviour(in BehaviourCtx c) => new SchoolBehaviour(this, c);
     }
 
-    // The members of one group: the sims of one species in one enclosure.
+    // The school's state shared by its group (KitGroup.Shared: one per group, made again when the group starts over): the
+    // shared waypoint and the group's own random stream.
     public sealed class SchoolGroup
     {
-        public readonly List<CreatureSim> Members = new List<CreatureSim>(16);
         public Vector3 Waypoint;
         public float WaypointTime = float.NegativeInfinity;
         public uint Rng = 0x2545F491u;
-
-        static readonly Dictionary<string, SchoolGroup> groups = new Dictionary<string, SchoolGroup>();
-
-        public static SchoolGroup For(CreatureSpecies sp, in EnclosureArea area)
-        {
-            string key = (sp != null ? sp.name : "") + "|" + Mathf.RoundToInt(area.center.x * 10f) + "|" + Mathf.RoundToInt(area.center.y * 10f) + "|" + Mathf.RoundToInt(area.center.z * 10f);
-            if (!groups.TryGetValue(key, out SchoolGroup g)) { g = new SchoolGroup(); groups[key] = g; }
-            return g;
-        }
-
-        // A sim joins; a group nobody flies in any more (no member's clock near the newcomer's: a respawn, a new test)
-        // starts over, so a fresh school is the same school every time.
-        public void Join(CreatureSim sim)
-        {
-            if (Members.Contains(sim)) return;
-            bool alive = false;
-            for (int i = 0; i < Members.Count; i++) if (Mathf.Abs(Members[i].Time - sim.Time) < 0.5f) alive = true;
-            if (!alive) { Members.Clear(); Rng = 0x2545F491u; WaypointTime = float.NegativeInfinity; }
-            Members.Add(sim);
-        }
-
-        // Is m flying with `me` now (its clock running with mine)? Drops long-stopped members (no allocation).
-        public bool Live(int i, CreatureSim me)
-        {
-            CreatureSim m = Members[i];
-            if (m == me) return false;
-            float d = m.Time - me.Time;
-            return d > -0.5f && d < 0.5f;
-        }
-
-        public void Prune(CreatureSim me)
-        {
-            for (int i = Members.Count - 1; i >= 0; i--)
-                if (Members[i] != me && me.Time - Members[i].Time > 30f) Members.RemoveAt(i);
-        }
 
         public float Rand()
         {
@@ -97,11 +63,11 @@ namespace CreatureKit
         readonly EnclosureArea area;
         readonly PerchSpot[] perches;
         readonly int seed;
-        SchoolGroup group;
+        KitGroup group;
         SoarFlight soar;
         float pruneLeft;
 
-        public SchoolGroup Group => group;
+        public KitGroup Group => group;
         public float NearestNeighbour { get; private set; } = float.PositiveInfinity;
 
         public SchoolBehaviour(School school, in BehaviourCtx c)
@@ -113,7 +79,7 @@ namespace CreatureKit
 
         public void Enter(in BrainCtx c)
         {
-            if (group == null) { group = SchoolGroup.For(sp, area); group.Join(c.Sim); }
+            if (group == null) { group = KitGroup.For(sp, area); group.Join(c.Sim); }
             soar = c.Sim.LocomotionMode<SoarFlight>();
         }
 
@@ -130,7 +96,8 @@ namespace CreatureKit
             if ((pruneLeft -= dt) <= 0f) { pruneLeft = 5f; group.Prune(me); }
 
             // the shared waypoint: whoever finds it stale picks the next (the group's own random stream)
-            if (me.Time - group.WaypointTime > p.waypointSeconds * me.TimeScale || me.Time < group.WaypointTime) NewWaypoint(me, up);
+            SchoolGroup school = group.Shared<SchoolGroup>();
+            if (me.Time - school.WaypointTime > p.waypointSeconds * me.TimeScale || me.Time < school.WaypointTime) NewWaypoint(me, up, school);
 
             Vector3 sep = Vector3.zero, centre = Vector3.zero, heading = Vector3.zero;
             int k = 0;
@@ -170,7 +137,7 @@ namespace CreatureKit
             }
             NearestNeighbour = nearest;
             Vector3 want = Vector3.zero;
-            Vector3 toWp = group.Waypoint - P;
+            Vector3 toWp = school.Waypoint - P;
             want += toWp.normalized * p.waypoint;
             if (k > 0)
             {
@@ -197,7 +164,7 @@ namespace CreatureKit
             return BrainOutput.Toward(P + want * (3f * span));
         }
 
-        void NewWaypoint(CreatureSim me, Vector3 up)
+        void NewWaypoint(CreatureSim me, Vector3 up, SchoolGroup group)
         {
             group.WaypointTime = me.Time;
             float s = me.SizeScale;

@@ -7,6 +7,9 @@
 //                                                   (exit 1), or write them (the Unity menu writes the same bytes)
 //   kit-convert <Species> <NewName>                 write Config/Creatures/<NewName>.asset: the legacy species as
 //                                                   kit parts + modules (kitVersion 1, mirror/pattern sugar)
+//   stats <Species> | trace <Species> ... | pose-dump <Species> --out DIR ...
+//                                                   authoring tools (HarnessTools.cs): gait / stance numbers, the bone
+//                                                   trace (CSV per tick, per phase), the skinned mesh per phase (OBJ)
 // Exit code: the number of failures (0 = green). Statuses: PASS, FAIL, SKIP (Inconclusive/Ignore, or the
 // harness skip list below), NATIVE (RealUnity mode: the test reached engine code the harness cannot run),
 // XFAIL / XPASS (kKnown: a known offline divergence or a recorded finding).
@@ -46,13 +49,36 @@ public static class Program
           "finding: no perch within 3 minutes at x0.9 seed 3 (approaches rejected 14, room 13, aborted 2, 2 flights); known open on feat/wyvern-trees (32795f7), seen again on merge/next with the rigid head" },
         { "WingedSerpentTreeTests.Perch_TreeCrown_Brain(1.1,4)",
           "finding: x1.1 seed 4 puts a joint 6 cm into the bark on the way (bound 5.5 mm); known open on feat/wyvern-trees (32795f7), seen again on merge/next with the rigid head" },
-        // (2026-10-20, king crab look: tripod walk on three long leg pairs) the hanging tentacle tip after 3 s of walking is
-        // 1.6 cm apart (body units) at 0.9x vs 1.1x; a scan of the tentacle length 0.19..0.26 passes only at 0.24 - a
-        // lucky point, so the length stays 0.18 and this is recorded: the instantaneous hang is chaos-sensitive to the walk
-        { "CreatureTendrilTests.Tendril_Size_FroudeSimilar",
-          "finding: TentacleCrab (king crab, 2026-10-20) hanging tip 0.016 vs bound 0.009 body units at one instant of a walk; the touch timing is Froude-equal (3.95 s both) - for the Tendril owner: compare a time-averaged hang" },
+        // (2026-10-20, arthropod archetype: the king crab on the crab plan, walking sideways) CreatureTendrilTests.Tendril_Size_FroudeSimilar
+        // passes offline again - its entry (a chaos-sensitive instantaneous hang on the old tripod walk) was removed
         { "CreatureKitTests(TestHexapod).Size",
           "finding: stop-go walk (throttle 0 on 27 % of a straight walk): 0.9x/1.1x distance 1.4 % apart (test fixture, Task 10); fails in Unity 2026-10-18 too (5.1733 vs 5.3894, 4.2 % apart)" },
+        // (2026-10-20, kit services: check 13 PoseSweep and the Gait check on the drawn feet are new; what they found in the
+        // shipped species on their first run - findings for the species' owners, full lists in the kit-services report)
+        { "CreatureKitTests(Apex).PoseSweep",
+          "finding: launch - wing.R bone 4 (a single-bone membrane triangle) inverts: the wing bone's matrix turns mirrored (det < 0) in the launch unfold; then a flipped normal on wing.R bone 5" },
+        { "CreatureKitTests(Delver).PoseSweep",
+          "finding: burrow dive / lunge / rise - triangles between spine joints 5 and 6 (the neck/fore-shell blend) invert and flip their normals as the body pitches into and out of the ground; once walking (joint 2/3, t=85 s)" },
+        { "CreatureKitTests(Hexadrake).PoseSweep",
+          "finding: launch - wingarm.R bone 1 (elbow blend) inverts; beat / glide / flare / touchdown / wing-walk - triangle 8179 (spine joints 6/7, the shoulder) inverts again and again; a 64 deg kink at spine joint 15 in a later launch" },
+        { "CreatureKitTests(KomodoDragon).PoseSweep",
+          "finding: tongue retracting ('in') - a sliver at the tongue's fork (tongue bone 0/1) inverts; the walk-only MaxBend never sees the tongue move" },
+        { "CreatureKitTests(SkyDragon).PoseSweep",
+          "finding: launch - the shoulder blend (spine joint 40 with arm bone 78) inverts; beat / flare (spine 14 with arm bones 72/75), touchdown (spine 11/12, 18/19), glide (spine 5/4) invert or flip normals; wing.R bone 13 normal flips in the beat" },
+        { "CreatureKitTests(WingedSerpent).PoseSweep",
+          "finding: launch / beat - the shoulder blend (spine joint 6 with arm bone 36) inverts; touchdown - an accordion kink of 75 deg at spine joint 2 (limit 18) with an inverted triangle at joint 1/2" },
+        { "CreatureKitTests(Apex).Gait",
+          "finding: wing-walk - the planted hand's thumb claw (CreatureWings.ThumbTip, what stands on the ground) skates 3.3 % of the arm's length over a plant while the sim foot stays put" },
+        { "CreatureKitTests(WingedSerpent).Gait",
+          "finding: wing-walk - the planted hand's thumb claw skates 3.8 % of the arm's length over a plant (SkyDragon 0.99 %, under the 1 % bound)" },
+        // check 14 Group (the roster's groups): the walkers' brains do not know their group mates (no separation) -
+        // KitGroup + Separation are the service a fix would use
+        { "CreatureKitTests(RockCrab).Group",
+          "finding: 5 crabs walk into each other within seconds (t=6.3 s: leg0.R tip into another's crusher claw, 11 mm); WanderBrain has no separation" },
+        { "CreatureKitTests(Delver).Group",
+          "finding: 3 delvers overlap at the fore-body (spine joint 6 on spine joint 6, 8 mm at t=11.4 s): Follow trails a member with no keep-out" },
+        { "CreatureKitTests(ShaggyMonitor).Group",
+          "finding: the pair walks through each other (a fore leg 116 mm into the other's tail at t=52.9 s); WanderBrain has no separation" },
     };
 
     sealed class Case
@@ -81,6 +107,7 @@ public static class Program
             case "kit-convert": return KitConvert(filters);
             case "catalogue": return Catalogue(filters.Contains("--write"));
             case "test": return Run(Discover(filters, excludeCats), verbose);
+            case "stats": case "trace": case "pose-dump": return HarnessTools.Run(mode, filters);
             default:
                 Console.WriteLine("usage: CreatureHarness test [filter ...] [-v] [--exclude-category C] | list [filter ...] | species");
                 return 2;
