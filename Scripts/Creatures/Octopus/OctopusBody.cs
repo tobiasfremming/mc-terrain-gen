@@ -280,10 +280,13 @@ public sealed class OctopusBody
         tickArm = new Vector3[n];
         planFresh = true;
         ArmDrawn = new bool[ArmCount]; ArmDraw = new float[ArmCount]; ArmSlack = new float[ArmCount];
+        ArmReach = new bool[ArmCount]; ArmReachTarget = new Vector3[ArmCount];
         int maxN = 0;
         for (int a = 0; a < ArmCount; a++) maxN = Mathf.Max(maxN, Arms[a].N);
         drawS = new float[4 * maxN + 1]; drawP = new Vector3[4 * maxN + 1];
         MouthDraw = new float[MouthCount];
+        ArmPosed = new bool[ArmCount]; ArmPose = new float[ArmCount]; ArmPoseLocal = new Vector3[ArmCount][];
+        for (int a = 0; a < ArmCount; a++) ArmPoseLocal[a] = new Vector3[Arms[a].N];
         mouthLocal = new Vector3[MouthCount][];
         for (int m = 0; m < MouthCount; m++)
         {
@@ -320,12 +323,113 @@ public sealed class OctopusBody
     public const float MouthLagMax = 0.3f;
     float[] drawS; Vector3[] drawP; Vector3[][] mouthLocal;
 
+    // Posed arms (a many-armed planned body - the tree octopus - its idle arms; the sequencer sets them): display only,
+    // like the curled mouths. ArmPoseLocal[a][k] is particle k's place in BODY space (x size; the sequencer writes it:
+    // curled, trailing, a grooming stroke); the arm follows the pose's goal with a lag that grows toward the tip
+    // (PoseFollow, 1/s at the root and the tip, x 1/TimeScale; at most PoseLagMax x the arm length off it), so it trails
+    // a swing and settles when the body does - no muscles, no gravity, no solve. ArmPosed eases the weight in over
+    // PoseInSeconds and out over PoseOutSeconds (a job - a reach, a strike - then simulates on from the posed arm, its
+    // velocity kept).
+    public bool[] ArmPosed;
+    public float[] ArmPose;
+    public Vector3[][] ArmPoseLocal;
+    public const float PoseInSeconds = 0.6f, PoseOutSeconds = 0.12f, PoseLagMax = 0.2f;
+    public static readonly float[] PoseFollow = { 30f, 7f };
+
+    // A spawn-time jump: arm a on its pose at once (weight 1, at rest).
+    public void SnapPosed(int a)
+    {
+        TentacleChain ch = Arms[a];
+        for (int k = 1; k < ch.N; k++) { ch.X[k] = planPos + OctoMath.Rotate(planRot, ArmPoseLocal[a][k]); ch.Prev[k] = ch.X[k]; }
+        ArmPose[a] = 1f;
+        ch.UpdateFrames(0f);
+    }
+
+    void PoseArm(int a, int o, float w, float dt)
+    {
+        TentacleChain ch = Arms[a];
+        Vector3[] loc = ArmPoseLocal[a];
+        float lagMax = PoseLagMax * ch.Length, isub = 1f / subSteps;
+        for (int k = 1; k < ch.N; k++)
+        {
+            float t = (float)k / (ch.N - 1);
+            Vector3 goal = planPos + OctoMath.Rotate(planRot, loc[k]);
+            float rate = (PoseFollow[0] + (PoseFollow[1] - PoseFollow[0]) * t) / TimeScale;
+            float f = w * (1f - Mathf.Exp(-rate * dt));
+            Vector3 x = ch.X[k] + (goal - ch.X[k]) * f;
+            if (w >= 1f)
+            {
+                Vector3 off = x - goal;
+                float ol = off.magnitude, lim = lagMax * t;
+                if (ol > lim) x = goal + off * (lim / ol);
+            }
+            ch.X[k] = x;
+            ch.Prev[k] = x - (x - tickArm[o + k]) * isub;
+        }
+    }
+
     bool Drawable(TentacleChain ch)
     {
         int bp = ch.BasePin();
-        if (bp <= 0 || bp >= ch.N - 1) return false;
+        if (bp <= 0 || bp > ch.N - 1 || bp == ch.N - 1 && !DrawSinglePin) return false;
         for (int k = bp; k < ch.N; k++) if (!ch.Pinned[k]) return false;
         return true;
+    }
+
+    // Reaching arms, drawn (a many-armed body - the tree octopus - its sequencer sets them): ArmReach with ArmDrawn, the
+    // arm is drawn as a smooth curve from the root (leaving along the root frame, DrawHandle x the chord) to
+    // ArmReachTarget, arriving along the chord, particles evenly along it. A simulated arm reaching up toward a hold
+    // bent sharply at its base toward the oral side, inside the web, and folded the web through itself (2026-10-20).
+    // DrawHandle: the start handle of every drawn curve, x the chord (a longer one keeps the base straighter).
+    public bool[] ArmReach;
+    public Vector3[] ArmReachTarget;
+    public float DrawHandle = 0.33f, DrawEndHandle = 0.33f;
+    // A hold of a single pin (the tip hooked over a thin branch) is drawn too (the many-armed body; the swinger: off).
+    public bool DrawSinglePin;
+    public const float ReachLengthShare = 0.9f;   // a drawn reach is at least this x the arm length long
+
+    void DrawReach(int a, float w)
+    {
+        TentacleChain ch = Arms[a];
+        int n = ch.N;
+        float isub = 1f / subSteps;
+        Vector3 p0 = ch.X[0], p3 = ArmReachTarget[a];
+        Vector3 chord = p3 - p0;
+        float c = chord.magnitude;
+        if (c < 1e-5f) return;
+        Vector3 cd = chord * (1f / c);
+        Vector3 t0 = OctoMath.Rotate(ch.RootFrame, 0f, 0f, 1f);
+        // the curve keeps about the arm's length: a target near the root (the reach starts at a curled tip) lengthens
+        // both handles - the arm unrolls in a loop - instead of crowding every particle into a short curve
+        float h1 = DrawHandle * c, h2 = 0.3f * c, want = ReachLengthShare * ch.Length;
+        int m = 4 * (n - 1);
+        float total = 0f;
+        for (int pass = 0; pass < 4; pass++)
+        {
+            Vector3 b1 = p0 + t0 * h1, b2 = p3 - cd * h2;
+            drawP[0] = p0; drawS[0] = 0f;
+            for (int i = 1; i <= m; i++)
+            {
+                float u = (float)i / m, v = 1f - u;
+                drawP[i] = p0 * (v * v * v) + b1 * (3f * v * v * u) + b2 * (3f * v * u * u) + p3 * (u * u * u);
+                drawS[i] = drawS[i - 1] + (drawP[i] - drawP[i - 1]).magnitude;
+            }
+            total = drawS[m];
+            if (total >= 0.97f * want) break;
+            h1 += 0.6f * (want - total); h2 += 0.4f * (want - total);
+        }
+        int j = 1;
+        for (int k = 1; k < n; k++)
+        {
+            float s = total * k / (n - 1);
+            while (j < m && drawS[j] < s) j++;
+            float f = (s - drawS[j - 1]) / Mathf.Max(drawS[j] - drawS[j - 1], 1e-9f);
+            Vector3 q = drawP[j - 1] + (drawP[j] - drawP[j - 1]) * f;
+            Vector3 old = ch.X[k];
+            Vector3 x = w >= 1f ? q : old + (q - old) * w;
+            ch.X[k] = x;
+            ch.Prev[k] = x - (x - tickArmAt(a, k)) * isub;
+        }
     }
 
     // The held run, drawn (weight w blends it over the simulated pose). Pins ease (dt), velocities kept for a hand-back.
@@ -345,7 +449,7 @@ public sealed class OctopusBody
         if (c < 1e-5f) return;
         Vector3 cd = chord * (1f / c);
         Vector3 t0 = OctoMath.Rotate(ch.RootFrame, 0f, 0f, 1f);
-        Vector3 t3 = OctoMath.Norm(ch.PinPoint[bp + 1] - p3, cd);
+        Vector3 t3 = bp + 1 < n ? OctoMath.Norm(ch.PinPoint[bp + 1] - p3, cd) : cd;
         // the slack's sag, across the chord toward gravity: arc = c + 8 s^2 / 3c
         float slack = ArmSlack[a];
         Vector3 sag = Vector3.zero;
@@ -356,7 +460,7 @@ public sealed class OctopusBody
             float gl = gp.magnitude;
             if (gl > 1e-3f) sag = gp * (Mathf.Sqrt(0.375f * c * slack) * (4f / 3f) / gl);
         }
-        Vector3 b1 = p0 + t0 * (0.33f * c) + sag, b2 = p3 - t3 * (0.33f * c) + sag;
+        Vector3 b1 = p0 + t0 * (DrawHandle * c) + sag, b2 = p3 - t3 * (DrawEndHandle * c) + sag;
         // arc-length samples, then the particles evenly along them
         int m = 4 * bp;
         drawP[0] = p0; drawS[0] = 0f;
@@ -482,10 +586,13 @@ public sealed class OctopusBody
         planVel = (planPos - planPrevPos) * (1f / dt);
         for (int a = 0; a < ArmCount; a++)
         {
-            bool draw = ArmDrawn[a] && Drawable(Arms[a]);
+            bool curve = Drawable(Arms[a]) || ArmReach[a];
+            bool draw = ArmDrawn[a] && curve;
             ArmDraw[a] = draw ? Mathf.MoveTowards(ArmDraw[a], 1f, dt / (DrawInSeconds * TimeScale)) : Mathf.MoveTowards(ArmDraw[a], 0f, dt / (DrawOutSeconds * TimeScale));
-            if (!draw && ArmDraw[a] > 0f && !Drawable(Arms[a])) ArmDraw[a] = 0f;   // its pins changed: no curve to blend to
+            if (!draw && ArmDraw[a] > 0f && !curve) ArmDraw[a] = 0f;   // its pins changed: no curve to blend to
         }
+        for (int a = 0; a < ArmCount; a++)
+            ArmPose[a] = ArmPosed[a] && !ArmDrawn[a] ? Mathf.MoveTowards(ArmPose[a], 1f, dt / (PoseInSeconds * TimeScale)) : Mathf.MoveTowards(ArmPose[a], 0f, dt / (PoseOutSeconds * TimeScale));
         for (int m = 0; m < MouthCount; m++)
             MouthDraw[m] = MouthCurl ? Mathf.MoveTowards(MouthDraw[m], 1f, dt / (MouthCurlSeconds * TimeScale)) : Mathf.MoveTowards(MouthDraw[m], 0f, dt / (MouthFeedSeconds * TimeScale));
         for (int s = 0; s < subSteps; s++)
@@ -496,7 +603,13 @@ public sealed class OctopusBody
             PlannedSubStep(h, pos, rot);
         }
         planPrevPos = planPos; planPrevRot = planRot;
-        for (int a = 0; a < ArmCount; a++) if (ArmDraw[a] > 0f) DrawHeld(a, ArmDraw[a], dt);
+        for (int a = 0; a < ArmCount; a++)
+        {
+            if (!(ArmDraw[a] > 0f)) continue;
+            if (Drawable(Arms[a])) DrawHeld(a, ArmDraw[a], dt); else DrawReach(a, ArmDraw[a]);
+        }
+        o = 0;
+        for (int a = 0; a < ArmCount; a++) { if (ArmPose[a] > 0f) PoseArm(a, o, ArmPose[a], dt); o += Arms[a].N; }
         for (int m = 0; m < MouthCount; m++) if (MouthDraw[m] > 0f) CurlMouth(m, MouthDraw[m], dt);
         for (int a = 0; a < ArmCount; a++) ArmForce[a] = Vector3.zero;
         Lattice.FitAll();
@@ -538,7 +651,7 @@ public sealed class OctopusBody
         {
             TentacleChain ch = Arms[a];
             SyncRootPlanned(a, pos, rot);
-            if (ArmDraw[a] >= 1f) continue;   // drawn: no solve
+            if (ArmDraw[a] >= 1f || ArmPose[a] >= 1f) continue;   // drawn or posed: no solve
             ch.Integrate(h, planVel);
             for (int it = 0; it < iterations; it++) ch.SolveIteration(h);
             SyncRootPlanned(a, pos, rot);

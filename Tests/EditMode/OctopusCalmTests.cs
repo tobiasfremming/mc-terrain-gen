@@ -193,24 +193,27 @@ namespace TerrainGen.Tests
         // reversals of the mouth tentacles (they follow the swinger's spinning sac).
         // The planned swinger (2026-10-19: body moved by PlannedSwing, free arms passive and damped toward the body) IS
         // bounded: free arm tip p95 <= 4 L/s (measured 3.1; 11-12 on the emergent body), mouth p95 <= 4 L/s (2.7; 11.9).
+        // Since 2026-10-20 the tree octopus is shipped planned too (TreeOctopus.asset locomotion 1; idle arms posed,
+        // display only): this runs the shipped spec at 0.9x / 1.1x its scale and bounds it the same (measured ~1.0-1.2).
         internal const float SearchP95 = 15f, MouthP95 = 13.5f, PlannedFreeP95 = 4f, PlannedMouthP95 = 4f;
         [Test] public void Calm_Life_BothSpecies()
         {
             var log = new StringBuilder(); bool bad = false;
-            CephalopodSpec swinger = OctopusSwingerTests.Spec();
+            CephalopodSpec swinger = OctopusSwingerTests.Spec(), octopus = OctopusPlannedOctopusTests.Spec();
+            float os = OctopusPlannedOctopusTests.SpeciesScale;
             foreach (bool sw in new[] { true, false })
             {
                 var meter = new Meter(); float swings = 0f; int runs = 0;
-                foreach (float s in sw ? new[] { 1.2f * 0.9f, 1.2f * 1.1f } : new[] { 1f, 3.1f })
+                foreach (float s in sw ? new[] { 1.2f * 0.9f, 1.2f * 1.1f } : new[] { os * 0.9f, os * 1.1f })
                     for (int layout = 1; layout <= 2; layout++)
                     {
-                        swings += Life(sw ? swinger : CephalopodSpec.Default, s, sw ? OctopusSwingerTests.GroveFit * s : s, layout, 1.5f, meter);
+                        swings += Life(sw ? swinger : octopus, s, sw ? OctopusSwingerTests.GroveFit * s : s, layout, 1.5f, meter);
                         runs++;
                     }
                 string name = sw ? "Swinger" : "TreeOctopus";
                 bool ok = meter.SinusShare == 0f && meter.IdleFeelShare == 0f && Meter.Pct(meter.search, 0.95f) <= SearchP95
                           && (meter.mouthSec == 0 || Meter.Pct(meter.mouth, 0.95f) <= MouthP95)
-                          && (!sw || Meter.Pct(meter.jobless, 0.95f) <= PlannedFreeP95 && Meter.Pct(meter.mouth, 0.95f) <= PlannedMouthP95);
+                          && Meter.Pct(meter.jobless, 0.95f) <= PlannedFreeP95 && (meter.mouthSec == 0 || Meter.Pct(meter.mouth, 0.95f) <= PlannedMouthP95);
                 if (!ok) bad = true;
                 log.AppendLine($"{name}: {meter}; branch swings {swings / runs:F1}/min{(ok ? "" : "  <-- FAIL")}");
             }

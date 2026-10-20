@@ -97,6 +97,7 @@ MonoBehaviour:
     bodyDamping: 0
     subSteps: 0
     iterations: 0
+    locomotion: 1
     look:
       sucker: {r: 0, g: 0, b: 0, a: 0}
       subsurface: {r: 0, g: 0, b: 0, a: 0}

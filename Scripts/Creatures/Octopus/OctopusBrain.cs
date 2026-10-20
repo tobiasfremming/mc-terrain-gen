@@ -151,7 +151,13 @@ public sealed class OctopusBrain
                 break;
             case State.Stalk:
             {
-                if (Target == null || c.Time - lastSeenTime > 8f) { Target = null; Enter(State.CanopyRest); break; }
+                if (Target == null || c.Time - lastSeenTime > 8f)
+                {
+                    if (planned && Target != null) { GiveUps++; LastGiveUp = GiveUp.Lost; LastGiveUpTime = c.Time; LastGiveUpAt = LastSeen; huntOf = null; }
+                    Target = null; Enter(State.CanopyRest); break;
+                }
+                // the planned octopus: a hunt it cannot finish is given up as the swinger's is
+                if (planned && Hunt(c, L)) { it.mode = OctoMode.Rest; it.goal = head; it.urgency = 0f; break; }
                 Vector3 predicted = LastSeen + lastVel * 1.5f;
                 goal = Clip(predicted + c.Up * (0.75f * L), L);
                 it.mode = Watched ? OctoMode.Rest : OctoMode.Stalk; it.goal = goal; it.urgency = 0.3f;
@@ -180,7 +186,7 @@ public sealed class OctopusBrain
             }
             case State.Hold:
                 it.mode = OctoMode.Hold; it.goal = head; it.prey = Target;
-                if (!AnyArmHolding(c) && StateTime > 0.1f) BeginRetreat(c, head, L);
+                if (!c.HoldingPrey && StateTime > 0.1f) BeginRetreat(c, head, L);
                 break;
             case State.Retreat:
                 it.mode = OctoMode.Retreat; it.goal = goal; it.urgency = 1f;
@@ -271,12 +277,6 @@ public sealed class OctopusBrain
     }
     internal void OnRelease(IPreyTarget p) { }
 
-    static bool AnyArmHolding(OctopusController c)
-    {
-        for (int a = 0; a < c.Agents.Length; a++) if (c.Agents[a].Holding) return true;
-        return false;
-    }
-
     void BeginRetreat(OctopusController c, Vector3 head, float L)
     {
         Flash = 1f;
@@ -332,6 +332,10 @@ public sealed class OctopusBrain
     public const float ReachCheckSeconds = 0.5f, UnreachableSeconds = 2f, NoProgressSeconds = 12f, HuntSeconds = 60f;   // x TimeScale
     public const float IgnoreSeconds = 20f, ParoleSeconds = 1f, ProgressLengths = 0.4f;
     public const float HoldLevelLengths = 0.8f, HoldAboveLengths = 1.2f, HoldBelowLengths = 0.5f, GroundLengths = 0.25f;
+    // The planned octopus (no mouth tentacles) strikes with its arms from a hold: hanging about an arm's length under
+    // it and striking an arm's length further, it reaches prey up to StrikeHoldAboveLengths L under a hold.
+    public const float StrikeHoldAboveLengths = 2.4f;
+    static float AboveLengths(OctopusController c) => c.Feeder != null ? HoldAboveLengths : StrikeHoldAboveLengths;
     const int MaxIgnored = 4;
     readonly IPreyTarget[] ignored = new IPreyTarget[MaxIgnored];
     readonly float[] ignoredUntil = new float[MaxIgnored];
@@ -433,26 +437,27 @@ public sealed class OctopusBrain
         Vector3 d = q - c.Sequencer.Pivot;
         if ((d - up * OctoMath.Dot(d, up)).magnitude > 1.5f * RangeLengths * L) return GiveUp.TooFar;
         for (int a = 0; a < c.Board.Arms; a++)
-            if (c.Board.Anchored[a] && NearHold(q, c.Board.Anchor[a], up, L)) return GiveUp.None;
+            if (c.Board.Anchored[a] && NearHold(q, c.Board.Anchor[a], up, L, AboveLengths(c))) return GiveUp.None;
         bool ground = OnGround(c, q, L);
         if (c.Hints != null)
         {
-            int n = c.Hints.Query(q + up * (0.35f * L), up, -1f, 0f, 1.3f * L, c.Body.Spec.arm.TipRadius * c.Body.SizeScale * 1.5f, 2f * L, huntHints);
+            bool mouth = c.Feeder != null;
+            int n = c.Hints.Query(q + up * ((mouth ? 0.35f : 1.2f) * L), up, -1f, 0f, (mouth ? 1.3f : 1.4f) * L, c.Body.Spec.arm.TipRadius * c.Body.SizeScale * 1.5f, 2f * L, huntHints);
             for (int i = 0; i < n; i++)
-                if (Mathf.Abs(OctoMath.Dot(huntHints[i].axis, up)) <= BranchRoute.MaxAxisRise && NearHold(q, huntHints[i].point, up, L) && c.HoldInside(huntHints[i].point))
+                if (Mathf.Abs(OctoMath.Dot(huntHints[i].axis, up)) <= BranchRoute.MaxAxisRise && NearHold(q, huntHints[i].point, up, L, AboveLengths(c)) && c.HoldInside(huntHints[i].point))
                     return GiveUp.None;
             return ground ? GiveUp.OnGround : GiveUp.OffTrees;
         }
         // probe-only: the ground is what is known to be out of reach - unless something hangs over it within reach
         if (!ground) return GiveUp.None;
-        return c.Cast(q + up * (0.05f * L), up, HoldAboveLengths * L, out _) ? GiveUp.None : GiveUp.OnGround;
+        return c.Cast(q + up * (0.05f * L), up, AboveLengths(c) * L, out _) ? GiveUp.None : GiveUp.OnGround;
     }
 
-    static bool NearHold(Vector3 q, Vector3 hold, Vector3 up, float L)
+    static bool NearHold(Vector3 q, Vector3 hold, Vector3 up, float L, float above)
     {
         Vector3 d = hold - q;
         float rise = OctoMath.Dot(d, up);
-        return rise >= -HoldBelowLengths * L && rise <= HoldAboveLengths * L && (d - up * rise).magnitude <= HoldLevelLengths * L;
+        return rise >= -HoldBelowLengths * L && rise <= above * L && (d - up * rise).magnitude <= HoldLevelLengths * L;
     }
 
     // On the ground: an up-facing surface just under it that is no branch (the sequencer's hold test).
@@ -576,6 +581,9 @@ public sealed class OctopusBrain
         if (c.Time < nextPerception || !c.Spare(Prey.Count)) return;
         nextPerception = c.Time + PerceptionSeconds;
         Vector3 fwd = OctoMath.Rotate(c.Body.Orientation, Vector3.forward);
+        // (the planned octopus hangs leaning off its holds: its blind spot is behind it in the level, not wherever the
+        // leaning body happens to point)
+        if (c.Sequencer != null && c.Sequencer.Sling) fwd = OctoMath.Norm(fwd - c.Up * OctoMath.Dot(fwd, c.Up), fwd);
         float range = RangeLengths * L, cosHalf = Mathf.Cos(0.5f * ConeDeg * Mathf.Deg2Rad);
         IPreyTarget bestP = null; float bestD = float.MaxValue;
         for (int i = 0; i < Prey.Count; i++)

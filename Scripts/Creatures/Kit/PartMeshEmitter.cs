@@ -113,6 +113,15 @@ namespace CreatureKit
         // ---------------------------------------------------------------- queries
 
         public int VertexCount => pos.Count;
+
+        // The material slot of a part kind in this species (kit services: MaterialSlots) - what a part passes as `part`
+        // for a kind with no global id (a registry kind answers its own id). Throws for a kind the species never named.
+        public int Slot(string kind)
+        {
+            int s = MaterialSlots.For(Species).SlotOf(kind);
+            if (s < 0) throw new ArgumentException($"{Species.name}: no material slot for kind '{kind}' (PartLayers.NamedKinds, [Part(MaterialKinds)] or a Layers row naming it)");
+            return s;
+        }
         public Vector3 Position(int i) => pos[i];
         public Vector3 Normal(int i) => nrm[i];
 

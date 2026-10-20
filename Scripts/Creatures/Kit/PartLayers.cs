@@ -76,37 +76,57 @@ namespace CreatureKit
 
         // The part-id registry (creature-module rule 9; mesh part ids = material layers): id, what uses it, its row.
         // A new part type takes the next free id (NextFree) and adds its row here; never reuse an id.
+        // Kind: the part kind's name (kit services 2026-10-20: the registry is keyed by it). A kind with a legacy Id keeps
+        // that slot in every species (shipped meshes and tables unchanged by construction); a kind with Id -1
+        // (NamedKinds, or a species' own Layers row naming a kind) gets a slot per species (MaterialSlots).
         public readonly struct Entry
         {
-            public readonly int Id; public readonly string Use; public readonly PartLayer Row; public readonly bool Octopus;
-            public Entry(int id, string use, PartLayer row, bool octopus = false) { Id = id; Use = use; Row = row; Octopus = octopus; }
+            public readonly int Id; public readonly string Kind, Use; public readonly PartLayer Row; public readonly bool Octopus;
+            public Entry(int id, string kind, string use, PartLayer row, bool octopus = false) { Id = id; Kind = kind; Use = use; Row = row; Octopus = octopus; }
         }
 
         public static readonly Entry[] Registry =
         {
-            new Entry(0, "body skin", new PartLayer(ShadingModel.Skin, kSkinLayers)),
-            new Entry(1, "limb", new PartLayer(ShadingModel.Skin, LayerFlags.LimbPattern | LayerFlags.FineGrain | kSkinLayers)),
-            new Entry(2, "foot, claw, rigid cone", new PartLayer(ShadingModel.Skin, LayerFlags.NoPattern | LayerFlags.FineGrain | kSkinLayers, TintSource.Pattern, 0.3f)),
-            new Entry(3, "eye", new PartLayer(ShadingModel.Eye, LayerFlags.NoPattern | LayerFlags.NoGrain)),
-            new Entry(4, "octopus arm", new PartLayer(ShadingModel.Skin, kSkinLayers), true),
-            new Entry(5, "octopus web", new PartLayer(ShadingModel.Skin, kSkinLayers), true),
-            new Entry(6, "octopus mantle", new PartLayer(ShadingModel.Skin, kSkinLayers), true),
-            new Entry(7, "octopus siphon", new PartLayer(ShadingModel.Skin, kSkinLayers), true),
-            new Entry(8, "membrane (wings, fins, antennae)", new PartLayer(ShadingModel.Membrane, LayerFlags.NoPattern | LayerFlags.NoGrain)),
-            new Entry(9, "arthropod band", new PartLayer(ShadingModel.Skin, kSkinLayers, TintSource.Band, 0.9f)),
-            new Entry(10, "armour plate (ArmourPlates)", new PartLayer(ShadingModel.Chitin, LayerFlags.NoPattern | LayerFlags.NoGrain)),
-            new Entry(11, "pincer, jaw (Pincer)", new PartLayer(ShadingModel.Claw, LayerFlags.NoPattern | LayerFlags.NoGrain, TintSource.Pattern, 0.3f)),
+            new Entry(0, "body", "body skin", new PartLayer(ShadingModel.Skin, kSkinLayers)),
+            new Entry(1, "limb", "limb", new PartLayer(ShadingModel.Skin, LayerFlags.LimbPattern | LayerFlags.FineGrain | kSkinLayers)),
+            new Entry(2, "foot", "foot, claw, rigid cone", new PartLayer(ShadingModel.Skin, LayerFlags.NoPattern | LayerFlags.FineGrain | kSkinLayers, TintSource.Pattern, 0.3f)),
+            new Entry(3, "eye", "eye", new PartLayer(ShadingModel.Eye, LayerFlags.NoPattern | LayerFlags.NoGrain)),
+            new Entry(4, "octopus-arm", "octopus arm", new PartLayer(ShadingModel.Skin, kSkinLayers), true),
+            new Entry(5, "octopus-web", "octopus web", new PartLayer(ShadingModel.Skin, kSkinLayers), true),
+            new Entry(6, "octopus-mantle", "octopus mantle", new PartLayer(ShadingModel.Skin, kSkinLayers), true),
+            new Entry(7, "octopus-siphon", "octopus siphon", new PartLayer(ShadingModel.Skin, kSkinLayers), true),
+            new Entry(8, "membrane", "membrane (wings, fins, antennae)", new PartLayer(ShadingModel.Membrane, LayerFlags.NoPattern | LayerFlags.NoGrain)),
+            new Entry(9, "band", "arthropod band", new PartLayer(ShadingModel.Skin, kSkinLayers, TintSource.Band, 0.9f)),
+            new Entry(10, "plate", "armour plate (ArmourPlates)", new PartLayer(ShadingModel.Chitin, LayerFlags.NoPattern | LayerFlags.NoGrain)),
+            new Entry(11, "pincer", "pincer, jaw (Pincer)", new PartLayer(ShadingModel.Claw, LayerFlags.NoPattern | LayerFlags.NoGrain, TintSource.Pattern, 0.3f)),
             // big lizards (2026-10-19): new parts' own ids, shaded as body skin until a species restyles them with Layers
             // (the crocodile's dark keeled armour, ivory teeth; the komodo's yellow tongue) - so every shipped species'
             // table is unchanged
-            new Entry(12, "armour scutes (ScuteRow)", new PartLayer(ShadingModel.Skin, kSkinLayers)),
-            new Entry(13, "teeth (Jaw)", new PartLayer(ShadingModel.Skin, kSkinLayers)),
-            new Entry(14, "tongue (Tongue)", new PartLayer(ShadingModel.Skin, kSkinLayers)),
+            new Entry(12, "scute", "armour scutes (ScuteRow)", new PartLayer(ShadingModel.Skin, kSkinLayers)),
+            new Entry(13, "teeth", "teeth (Jaw)", new PartLayer(ShadingModel.Skin, kSkinLayers)),
+            new Entry(14, "tongue", "tongue (Tongue)", new PartLayer(ShadingModel.Skin, kSkinLayers)),
             // sky manta (2026-10-20; renumber at merge if another branch took 15): shaded as body skin like 12-14 (ids past the
             // table also read this last row, so it must stay the legacy body row); SkyManta restyles it smooth with Layers
-            new Entry(15, "ray skin (RayBody, RayWing, WhipTail, CephalicLobe)", new PartLayer(ShadingModel.Skin, kSkinLayers)),
+            new Entry(15, "ray-skin", "ray skin (RayBody, RayWing, WhipTail, CephalicLobe)", new PartLayer(ShadingModel.Skin, kSkinLayers)),
         };
 
+        // Part kinds with no global id (kit services 2026-10-20): the table is full at MaxParts, so a NEW part kind is
+        // registered here by name only - its default row - and every species that uses it gets a slot of its own
+        // (MaterialSlots: a free slot among the kit ids, LegacyIds..MaxParts-1, that this species does not use). The
+        // part emits with PartMeshEmitter.Slot(kind); a species restyles it with a Layers row naming the kind.
+        public static readonly Entry[] NamedKinds =
+        {
+        };
+
+        // The registry entry of a kind (by name: Registry, then NamedKinds); false when it is none of them.
+        public static bool Find(string kind, out Entry e)
+        {
+            foreach (Entry r in Registry) if (r.Kind == kind) { e = r; return true; }
+            foreach (Entry r in NamedKinds) if (r.Kind == kind) { e = r; return true; }
+            e = default; return false;
+        }
+
+        // Ids of the old global scheme; a new kind needs no id (NamedKinds), so this stays where the table filled up.
         public static int NextFree => Registry.Length;
 
         // Ids the pre-table shader knew (0..9): their rows reproduce its branches exactly. Ids from here on belong to
@@ -124,12 +144,19 @@ namespace CreatureKit
             var rows = new PartLayer[MaxParts];
             for (int i = 0; i < MaxParts; i++) rows[i] = LegacyRow(i);
             if (sp == null) return rows;
+            // the species' named kinds in their slots (none for a shipped species: the loop is empty)
+            MaterialSlots slots = MaterialSlots.For(sp);
+            for (int i = 0; i < MaxParts; i++)
+                if (slots.KindOfSlot[i] != null && Find(slots.KindOfSlot[i], out Entry e)) rows[i] = e.Row;
             IReadOnlyList<CreatureModule> modules = KitView.Modules(sp.Compiled.Runtime);
             if (modules != null)
                 foreach (CreatureModule m in modules)
                     if (m is Layers l && l.rows != null)
                         foreach (LayerDef d in l.rows)
-                            if (d.partId >= 0 && d.partId < MaxParts) rows[d.partId] = d.ToRow();
+                        {
+                            int id = string.IsNullOrEmpty(d.kind) ? d.partId : slots.SlotOf(d.kind);
+                            if (id >= 0 && id < MaxParts) rows[id] = d.ToRow();
+                        }
             return rows;
         }
 
@@ -163,6 +190,7 @@ namespace CreatureKit
     public struct LayerDef
     {
         [Param(ParamUnit.Count, "the part id (material layer) this row styles: 0 body, 1 limb, 2 foot/claw/cone, 3 eye, 8 membrane, 9 band, 10+ new parts (CATALOGUE.md registry)", Min = 0, Max = 15)] public int partId;
+        [Param(ParamUnit.Text, "instead of partId: the part KIND this row styles, by name (registry kinds: body, limb, teeth, ...; or a kind of this species' own: it gets a free slot, MaterialSlots)")] public string kind;
         [Param(ParamUnit.Enum, "shading model: Skin, Chitin (no grain, glossy), Membrane, Eye, Claw (keratin: the tint, glossy)")] public ShadingModel model;
         [Param(ParamUnit.Flag, "no pattern on this part")] public bool noPattern;
         [Param(ParamUnit.Flag, "the limb pattern (mottle / spots) instead of the body's")] public bool limbPattern;
@@ -198,11 +226,13 @@ namespace CreatureKit
         {
             if (rows == null) return null;
             var seen = new HashSet<int>();
+            var kinds = new HashSet<string>();
             foreach (LayerDef d in rows)
             {
-                if (d.partId < 0 || d.partId >= PartLayers.MaxParts) return $"Layers: partId {d.partId} must be in 0..{PartLayers.MaxParts - 1}";
-                if (!seen.Add(d.partId)) return $"Layers: part {d.partId} listed twice";
-                if (d.tintAmount < 0f || d.tintAmount > 1f) return $"Layers: part {d.partId} tintAmount must be in 0..1";
+                if (!string.IsNullOrEmpty(d.kind)) { if (!kinds.Add(d.kind)) return $"Layers: kind '{d.kind}' listed twice"; }
+                else if (d.partId < 0 || d.partId >= PartLayers.MaxParts) return $"Layers: partId {d.partId} must be in 0..{PartLayers.MaxParts - 1}";
+                else if (!seen.Add(d.partId)) return $"Layers: part {d.partId} listed twice";
+                if (d.tintAmount < 0f || d.tintAmount > 1f) return $"Layers: part {(string.IsNullOrEmpty(d.kind) ? d.partId.ToString() : d.kind)} tintAmount must be in 0..1";
             }
             return null;
         }

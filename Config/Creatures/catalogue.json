@@ -13724,6 +13724,15 @@
           "example": ""
         },
         {
+          "name": "rows[].kind",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "instead of partId: the part KIND this row styles, by name (registry kinds: body, limb, teeth, ...; or a kind of this species' own: it gets a free slot, MaterialSlots)",
+          "range": "",
+          "example": ""
+        },
+        {
           "name": "rows[].model",
           "type": "Skin / Chitin / Membrane / Eye / Claw",
           "unit": "Enum",
@@ -14983,96 +14992,112 @@
   "materialLayers": [
     {
       "id": 0,
+      "kind": "body",
       "use": "body skin",
       "model": "Skin",
       "layers": "Skin (Sheen, Shimmer)"
     },
     {
       "id": 1,
+      "kind": "limb",
       "use": "limb",
       "model": "Skin",
       "layers": "Skin (LimbPattern, FineGrain, Sheen, Shimmer)"
     },
     {
       "id": 2,
+      "kind": "foot",
       "use": "foot, claw, rigid cone",
       "model": "Skin",
       "layers": "Skin (NoPattern, FineGrain, Sheen, Shimmer, tint Pattern 0.3)"
     },
     {
       "id": 3,
+      "kind": "eye",
       "use": "eye",
       "model": "Eye",
       "layers": "Eye (NoPattern, NoGrain)"
     },
     {
       "id": 4,
+      "kind": "octopus-arm",
       "use": "octopus arm",
       "model": "Octopus",
       "layers": "octopus shader family (CreatureOctopus.shader)"
     },
     {
       "id": 5,
+      "kind": "octopus-web",
       "use": "octopus web",
       "model": "Octopus",
       "layers": "octopus shader family (CreatureOctopus.shader)"
     },
     {
       "id": 6,
+      "kind": "octopus-mantle",
       "use": "octopus mantle",
       "model": "Octopus",
       "layers": "octopus shader family (CreatureOctopus.shader)"
     },
     {
       "id": 7,
+      "kind": "octopus-siphon",
       "use": "octopus siphon",
       "model": "Octopus",
       "layers": "octopus shader family (CreatureOctopus.shader)"
     },
     {
       "id": 8,
+      "kind": "membrane",
       "use": "membrane (wings, fins, antennae)",
       "model": "Membrane",
       "layers": "Membrane (NoPattern, NoGrain)"
     },
     {
       "id": 9,
+      "kind": "band",
       "use": "arthropod band",
       "model": "Skin",
       "layers": "Skin (Sheen, Shimmer, tint Band 0.9)"
     },
     {
       "id": 10,
+      "kind": "plate",
       "use": "armour plate (ArmourPlates)",
       "model": "Chitin",
       "layers": "Chitin (NoPattern, NoGrain)"
     },
     {
       "id": 11,
+      "kind": "pincer",
       "use": "pincer, jaw (Pincer)",
       "model": "Claw",
       "layers": "Claw (NoPattern, NoGrain, tint Pattern 0.3)"
     },
     {
       "id": 12,
+      "kind": "scute",
       "use": "armour scutes (ScuteRow)",
       "model": "Skin",
       "layers": "Skin (Sheen, Shimmer)"
     },
     {
       "id": 13,
+      "kind": "teeth",
       "use": "teeth (Jaw)",
       "model": "Skin",
       "layers": "Skin (Sheen, Shimmer)"
     },
     {
       "id": 14,
+      "kind": "tongue",
       "use": "tongue (Tongue)",
       "model": "Skin",
       "layers": "Skin (Sheen, Shimmer)"
     },
     {
       "id": 15,
+      "kind": "ray-skin",
       "use": "ray skin (RayBody, RayWing, WhipTail, CephalicLobe)",
       "model": "Skin",
       "layers": "Skin (Sheen, Shimmer)"

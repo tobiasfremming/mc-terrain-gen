@@ -37,6 +37,7 @@ namespace TerrainGen.Tests
         {
             Applies(CreatureKitAssets.Validate);
             Assert.IsNull(CreatureKitAssets.LoadAsset(name).Validate(), name);   // a kit asset: compose errors included
+            Assert.IsNull(CreatureKit.MaterialSlots.For(sp).Problem, name);       // its part kinds fit the material table
         }
 
         // 2. The asset's script is CreatureSpecies and every serialized key is a field (a renamed or misspelt

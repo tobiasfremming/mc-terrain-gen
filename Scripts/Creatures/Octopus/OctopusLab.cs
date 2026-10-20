@@ -341,10 +341,16 @@ public sealed class OctopusLab : MonoBehaviour
             if (q.Mode == SwingSequencer.Step.Pump || q.Mode == SwingSequencer.Step.Reach) roleText.Append("  apex in ").Append(q.PredictedApexTime.ToString("F2")).Append(" s");
             roleText.Append('\n').Append("transfers ").Append(q.Transfers).Append("  catches ").Append(q.Catches).Append('/').Append(q.CatchAttempts)
                     .Append("  hauls ").Append(q.Hauls).Append("  falls ").Append(q.Falls).Append("  sleeps ").Append(q.Sleeps).Append(Octopus.Body.Asleep ? "  ASLEEP" : "").Append('\n');
+            // many arms (the octopus): the sling, the strikes, the held prey, the grooming
+            if (q.Sling)
+                roleText.Append("sling ").Append(q.Swing.HoldCount).Append(q.Swing.Braced ? " braced" : "").Append("  supports ").Append(q.Supports)
+                        .Append("  strikes ").Append(q.Strikes).Append(" (missed ").Append(q.StrikeMisses).Append(")  prey ").Append(q.HoldingPrey ? "HELD" : "-")
+                        .Append("  grooms ").Append(q.Grooms).Append('\n');
             // the hunt (target, reachable or why not, the last give-up) and play (the move, its amplitude, the tally)
             OctopusBrain br = Octopus.Brain;
             roleText.Append("hunt ");
-            if (br.Target != null && (br.Mode == OctopusBrain.State.Stalk || br.Mode == OctopusBrain.State.Feed || br.Mode == OctopusBrain.State.Eat))
+            if (br.Target != null && (br.Mode == OctopusBrain.State.Stalk || br.Mode == OctopusBrain.State.Feed || br.Mode == OctopusBrain.State.Eat
+                                      || br.Mode == OctopusBrain.State.Ambush || br.Mode == OctopusBrain.State.Strike || br.Mode == OctopusBrain.State.Hold))
             {
                 roleText.Append(br.Target.Position.ToString("F1"));
                 if (br.TargetReachable) roleText.Append("  reachable"); else roleText.Append("  out of reach: ").Append(br.Unreachable);
