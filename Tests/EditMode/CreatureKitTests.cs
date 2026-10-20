@@ -366,15 +366,23 @@ namespace TerrainGen.Tests
         {
             float big = CreatureLab.MaxScale(sp);
             EnclosureArea area = EnclosureArea.For(Vector3.zero, Vector3.up, CreatureLab.EnclosureRadius(sp, big), sp, big);
-            if (sp.CanFly) area.maxHeight = AviarySizing.Height(sp, big, CreatureLab.kAviaryHeight);
+            // a flyer (legacy wings, or an airborne kit module: KitAirborne.cs) has the aviary's roof
+            if (sp.CanFly || CreatureKit.Airborne.Of(sp) != null) area.maxHeight = AviarySizing.Height(sp, big, CreatureLab.kAviaryHeight);
             return area;
         }
+
+        // The brain the checks drive a species with: the flyer's FlightBrain, an airborne kit flyer's own (its behaviour
+        // modules: BrainFactory - a WanderBrain's ground points mean nothing to it), else the WanderBrain.
+        static ICreatureBrain Brain(CreatureSpecies sp, EnclosureArea area, int seed)
+            => sp.CanFly ? new FlightBrain(area, seed)
+             : CreatureKit.Airborne.Of(sp) != null ? CreatureKit.BrainFactory.Create(sp, area, seed)
+             : (ICreatureBrain)WanderBrain.For(sp, area, seed);
 
         internal static string WanderProblem(CreatureSpecies sp, float sizeScale, int seed, EnclosureArea area, float seconds)
         {
             const float dt = 1f / 30f;
             var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, area.center, Vector3.forward, sizeScale, seed) { Bounds = area };
-            ICreatureBrain brain = sp.CanFly ? new FlightBrain(area, seed) : (ICreatureBrain)WanderBrain.For(sp, area, seed);
+            ICreatureBrain brain = Brain(sp, area, seed);
             float far = 0f, path = 0f, top = 0f;
             Vector3 last = sim.Joints[0];
             for (int t = 0; t < (int)(seconds / dt); t++)
@@ -511,7 +519,7 @@ namespace TerrainGen.Tests
         {
             EnclosureArea area = LabArea(sp);
             var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, Vector3.zero, Vector3.forward, sp.scale, 1) { Bounds = area };
-            ICreatureBrain brain = sp.CanFly ? new FlightBrain(area, 1) : (ICreatureBrain)WanderBrain.For(sp, area, 1);
+            ICreatureBrain brain = Brain(sp, area, 1);
             var bones = new Matrix4x4[sp.BoneCount];
             for (int t = 0; t < 120; t++) { sim.Tick(kDt, brain.Target(sim, kDt)); sim.WriteBoneWorld(bones, 0); }
             return GcAllocs.Count(() =>

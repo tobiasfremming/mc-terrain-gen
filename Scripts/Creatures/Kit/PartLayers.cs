@@ -102,6 +102,9 @@ namespace CreatureKit
             new Entry(12, "armour scutes (ScuteRow)", new PartLayer(ShadingModel.Skin, kSkinLayers)),
             new Entry(13, "teeth (Jaw)", new PartLayer(ShadingModel.Skin, kSkinLayers)),
             new Entry(14, "tongue (Tongue)", new PartLayer(ShadingModel.Skin, kSkinLayers)),
+            // sky manta (2026-10-20; renumber at merge if another branch took 15): shaded as body skin like 12-14 (ids past the
+            // table also read this last row, so it must stay the legacy body row); SkyManta restyles it smooth with Layers
+            new Entry(15, "ray skin (RayBody, RayWing, WhipTail, CephalicLobe)", new PartLayer(ShadingModel.Skin, kSkinLayers)),
         };
 
         public static int NextFree => Registry.Length;

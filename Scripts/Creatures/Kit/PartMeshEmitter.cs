@@ -113,6 +113,7 @@ namespace CreatureKit
 
         public int VertexCount => pos.Count;
         public Vector3 Position(int i) => pos[i];
+        public Vector3 Normal(int i) => nrm[i];
 
         // Leg l carries a wing (its Wing part draws the arm).
         public bool IsWingArm(int leg)

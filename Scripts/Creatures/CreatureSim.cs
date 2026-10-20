@@ -126,6 +126,13 @@ public sealed class CreatureSim
     readonly IPartRuntime[] runtimes, afterChain, afterGround, afterLimbs, late;
     public IPartRuntime[] PartRuntimes => runtimes;
     public CreatureFlight Flight => flight;
+    // The species' locomotion mode of type T (a part runtime that moves with its mode: RayWing reads Soar's stroke), or
+    // null. Not per frame: runtimes look it up once.
+    public T LocomotionMode<T>() where T : class
+    {
+        for (int m = 0; m < modes.Length; m++) if (modes[m] is T t) return t;
+        return null;
+    }
     public FlightMode Mode => flight != null ? flight.Mode : FlightMode.Ground;
     // Per joint: the last grounding found ground within its window (a perched tail over a branch end does not).
     public readonly bool[] Supported;

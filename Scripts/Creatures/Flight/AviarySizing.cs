@@ -18,7 +18,7 @@ public static class AviarySizing
         float legacy = baseRadius * Mathf.Max(1f, maxScale);
         if (sp == null) return legacy;
         sp = sp.Compiled.Runtime;
-        if (!sp.CanFly) return legacy;
+        if (!sp.CanFly) return CreatureKit.Airborne.Of(sp) is CreatureKit.IAirborne air ? air.AviaryRadius(sp, maxScale, baseRadius) : legacy;
         float based = baseRadius * Mathf.Clamp(maxScale, 1f, kScaleCap);
         float v = sp.flight.cruiseSpeed * Mathf.Sqrt(maxScale);
         float turn = v * v / (FlightModel.G * Mathf.Tan(sp.flight.maxBankDeg * Mathf.Deg2Rad));
@@ -34,7 +34,7 @@ public static class AviarySizing
         float legacy = baseHeight * Mathf.Max(1f, maxScale);
         if (sp == null) return legacy;
         sp = sp.Compiled.Runtime;
-        if (!sp.CanFly) return legacy;
+        if (!sp.CanFly) return CreatureKit.Airborne.Of(sp) is CreatureKit.IAirborne air ? air.AviaryHeight(sp, maxScale, baseHeight) : legacy;
         float based = baseHeight * Mathf.Clamp(maxScale, 1f, kScaleCap);
         AirTwistSpec t = sp.flight.twist;
         float rise = Mathf.Max(Mathf.Max(t.corkscrewAmplitude, t.barrelRadius), t.loopRadius) * 2f * maxScale;

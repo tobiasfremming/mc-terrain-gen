@@ -29,7 +29,7 @@ namespace CreatureKit
                 if (mods[i] is Ambush) return Habitat.Grove;
                 if (mods[i] is Climb) climb = true;
             }
-            if (sp.CanFly) return Habitat.Aviary;
+            if (sp.CanFly || Airborne.Of(sp) != null) return Habitat.Aviary;   // Airborne: a flyer without legacy wings (KitAirborne.cs)
             return climb && sp.climb.canClimb ? Habitat.Climbable : Habitat.Plain;
         }
 

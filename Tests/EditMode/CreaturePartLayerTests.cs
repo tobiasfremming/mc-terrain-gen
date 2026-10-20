@@ -210,6 +210,8 @@ namespace TerrainGen.Tests
                     {
                         if (part >= 4 && part <= 7) continue;   // octopus ids never reach this shader
                         if (restyled.Contains(part)) continue;   // a deliberate new look (Layers module), not the legacy one
+                        // ids past the table read its last row: restyled there, they are restyled too (no mesh emits them)
+                        if (part >= PartLayers.MaxParts && restyled.Contains(PartLayers.MaxParts - 1)) continue;
                         if (PartLayers.IsKitId(part)) continue;   // a kit part's own row (no legacy look; no legacy mesh emits it)
                         for (int k = 0; k < 24; k++)
                         {

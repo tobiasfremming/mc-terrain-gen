@@ -28,7 +28,7 @@ namespace CreatureKit
         public CreatureSpecies Runtime { get; internal set; }
 
         public string Error => Problems.Count > 0 ? Problems[0] : null;
-        public SpeciesCtx Ctx => new SpeciesCtx(Parts, Modules, Body is SpineBody b ? b.JointCount : 0, Soft);
+        public SpeciesCtx Ctx => new SpeciesCtx(Parts, Modules, Body is SpineBody b ? b.JointCount : Body is ISpineChainBody cb ? cb.JointCount : 0, Soft);
         public CreaturePart Body { get; private set; }
         public T Module<T>() where T : CreatureModule { foreach (CreatureModule m in Modules) if (m is T t) return t; return null; }
         public CreaturePart Find(string id) { foreach (CreaturePart p in Parts) if (p.id == id) return p; return null; }
@@ -271,10 +271,19 @@ namespace CreatureKit
                 return;
             }
             dst.bodyPlan = CreatureBodyPlan.Spine;
-            var body = (SpineBody)Body;
-            dst.spacing = body.spacing; dst.joints = body.BuildJoints(); dst.headCapLength = body.headCapLength; dst.tailTipLength = body.tailTipLength;
-            dst.ringSegments = body.ringSegments; dst.ringsPerSegment = body.ringsPerSegment;
-            dst.rigidHeadJoints = body.RigidHeadJoints;   // a spine body's head is rigid unless set to 0 (auto: its profile's head)
+            if (Body is SpineBody body)
+            {
+                dst.spacing = body.spacing; dst.joints = body.BuildJoints(); dst.headCapLength = body.headCapLength; dst.tailTipLength = body.tailTipLength;
+                dst.ringSegments = body.ringSegments; dst.ringsPerSegment = body.ringsPerSegment;
+                dst.rigidHeadJoints = body.RigidHeadJoints;   // a spine body's head is rigid unless set to 0 (auto: its profile's head)
+            }
+            else
+            {
+                // another chain body (KitAirborne.cs: ISpineChainBody, e.g. RayBody) draws its own mesh
+                var chain = (ISpineChainBody)Body;
+                dst.spacing = chain.Spacing; dst.joints = chain.BuildJoints(); dst.headCapLength = chain.HeadCapLength; dst.tailTipLength = chain.TailTipLength;
+                dst.rigidHeadJoints = chain.RigidHeadJoints;
+            }
             dst.legs = new LegSpec[Limbs.Count];
             for (int i = 0; i < Limbs.Count; i++) dst.legs[i] = Limbs[i].ToLegSpec();
             Walk walk = Module<Walk>();
