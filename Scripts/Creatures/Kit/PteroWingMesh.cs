@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace CreatureKit
 {
-    public sealed partial class PteroWing
+    public partial class PteroWing
     {
         const int kArmSides = 14, kFingerSides = 8, kDigitSides = 7;
 

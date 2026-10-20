@@ -11,8 +11,8 @@ namespace CreatureKit
 {
     public sealed partial class SpineBody
     {
-        const int kHeadCapRings = 4, kTailRings = 8;
-        const float kTailTipSlope = -1.5f; // d(radius / end radius) / d(k) at the tail tip: a fine point
+        internal const int kHeadCapRings = 4, kTailRings = 8;
+        internal const float kTailTipSlope = -1.5f; // d(radius / end radius) / d(k) at the tail tip: a fine point
         const float kSnoutNarrow = 0.2f;   // extra width taper toward the snout tip (fraction at the tip)
         const float kSnoutFlat = 0.35f;    // extra height taper: the snout is flatter than it is wide
         const float kSnoutDrop = 0.15f;    // the snout's centre line drops by this fraction of head height
@@ -25,7 +25,53 @@ namespace CreatureKit
         // duplicated; each tip a ring of identical vertices), skinned to the spine joints.
         public override void EmitMesh(PartMeshEmitter m, in PartCtx c) => new BodyMesh(m).Emit();
 
-        readonly struct BodyMesh
+        // Cubic Hermite from 1 (slope m0, matching the body) to 0 (slope kTailTipSlope); monotone for
+        // m0 in [kTailTipSlope, 0]. The tail tip's profile (BodyMesh; FlowBody's tail tip too).
+        internal static float TailTipProfile(float k, float m0)
+        {
+            float k2 = k * k, k3 = k2 * k;
+            return Mathf.Max(0f, (2f * k3 - 3f * k2 + 1f) + m0 * (k3 - 2f * k2 + k) + kTailTipSlope * (k3 - k2));
+        }
+
+        // What a body draws its rings with (RingSequence): the front pole, a ring at arc s with its skin, the tail pole.
+        internal interface IBodyRings
+        {
+            int FrontPole(int segs);
+            int Ring(float s, Vector4 skin, int segs);
+            int TailPole(int segs);
+        }
+
+        // The body's ring sequence from the front pole to the tail pole (BodyMesh's, shared with FlowBody): kHeadCapRings
+        // rings over the head cap (sine-spaced, rigid to joint 0), rps per segment (smoothstep blend of the segment's two
+        // joints), the last joint, kTailRings over the tail tip (rigid to the last joint), stitched front to tail with the
+        // flip a ring frame x = cross(y, t) along -t needs. lh = head cap length, spine = spacing x (n - 1).
+        internal static void RingSequence<R>(PartMeshEmitter m, in R r, int n, float lh, float spacing, float spine, float tailLen, int rps, int segs)
+            where R : struct, IBodyRings
+        {
+            var rings = new List<int>();
+            rings.Add(r.FrontPole(segs));
+            for (int k = kHeadCapRings; k >= 1; k--)
+            {
+                float theta = 0.5f * Mathf.PI * k / (kHeadCapRings + 1);
+                rings.Add(r.Ring(lh - lh * Mathf.Sin(theta), PartMeshEmitter.Rigid(0), segs));
+            }
+            for (int i = 0; i < n - 1; i++)
+                for (int q = 0; q < rps; q++)
+                {
+                    float f = (float)q / rps;
+                    rings.Add(r.Ring(lh + spacing * (i + f), PartMeshEmitter.Blend(i, i + 1, f * f * (3f - 2f * f)), segs));
+                }
+            rings.Add(r.Ring(lh + spine, PartMeshEmitter.Rigid(n - 1), segs));
+            for (int k = 1; k <= kTailRings; k++)
+                rings.Add(r.Ring(lh + spine + tailLen * k / (kTailRings + 1), PartMeshEmitter.Rigid(n - 1), segs));
+            rings.Add(r.TailPole(segs));
+
+            // rings run snout -> tail, i.e. along -t, with x = cross(y, t): flip to face outward
+            for (int q = 0; q + 1 < rings.Count; q++)
+                m.Stitch(rings[q], rings[q + 1], segs, q == 0, q + 2 == rings.Count, true);
+        }
+
+        readonly struct BodyMesh : IBodyRings
         {
             readonly PartMeshEmitter m;
             readonly CreatureSpecies sp;
@@ -78,13 +124,7 @@ namespace CreatureKit
                 return Mathf.Clamp(perMetre * TailLen / Mathf.Max(end, PartMeshEmitter.MinRadius), kTailTipSlope, 0f);
             }
 
-            // Cubic Hermite from 1 (slope m0, matching the body) to 0 (slope kTailTipSlope); monotone for
-            // m0 in [kTailTipSlope, 0].
-            static float TailProfile(float k, float m0)
-            {
-                float k2 = k * k, k3 = k2 * k;
-                return Mathf.Max(0f, (2f * k3 - 3f * k2 + 1f) + m0 * (k3 - 2f * k2 + k) + kTailTipSlope * (k3 - k2));
-            }
+            static float TailProfile(float k, float m0) => TailTipProfile(k, m0);
 
             int BodyRing(float s, Vector4 skin, int segs)
             {
@@ -95,36 +135,22 @@ namespace CreatureKit
                               s, PartMeshEmitter.PartBody, skin, segs, true);
             }
 
-            public void Emit()
+            public int FrontPole(int segs)
             {
-                int segs = Mathf.Max(3, sp.ringSegments);
-                int rps = Mathf.Max(1, sp.ringsPerSegment);
-                float lh = HeadLen;
-                var rings = new List<int>();
-
                 Section tip = BodyAt(0f);
-                rings.Add(m.Pole(tip.c + tip.y * tip.d, tip.t, 0f, PartMeshEmitter.PartBody, 0f, PartMeshEmitter.Rigid(0), segs));
-                for (int k = kHeadCapRings; k >= 1; k--)
-                {
-                    float theta = 0.5f * Mathf.PI * k / (kHeadCapRings + 1);
-                    rings.Add(BodyRing(lh - lh * Mathf.Sin(theta), PartMeshEmitter.Rigid(0), segs));
-                }
-                for (int i = 0; i < n - 1; i++)
-                    for (int r = 0; r < rps; r++)
-                    {
-                        float f = (float)r / rps;
-                        rings.Add(BodyRing(lh + sp.spacing * (i + f), PartMeshEmitter.Blend(i, i + 1, f * f * (3f - 2f * f)), segs));
-                    }
-                rings.Add(BodyRing(lh + SpineLen, PartMeshEmitter.Rigid(n - 1), segs));
-                for (int k = 1; k <= kTailRings; k++)
-                    rings.Add(BodyRing(lh + SpineLen + TailLen * k / (kTailRings + 1), PartMeshEmitter.Rigid(n - 1), segs));
-                Section end = BodyAt(BodyLen);
-                rings.Add(m.Pole(end.c, -end.t, BodyLen, PartMeshEmitter.PartBody, 0f, PartMeshEmitter.Rigid(n - 1), segs));
-
-                // rings run snout -> tail, i.e. along -t, with x = cross(y, t): flip to face outward
-                for (int r = 0; r + 1 < rings.Count; r++)
-                    m.Stitch(rings[r], rings[r + 1], segs, r == 0, r + 2 == rings.Count, true);
+                return m.Pole(tip.c + tip.y * tip.d, tip.t, 0f, PartMeshEmitter.PartBody, 0f, PartMeshEmitter.Rigid(0), segs);
             }
+
+            public int Ring(float s, Vector4 skin, int segs) => BodyRing(s, skin, segs);
+
+            public int TailPole(int segs)
+            {
+                Section end = BodyAt(BodyLen);
+                return m.Pole(end.c, -end.t, BodyLen, PartMeshEmitter.PartBody, 0f, PartMeshEmitter.Rigid(n - 1), segs);
+            }
+
+            public void Emit() =>
+                RingSequence(m, this, n, HeadLen, sp.spacing, SpineLen, TailLen, Mathf.Max(1, sp.ringsPerSegment), Mathf.Max(3, sp.ringSegments));
         }
     }
 

@@ -612,7 +612,7 @@ public sealed class CreatureWings
         {
             int r1 = w * WingSpec.Ribs + 1;
             FanRearUp[w] = ribMid;
-            float g = ws.groundTallStance ? groundWeight[w] * fw : 0f;
+            float g = ws.groundTallStance ? (ws.fanRearRollsWithFan ? 1f : groundWeight[w] * fw) : 0f;
             if (g > 0f)
             {
                 Vector3 fu = nw - RibDir[r1] * Vector3.Dot(nw, RibDir[r1]);

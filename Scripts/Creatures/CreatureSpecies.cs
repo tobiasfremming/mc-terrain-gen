@@ -308,6 +308,11 @@ public class CreatureSpecies : ScriptableObject
     public bool sideways;
     public float sidewaysForward;
     public float SidewaysForward => !sideways ? 1f : sidewaysForward > 0f ? sidewaysForward : sidewaysForward < 0f ? 0f : 0.35f;
+    // Rest at spacing (the kit's FlowBody.restAtStance): the fresh sim - the rest pose and the bind - lays the joints at
+    // their clearances with each segment `spacing` long (a steep raised neck stands as steep as the walking sim holds
+    // it), instead of one spacing apart along the ground. false = every shipped species' rest (bit-identical).
+    [Tooltip("Rest pose keeps the segment length between joints at different clearances. Off = joints one spacing apart along the ground.")]
+    public bool restAtSpacing;
     public EyeSpot[] eyeCluster;
     public BodyAppendage[] appendages;
     // Membrane strips along the spine (the kit's FinStrip: manes, crests, fins), skinned to the spine; empty = none.

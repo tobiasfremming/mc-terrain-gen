@@ -28,7 +28,7 @@ namespace CreatureKit
           System = "CreatureFlight + CreatureWings (the beat, the arm, the rays) + PteroWingRuntime (phalanges, pteroid, propatagium; stage Late) + PteroWingMesh",
           MaterialLayers = new[] { 8, 1, 2 }, KitOnly = true,
           UseWhen = "pterosaurs (azhdarchids, pteranodons): a long single wing finger, a pteroid and propatagium, walking on the folded wings' knuckles")]
-    public sealed partial class PteroWing : WingPart
+    public partial class PteroWing : WingPart
     {
         public const int Phalanges = 4, ExtraBones = Phalanges - 1 + 3;   // phalanx 0 rides the flight's finger-0 bone
 

@@ -351,6 +351,13 @@ namespace CreatureKit
                 var chain = (ISpineChainBody)Body;
                 dst.spacing = chain.Spacing; dst.joints = chain.BuildJoints(); dst.headCapLength = chain.HeadCapLength; dst.tailTipLength = chain.TailTipLength;
                 dst.rigidHeadJoints = chain.RigidHeadJoints;
+                if (Body is FlowBody flow)
+                {
+                    // a marker only: nothing draws SpineBody rings here (there is no SpineBody part); readers of the
+                    // legacy ring layout (ringSegments + 1 per ring) see none instead of the default 16. RayBody unchanged.
+                    dst.ringSegments = 0;
+                    dst.restAtSpacing = flow.restAtStance;   // bind the raised neck as it stands (CreatureSim, opt-in)
+                }
             }
             dst.legs = new LegSpec[Limbs.Count];
             for (int i = 0; i < Limbs.Count; i++) dst.legs[i] = Limbs[i].ToLegSpec();

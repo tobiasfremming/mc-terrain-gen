@@ -17,6 +17,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 
 | part | kind | status | bones | material layers | use when | used by |
 |---|---|---|---|---|---|---|
+| **FlowBody** | Body | exists | = jointCount | 0 | a body whose neck, trunk and tail flow into each other with a section an ellipse cannot draw: humped backs, keeled chests, ribbon or paddle tails | - |
 | **RayBody** | Body | exists | = jointCount | 15 | manta and eagle rays, skates, stingrays, flatfish-like gliders: a disc body whose sides are its wings | SkyManta |
 | **SoftBody** | Body | exists | 6 + mouthCount x mouth.segments | 5, 6, 7 | boneless bodies: octopus, slug, jelly | Swinger, TreeOctopus |
 | **SpineBody** | Body | exists | = joints | 0 | anything with a backbone or a segmented trunk | Crocodile, DaddyLongLegs, Delver, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, GolfballStrider, Hexadrake, KitMonitor, KomodoDragon, Pterodactyl, RockCrab, Scolopendra, ShaggyMonitor, SkyDragon, StriderMatriarch, Tarantula, TentacleCrab, TestHexapod, TestSnake, TreeSpider, WingedSerpent |
@@ -129,6 +130,45 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | WingedSerpent | legacy | Spine | SpineBody, 4x Leg2Bone, 2x Wing, Eyes | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane | 73 |
 
 ## Parameters
+
+### FlowBody
+
+One chain from the head to the tail tip (the sim runs it like a SpineBody's) drawn as one flowing surface with a shaped section: superellipse from oval to tall ribbon (blade), a sharp dorsal hump, a keel, flank masses. The neck and the tail are the same chain as the trunk; a head part sits on joint 0. System: CreatureSim chain (ISpineChainBody) + FlowBody.EmitMesh.
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `spacing` | float | Metres | x s | joint spacing (fine in the neck for a smooth S) |  | fixture 0.1 |
+| `headCapLength` | float | Metres | x s | the surface closes with a small pole this far ahead of joint 0 (inside the head part) |  |  |
+| `tailTipLength` | float | Metres | x s | fine tail tip behind the last joint |  |  |
+| `jointCount` | int | Count | - | joints, head to tail | 3..128 | fixture 24 |
+| `profile` | FlowKey[] | Struct | - | profile keys (>= 2, t = 0 and t = 1 included, increasing t): monotone cubic to every joint and ring |  |  |
+| `profile[].t` | float | Fraction | - | place along the spine, 0 = joint 0 (head) .. 1 = last joint | 0..1 |  |
+| `profile[].halfWidth` | float | Metres | x s | section half width |  |  |
+| `profile[].halfHeight` | float | Metres | x s | section half height (an oval is at most 2x as tall as wide; blade stretches it to this) |  |  |
+| `profile[].clearance` | float | Metres | x s | joint centre above the ground |  |  |
+| `profile[].bendLimitDeg` | float | Degrees | - | cone half-angle vs the previous segment |  |  |
+| `profile[].hump` | float | Metres | x s | dorsal hump: a sharp ridge rising this far above the section's top |  |  |
+| `profile[].keel` | float | Metres | x s | keel: the sternum jutting this far below the section's bottom |  |  |
+| `profile[].flank` | float | Metres | x s | flank masses: this much extra width at the sides |  |  |
+| `profile[].blade` | float | Fraction | - | 0 = the oval .. 1 = the full ribbon (superellipse bladeExponent, the full halfHeight) | 0..1 |  |
+| `rigidHeadJoints` | int | Count | - | rigid head: the first N joints move as one rigid body; -1 = auto from the profile (SpineBody.AutoHead), 0 = off | -1..16 | default -1 (auto) |
+| `humpSharpness` | float | Fraction | - | hump exponent on max(0, sin phi): higher = a sharper ridge | 1..64 | default 8 |
+| `keelSharpness` | float | Fraction | - | keel exponent on max(0, -sin phi): higher = a narrower keel | 1..64 | default 6 |
+| `bladeExponent` | float | Fraction | - | superellipse exponent at blade 1 (2 = ellipse; 4 = a rounded ribbon) | 2..12 | default 4 |
+| `ringSegments` | int | Count | - | mesh: vertices around each ring | 8..64 | default 24 |
+| `ringsPerSegment` | int | Count | - | mesh: rings per spine segment | 1..8 | default 3 |
+| `tailColourFrom` | float | Fraction | - | body fraction (0 front tip .. 1 tail tip) from which the surface is the `tailfan` kind; >= 1 = off | 0..1 | default 1 (off) |
+| `dorsalStripeTo` | float | Fraction | - | body fraction up to which a `dorsalstripe` band runs along the top from the head; 0 = off | 0..1 | default 0 (off) |
+| `dorsalStripeWidthDeg` | float | Degrees | - | dorsal stripe width around the section (centred on the top) | 0..180 | default 30 |
+| `ovalMaxAspect` | float | Fraction | - | an oval (blade 0) is at most this many times as tall as wide; blade 1 stretches it to the key's full halfHeight | 1..8 | default 2 |
+| `restAtStance` | bool | Flag | - | bind the body as it stands: each rest segment spacing long between the joints' clearances (a raised neck bound as steep as it walks); off = joints one spacing apart along the ground (SpineBody's rest) |  | default on |
 
 ### RayBody
 
@@ -479,7 +519,7 @@ A pterosaur's wing on an arm limb (a Leg2Bone it names), flown like a Wing (Crea
 | `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
 | `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
 | `arm` | string | PartRef | - | the Leg2Bone this wing rides on (its role becomes WingArm); a mirrored wing names the unmirrored id and gets .L / .R |  |  |
-| `spec` | WingSpec | Spec | - | the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius |  |  |
+| `spec` | WingSpec | Spec | - | the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, thumbPlant, fanRearRollsWithFan, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius |  |  |
 | `phalanges` | float[] | Fraction | - | the wing finger (fingerLengths[0]) split into its four phalanges, root to tip (sum 1) |  | azhdarchid 0.32 0.29 0.24 0.15 |
 | `fingerRoot` | float | Metres | x s | wing finger radius at its root (it tapers to a fine tip) |  | pterodactyl 0.017 |
 | `sweepDeg` | float | Degrees | - | static sweep back (toward the trailing edge) at each of the three interphalangeal joints | -10..15 |  |
@@ -521,7 +561,7 @@ A pterosaur's wing on an arm limb (a Leg2Bone it names), flown like a Wing (Crea
 | `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
 | `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
 | `arm` | string | PartRef | - | the Leg2Bone this wing rides on (its role becomes WingArm); a mirrored wing names the unmirrored id and gets .L / .R |  |  |
-| `spec` | WingSpec | Spec | - | the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius |  |  |
+| `spec` | WingSpec | Spec | - | the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, thumbPlant, fanRearRollsWithFan, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius |  |  |
 
 ### Eyes
 
@@ -1771,6 +1811,7 @@ A soaring predator's hunt: climb to soarAltitude, circle in long glides and burs
 | `stoopFold` | float | Fraction | - | the wings' fold in the stoop at its steepest | 0.3..1 |  |
 | `practice` | bool | Flag | - | with no prey in its area it stoops at a practice mark on the ground |  |  |
 | `utility` | float | Fraction | - | utility while hunting (FlightExcursion 0.2, Wander 0.1) | 0.25..2 |  |
+| `handBack` | bool | Flag | - | when it gives up the brain (a bout ends mid-glide, a landing starts) it hands the flight back: the wings free to beat (Model.DemandCap), no dive fold, the trunk's level. Off = shipped: a bout that ended in a held glide left the wings held, and the next landing glided round its point at floor height without a beat until it timed out |  |  |
 
 ### Tunnel
 
@@ -1819,7 +1860,7 @@ Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlig
 
 | field | type | unit | size | meaning | range | example |
 |---|---|---|---|---|---|---|
-| `spec` | FlightSpec | Spec | - | flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain, legTuckOut, legTuckDown, legTuckReach, touchdownTogether, airLevel, glideEnergy |  |  |
+| `spec` | FlightSpec | Spec | - | flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain, legTuckOut, legTuckDown, legTuckReach, touchdownTogether, airLevel, glideEnergy, approachBleedsSpeed |  |  |
 | `twist` | AirTwistSpec | Struct | - | twisting flight (AirTwist, Chinese dragon): the body follows the head's path; 3D swimming, corkscrews, barrel rolls, loops, slow rolls that travel head to tail. All 0 = the serpent's trailing air chain |  |  |
 | `twist.swimAmplitude` | float | Metres | x s | always-on swimming: the head's 3D S-curve amplitude (0 = no swimming) |  | dragon 0.12 |
 | `twist.swimHz` | float | Hz | / sqrt(s) | swimming wave frequency; wavelength along the body = speed / Hz |  | dragon 0.9 |

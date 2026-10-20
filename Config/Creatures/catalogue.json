@@ -2,6 +2,309 @@
   "version": 1,
   "parts": [
     {
+      "name": "FlowBody",
+      "kind": "Body",
+      "status": "exists",
+      "bones": "= jointCount",
+      "materialLayers": [
+        0
+      ],
+      "system": "CreatureSim chain (ISpineChainBody) + FlowBody.EmitMesh",
+      "useWhen": "a body whose neck, trunk and tail flow into each other with a section an ellipse cannot draw: humped backs, keeled chests, ribbon or paddle tails",
+      "summary": "One chain from the head to the tail tip (the sim runs it like a SpineBody's) drawn as one flowing surface with a shaped section: superellipse from oval to tall ribbon (blade), a sharp dorsal hump, a keel, flank masses. The neck and the tail are the same chain as the trunk; a head part sits on joint 0.",
+      "usedBy": [],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "spacing",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "joint spacing (fine in the neck for a smooth S)",
+          "range": "",
+          "example": "fixture 0.1"
+        },
+        {
+          "name": "headCapLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the surface closes with a small pole this far ahead of joint 0 (inside the head part)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "tailTipLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "fine tail tip behind the last joint",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "jointCount",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "joints, head to tail",
+          "range": "3..128",
+          "example": "fixture 24"
+        },
+        {
+          "name": "profile",
+          "type": "FlowKey[]",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "profile keys (>= 2, t = 0 and t = 1 included, increasing t): monotone cubic to every joint and ring",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "profile[].t",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "place along the spine, 0 = joint 0 (head) .. 1 = last joint",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "profile[].halfWidth",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "section half width",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "profile[].halfHeight",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "section half height (an oval is at most 2x as tall as wide; blade stretches it to this)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "profile[].clearance",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "joint centre above the ground",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "profile[].bendLimitDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "cone half-angle vs the previous segment",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "profile[].hump",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "dorsal hump: a sharp ridge rising this far above the section's top",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "profile[].keel",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "keel: the sternum jutting this far below the section's bottom",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "profile[].flank",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "flank masses: this much extra width at the sides",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "profile[].blade",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "0 = the oval .. 1 = the full ribbon (superellipse bladeExponent, the full halfHeight)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "rigidHeadJoints",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "rigid head: the first N joints move as one rigid body; -1 = auto from the profile (SpineBody.AutoHead), 0 = off",
+          "range": "-1..16",
+          "example": "default -1 (auto)"
+        },
+        {
+          "name": "humpSharpness",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "hump exponent on max(0, sin phi): higher = a sharper ridge",
+          "range": "1..64",
+          "example": "default 8"
+        },
+        {
+          "name": "keelSharpness",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "keel exponent on max(0, -sin phi): higher = a narrower keel",
+          "range": "1..64",
+          "example": "default 6"
+        },
+        {
+          "name": "bladeExponent",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "superellipse exponent at blade 1 (2 = ellipse; 4 = a rounded ribbon)",
+          "range": "2..12",
+          "example": "default 4"
+        },
+        {
+          "name": "ringSegments",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: vertices around each ring",
+          "range": "8..64",
+          "example": "default 24"
+        },
+        {
+          "name": "ringsPerSegment",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "mesh: rings per spine segment",
+          "range": "1..8",
+          "example": "default 3"
+        },
+        {
+          "name": "tailColourFrom",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "body fraction (0 front tip .. 1 tail tip) from which the surface is the `tailfan` kind; >= 1 = off",
+          "range": "0..1",
+          "example": "default 1 (off)"
+        },
+        {
+          "name": "dorsalStripeTo",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "body fraction up to which a `dorsalstripe` band runs along the top from the head; 0 = off",
+          "range": "0..1",
+          "example": "default 0 (off)"
+        },
+        {
+          "name": "dorsalStripeWidthDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "dorsal stripe width around the section (centred on the top)",
+          "range": "0..180",
+          "example": "default 30"
+        },
+        {
+          "name": "ovalMaxAspect",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "an oval (blade 0) is at most this many times as tall as wide; blade 1 stretches it to the key's full halfHeight",
+          "range": "1..8",
+          "example": "default 2"
+        },
+        {
+          "name": "restAtStance",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "bind the body as it stands: each rest segment spacing long between the joints' clearances (a raised neck bound as steep as it walks); off = joints one spacing apart along the ground (SpineBody's rest)",
+          "range": "",
+          "example": "default on"
+        }
+      ]
+    },
+    {
       "name": "RayBody",
       "kind": "Body",
       "status": "exists",
@@ -2789,7 +3092,7 @@
           "type": "WingSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius",
+          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, thumbPlant, fanRearRollsWithFan, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius",
           "range": "",
           "example": ""
         },
@@ -3125,7 +3428,7 @@
           "type": "WingSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius",
+          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, thumbPlant, fanRearRollsWithFan, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius",
           "range": "",
           "example": ""
         }
@@ -12258,6 +12561,15 @@
           "meaning": "utility while hunting (FlightExcursion 0.2, Wander 0.1)",
           "range": "0.25..2",
           "example": ""
+        },
+        {
+          "name": "handBack",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "when it gives up the brain (a bout ends mid-glide, a landing starts) it hands the flight back: the wings free to beat (Model.DemandCap), no dive fold, the trunk's level. Off = shipped: a bout that ended in a held glide left the wings held, and the next landing glided round its point at floor height without a beat until it timed out",
+          "range": "",
+          "example": ""
         }
       ]
     },
@@ -12521,7 +12833,7 @@
           "type": "FlightSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain, legTuckOut, legTuckDown, legTuckReach, touchdownTogether, airLevel, glideEnergy",
+          "meaning": "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain, legTuckOut, legTuckDown, legTuckReach, touchdownTogether, airLevel, glideEnergy, approachBleedsSpeed",
           "range": "",
           "example": ""
         },

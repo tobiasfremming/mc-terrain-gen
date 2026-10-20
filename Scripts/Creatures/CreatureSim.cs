@@ -173,10 +173,11 @@ public sealed class CreatureSim
         Vector3 up = Norm(upAt(position), Vector3.up);
         heading = Tangent(forward, up);
         headUp = up;
-        float step = sp.spacing * sizeScale;
+        float step = sp.spacing * sizeScale, run = 0f;
         for (int i = 0; i < n; i++)
         {
-            Vector3 p = position - heading * (step * i);
+            if (sp.restAtSpacing && i > 0) run += RestRun(sp, i, step, sizeScale);
+            Vector3 p = position - heading * (sp.restAtSpacing ? run : step * i);
             Vector3 u = Norm(upAt(p), up);
             float clear = sp.joints[i].clearance * sizeScale;
             if (!ground.Probe(p, u, kGroundWindow * sizeScale, out Vector3 g, out Vector3 nrm)) { g = p - u * clear; nrm = u; }
@@ -233,6 +234,14 @@ public sealed class CreatureSim
         afterLimbs = KitRuntime.OfStage(runtimes, PartStage.AfterLimbs);
         late = KitRuntime.OfStage(runtimes, PartStage.Late);
         for (int r = 0; r < runtimes.Length && antennae == null; r++) antennae = runtimes[r] as CreatureAntennae;
+    }
+
+    // restAtSpacing: the ground run of segment i (joint i-1 to i) that makes it `step` long between the two joints'
+    // clearances; a near-vertical segment keeps a quarter step of run (the chain never folds back on itself).
+    static float RestRun(CreatureSpecies sp, int i, float step, float sizeScale)
+    {
+        float rise = (sp.joints[i].clearance - sp.joints[i - 1].clearance) * sizeScale, min = 0.25f * step;
+        return Mathf.Sqrt(Mathf.Max(step * step - rise * rise, min * min));
     }
 
     // Antennae (the kit's Antenna: whiskers, barbels): spring chains stepped after the body each sub-step (a part

@@ -89,6 +89,8 @@ public class FlightSpec
     [Range(0f, 1f)] public float airLevel;
     [Tooltip("Gliding, the descent's energy goes into the forward speed (the lift tilts forward down a sinking path): a soarer keeps its speed and lift down a long glide. Off = the shipped model (a glide only loses speed to drag).")]
     public bool glideEnergy;
+    [Tooltip("With glideEnergy: on a landing approach a glide gains speed from its descent only up to the approach's speed goal, so its turns stay tight enough for a final (a fast glider circled its point inside the flare distance for minutes). Off = the shipped model.")]
+    public bool approachBleedsSpeed;
     public float LegTuckOut => legTuckOut > 0f ? legTuckOut : 0.25f;
     public float LegTuckDown => legTuckDown > 0f ? legTuckDown : 0.35f;
     public float LegTuckReach => legTuckReach > 0f ? legTuckReach : 0.8f;

@@ -108,29 +108,46 @@ namespace CreatureKit
 
         static float Channel(in ProfileKey k, int ch) => ch == 0 ? k.halfWidth : ch == 1 ? k.halfHeight : ch == 2 ? k.clearance : k.bendLimitDeg;
 
-        // Monotone cubic Hermite (Fritsch-Carlson) through the keys: smooth, no overshoot between keys (a body
-        // never bulges past its widest key), exact at every key.
-        public float Profile(float t, int ch)
+        // Monotone cubic Hermite through the keys (MonotoneCubic): smooth, no overshoot between keys (a body never
+        // bulges past its widest key), exact at every key.
+        public float Profile(float t, int ch) => MonotoneCubic.Eval(new Keys(profile, ch), t);
+
+        readonly struct Keys : MonotoneCubic.IKeys
         {
-            ProfileKey[] k = profile;
-            int n = k.Length;
-            if (t <= k[0].t) return Channel(k[0], ch);
-            if (t >= k[n - 1].t) return Channel(k[n - 1], ch);
+            readonly ProfileKey[] k; readonly int ch;
+            public Keys(ProfileKey[] k, int ch) { this.k = k; this.ch = ch; }
+            public int Count => k.Length;
+            public float X(int i) => k[i].t;
+            public float Y(int i) => Channel(k[i], ch);
+        }
+    }
+
+    // Monotone cubic Hermite (Fritsch-Carlson) through keys (x increasing): smooth, no overshoot between keys, exact
+    // at every key, flat outside them. SpineBody.Profile's interpolation (extracted unchanged, arithmetic and all, so
+    // every shipped body keeps its joints bit for bit); FlowBody uses it for its channels. No allocation (struct keys).
+    public static class MonotoneCubic
+    {
+        public interface IKeys { int Count { get; } float X(int i); float Y(int i); }
+
+        public static float Eval<K>(in K k, float t) where K : struct, IKeys
+        {
+            int n = k.Count;
+            if (t <= k.X(0)) return k.Y(0);
+            if (t >= k.X(n - 1)) return k.Y(n - 1);
             int i = 0;
-            while (i < n - 2 && t >= k[i + 1].t) i++;
-            if (t == k[i].t) return Channel(k[i], ch);
-            float h = k[i + 1].t - k[i].t, y0 = Channel(k[i], ch), y1 = Channel(k[i + 1], ch);
-            float m0 = Tangent(i, ch), m1 = Tangent(i + 1, ch);
-            float s = (t - k[i].t) / h, s2 = s * s, s3 = s2 * s;
+            while (i < n - 2 && t >= k.X(i + 1)) i++;
+            if (t == k.X(i)) return k.Y(i);
+            float h = k.X(i + 1) - k.X(i), y0 = k.Y(i), y1 = k.Y(i + 1);
+            float m0 = Tangent(k, i), m1 = Tangent(k, i + 1);
+            float s = (t - k.X(i)) / h, s2 = s * s, s3 = s2 * s;
             return (2f * s3 - 3f * s2 + 1f) * y0 + (s3 - 2f * s2 + s) * h * m0 + (-2f * s3 + 3f * s2) * y1 + (s3 - s2) * h * m1;
         }
 
-        float Tangent(int i, int ch)
+        static float Tangent<K>(in K k, int i) where K : struct, IKeys
         {
-            ProfileKey[] k = profile;
-            int n = k.Length;
-            float dPrev = i > 0 ? (Channel(k[i], ch) - Channel(k[i - 1], ch)) / (k[i].t - k[i - 1].t) : 0f;
-            float dNext = i < n - 1 ? (Channel(k[i + 1], ch) - Channel(k[i], ch)) / (k[i + 1].t - k[i].t) : 0f;
+            int n = k.Count;
+            float dPrev = i > 0 ? (k.Y(i) - k.Y(i - 1)) / (k.X(i) - k.X(i - 1)) : 0f;
+            float dNext = i < n - 1 ? (k.Y(i + 1) - k.Y(i)) / (k.X(i + 1) - k.X(i)) : 0f;
             if (i == 0) return dNext;
             if (i == n - 1) return dPrev;
             if (dPrev * dNext <= 0f) return 0f;                     // a local extremum: flat, no overshoot

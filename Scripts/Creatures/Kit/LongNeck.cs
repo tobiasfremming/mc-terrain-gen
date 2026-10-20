@@ -39,7 +39,7 @@ namespace CreatureKit
           System = "LongNeckRuntime (part runtime, stage Late: posture, head follower, Hermite neck) + LongNeck.EmitMesh (rings)",
           MaterialLayers = new[] { 0 }, KitOnly = true,
           UseWhen = "long necks that are carried, not dragged: pterosaurs, giraffes, sauropods, swans, plesiosaurs; any head held up off the body")]
-    public sealed partial class LongNeck : CreaturePart
+    public partial class LongNeck : CreaturePart
     {
         [Param(ParamUnit.Count, "bones: neck segments + the head's (the last)", Min = 4, Max = 24, Example = "pterodactyl 11")] public int segments = 10;
         [Param(ParamUnit.Metres, "neck length, root to the head bone", Example = "pterodactyl 0.9")] public float length = 0.8f;
