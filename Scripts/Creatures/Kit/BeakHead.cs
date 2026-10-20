@@ -22,17 +22,17 @@ namespace CreatureKit
     public sealed partial class BeakHead : CreaturePart
     {
         [Param(ParamUnit.PartRef, "the LongNeck whose head bone it rides (empty: rigid to at.joint, at.offset)")] public string follow = "";
-        [Param(ParamUnit.Metres, "skull length behind the beak (occiput to the beak's root)", Example = "apex 0.16")] public float skullLength = 0.16f;
+        [Param(ParamUnit.Metres, "skull length behind the beak (occiput to the beak's root)", Example = "pterodactyl 0.16")] public float skullLength = 0.16f;
         [Param(ParamUnit.Metres, "skull half height")] public float skullHeight = 0.048f;
         [Param(ParamUnit.Metres, "skull half width")] public float skullWidth = 0.04f;
-        [Param(ParamUnit.Metres, "beak length from its root to the tip", Example = "apex 0.46")] public float beakLength = 0.46f;
+        [Param(ParamUnit.Metres, "beak length from its root to the tip", Example = "pterodactyl 0.46")] public float beakLength = 0.46f;
         [Param(ParamUnit.Metres, "the beak's half height at its root (upper beak)")] public float beakDepth = 0.034f;
         [Param(ParamUnit.Fraction, "beak cross-section height / width", Min = 0.8f, Max = 3)] public float beakCompress = 1.4f;
         [Param(ParamUnit.Degrees, "the beak bends down (+) or up (-) toward its tip", Min = -20, Max = 30)] public float beakDroopDeg = 2f;
         [Param(ParamUnit.Fraction, "the keel (culmen ridge) along the upper beak, x the beak depth (0 = round)", Min = 0, Max = 1)] public float keel = 0.35f;
         [Param(ParamUnit.Degrees, "the widest gape (a strike); a call opens it 0.6 x as far", Min = 0, Max = 80)] public float gapeDeg = 38f;
         [Param(ParamUnit.Seconds, "mean interval between idle clacks (0 = none)")] public float clackInterval = 9f;
-        [Param(ParamUnit.Metres, "crest height above the skull (0 = none)", Example = "apex 0.07")] public float crestHeight = 0.07f;
+        [Param(ParamUnit.Metres, "crest height above the skull (0 = none)", Example = "pterodactyl 0.07")] public float crestHeight = 0.07f;
         [Param(ParamUnit.Metres, "crest length along the head")] public float crestLength = 0.16f;
         [Param(ParamUnit.Degrees, "crest sweep back (0 = straight up)", Min = -30, Max = 80)] public float crestSweepDeg = 40f;
         [Param(ParamUnit.Metres, "crest half thickness")] public float crestThickness = 0.006f;
@@ -40,7 +40,7 @@ namespace CreatureKit
         [Param(ParamUnit.Metres, "eye centre in the head frame (x mirrored)")] public Vector3 eyeOffset = new Vector3(0.035f, 0.04f, 0.07f);
         [Param(ParamUnit.Count, "material layer of the skull and rostrum (0 = the body's skin)", Min = 0, Max = 15)] public int skinLayer = 0;
         [Param(ParamUnit.Count, "material layer of the beak and jaw (2 = claw keratin)", Min = 0, Max = 15)] public int beakLayer = 2;
-        [Param(ParamUnit.Count, "material layer of the crest (2 = claw keratin; a species may restyle a spare row for it with Layers: the Apex's teal crest is row 13)", Min = 0, Max = 15)] public int crestLayer = 2;
+        [Param(ParamUnit.Count, "material layer of the crest (2 = claw keratin; a species may restyle a spare row for it with Layers: the Pterodactyl's teal crest is row 13)", Min = 0, Max = 15)] public int crestLayer = 2;
         [Param(ParamUnit.Metres, "polygoniser cell (~1/100 of the head's length)")] public float cell = 0.005f;
 
         public override int BoneCount(in SpeciesCtx c) => 1;

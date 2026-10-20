@@ -34,7 +34,7 @@ namespace CreatureKit
 
         [Param(ParamUnit.Fraction, "the wing finger (fingerLengths[0]) split into its four phalanges, root to tip (sum 1)", Example = "azhdarchid 0.32 0.29 0.24 0.15")]
         public float[] phalanges = { 0.32f, 0.29f, 0.24f, 0.15f };
-        [Param(ParamUnit.Metres, "wing finger radius at its root (it tapers to a fine tip)", Example = "apex 0.017")]
+        [Param(ParamUnit.Metres, "wing finger radius at its root (it tapers to a fine tip)", Example = "pterodactyl 0.017")]
         public float fingerRoot = 0.016f;
         [Param(ParamUnit.Degrees, "static sweep back (toward the trailing edge) at each of the three interphalangeal joints", Min = -10, Max = 15)]
         public float sweepDeg = 3f;
@@ -46,17 +46,17 @@ namespace CreatureKit
         public float foldCurlDeg = 6f;
         [Param(ParamUnit.Fraction, "the carpus (the pteroid's root, the forearm's end) along the lower arm bone, 0 elbow .. 1 knuckle", Min = 0.3f, Max = 0.9f)]
         public float carpusAt = 0.6f;
-        [Param(ParamUnit.Metres, "pteroid length", Example = "apex 0.13")]
+        [Param(ParamUnit.Metres, "pteroid length", Example = "pterodactyl 0.13")]
         public float pteroidLength = 0.12f;
         [Param(ParamUnit.Degrees, "the pteroid turned from the carpus-shoulder line toward the leading edge, in the arm's plane", Min = 5, Max = 80)]
         public float pteroidDeg = 25f;
         [Param(ParamUnit.Fraction, "the deltopectoral crest's height on the humerus, x the upper arm radius (0 = none)", Min = 0, Max = 3)]
         public float crest = 1.2f;
-        [Param(ParamUnit.Metres, "the three walking digits' length (0 = none)", Example = "apex 0.07")]
+        [Param(ParamUnit.Metres, "the three walking digits' length (0 = none)", Example = "pterodactyl 0.07")]
         public float digitLength = 0.06f;
         [Param(ParamUnit.Fraction, "the trailing edge's concavity between neighbouring rays, a fraction of the zone's reach", Min = 0, Max = 0.3f)]
         public float trailingCurve = 0.04f;
-        [Param(ParamUnit.Metres, "the leading edge's thickness: the membrane rolls over the wing finger into a rounded edge this thick (0 = a flat sheet to the finger)", Example = "apex 0.012")]
+        [Param(ParamUnit.Metres, "the leading edge's thickness: the membrane rolls over the wing finger into a rounded edge this thick (0 = a flat sheet to the finger)", Example = "pterodactyl 0.012")]
         public float leadingEdge = 0.01f;
         [Param(ParamUnit.Fraction, "the membrane's camber: it bellies up between the leading edge and the trailing edge by this x the local chord", Min = 0, Max = 0.15f)]
         public float camber = 0.04f;
@@ -64,6 +64,24 @@ namespace CreatureKit
         public int membraneColumns = 12;
         [Param(ParamUnit.Count, "mesh: membrane rows (out from the knuckle)", Min = 4, Max = 48)]
         public int membraneRows = 18;
+        [Param(ParamUnit.Flag, "the wing as chains (AngleChain, the sky manta's rule): the wing finger's phalanges follow one another root to tip (spanHz, spanDamping: a growing lag, the tip whips at the stroke's turn), and the membrane's chord rays (the hidden fingers and the trailing rib) follow the leading edge one after another (chordHz, chordDamping: the trailing edge lags and feathers, the sheet billows); off: the single-lag flex (flexDeg, flexSeconds)")]
+        public bool chain;
+        [Param(ParamUnit.Hz, "chain: natural frequency of a phalanx following the one before (x 1/sqrt size)", Example = "pterodactyl 1.6")]
+        public float spanHz = 1.6f;
+        [Param(ParamUnit.Fraction, "chain: the phalanges' damping ratio (< 0.7: the tip overshoots - the whip)", Min = 0.1f, Max = 2)]
+        public float spanDamping = 0.45f;
+        [Param(ParamUnit.Degrees, "chain: the most an interphalangeal joint bends either way", Min = 1, Max = 30)]
+        public float spanMaxDeg = 14f;
+        [Param(ParamUnit.Hz, "chain: natural frequency of a chord ray following the ray ahead", Example = "pterodactyl 2.2")]
+        public float chordHz = 2.2f;
+        [Param(ParamUnit.Fraction, "chain: the chord rays' damping ratio", Min = 0.1f, Max = 2)]
+        public float chordDamping = 0.5f;
+        [Param(ParamUnit.Degrees, "chain: the feathering the leading edge's beat asks of the first chord ray at the fastest stroke (+ trailing edge up on the downstroke)", Min = 0, Max = 30)]
+        public float chordFeatherDeg = 10f;
+        [Param(ParamUnit.Degrees, "chain: the most a chord ray turns over the ray ahead about the leading edge", Min = 1, Max = 25)]
+        public float chordMaxDeg = 10f;
+        [Param(ParamUnit.Degrees, "chain: gliding, the membrane billows - each chord ray lifts this much over the one ahead", Min = 0, Max = 10)]
+        public float billowDeg = 2f;
         [Param(ParamUnit.Fraction, "the bind pose's fold (0 = the spread glide pose, as a Wing): the mesh is built part-folded, so the flight's spread opens the membrane's zones and the ground fold closes them each by a ratio two-ray skinning can follow (a pterosaur folds its finger along the arm: from the spread bind its zones close to a seventh and turn inside out)", Min = 0, Max = 0.8f)]
         public float bindFold;
 
@@ -88,6 +106,8 @@ namespace CreatureKit
             if (!(flexSeconds > 0f)) return $"{id}: flexSeconds > 0";
             if (carpusAt < 0.3f || carpusAt > 0.9f) return $"{id}: carpusAt in 0.3..0.9";
             if (bindFold < 0f || bindFold > 0.8f) return $"{id}: bindFold in 0..0.8";
+            if (chain && (!(spanHz > 0f) || !(chordHz > 0f) || !(spanDamping > 0f) || !(chordDamping > 0f) || !(spanMaxDeg > 0f) || !(chordMaxDeg > 0f)))
+                return $"{id}: chain: spanHz, chordHz, the dampings and the max bends > 0";
             if (membraneColumns < 4 || membraneRows < 4) return $"{id}: membraneColumns and membraneRows >= 4";
             // the spec is the flight's (stroke, fold, rays, membrane joints); a PteroWing draws its own wing - the Wing's
             // look fields would silently do nothing, so they must stay 0
@@ -127,6 +147,23 @@ namespace CreatureKit
                 m = m * Matrix4x4.TRS(new Vector3(0f, 0f, phalanges[j - 1] * L), r, Vector3.one);
             }
         }
+
+        // As Phalanx, each interphalangeal joint j (1..3) bent by its own bends[j] (the chain).
+        internal void Phalanx(Matrix4x4 F, int k, float backSign, float[] bends, out Matrix4x4 m)
+        {
+            m = F;
+            float L = spec.fingerLengths[0];
+            for (int j = 1; j <= k; j++)
+            {
+                Quaternion r = Quaternion.AngleAxis(backSign * sweepDeg, Vector3.up) * Quaternion.AngleAxis(-bends[j], Vector3.right);
+                m = m * Matrix4x4.TRS(new Vector3(0f, 0f, phalanges[j - 1] * L), r, Vector3.one);
+            }
+        }
+
+        // The chord rays a chain turns about the leading edge, leading to trailing: the hidden fingers 1.., then the
+        // trailing rib (wing bone indices). The rear flank rib, the arm sector and the flank patches stay on the body.
+        internal int ChordRays => spec.FingerCount;
+        internal int ChordRayBone(int r) => r < spec.FingerCount - 1 ? r + 1 : WingBoneLayout.FirstRibOf(spec);
 
         // The pteroid's root (the carpus) and direction from the arm's points (world).
         internal void Pteroid(Vector3 shoulder, Vector3 elbow, Vector3 wrist, out Vector3 carpus, out Vector3 dir)
@@ -175,6 +212,11 @@ namespace CreatureKit
         readonly int w, extra, finger0, finger1, upper, lower, leg;
         readonly float T;
         float flex, curl;
+        // chain (PteroWing.chain): the phalanges' span chain (link 0 = the stroke angle), the chord rays' chain (link 0
+        // = the feathering the beat asks), the per-joint bends, the spread (1 - fold) they are scaled by
+        readonly AngleChain span, chord;
+        readonly float[] bends = new float[PteroWing.Phalanges];
+        float spread = 1f;
         readonly Vector3[] debug = new Vector3[PteroWing.Phalanges + 3];
         Matrix4x4[] bindScratch;   // the bind's bones (AfterSpreadWings, rest sims only: built on first use)
 
@@ -191,7 +233,11 @@ namespace CreatureKit
             leg = sp.wings[w].leg;
             upper = sp.LegBone(leg, 0); lower = sp.LegBone(leg, 1);
             T = sim.TimeScale;
+            if (part.chain) { span = new AngleChain(PteroWing.Phalanges); chord = new AngleChain(1 + part.ChordRays); }
         }
+
+        public AngleChain Span => span;
+        public AngleChain Chord => chord;
 
         public PartStage Stage => PartStage.Late;
 
@@ -204,19 +250,67 @@ namespace CreatureKit
             float target = 0f, curlTarget = 0f;
             if (air)
             {
-                float rateMax = Mathf.Max(1e-3f, sim.Species.flight.strokeRateMax / T);
-                float load = Mathf.Clamp(-st.angleRate / rateMax, -1f, 1f);
+                float rateMaxC = Mathf.Max(1e-3f, sim.Species.flight.strokeRateMax / T);
+                float load = Mathf.Clamp(-st.angleRate / rateMaxC, -1f, 1f);
                 // gliding: the lift bows the spread finger up a little
                 if (fl.Model.Gliding) load = 0.35f * (1f - st.fold);
                 target = p.flexDeg * load;
             }
             curlTarget = p.foldCurlDeg * st.fold * (air ? 0.3f : 1f);
             float k = 1f - Mathf.Exp(-dt / (p.flexSeconds * T));
-            flex += (target - flex) * k;
+            if (!p.chain) { flex += (target - flex) * k; curl += (curlTarget - curl) * k; return; }
             curl += (curlTarget - curl) * k;
+            // the chains: the span's root is the stroke angle itself, each phalanx follows the one before (gliding, the
+            // lift bows each joint up); the chord's root is the feathering the beat asks (trailing edge up on the
+            // downstroke), each ray follows the ray ahead (gliding, the sheet billows)
+            spread = (1f - st.fold) * (1f - st.fold);   // folding, the chains fade out fast (a closing fan's zones are narrow)
+            bool glide = air && fl.Model.Gliding;
+            for (int j = 1; j < PteroWing.Phalanges; j++) span.SetOffset(j, glide ? 0.35f * p.flexDeg * spread : 0f);
+            span.Step(st.angle * Mathf.Rad2Deg, dt, 2f * Mathf.PI * p.spanHz / T, p.spanDamping, p.spanMaxDeg);
+            float rateMax = Mathf.Max(1e-3f, sim.Species.flight.strokeRateMax / T);
+            bool beating = fl.Mode == FlightMode.Air && !glide;   // a launch's, a flare's and a landing's swings drive no feathering
+            float feather = beating ? Mathf.Clamp(p.chordFeatherDeg * -st.angleRate / rateMax, -p.chordMaxDeg, p.chordMaxDeg) : 0f;
+            for (int r = 1; r < chord.Count; r++) chord.SetOffset(r, glide ? p.billowDeg * spread : 0f);
+            chord.Step(feather, dt, 2f * Mathf.PI * p.chordHz / T, p.chordDamping, p.chordMaxDeg);
+            float sum = 0f;
+            for (int j = 1; j < PteroWing.Phalanges; j++) { bends[j] = span.Bend(j) * spread; sum += bends[j]; }
+            flex = sum / (PteroWing.Phalanges - 1);
         }
 
-        public void WriteBones(Matrix4x4[] dst, int offset) => Write(dst, offset, flex + curl);
+        public void WriteBones(Matrix4x4[] dst, int offset)
+        {
+            if (p.chain) WriteChain(dst, offset);
+            else Write(dst, offset, flex + curl);
+        }
+
+        // the chain's pose: per-joint bends (+ the curl) on the phalanges, the chord rays pitched about the knuckle
+        // across the wing's plane by their chain angles (the trailing edge lifts and drops behind the leading edge),
+        // faded out as the wing folds
+        void WriteChain(Matrix4x4[] dst, int o)
+        {
+            for (int j = 1; j < PteroWing.Phalanges; j++) bends[j] += curl;
+            Write(dst, o, 0f, bends);
+            for (int j = 1; j < PteroWing.Phalanges; j++) bends[j] -= curl;
+            CreatureSpecies sp = sim.Species;
+            Matrix4x4 F = dst[o + finger0];
+            Vector3 knuckle = F.GetColumn(3), axis = PartMeshEmitter.Unit(F.GetColumn(2), Vector3.forward);   // the leading edge
+            Vector3 dorsal = sim.Flight.Wings.State[w].handNormal;
+            for (int r = 1; r < chord.Count; r++)
+            {
+                float ang = chord.Angle(r) * spread;
+                if (ang == 0f) continue;
+                int b = o + sp.WingBone(w, p.ChordRayBone(r - 1));
+                Matrix4x4 B = dst[b];
+                // the ray pitches about the knuckle across the wing's plane: + lifts its far end (the trailing edge it
+                // carries) toward the dorsal side (a fan's rays lie close to the finger: a turn about the leading edge
+                // itself would hardly move them)
+                Vector3 d = PartMeshEmitter.Unit(B.GetColumn(2), axis);
+                Vector3 pitchAxis = Vector3.Cross(d, dorsal);
+                if (pitchAxis.sqrMagnitude < 1e-10f) continue;
+                Quaternion q = Quaternion.AngleAxis(ang, pitchAxis.normalized);
+                dst[b] = Matrix4x4.TRS(knuckle, q, Vector3.one) * Matrix4x4.TRS(-knuckle, Quaternion.identity, Vector3.one) * B;
+            }
+        }
 
         // the bind: the spread wing (part-folded by bindFold: its arm and flight bones rewritten), no lag, no curl
         public void AfterSpreadWings(Matrix4x4[] bones, int offset)
@@ -232,7 +326,7 @@ namespace CreatureKit
             Write(bones, offset, 0f);
         }
 
-        void Write(Matrix4x4[] dst, int o, float bend)
+        void Write(Matrix4x4[] dst, int o, float bend, float[] perJoint = null)
         {
             float s = sim.SizeScale;
             Matrix4x4 F = dst[o + finger0];
@@ -242,7 +336,9 @@ namespace CreatureKit
             debug[0] = F.GetColumn(3);
             for (int k = 1; k < PteroWing.Phalanges; k++)
             {
-                p.Phalanx(F, k, back, bend, out Matrix4x4 m);
+                Matrix4x4 m;
+                if (perJoint != null) p.Phalanx(F, k, back, perJoint, out m);
+                else p.Phalanx(F, k, back, bend, out m);
                 dst[o + extra + k - 1] = m;
                 debug[k] = m.GetColumn(3);
             }

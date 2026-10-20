@@ -5,24 +5,26 @@ using CreatureKit;
 
 namespace TerrainGen.Tests
 {
-    // PteroWing (creature kit, the Apex): a pterosaur's wing flown by the shipped flight system. Proven on the Apex: it
+    // PteroWing (creature kit, the Pterodactyl): a pterosaur's wing flown by the shipped flight system. Proven on the Pterodactyl: it
     // composes as a wing (the flight's bones first, its own after), its bind pose agrees with its mesh, the membrane
-    // never turns inside out through a whole flight (launch, beats, glide, landing) and a wing-walk, the membrane's
-    // leading edge stays on the four-phalanx finger as it flexes, the tip lags the stroke and the folded finger curls,
-    // and the walking membrane clears the ground. RED: a spread bind (bindFold 0) turns the folded membrane inside
-    // out; no lag (flexDeg 0) fails the lag test.
+    // never turns inside out through a whole flight (launch, beats, a folded-wing stoop, glide, landing) and a
+    // wing-walk, the membrane's leading edge stays on the four-phalanx finger as it flexes, the tip lags the stroke and
+    // the folded finger curls, the walking membrane clears the ground, and the wing is a chain (PteroWing.chain): the
+    // phalanges lag the stroke more and more root to tip, the membrane's trailing edge lags its leading edge. RED: a
+    // spread bind (bindFold 0) turns the folded membrane inside out; no lag (flexDeg 0) fails the lag test; a stiff
+    // chain or no chain fails the chain test.
     public class CreaturePteroWingTests
     {
         internal const float kDt = 1f / 60f;
 
-        internal static CreatureSpecies Apex() => CreatureKitAssets.Load("Apex");
+        internal static CreatureSpecies Pterodactyl() => CreatureKitAssets.Load("Pterodactyl");
 
-        // A copy of the Apex with one PteroWing field changed (a fresh compile).
-        internal static CreatureSpecies ApexWith(System.Action<PteroWing> edit)
+        // A copy of the Pterodactyl with one PteroWing field changed (a fresh compile).
+        internal static CreatureSpecies PterodactylWith(System.Action<PteroWing> edit)
         {
-            CreatureSpecies a = CreatureKitAssets.LoadAsset("Apex");
+            CreatureSpecies a = CreatureKitAssets.LoadAsset("Pterodactyl");
             var sp = ScriptableObject.CreateInstance<CreatureSpecies>();
-            sp.name = "ApexEdit";
+            sp.name = "PterodactylEdit";
             sp.scale = a.scale; sp.kitVersion = a.kitVersion;
             sp.parts = new List<CreaturePart>(); sp.modules = new List<CreatureModule>();
             foreach (CreaturePart p in a.parts) { CreaturePart c = p.Clone(); if (c is PteroWing w) edit(w); sp.parts.Add(c); }
@@ -82,7 +84,7 @@ namespace TerrainGen.Tests
 
         [Test] public void Compose_FlightBonesFirst_ThenItsOwn()
         {
-            CompiledSpecies c = CreatureKitAssets.LoadAsset("Apex").Compiled;
+            CompiledSpecies c = CreatureKitAssets.LoadAsset("Pterodactyl").Compiled;
             Assert.IsNull(c.Error, c.Error);
             Assert.AreEqual(2, c.Wings.Count);
             CreatureSpecies sp = c.Runtime;
@@ -102,7 +104,7 @@ namespace TerrainGen.Tests
         // and the part-folded wing are re-posed on the bind's wings, KitRuntime.AfterSpreadWings).
         [Test] public void Bind_RestBones_ReproduceTheMesh()
         {
-            CreatureSpecies sp = Apex();
+            CreatureSpecies sp = Pterodactyl();
             var m = new Skinned(sp);
             Matrix4x4[] rest = CreatureRestPose.BoneWorld(sp), bind = CreatureRestPose.BindPoses(sp);
             float worst = 0f;
@@ -119,7 +121,7 @@ namespace TerrainGen.Tests
         [TestCase(0.9f)] [TestCase(1.1f)]
         public void Flight_NoInvertedTriangle(float k)
         {
-            CreatureSpecies sp = Apex();
+            CreatureSpecies sp = Pterodactyl();
             float s = sp.scale * k, T = Mathf.Sqrt(s);
             var m = new Skinned(sp);
             var sim = Sim(sp, s);
@@ -138,6 +140,17 @@ namespace TerrainGen.Tests
                 sim.Tick(kDt, sim.Joints[0]);
                 if (t % 3 == 0) Check($"air t{t} mode {sim.Mode}");
             }
+            // a stoop (the hunt's inputs: the wings fold into a dive) and its pull-out
+            for (int t = 0; t < 300; t++) { sim.Flight.SetGoals(7f * s, sp.flight.cruiseSpeed * T, 0f); sim.Tick(kDt, sim.Joints[0]); }
+            for (int t = 0; t < 240; t++)
+            {
+                bool dive = t < 60;
+                sim.Flight.DiveFold = dive ? Mathf.Min(0.9f, t / 20f) : 0f;
+                sim.Flight.Model.DemandCap = dive ? 0f : float.MaxValue;
+                sim.Flight.SetGoals(dive ? 0f : 6f * s, dive ? sim.Flight.Model.HorizontalSpeed : sp.flight.cruiseSpeed * T, 0f);
+                sim.Tick(kDt, sim.Joints[0]);
+                if (t % 2 == 0) Check($"stoop t{t} fold {sim.Flight.DiveFold:F2} mode {sim.Mode}");
+            }
             sim.Flight.Land(sim.Flight.Model.Position + sim.Flight.Model.Forward * (8f * s) - Vector3.up * sim.Flight.Model.Altitude);
             for (int t = 0; t < 7200 && sim.Mode != FlightMode.Ground; t++)
             {
@@ -154,7 +167,7 @@ namespace TerrainGen.Tests
         // vertex of the finger's line within the finger's root radius of the phalanx polyline.
         [Test] public void LeadingEdge_RidesTheFlexingFinger()
         {
-            CreatureSpecies sp = Apex();
+            CreatureSpecies sp = Pterodactyl();
             float s = sp.scale, T = Mathf.Sqrt(s);
             var m = new Skinned(sp);
             var sim = Sim(sp, s);
@@ -204,7 +217,7 @@ namespace TerrainGen.Tests
         // finger curls by foldCurlDeg.
         [Test] public void Flex_LagsTheStroke_CurlsWhenFolded()
         {
-            CreatureSpecies sp = Apex();
+            CreatureSpecies sp = Pterodactyl();
             Assert.IsNull(LagProblem(sp), LagProblem(sp));
             var sim = Sim(sp, sp.scale);
             for (int t = 0; t < 120; t++) sim.Tick(kDt, sim.Joints[0]);
@@ -234,7 +247,7 @@ namespace TerrainGen.Tests
 
         [Test] public void Red_NoFlex_LagFails()
         {
-            string p = LagProblem(ApexWith(w => w.flexDeg = 0f));
+            string p = LagProblem(PterodactylWith(w => { w.flexDeg = 0f; w.chain = false; }));   // no lag at all: no flex, no chain
             TestContext.WriteLine("RED: " + p);
             Assert.IsNotNull(p);
         }
@@ -243,7 +256,7 @@ namespace TerrainGen.Tests
         // turn inside out.
         [Test] public void Red_SpreadBind_FoldedMembraneInverts()
         {
-            CreatureSpecies sp = ApexWith(w => w.bindFold = 0f);
+            CreatureSpecies sp = PterodactylWith(w => w.bindFold = 0f);
             var m = new Skinned(sp);
             var sim = Sim(sp, sp.scale);
             for (int t = 0; t < 30; t++) sim.Tick(kDt, sim.Joints[0] + Vector3.forward);
@@ -257,7 +270,7 @@ namespace TerrainGen.Tests
         [TestCase(0.9f)] [TestCase(1.1f)]
         public void Walk_MembraneClearsTheGround(float k)
         {
-            CreatureSpecies sp = Apex();
+            CreatureSpecies sp = Pterodactyl();
             float s = sp.scale * k, T = Mathf.Sqrt(s);
             var m = new Skinned(sp);
             var sim = Sim(sp, s);
@@ -274,6 +287,132 @@ namespace TerrainGen.Tests
             }
             TestContext.WriteLine($"x{k}: lowest membrane point {low / s:F3} m (scale 1)");
             Assert.Greater(low, 0.02f * s);
+        }
+
+        // ---------------------------------------------------------------- the wing as chains (PteroWing.chain)
+        // In a beating climb, each signal is a bone's elevation over the girdle (asin of its +Z along the girdle's up):
+        // the wing finger's four phalanges (root to tip) and the membrane's chord rays (the hidden fingers, then the
+        // trailing rib). Each one's lag behind the root phalanx is the shift that best correlates it with the root's.
+        // The chain rule: the lag grows root to tip (never less than the joint before) and the tip lags by at least
+        // kTipLag of the beat; the free chord rays (the hidden fingers) lag the leading edge more and more toward the
+        // trailing edge, the last by at least kTrailLag of the beat. Null or the problem; `report` the lags.
+        const float kTipLag = 0.04f, kTrailLag = 0.025f;
+
+        internal static string ChainProblem(CreatureSpecies sp, float s, out string report)
+        {
+            report = "";
+            float T = Mathf.Sqrt(s);
+            var sim = Sim(sp, s);
+            PteroWingRuntime rt = Wing(sim, 0);
+            PteroWing pw = null; foreach (CreaturePart q in KitView.Parts(sp)) if (q is PteroWing x) { pw = x; break; }
+            int rays = pw.ChordRays;
+            var bones = new Matrix4x4[sp.BoneCount];
+            int n = PteroWing.Phalanges + rays;
+            var sig = new List<float>[n];
+            for (int i = 0; i < n; i++) sig[i] = new List<float>();
+            sim.Flight.Launch(6f * s);
+            int beats0 = -1, beats1 = 0; float time = 0f;
+            for (int t = 0; t < 1500; t++)
+            {
+                sim.Flight.SetGoals(12f * s, sp.flight.cruiseSpeed * T, 0f);   // climbing: beating all the while
+                sim.Tick(kDt, sim.Joints[0]);
+                if (t < 300 || sim.Mode != FlightMode.Air) continue;
+                if (beats0 < 0) beats0 = sim.Flight.Wings.State[0].beats;
+                beats1 = sim.Flight.Wings.State[0].beats; time += kDt;
+                sim.WriteBoneWorld(bones, 0);
+                Vector3 up = sim.Rotations[sim.Flight.Girdle] * Vector3.up;
+                float El(int b) => Mathf.Asin(Mathf.Clamp(Vector3.Dot(((Vector3)bones[b].GetColumn(2)).normalized, up), -1f, 1f)) * Mathf.Rad2Deg;
+                sig[0].Add(El(sp.WingBone(0, 0)));
+                for (int k = 1; k < PteroWing.Phalanges; k++) sig[k].Add(El(rt.FirstExtraBone + k - 1));
+                for (int r = 0; r < rays; r++) sig[PteroWing.Phalanges + r].Add(El(sp.WingBone(0, pw.ChordRayBone(r))));
+            }
+            int nb = beats1 - beats0;
+            if (nb < 4) return $"only {nb} beats";
+            float period = time / nb;
+            int maxLag = Mathf.RoundToInt(0.5f * period / kDt);
+            var lag = new float[n];
+            for (int i = 1; i < n; i++) lag[i] = Lag(sig[0], sig[i], maxLag) * kDt / period;
+            var sb = new System.Text.StringBuilder($"beat {period / T:F2} s (scale 1); lag behind the root phalanx, x the beat: phalanges");
+            for (int k = 1; k < PteroWing.Phalanges; k++) sb.Append($" {lag[k]:F3}");
+            sb.Append("; chord rays");
+            for (int r = 0; r < rays; r++) sb.Append($" {lag[PteroWing.Phalanges + r]:F3}");
+            report = sb.ToString();
+            for (int k = 2; k < PteroWing.Phalanges; k++)
+                if (lag[k] < lag[k - 1] - 1e-4f) return $"phalanx {k} lags less than phalanx {k - 1} ({lag[k]:F3} < {lag[k - 1]:F3} of the beat): not a chain";
+            if (lag[PteroWing.Phalanges - 1] < kTipLag) return $"the tip lags the stroke by only {lag[PteroWing.Phalanges - 1]:F3} of the beat (< {kTipLag})";
+            // the free rays (the hidden fingers; the trailing rib is the flight's own, swung by the fold: reported only)
+            int free = rays - 1, last = PteroWing.Phalanges + free - 1;
+            for (int r = 1; r < free; r++)
+                if (lag[PteroWing.Phalanges + r] < lag[PteroWing.Phalanges + r - 1] - 1e-4f) return $"chord ray {r} lags less than the ray ahead: the trailing edge does not follow the leading edge";
+            if (lag[last] < kTrailLag) return $"the trailing edge lags the leading edge by only {lag[last]:F3} of the beat (< {kTrailLag})";
+            return null;
+        }
+
+        // the shift (ticks, 0..maxLag) by which y best follows x (largest correlation of the mean-free series)
+        static int Lag(List<float> x, List<float> y, int maxLag)
+        {
+            int N = Mathf.Min(x.Count, y.Count);
+            double mx = 0, my = 0;
+            for (int i = 0; i < N; i++) { mx += x[i]; my += y[i]; }
+            mx /= N; my /= N;
+            int best = 0; double bestC = double.MinValue;
+            for (int L = 0; L <= maxLag; L++)
+            {
+                double c = 0;
+                for (int i = 0; i + L < N; i++) c += (x[i] - mx) * (y[i + L] - my);
+                c /= N - L;
+                if (c > bestC) { bestC = c; best = L; }
+            }
+            return best;
+        }
+
+        [TestCase(0.9f)] [TestCase(1.1f)]
+        public void Chain_TipLagsRootToTip_TrailingEdgeLagsLeading(float k)
+        {
+            CreatureSpecies sp = Pterodactyl();
+            string p = ChainProblem(sp, sp.scale * k, out string report);
+            TestContext.WriteLine($"x{k}: {report}");
+            Assert.IsNull(p, p);
+        }
+
+        [Test] public void Red_StiffOrNoChain_FailsTheChainTest()
+        {
+            CreatureSpecies stiff = PterodactylWith(w => { w.spanHz = 40f; w.chordHz = 40f; w.spanDamping = 1f; w.chordDamping = 1f; });
+            string a = ChainProblem(stiff, stiff.scale, out string ra);
+            CreatureSpecies none = PterodactylWith(w => w.chain = false);
+            string b = ChainProblem(none, none.scale, out string rb);
+            TestContext.WriteLine($"RED stiff: {a} ({ra})\nRED no chain: {b} ({rb})");
+            Assert.IsNotNull(a); Assert.IsNotNull(b);
+        }
+
+        // The chain stays inside its limits: no interphalangeal joint past spanMaxDeg, no chord ray past chordMaxDeg over
+        // the ray ahead, through beats, a stoop and a landing; no GC.
+        [Test] public void Chain_WithinLimits_NoGC()
+        {
+            CreatureSpecies sp = Pterodactyl();
+            float s = sp.scale, T = Mathf.Sqrt(s);
+            var sim = Sim(sp, s);
+            PteroWingRuntime rt = Wing(sim, 0);
+            PteroWing pw = null; foreach (CreaturePart q in KitView.Parts(sp)) if (q is PteroWing x) { pw = x; break; }
+            Assert.IsTrue(pw.chain, "the Pterodactyl's wings are chains");
+            var bones = new Matrix4x4[sp.BoneCount];
+            float worstSpan = 0f, worstChord = 0f;
+            void Track()
+            {
+                for (int j = 1; j < rt.Span.Count; j++) worstSpan = Mathf.Max(worstSpan, Mathf.Abs(rt.Span.Bend(j)));
+                for (int r = 1; r < rt.Chord.Count; r++) worstChord = Mathf.Max(worstChord, Mathf.Abs(rt.Chord.Bend(r)));
+            }
+            sim.Flight.Launch(6f * s);
+            for (int t = 0; t < 600; t++) { sim.Flight.SetGoals(8f * s, sp.flight.cruiseSpeed * T, 0f); sim.Tick(kDt, sim.Joints[0]); Track(); }
+            GcAllocs.AssertCounterWorks();
+            int allocs = GcAllocs.Count(() =>
+            {
+                for (int t = 0; t < 120; t++) { sim.Flight.DiveFold = t < 60 ? 0.9f : 0f; sim.Flight.SetGoals(6f * s, sp.flight.cruiseSpeed * T, 0f); sim.Tick(kDt, sim.Joints[0]); sim.WriteBoneWorld(bones, 0); Track(); }
+            });
+            TestContext.WriteLine($"largest bend: phalanx joint {worstSpan:F1} deg (max {pw.spanMaxDeg}), chord ray {worstChord:F1} deg (max {pw.chordMaxDeg})");
+            Assert.AreEqual(0, allocs);
+            Assert.LessOrEqual(worstSpan, pw.spanMaxDeg + 1e-3f);
+            Assert.LessOrEqual(worstChord, pw.chordMaxDeg + 1e-3f);
         }
     }
 }

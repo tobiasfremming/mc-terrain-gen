@@ -356,7 +356,6 @@
       "useWhen": "anything with a backbone or a segmented trunk",
       "summary": "Bend-limited follow-the-leader chain riding the ground or a climbed surface (CreatureSim). The body of every walker, snake and the wyvern. Its head is rigid by default (rigidHeadJoints: auto from the profile; 0 = off).",
       "usedBy": [
-        "Apex",
         "Crocodile",
         "DaddyLongLegs",
         "Delver",
@@ -369,6 +368,7 @@
         "Hexadrake",
         "KitMonitor",
         "KomodoDragon",
+        "Pterodactyl",
         "RockCrab",
         "Scolopendra",
         "ShaggyMonitor",
@@ -1890,10 +1890,10 @@
       "useWhen": "lizards, mammals, birds' legs, wing arms",
       "summary": "Vertebrate two-bone limb: TwoBoneIK with a pole, rounded knee blend, swing/knee limits (R16), keep-out (R28). Also the wyvern's wing arm.",
       "usedBy": [
-        "Apex",
         "DesertMonitor",
         "Hexadrake",
         "KitMonitor",
+        "Pterodactyl",
         "ShaggyMonitor",
         "SkyDragon",
         "TestHexapod",
@@ -2709,7 +2709,7 @@
       "useWhen": "pterosaurs (azhdarchids, pteranodons): a long single wing finger, a pteroid and propatagium, walking on the folded wings' knuckles",
       "summary": "A pterosaur's wing on an arm limb (a Leg2Bone it names), flown like a Wing (CreatureFlight + CreatureWings): crested humerus, two-bone forearm, long metacarpal to the knuckle, three small clawed walking digits, a pteroid with the propatagium in front of the arm, a four-phalanx wing finger that sweeps, lags the stroke and curls when folded, and a narrow brachiopatagium with a smooth trailing edge to the flank.",
       "usedBy": [
-        "Apex"
+        "Pterodactyl"
       ],
       "params": [
         {
@@ -2809,7 +2809,7 @@
           "size": "x s",
           "meaning": "wing finger radius at its root (it tapers to a fine tip)",
           "range": "",
-          "example": "apex 0.017"
+          "example": "pterodactyl 0.017"
         },
         {
           "name": "sweepDeg",
@@ -2863,7 +2863,7 @@
           "size": "x s",
           "meaning": "pteroid length",
           "range": "",
-          "example": "apex 0.13"
+          "example": "pterodactyl 0.13"
         },
         {
           "name": "pteroidDeg",
@@ -2890,7 +2890,7 @@
           "size": "x s",
           "meaning": "the three walking digits' length (0 = none)",
           "range": "",
-          "example": "apex 0.07"
+          "example": "pterodactyl 0.07"
         },
         {
           "name": "trailingCurve",
@@ -2908,7 +2908,7 @@
           "size": "x s",
           "meaning": "the leading edge's thickness: the membrane rolls over the wing finger into a rounded edge this thick (0 = a flat sheet to the finger)",
           "range": "",
-          "example": "apex 0.012"
+          "example": "pterodactyl 0.012"
         },
         {
           "name": "camber",
@@ -2935,6 +2935,87 @@
           "size": "-",
           "meaning": "mesh: membrane rows (out from the knuckle)",
           "range": "4..48",
+          "example": ""
+        },
+        {
+          "name": "chain",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "the wing as chains (AngleChain, the sky manta's rule): the wing finger's phalanges follow one another root to tip (spanHz, spanDamping: a growing lag, the tip whips at the stroke's turn), and the membrane's chord rays (the hidden fingers and the trailing rib) follow the leading edge one after another (chordHz, chordDamping: the trailing edge lags and feathers, the sheet billows); off: the single-lag flex (flexDeg, flexSeconds)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "spanHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "chain: natural frequency of a phalanx following the one before (x 1/sqrt size)",
+          "range": "",
+          "example": "pterodactyl 1.6"
+        },
+        {
+          "name": "spanDamping",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "chain: the phalanges' damping ratio (< 0.7: the tip overshoots - the whip)",
+          "range": "0.1..2",
+          "example": ""
+        },
+        {
+          "name": "spanMaxDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "chain: the most an interphalangeal joint bends either way",
+          "range": "1..30",
+          "example": ""
+        },
+        {
+          "name": "chordHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "chain: natural frequency of a chord ray following the ray ahead",
+          "range": "",
+          "example": "pterodactyl 2.2"
+        },
+        {
+          "name": "chordDamping",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "chain: the chord rays' damping ratio",
+          "range": "0.1..2",
+          "example": ""
+        },
+        {
+          "name": "chordFeatherDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "chain: the feathering the leading edge's beat asks of the first chord ray at the fastest stroke (+ trailing edge up on the downstroke)",
+          "range": "0..30",
+          "example": ""
+        },
+        {
+          "name": "chordMaxDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "chain: the most a chord ray turns over the ray ahead about the leading edge",
+          "range": "1..25",
+          "example": ""
+        },
+        {
+          "name": "billowDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "chain: gliding, the membrane billows - each chord ray lifts this much over the one ahead",
+          "range": "0..10",
           "example": ""
         },
         {
@@ -3062,7 +3143,6 @@
       "useWhen": "always (every shipped species has two eye bones)",
       "summary": "Two glossy eye spheres on their own bones (sp.EyeBone), placed at the socket (joint, offset x mirrored); cluster eyes ride them (spiders).",
       "usedBy": [
-        "Apex",
         "Crocodile",
         "DaddyLongLegs",
         "Delver",
@@ -3075,6 +3155,7 @@
         "Hexadrake",
         "KitMonitor",
         "KomodoDragon",
+        "Pterodactyl",
         "RockCrab",
         "Scolopendra",
         "ShaggyMonitor",
@@ -3394,7 +3475,7 @@
       "useWhen": "long necks that are carried, not dragged: pterosaurs, giraffes, sauropods, swans, plesiosaurs; any head held up off the body",
       "summary": "A long neck on bones of its own from a spine joint (the chest), held in a posture (raised on the ground, stretched forward in the air) instead of dragged along the path: a stabilised head that glides while the body bobs, glances, calls, turns toward an aim point and strikes. Its last bone carries a head part (BeakHead).",
       "usedBy": [
-        "Apex"
+        "Pterodactyl"
       ],
       "params": [
         {
@@ -3467,7 +3548,7 @@
           "size": "-",
           "meaning": "bones: neck segments + the head's (the last)",
           "range": "4..24",
-          "example": "apex 11"
+          "example": "pterodactyl 11"
         },
         {
           "name": "length",
@@ -3476,7 +3557,7 @@
           "size": "x s",
           "meaning": "neck length, root to the head bone",
           "range": "",
-          "example": "apex 0.9"
+          "example": "pterodactyl 0.9"
         },
         {
           "name": "rootRadius",
@@ -3650,13 +3731,67 @@
           "example": ""
         },
         {
+          "name": "maxBaseDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the base's highest elevation above the chest's line (a call or a glance never leans the neck back past this)",
+          "range": "30..89",
+          "example": ""
+        },
+        {
+          "name": "basePitchFollow",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "in the air: how much of the chest's pitch the neck's base follows (1 = it continues the chest's line; less raises it over a nose-down body)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "headPitchFollow",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "in the air: how much of the chest's pitch the head follows (0 = always level)",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "headLevelDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "in the air: the head's elevation stays within this of level (aiming and striking excepted)",
+          "range": "5..90",
+          "example": ""
+        },
+        {
+          "name": "strikeConeDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "in the air, aiming and striking: the neck, the reach and the head's turn stay within this cone round the neck's forward (the head never swings below or behind the neck); on the ground it pecks anywhere within aimYawDeg",
+          "range": "10..180",
+          "example": ""
+        },
+        {
+          "name": "maxLagDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "follow-through: the most the head lags its posture (seen from the neck's root)",
+          "range": "5..180",
+          "example": ""
+        },
+        {
           "name": "tipReach",
           "type": "float",
           "unit": "Metres",
           "size": "x s",
           "meaning": "the head part's reach past the head bone along the head (a beak's tip): a strike lands this point on the aim point",
           "range": "",
-          "example": "apex 0.6"
+          "example": "pterodactyl 0.6"
         },
         {
           "name": "ringSides",
@@ -6116,7 +6251,7 @@
       "useWhen": "pterosaurs, birds, herons and storks, beaked dinosaurs, turtles: any head that is mostly beak; with a crest (casque, sail) or without",
       "summary": "A beaked head from head-scale numbers: an elongated skull with eye sockets and an antorbital groove, a long keeled keratin beak, a lower jaw on its own bone that gapes when the neck calls or strikes, and a blade crest in its own layer; SDF solids (SculptField / SculptMesher). Rides a LongNeck's head bone or a spine joint; carries the species' eyes.",
       "usedBy": [
-        "Apex"
+        "Pterodactyl"
       ],
       "params": [
         {
@@ -6198,7 +6333,7 @@
           "size": "x s",
           "meaning": "skull length behind the beak (occiput to the beak's root)",
           "range": "",
-          "example": "apex 0.16"
+          "example": "pterodactyl 0.16"
         },
         {
           "name": "skullHeight",
@@ -6225,7 +6360,7 @@
           "size": "x s",
           "meaning": "beak length from its root to the tip",
           "range": "",
-          "example": "apex 0.46"
+          "example": "pterodactyl 0.46"
         },
         {
           "name": "beakDepth",
@@ -6288,7 +6423,7 @@
           "size": "x s",
           "meaning": "crest height above the skull (0 = none)",
           "range": "",
-          "example": "apex 0.07"
+          "example": "pterodactyl 0.07"
         },
         {
           "name": "crestLength",
@@ -6358,7 +6493,7 @@
           "type": "int",
           "unit": "Count",
           "size": "-",
-          "meaning": "material layer of the crest (2 = claw keratin; a species may restyle a spare row for it with Layers: the Apex's teal crest is row 13)",
+          "meaning": "material layer of the crest (2 = claw keratin; a species may restyle a spare row for it with Layers: the Pterodactyl's teal crest is row 13)",
           "range": "0..15",
           "example": ""
         },
@@ -11819,8 +11954,8 @@
       "needs": "Fly",
       "summary": "Rest, Face, Patrol, Soar, Landing on perches; predictive wall turn-back (FlightBrain).",
       "usedBy": [
-        "Apex",
         "Hexadrake",
+        "Pterodactyl",
         "SkyDragon",
         "WingedSerpent"
       ],
@@ -12022,7 +12157,7 @@
       "needs": "Fly (+ a LongNeck: the strike)",
       "summary": "A soaring predator's hunt: climb to soarAltitude, circle in long glides and bursts of slow deep beats, stoop on prey below (HuntPrey; with none, a practice mark on the ground) with the wings folded and the neck reaching, pull out over it with a strike, climb away. In bouts; the species' FlightExcursion flies between them. Gives the species a ModularBrain.",
       "usedBy": [
-        "Apex"
+        "Pterodactyl"
       ],
       "params": [
         {
@@ -12032,7 +12167,7 @@
           "size": "x s",
           "meaning": "circling height over the ground (the aviary is made 1.25 x this tall)",
           "range": "",
-          "example": "apex 9"
+          "example": "pterodactyl 9"
         },
         {
           "name": "soarBand",
@@ -12041,7 +12176,7 @@
           "size": "x s",
           "meaning": "the soaring band: glides down this far below soarAltitude, beats back up",
           "range": "",
-          "example": "apex 1.2"
+          "example": "pterodactyl 1.2"
         },
         {
           "name": "circleRadius",
@@ -12095,7 +12230,7 @@
           "size": "x s",
           "meaning": "pulls out this high over the target (the head reaches below it)",
           "range": "",
-          "example": "apex 0.9"
+          "example": "pterodactyl 0.9"
         },
         {
           "name": "stoopFold",
@@ -12190,7 +12325,6 @@
       "needs": "",
       "summary": "Safe-disc points, walk, pause, glance (WanderBrain). Containment is structural: the head is clamped to the safe radius.",
       "usedBy": [
-        "Apex",
         "Crocodile",
         "DaddyLongLegs",
         "Delver",
@@ -12203,6 +12337,7 @@
         "Hexadrake",
         "KitMonitor",
         "KomodoDragon",
+        "Pterodactyl",
         "RockCrab",
         "Scolopendra",
         "ShaggyMonitor",
@@ -12375,8 +12510,8 @@
       "needs": "Wing parts",
       "summary": "Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlight, FlightModel, AirChain). Froude-scaled. twist: the twisting Chinese-dragon air chain (AirTwist).",
       "usedBy": [
-        "Apex",
         "Hexadrake",
+        "Pterodactyl",
         "SkyDragon",
         "WingedSerpent"
       ],
@@ -12597,7 +12732,7 @@
       "needs": "Fly",
       "summary": "A quadrupedal launch: a crouch on the four limbs (the body lowered by crouchDepth over crouchSeconds), then a vault at vaultSpeed off the folded wing arms; the wings open at the top (CreatureFlight.Launch). Without it a flyer hops off at the shipped 2.4 m/s.",
       "usedBy": [
-        "Apex"
+        "Pterodactyl"
       ],
       "params": [
         {
@@ -12607,7 +12742,7 @@
           "size": "x sqrt(s)",
           "meaning": "the crouch before the vault",
           "range": "0.05..2",
-          "example": "apex 0.4"
+          "example": "pterodactyl 0.4"
         },
         {
           "name": "crouchDepth",
@@ -12616,7 +12751,7 @@
           "size": "x s",
           "meaning": "how far the body sinks in the crouch (every joint's clearance)",
           "range": "",
-          "example": "apex 0.12"
+          "example": "pterodactyl 0.12"
         },
         {
           "name": "vaultSpeed",
@@ -12625,7 +12760,7 @@
           "size": "x sqrt(s)",
           "meaning": "the vault's upward speed (the shipped launch: 2.4)",
           "range": "",
-          "example": "apex 4"
+          "example": "pterodactyl 4"
         }
       ]
     },
@@ -12924,7 +13059,6 @@
       "needs": "SpineBody",
       "summary": "Head steering in the tangent plane, chain, grounding, gait groups, girdle sway (CreatureSim.SubStep, CreatureLegs). The default locomotion of a spine body.",
       "usedBy": [
-        "Apex",
         "Crocodile",
         "DaddyLongLegs",
         "Delver",
@@ -12937,6 +13071,7 @@
         "Hexadrake",
         "KitMonitor",
         "KomodoDragon",
+        "Pterodactyl",
         "RockCrab",
         "Scolopendra",
         "ShaggyMonitor",
@@ -13556,13 +13691,13 @@
       "needs": "",
       "summary": "Restyles part ids (material layers) for this species: shading model (Skin, Chitin, Membrane, Eye, Claw), tint, smoothness, and which layers (pattern, scale grain, sheen, shimmer) each has. Rows not listed keep the registry's (Kit/PartLayers.cs). A new part needs a row, never a shader edit.",
       "usedBy": [
-        "Apex",
         "Crocodile",
         "Delver",
         "GiantCentipede",
         "GolfballStrider",
         "Hexadrake",
         "KomodoDragon",
+        "Pterodactyl",
         "RockCrab",
         "Scolopendra",
         "SkyManta",
@@ -13696,9 +13831,9 @@
       "needs": "",
       "summary": "Translucent veined membrane (part 8, the Membrane shading model, CreatureMembrane.hlsl): wings, FinStrip fins, antennae - any part whose layer row is Membrane.",
       "usedBy": [
-        "Apex",
         "FinnedSandEel",
         "Hexadrake",
+        "Pterodactyl",
         "SkyDragon",
         "WingedSerpent"
       ],
@@ -13823,7 +13958,6 @@
       "needs": "",
       "summary": "Palette dorsal/flank/belly + procedural pattern by rest arc length (CreaturePattern.hlsl); per-individual size/hue/value jitter. Layers of parts 0-2.",
       "usedBy": [
-        "Apex",
         "Crocodile",
         "DaddyLongLegs",
         "Delver",
@@ -13836,6 +13970,7 @@
         "Hexadrake",
         "KitMonitor",
         "KomodoDragon",
+        "Pterodactyl",
         "RockCrab",
         "Scolopendra",
         "ShaggyMonitor",
@@ -13991,35 +14126,6 @@
     }
   ],
   "species": [
-    {
-      "name": "Apex",
-      "kitVersion": 1,
-      "plan": "Spine",
-      "bones": 79,
-      "parts": [
-        "SpineBody:body",
-        "Leg2Bone:arm.L",
-        "Leg2Bone:arm.R",
-        "Leg2Bone:hind.L",
-        "Leg2Bone:hind.R",
-        "PteroWing:wing.L",
-        "PteroWing:wing.R",
-        "Eyes:eyes",
-        "LongNeck:neck",
-        "BeakHead:head"
-      ],
-      "modules": [
-        "Walk",
-        "Fly",
-        "QuadLaunch",
-        "Wander",
-        "FlightExcursion",
-        "SkyHunt",
-        "Skin",
-        "Membrane",
-        "Layers"
-      ]
-    },
     {
       "name": "Crocodile",
       "kitVersion": 1,
@@ -14385,6 +14491,35 @@
         "Slither",
         "Wander",
         "Skin",
+        "Layers"
+      ]
+    },
+    {
+      "name": "Pterodactyl",
+      "kitVersion": 1,
+      "plan": "Spine",
+      "bones": 79,
+      "parts": [
+        "SpineBody:body",
+        "Leg2Bone:arm.L",
+        "Leg2Bone:arm.R",
+        "Leg2Bone:hind.L",
+        "Leg2Bone:hind.R",
+        "PteroWing:wing.L",
+        "PteroWing:wing.R",
+        "Eyes:eyes",
+        "LongNeck:neck",
+        "BeakHead:head"
+      ],
+      "modules": [
+        "Walk",
+        "Fly",
+        "QuadLaunch",
+        "Wander",
+        "FlightExcursion",
+        "SkyHunt",
+        "Skin",
+        "Membrane",
         "Layers"
       ]
     },
