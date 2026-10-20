@@ -283,6 +283,17 @@ public sealed class OctopusController
         return held;
     }
 
+    // An arm holds prey (the brain's Hold state waits for this to end).
+    public bool HoldingPrey
+    {
+        get
+        {
+            if (Sequencer != null) return Sequencer.HoldingPrey;
+            for (int a = 0; a < Agents.Length; a++) if (Agents[a].Holding) return true;
+            return false;
+        }
+    }
+
     internal void NotifyGrab(IPreyTarget prey) { Brain?.OnGrab(prey); Events.RaiseGrabbed(prey); prey.OnGrabbed(); }
     internal void NotifyRelease(IPreyTarget prey) { Brain?.OnRelease(prey); Events.RaiseReleased(prey); prey.OnReleased(); }
     internal void NotifyEaten(IPreyTarget prey) { Brain?.OnEaten(prey); Events.RaiseEaten(prey); }
@@ -477,7 +488,7 @@ public sealed class OctopusController
         for (int a = 0; a < Agents.Length; a++)
         {
             TentacleChain ch = Body.Arms[a];
-            if (Sequencer != null && Sequencer.Use[a] != SwingSequencer.ArmUse.Free && Sequencer.Use[a] != SwingSequencer.ArmUse.Peel) continue;
+            if (Sequencer != null && (Sequencer.Use[a] != SwingSequencer.ArmUse.Free && Sequencer.Use[a] != SwingSequencer.ArmUse.Peel || Body.ArmPose[a] >= 1f)) continue;   // (a posed arm is display only)
             for (int k = 1; k < ch.N; k++)
             {
                 if (ch.Pinned[k]) continue;
@@ -584,7 +595,7 @@ public sealed class OctopusController
         for (int tries = 0; tries < arms && budget > 0; tries++)
         {
             TentacleAgent ag = Agents[sweepArm];
-            bool skip = Sequencer != null ? Sequencer.Use[sweepArm] != SwingSequencer.ArmUse.Free && Sequencer.Use[sweepArm] != SwingSequencer.ArmUse.Peel
+            bool skip = Sequencer != null ? Sequencer.Use[sweepArm] != SwingSequencer.ArmUse.Free && Sequencer.Use[sweepArm] != SwingSequencer.ArmUse.Peel || Body.ArmPose[sweepArm] >= 1f
                                           : ag.Mode == TentacleAgent.State.Strike || ag.Mode == TentacleAgent.State.Hold;
             if (skip) { sweepArm = (sweepArm + 1) % arms; sweepSeg = 0; continue; }
             TentacleChain ch = ag.Arm;

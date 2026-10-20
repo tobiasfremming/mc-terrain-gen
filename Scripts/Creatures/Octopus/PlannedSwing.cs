@@ -53,6 +53,12 @@ public sealed class PlannedSwing
     public float BrakeAccel = 2f * 9.81f;
     readonly bool[] soft = new bool[MaxHolds], engaged = new bool[MaxHolds];
 
+    // Braced (a many-armed body resting in its sling of holds): the arms hold it - no gravity, the motion it has
+    // damped out at BraceRate (1/s), the ropes still kept. A sling of three ropes left to gravity sat at their
+    // intersection and buzzed (the projections, one rope after the other, never quite agreed), so it never slept.
+    public bool Braced;
+    public float BraceRate = 5f;
+
     public float Amplitude { get; private set; }         // the energy amplitude about the single taut hold (rad)
     public float Energy { get; private set; }            // per unit mass, above the swing's lowest point (J/kg)
 
@@ -137,7 +143,7 @@ public sealed class PlannedSwing
                 Rope[i] = r0 + reelVel[i] * h;
                 reel[i] = reelVel[i];   // signed: < 0 reeling in, > 0 paying out
             }
-            Vector3 a = Up * -Gravity + Control(Position, Velocity, true);
+            Vector3 a = Braced ? Velocity * -BraceRate : Up * -Gravity + Control(Position, Velocity, true);
             Advance(ref Position, ref Velocity, a, h, Rope, reel);
         }
         Acceleration = (Velocity - v0) * (1f / dt);

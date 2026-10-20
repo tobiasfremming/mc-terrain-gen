@@ -185,6 +185,11 @@ namespace CreatureKit
             public float round, len, r1, r2, squash, scaleMin;
             public Vector3 lo, hi;                // bounds of the shape (its mirror image: x negated), before the blend
             public bool bounded;
+            // cull: outside the shape its field is >= bA |p - bc| - bB (a union or subtract that cannot reach the
+            // running value by its blend leaves it exactly as it is, so Eval skips computing it)
+            public bool cull;
+            public Vector3 bc;
+            public float bA, bB;
         }
 
         internal readonly Prim[] prims;
@@ -236,6 +241,27 @@ namespace CreatureKit
                     lo = Vector3.Min(lo, p.lo - g); hi = Vector3.Max(hi, p.hi + g);
                     if (p.mirror) { lo.x = Mathf.Min(lo.x, -p.hi.x - p.k); hi.x = Mathf.Max(hi.x, -p.lo.x + p.k); }
                 }
+                p.cull = p.bounded && p.op != SculptOp.Intersect;
+                switch (p.kind)
+                {
+                    case SculptKind.Ellipsoid:
+                    {
+                        // outside, k0 (k0 - 1) / k1 = (k0 - 1) (k0 / k1) >= (r / max - 1) min
+                        float mx = Mathf.Max(p.size.x, Mathf.Max(p.size.y, p.size.z)), mn = Mathf.Min(p.size.x, Mathf.Min(p.size.y, p.size.z));
+                        p.bc = p.c; p.bA = mn / mx; p.bB = mn;
+                        if (!(mn > 0f)) p.cull = false;
+                        break;
+                    }
+                    case SculptKind.Box:
+                        p.bc = p.c; p.bA = 1f; p.bB = p.size.magnitude;   // inside the circumscribed ball
+                        break;
+                    case SculptKind.RoundCone:
+                        // within max radius of the axis segment (its middle +- len / 2), in the squashed frame, x scaleMin
+                        p.bc = 0.5f * (s.centre + s.end); p.bA = Mathf.Min(p.squash, 1f / p.squash);
+                        p.bB = p.scaleMin * (0.5f * p.len + Mathf.Max(p.r1, p.r2));
+                        break;
+                    default: p.cull = false; break;
+                }
                 prims[i] = p;
             }
             Lo = lo; Hi = hi;
@@ -263,88 +289,125 @@ namespace CreatureKit
         internal SculptOp Op(int i) => prims[i].op;
         internal bool Mirrored(int i) => prims[i].mirror;
 
+        // How far shape i's field can overstate the distance to its surface, inside it (1 = never): the ellipsoid's
+        // bound k0 (k0 - 1) / k1 is exact along its axes and close outside, but inside, along its long axis, it reads
+        // the distance to the far end while the near side is only the short radius away - up to max / min radius.
+        internal float InsideOverstatement(int i)
+        {
+            ref readonly Prim p = ref prims[i];
+            if (p.kind != SculptKind.Ellipsoid) return 1f;
+            float a = Mathf.Max(p.size.x, Mathf.Max(p.size.y, p.size.z)), b = Mathf.Min(p.size.x, Mathf.Min(p.size.y, p.size.z));
+            return b > 0f ? a / b : float.PositiveInfinity;
+        }
+
         public const float Far = 1e3f;
 
         // The field at p over every shape.
         public float Eval(Vector3 p)
         {
-            float d = Far;
-            for (int i = 0; i < prims.Length; i++) d = Apply(i, prims[i].mirror ? 3 : 1, d, p);
-            return d;
+            return Eval(p.x, p.y, p.z, null, prims.Length);
         }
 
         // The field at p over the listed shapes only (the mesher's per-block lists: shape index << 2 | copies).
-        internal float Eval(Vector3 p, int[] list, int count)
-        {
-            float d = Far;
-            for (int n = 0; n < count; n++) d = Apply(list[n] >> 2, list[n] & 3, d, p);
-            return d;
-        }
+        internal float Eval(Vector3 p, int[] list, int count) => Eval(p.x, p.y, p.z, list, count);
 
-        float Apply(int i, int copies, float d, Vector3 p)
+        // The hot path of every build (hundreds of thousands of shapes per build): scalar float arithmetic in one loop,
+        // no Vector3 operators, Mathf, Shape or SMin calls (Mono inlines none of them; the call overhead was most of a
+        // build). Each expression is the one Vector3.Dot / Mathf.Max / Mathf.Sqrt / SMin computes, in the same order:
+        // bit-identical under .NET; Mono keeps float intermediates wider, so there it agrees to float rounding (meshes
+        // within 2e-7 m). list null: every shape, each with its mirror image when it has one.
+        internal float Eval(float px, float py, float pz, int[] list, int count)
         {
-            ref readonly Prim q = ref prims[i];
-            float s;
-            if (q.op == SculptOp.Intersect)
+            Prim[] pr = prims;
+            float d = Far;
+            for (int n = 0; n < count; n++)
             {
-                // trimmed by both mirror images (the solid is inside each)
-                s = (copies & 1) != 0 ? Shape(in q, p) : Far;
-                if ((copies & 2) != 0) s = Mathf.Max(s, Shape(in q, new Vector3(-p.x, p.y, p.z)));
-                else if (q.mirror) s = Far;
+                int e = list != null ? list[n] : n << 2 | (pr[n].mirror ? 3 : 1);
+                ref readonly Prim q = ref pr[e >> 2];
+                int copies = e & 3;
+                SculptOp op = q.op;
+                if (q.cull)
+                {
+                    // SMin(d, s, k) is exactly d once s >= d + k (subtract: s >= -d + k): skip the shape when its bound
+                    // says so for every copy (outside it only: t > 0; a relative and an absolute margin over rounding)
+                    float t = (op == SculptOp.Union ? d : -d) + q.k;
+                    if (t > 0f && t < 0.5f * Far)
+                    {
+                        float need = (t + q.bB) * 1.0001f + 1e-6f, need2 = need * need, a2 = q.bA * q.bA;
+                        float ex = px - q.bc.x, ey = py - q.bc.y, ez = pz - q.bc.z, mx = -px - q.bc.x;
+                        if (((copies & 1) == 0 || (ex * ex + ey * ey + ez * ez) * a2 >= need2)
+                            && ((copies & 2) == 0 || (mx * mx + ey * ey + ez * ez) * a2 >= need2)) continue;
+                    }
+                }
+                // the shape, and its mirror image: an intersect is trimmed by both (the solid is inside each), a union or
+                // subtract takes the nearer; a mirrored intersect without its image does not trim at all (Far)
+                float s = Far;
+                for (int cp = 0; cp < 2; cp++)
+                {
+                    if ((copies & (1 << cp)) == 0) continue;
+                    float dx = (cp == 0 ? px : -px) - q.c.x, dy = py - q.c.y, dz = pz - q.c.z, v;
+                    switch (q.kind)   // Shape(), inline
+                    {
+                        case SculptKind.Ellipsoid:
+                        {
+                            float x = dx * q.ax.x + dy * q.ax.y + dz * q.ax.z, y = dx * q.ay.x + dy * q.ay.y + dz * q.ay.z, z = dx * q.az.x + dy * q.az.y + dz * q.az.z;
+                            float sx = q.size.x, sy = q.size.y, sz = q.size.z;
+                            float ex = x / sx, ey = y / sy, ez = z / sz;
+                            float k0 = (float)Math.Sqrt(ex * ex + ey * ey + ez * ez);
+                            float fx = ex / sx, fy = ey / sy, fz = ez / sz;
+                            float k1 = (float)Math.Sqrt(fx * fx + fy * fy + fz * fz);
+                            if (!(k1 > 1e-12f)) { float mn = sy < sz ? sy : sz; v = -(sx < mn ? sx : mn); }
+                            else v = k0 * (k0 - 1f) / k1;
+                            break;
+                        }
+                        case SculptKind.Box:
+                        {
+                            float r = q.round;
+                            float x = Math.Abs(dx * q.ax.x + dy * q.ax.y + dz * q.ax.z) - (q.size.x - r);
+                            float y = Math.Abs(dx * q.ay.x + dy * q.ay.y + dz * q.ay.z) - (q.size.y - r);
+                            float z = Math.Abs(dx * q.az.x + dy * q.az.y + dz * q.az.z) - (q.size.z - r);
+                            float mx = x > 0f ? x : 0f, my = y > 0f ? y : 0f, mz = z > 0f ? z : 0f;
+                            float yz = y > z ? y : z, mm = x > yz ? x : yz;
+                            v = (float)Math.Sqrt(mx * mx + my * my + mz * mz) + (mm < 0f ? mm : 0f) - r;
+                            break;
+                        }
+                        case SculptKind.Plane:
+                            v = dx * q.ay.x + dy * q.ay.y + dz * q.ay.z;
+                            break;
+                        default:
+                        {
+                            float x = dx * q.ax.x + dy * q.ax.y + dz * q.ax.z, y = (dx * q.ay.x + dy * q.ay.y + dz * q.ay.z) / q.squash, z = dx * q.az.x + dy * q.az.y + dz * q.az.z;
+                            v = RoundCone(x, y, z, q.len, q.r1, q.r2) * q.scaleMin;
+                            break;
+                        }
+                    }
+                    if (cp == 0) s = v;
+                    else if (op == SculptOp.Intersect) s = s > v ? s : v;
+                    else s = s < v ? s : v;
+                }
+                if (op == SculptOp.Intersect && q.mirror && (copies & 2) == 0) s = Far;
+                float a = op == SculptOp.Union ? d : -d, b = op == SculptOp.Intersect ? -s : s;
+                // SMin(a, b, k), inline
+                float lo = a < b ? a : b, k = q.k;
+                if (k > 0f)
+                {
+                    float hh = k - Math.Abs(a - b);
+                    if (hh > 0f) { hh /= k; lo -= hh * hh * k * 0.25f; }
+                }
+                d = op == SculptOp.Union ? lo : -lo;
             }
-            else
-            {
-                s = (copies & 1) != 0 ? Shape(in q, p) : Far;
-                if ((copies & 2) != 0) s = Mathf.Min(s, Shape(in q, new Vector3(-p.x, p.y, p.z)));
-            }
-            switch (q.op)
-            {
-                case SculptOp.Union: return SMin(d, s, q.k);
-                case SculptOp.Subtract: return -SMin(-d, s, q.k);
-                default: return -SMin(-d, -s, q.k);
-            }
+            return d;
         }
 
         // Polynomial smooth minimum (k = 0: min).
         public static float SMin(float a, float b, float k)
         {
-            if (!(k > 0f)) return a < b ? a : b;
-            float h = Mathf.Max(k - Mathf.Abs(a - b), 0f) / k;
-            return (a < b ? a : b) - h * h * k * 0.25f;
-        }
-
-        static float Shape(in Prim q, Vector3 p)
-        {
-            Vector3 d = p - q.c;
-            switch (q.kind)
-            {
-                case SculptKind.Ellipsoid:
-                {
-                    float x = Vector3.Dot(d, q.ax), y = Vector3.Dot(d, q.ay), z = Vector3.Dot(d, q.az);
-                    float ex = x / q.size.x, ey = y / q.size.y, ez = z / q.size.z;
-                    float k0 = Mathf.Sqrt(ex * ex + ey * ey + ez * ez);
-                    float fx = ex / q.size.x, fy = ey / q.size.y, fz = ez / q.size.z;
-                    float k1 = Mathf.Sqrt(fx * fx + fy * fy + fz * fz);
-                    if (!(k1 > 1e-12f)) return -Mathf.Min(q.size.x, Mathf.Min(q.size.y, q.size.z));
-                    return k0 * (k0 - 1f) / k1;
-                }
-                case SculptKind.Box:
-                {
-                    float x = Mathf.Abs(Vector3.Dot(d, q.ax)) - (q.size.x - q.round);
-                    float y = Mathf.Abs(Vector3.Dot(d, q.ay)) - (q.size.y - q.round);
-                    float z = Mathf.Abs(Vector3.Dot(d, q.az)) - (q.size.z - q.round);
-                    float mx = Mathf.Max(x, 0f), my = Mathf.Max(y, 0f), mz = Mathf.Max(z, 0f);
-                    return Mathf.Sqrt(mx * mx + my * my + mz * mz) + Mathf.Min(Mathf.Max(x, Mathf.Max(y, z)), 0f) - q.round;
-                }
-                case SculptKind.Plane:
-                    return Vector3.Dot(d, q.ay);
-                default:
-                {
-                    // iq's round cone along +z from 0 to len, radii r1 -> r2, its section flattened by squash
-                    float x = Vector3.Dot(d, q.ax), y = Vector3.Dot(d, q.ay) / q.squash, z = Vector3.Dot(d, q.az);
-                    return RoundCone(x, y, z, q.len, q.r1, q.r2) * q.scaleMin;
-                }
-            }
+            float lo = a < b ? a : b;
+            if (!(k > 0f)) return lo;
+            float h = k - Math.Abs(a - b);
+            if (!(h > 0f)) h = 0f;   // Mathf.Max(h, 0)
+            h /= k;
+            return lo - h * h * k * 0.25f;
         }
 
         static float RoundCone(float px, float py, float pz, float L, float r1, float r2)
@@ -355,10 +418,10 @@ namespace CreatureKit
             float qx = px * l2, qy = py * l2, qz = pz * l2 - L * y;
             float x2 = qx * qx + qy * qy + qz * qz;
             float y2 = y * y * l2, z2 = z * z * l2;
-            float k = Mathf.Sign(rr) * rr * rr * x2;
-            if (Mathf.Sign(z) * a2 * z2 > k) return Mathf.Sqrt(x2 + z2) * il2 - r2;
-            if (Mathf.Sign(y) * a2 * y2 < k) return Mathf.Sqrt(x2 + y2) * il2 - r1;
-            return (Mathf.Sqrt(x2 * a2 * il2) + y * rr) * il2 - r1;
+            float k = (rr >= 0f ? 1f : -1f) * rr * rr * x2;
+            if ((z >= 0f ? 1f : -1f) * a2 * z2 > k) return (float)Math.Sqrt(x2 + z2) * il2 - r2;
+            if ((y >= 0f ? 1f : -1f) * a2 * y2 < k) return (float)Math.Sqrt(x2 + y2) * il2 - r1;
+            return ((float)Math.Sqrt(x2 * a2 * il2) + y * rr) * il2 - r1;
         }
 
         // Central-difference gradient (unnormalised).
@@ -372,8 +435,9 @@ namespace CreatureKit
         // Gradient from four samples on a tetrahedron (unnormalised; the mesher's normals).
         internal Vector3 Tetra(Vector3 p, float e, int[] list, int count)
         {
-            float a = Eval(new Vector3(p.x + e, p.y - e, p.z - e), list, count), b = Eval(new Vector3(p.x - e, p.y - e, p.z + e), list, count);
-            float c = Eval(new Vector3(p.x - e, p.y + e, p.z - e), list, count), d = Eval(new Vector3(p.x + e, p.y + e, p.z + e), list, count);
+            float xp = p.x + e, xm = p.x - e, yp = p.y + e, ym = p.y - e, zp = p.z + e, zm = p.z - e;
+            float a = Eval(xp, ym, zm, list, count), b = Eval(xm, ym, zp, list, count);
+            float c = Eval(xm, yp, zm, list, count), d = Eval(xp, yp, zp, list, count);
             return new Vector3(a - b - c + d, -a - b + c + d, -a + b - c + d);
         }
 

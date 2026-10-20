@@ -29,10 +29,24 @@ using UnityEngine;
 // Peel. The soft lattice is OctopusBody's secondary motion only.
 // Every contact comes from the ISurfaceProbe (the controller counts the queries); hints only plan. Lengths x size,
 // times x sqrt(size). Deterministic, no allocation after construction.
+//
+// Many arms (Sling: more than two - the tree octopus, 2026-10-20). The same steps, plus:
+//   rest      a multi-hold sling: resting, the body takes support holds (RestHolds in all) - a fan of casts from the
+//             crown, a slow reach by the free arm whose root lies nearest, a catch whose rope is the distance it has
+//             (no reel: several ropes can never pull against each other) - and sleeps only once it has them (or none
+//             is within reach)
+//   travel    a pendulum on one hold: before the pump (or a play move) every support but the hold toward the next one
+//             peels off; brachiation is then the swinger's, the reach and the catch by the free arm nearest the hold
+//   idle arms display only (OctopusBody posed arms): curled up under the web or trailing down past the mantle, each
+//             arm its own shape, following the body with a lag; at rest now and then one grooms (a slow stroke over
+//             the mantle). Never simulated, so never flapping
+//   hunt      the brain's Strike: up to intent.strikers free arms nearest the intercept strike (an eased fast reach); the
+//             first tip at the prey's grab volume takes it (Prey: the arm wraps the capsule, re-planned every tick)
+//             for the controller's HoldSeconds, then lets go; the others draw back
 public sealed class SwingSequencer
 {
     public enum Step { Hang, Pump, Reach, Catch, Creep, Perch, Fall, Play }
-    public enum ArmUse { Free, Reach, Zip, Hold, Peel }
+    public enum ArmUse { Free, Reach, Zip, Hold, Peel, Strike, Prey, Groom }
 
     // ---- tuning (lengths x arm length L, times x TimeScale)
     // A hold's coil: a hook - over the top and down the near side (half a turn; 0.8 turns ate a fifth of the reach, so
@@ -134,7 +148,44 @@ public sealed class SwingSequencer
         Swing.SubSteps = 4;
         Swing.LateralDamping = lateralWant = 2f / TS;
         for (int a = 0; a < n; a++) { body.Arms[a].Tone = FreeTone; body.Arms[a].CalmDamping = FreeCalm; }
+        Sling = n > 2;
+        if (Sling)
+        {
+            body.DrawHandle = SlingDrawHandle; body.DrawEndHandle = SlingDrawEndHandle; body.DrawSinglePin = true;
+            strikeStart = new float[n]; poseBase = new Vector3[n][]; poseNear = new Vector3[n][]; posedSet = new bool[n]; poseIsNear = new bool[n];
+            for (int a = 0; a < n; a++)
+            {
+                poseBase[a] = new Vector3[body.Arms[a].N]; BuildPose(a, poseBase[a], false);
+                poseNear[a] = new Vector3[body.Arms[a].N]; BuildPose(a, poseNear[a], true);
+            }
+        }
     }
+
+    // ---- many arms (the tree octopus)
+    public readonly bool Sling;
+    public const float SlingCatchSlack = 1.06f;      // x CatchStretch: the catch limit of a hand that is there
+    public const float SlingDrawHandle = 0.5f, SlingDrawEndHandle = 0.33f;      // x chord: a drawn run leaves the crown straighter (the web)
+    public const float HoldLeanDeg = 35f;
+    public const int RestHolds = 3;                 // holds of a settled rest (the first + supports)
+    public const float SupportSpacing = 0.18f;      // x L: a support at least this far from every other hold
+    public const float SupportRetrySeconds = 6f;    // x TimeScale: none found - look again after this long
+    public const float GroomChance = 0.35f;         // a rest grooms once with this chance
+    public const float GroomStrokeSeconds = 1.3f, GroomEaseSeconds = 0.6f;   // x TimeScale
+    public const float StrikeEaseSeconds = 0.06f;   // x TimeScale: the strike's pull eases in this fast
+    public int Supports, Strikes, StrikeMisses, Grooms;   // cumulative
+    bool supporting, groomed;
+    float supportNext, groomStart, groomEnd;
+    int groomArm = -1, groomStrokes;
+    Vector3 groomFrom, groomTo;
+    float[] strikeStart;
+    Vector3[][] poseBase, poseNear;
+    bool[] posedSet, poseIsNear;
+    bool strikeLaunched;
+    IPreyTarget heldPrey;
+    float holdUntil;
+    public Vector3 StrikeAt { get; private set; }
+    public bool HoldingPrey { get { for (int a = 0; a < Use.Length; a++) if (Use[a] == ArmUse.Prey) return true; return false; } }
+    public IPreyTarget HeldPrey => heldPrey;
 
     float Rand() { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return (rng & 0xFFFFFF) / 16777216f; }
 
@@ -186,14 +237,31 @@ public sealed class SwingSequencer
         facing = facingWant = haveGoal ? OctoMath.Norm(Level(goal - hang, up), Perp(up)) : Perp(up);
         Quaternion rot = Pose(0f, c);
         body.SetPlannedPose(hang, rot, true);
+        if (Sling) arm = NearestFree(bestTop.point);
         if (!GripNow(c, arm, bestTop)) { Enter(Step.Fall); return 0; }
         Enter(Step.Hang);
+        int held = 1;
+        if (Sling)
+        {
+            // the sling at once: support holds around (each by the free arm nearest it), the idle arms on their poses
+            for (int k = 0; k < RestHolds - 1; k++)
+            {
+                supportIdx = -1;
+                if (ScanSupport(c, true) <= 0) break;
+                int s = NearestFree(supportHit.point);
+                if (s < 0 || !GripNow(c, s, supportHit, true)) break;
+                held++; Supports++;
+            }
+            for (int a = 0; a < body.ArmCount; a++)
+                if (Use[a] == ArmUse.Free) { ApplyPose(a); body.ArmPosed[a] = true; body.SnapPosed(a); }
+        }
         UpdateBoard(c);
-        return 1;
+        return held;
     }
 
-    // Lays arm a straight from its root to the contact, wraps and pins it at once, and hangs a rope from it.
-    bool GripNow(OctopusController c, int a, SurfaceHit contact)
+    // Lays arm a straight from its root to the contact, wraps and pins it at once, and hangs a rope from it (a support:
+    // the rope is the distance it has and stays so).
+    bool GripNow(OctopusController c, int a, SurfaceHit contact, bool support = false)
     {
         TentacleChain ch = body.Arms[a];
         // a smooth curve from the root (leaving along the root's own direction) to the contact
@@ -212,7 +280,8 @@ public sealed class SwingSequencer
         Vector3 piv = wrap[a].Point[keep[a] - 1];
         holdPivot[a] = piv;
         slot[a] = Swing.AddHold(piv, (Swing.Position - piv).magnitude);
-        Swing.RopeTarget[slot[a]] = HangRun * RunArc(a);
+        Swing.RopeTarget[slot[a]] = support ? Swing.Rope[slot[a]] : HangRun * RunArc(a);
+        if (support) FreezeRopes();
         Use[a] = ArmUse.Hold;
         ch.ClearTargetShape(); ch.ShapePull = 0f; ch.Tone = HoldTone; ch.CalmDamping = 0f;
         return true;
@@ -245,7 +314,7 @@ public sealed class SwingSequencer
 
         if (body.Asleep)
         {
-            bool stay = (Mode == Step.Hang || Mode == Step.Perch) && (!locomote || Arrived) && !inPlace && (c.Feeder == null || !c.Feeder.Feeding);
+            bool stay = (Mode == Step.Hang || Mode == Step.Perch) && (!locomote || Arrived) && !inPlace && (c.Feeder == null || !c.Feeder.Feeding) && it.mode != OctoMode.Strike;
             if (stay) { UpdateBoard(c); return; }
             body.Wake(); calmFrames = 0;
         }
@@ -263,6 +332,7 @@ public sealed class SwingSequencer
             case Step.Fall: TickFall(c); break;
             case Step.Play: TickPlay(c); break;
         }
+        if (Sling) { TickHunt(c, it); TickGroom(c); }
         // eased: the damping, the lateral calming, the free arm's gesture (a step in any of them is a jolt)
         float ramp = dt / (RampSeconds * TS);
         // (down 4x faster: a coasting reach must not be braked by the rest that came before it)
@@ -273,6 +343,12 @@ public sealed class SwingSequencer
 
         for (int a = 0; a < body.ArmCount; a++) if (Use[a] == ArmUse.Zip) TickZip(c, a);
         for (int a = 0; a < body.ArmCount; a++) if (Use[a] == ArmUse.Peel) TickPeel(c, a);
+        if (Sling)
+        {
+            // resting in a sling of holds (or perched over prey): braced on them, the body comes to a stop
+            Swing.Braced = Swing.HoldCount >= 2 && (Mode == Step.Hang || Mode == Step.Perch || Mode == Step.Creep && supporting) && !Swing.Pumping;
+            Swing.BraceRate = 5f / TS;
+        }
         if (Grounded) Swing.Velocity = Vector3.zero; else Swing.Step(dt);
 
         Quaternion rot = Pose(dt, c);
@@ -286,6 +362,7 @@ public sealed class SwingSequencer
 
     int FreeArm()
     {
+        if (Sling) return NearestFree(HasNext || dropping ? next.point : dropPhase == 1 ? dropHit.point : Swing.Position + Swing.Up * L);
         int best = -1;
         for (int a = 0; a < Use.Length; a++) if (Use[a] == ArmUse.Free) { best = a; break; }
         return best;
@@ -304,7 +381,8 @@ public sealed class SwingSequencer
         restWant = locomote && !Arrived ? 0f : (playing ? PlayRestDamping : RestDamping) / TS;
         if (inPlace && Swing.HoldCount > 0 && !Grounded) { Enter(Step.Play); return; }
         if (perch && (creeping ? NearPreyHold(c) : !locomote)) { Enter(Step.Perch); return; }
-        if (locomote && !Arrived && PlanNext(c)) Enter(Step.Pump);
+        if (locomote && !Arrived && PlanNext(c)) { Enter(Step.Pump); return; }
+        if (Sling && !playing && (c.Intent.mode == OctoMode.Rest || locomote && Arrived && !creeping)) TrySupport(c);
     }
 
     void TickPump(OctopusController c, bool locomote)
@@ -319,6 +397,8 @@ public sealed class SwingSequencer
             return;
         }
         if (Arrived) { Enter(Step.Hang); return; }
+        // many arms: off the sling onto the one hold toward the next (the supports peel off; the body starts to swing)
+        if (Sling && Swing.HoldCount > 1) { if (!AnyZip()) KeepOne(c, Swing.Position); return; }
         int hold = Swing.Single;
         if (hold < 0) return;   // still in a sling (transfer under way)
         Vector3 up = c.Up, P = Swing.Pivot[hold];
@@ -397,7 +477,8 @@ public sealed class SwingSequencer
         float win = 0.1f * L;
         // the hold, confirmed on the real surface where the hand is now
         bool ok = c.Probe(h.point + up * (0.5f * win), up, win, h.source, c.SlotOf(a), out SurfaceHit hit) && OctoMath.Dot(hit.normal, up) > 0.3f;
-        if (ok && (hit.point - Swing.Position).magnitude > CatchStretch * ExpectedRun(nextRadius, a)) ok = false;
+        // (many arms: a hand on the bark a little beyond the planned stretch still takes it - the drawn run stretches)
+        if (ok && (hit.point - Swing.Position).magnitude > (Sling ? SlingCatchSlack : 1f) * CatchStretch * ExpectedRun(nextRadius, a)) ok = false;
         if (ok) ok = PlanWrap(c, a, hit);
         if (!ok)
         {
@@ -406,6 +487,7 @@ public sealed class SwingSequencer
             if (dropping) { dropping = false; DropFailed(); }
             Use[a] = ArmUse.Free; Reacher = -1;
             ch.ShapeRate = TentacleChain.DefaultShapeRate;
+            if (supporting) { supporting = false; missesHere = 0; supportNext = time + SupportRetrySeconds * TS; Enter(Step.Hang); return; }
             if (missesHere >= 3) Fail(c, "missed");
             Enter(Swing.HoldCount > 0 ? Step.Pump : Step.Fall);
             return;
@@ -421,6 +503,16 @@ public sealed class SwingSequencer
         // the pivot is where the run will leave the coil (the planned base pin): it does not move when the zip is done
         Vector3 piv = wrap[a].Point[keep[a] - 1];
         float dist = (Swing.Position - piv).magnitude;
+        if (supporting)
+        {
+            // a support: one more rope of the length it has; every rope keeps its length (the sling stays feasible)
+            slot[a] = Swing.AddHold(piv, dist);
+            FreezeRopes();
+            holdPivot[a] = piv;
+            Swing.Pumping = false;
+            Enter(Step.Catch);
+            return;
+        }
         if (dropping)
         {
             // a drop: the old hold keeps the body until the zip is done; the new arm hangs slack, then catches it
@@ -445,6 +537,7 @@ public sealed class SwingSequencer
     {
         Swing.Pumping = false; restWant = 0f;
         if (AnyZip()) return;
+        if (supporting) { supporting = false; Supports++; Enter(Step.Hang); return; }
         // the zip is done: transfer - the old hold goes, the body swings on under the new one
         for (int a = 0; a < Use.Length; a++)
         {
@@ -476,7 +569,7 @@ public sealed class SwingSequencer
         Vector3 piv = w.Point[keep[a] - 1];
         holdPivot[a] = piv;
         int s = slot[a];
-        if (s >= 0) Swing.RopeTarget[s] = creeping ? Swing.Rope[s] : dropping ? dropRope : HangRun * RunArc(a);
+        if (s >= 0) Swing.RopeTarget[s] = creeping || supporting ? Swing.Rope[s] : dropping ? dropRope : HangRun * RunArc(a);
         Use[a] = ArmUse.Hold; lastZipped = a;
     }
 
@@ -508,7 +601,41 @@ public sealed class SwingSequencer
 
     // ------------------------------------------------------------------ play
 
-    bool inPlace, playRun, playing;
+    bool inPlace, playRun, playing, playDirChecked;
+
+    // Many arms (a big body): a play swing goes where its arc is clear - the body's path (the rope extended by half the
+    // body) at a half and the full amplitude, both ways (a circle: round the cone), cast as a chain from where the body
+    // is; the move's own direction first, then turned by 60 deg steps. None clear: the clearest (fewest blocked links).
+    Vector3 ClearSwingDir(OctopusController c, Vector3 dir, float amp, bool circle)
+    {
+        int one = Swing.Single;
+        if (one < 0) return dir;
+        Vector3 up = c.Up, P = Swing.Pivot[one];
+        float l = (Swing.Position - P).magnitude + 0.5f * (body.Spec.MantleLength + body.Spec.HeadRadius) * S;
+        Vector3 best = dir; int bestBlocked = int.MaxValue;
+        for (int k = 0; k < 6 && bestBlocked > 0; k++)
+        {
+            float turn = (k + 1) / 2 * (k % 2 == 0 ? 1f : -1f) * 60f * Mathf.Deg2Rad;
+            Vector3 f = OctoMath.Norm(Level(OctoMath.Rotate(dir, up, turn), up), Perp(up)), side = OctoMath.Cross(up, f);
+            int blocked = 0;
+            for (int sgn = -1; sgn <= 1; sgn += 2)
+            {
+                Vector3 from = P - up * l;
+                for (int j = 1; j <= 2; j++)
+                {
+                    float A = amp * j / 2f;
+                    Vector3 h = circle ? (f * (sgn * Mathf.Cos(Mathf.PI * j / 4f)) + side * Mathf.Sin(Mathf.PI * j / 4f)) : f * sgn;
+                    Vector3 to = P + (OctoMath.Norm(h, f) * Mathf.Sin(circle ? amp : A) - up * Mathf.Cos(circle ? amp : A)) * l;
+                    Vector3 d = to - from;
+                    float len = d.magnitude;
+                    if (len > 1e-4f && c.Cast(from, d, len, out _)) blocked++;
+                    from = to;
+                }
+            }
+            if (blocked < bestBlocked) { bestBlocked = blocked; best = f; }
+        }
+        return best;
+    }
 
     void StartMove(OctopusController c, PlayMove move, float amplitude)
     {
@@ -519,12 +646,20 @@ public sealed class SwingSequencer
         playSense = Rand() < 0.5f ? -1f : 1f;
         if (move == PlayMove.BigSwing || move == PlayMove.HighSwing) facingWant = playDir;
         if (move == PlayMove.Drop) { dropPhase = 0; dropping = false; lowIdx = -1; }
+        playDirChecked = false;
     }
 
     void TickPlay(OctopusController c)
     {
         if (!inPlace) { Enter(Step.Hang); return; }
+        if (Sling && Swing.HoldCount > 1 && !AnyZip() && !dropping) KeepOne(c, Swing.Position);
         if (Swing.Single < 0) { Swing.Pumping = false; restWant = PlayRestDamping / TS; return; }   // a sling: wait for one hold
+        if (Sling && !playDirChecked && (Play == PlayMove.BigSwing || Play == PlayMove.HighSwing || Play == PlayMove.Circle))
+        {
+            playDirChecked = true;
+            playDir = ClearSwingDir(c, playDir, playAmp, Play == PlayMove.Circle);
+            if (Play != PlayMove.Circle) facingWant = playDir;
+        }
         switch (Play)
         {
             case PlayMove.BigSwing:
@@ -674,11 +809,12 @@ public sealed class SwingSequencer
         {
             // done (eaten, or gave up): pay the rope back out and rest
             int h0 = HoldingArm();
-            if (h0 >= 0 && slot[h0] >= 0) Swing.RopeTarget[slot[h0]] = HangRun * RunArc(h0);
+            if (h0 >= 0 && slot[h0] >= 0 && !Sling) Swing.RopeTarget[slot[h0]] = HangRun * RunArc(h0);   // (a sling keeps its ropes: one paid out alone only went slack)
             Enter(Step.Hang);
             return;
         }
         if (locomote && creeping && !NearPreyHold(c) && StepTime > 1f * TS) { Enter(Step.Hang); return; }
+        if (Sling) return;   // the octopus hangs still over its prey at its natural length (its arms strike from there)
         int h = HoldingArm();
         if (h < 0 || slot[h] < 0) return;
         Swing.RopeTarget[slot[h]] = PerchRope * L;
@@ -920,6 +1056,21 @@ public sealed class SwingSequencer
         Vector3 up = c.Up;
         Vector3 want = up;
         if (Swing.HoldCount > 0) want = OctoMath.Norm(Pivot - Swing.Position, up);
+        if (Sling && Swing.HoldCount > 0)
+        {
+            // many arms: the body hangs leaning off its holding arms (their side of the crown turned up toward the
+            // holds, HoldLeanDeg): from a crown facing the hold square on, every holding arm turned ~90-110 deg at its
+            // base inside the web, and the web there folded through itself (2026-10-20)
+            Vector3 lean = Vector3.zero; int nh = 0;
+            for (int a = 0; a < Use.Length; a++)
+                if (Use[a] == ArmUse.Hold || Use[a] == ArmUse.Zip || Use[a] == ArmUse.Reach) { lean += OctoMath.Rotate(body.PlanRotation, OctopusShape.ArmDir(body.Spec, a)); nh++; }
+            if (nh > 0)
+            {
+                lean -= want * OctoMath.Dot(lean, want);
+                float ll = lean.magnitude;
+                if (ll > 1e-3f) want = OctoMath.Norm(want - lean * (Mathf.Tan(HoldLeanDeg * Mathf.Deg2Rad) / ll), want);
+            }
+        }
         if (dt > 0f)
         {
             float w = OralOmega / TS;
@@ -927,7 +1078,9 @@ public sealed class SwingSequencer
             oral = OctoMath.Norm(oral + oralVel * dt, want);
         }
         else { oral = want; oralVel = Vector3.zero; }
-        if (dt > 0f)
+        // (many arms braced on two or more holds do not turn on them: a yaw twisted every holding arm about the crown
+        // and folded the web between them - the facing waits for the next single-hold swing)
+        if (dt > 0f && !(Sling && Swing.HoldCount >= 2))
         {
             float ang = Mathf.Acos(Mathf.Clamp(OctoMath.Dot(facing, facingWant), -1f, 1f)), step = FacingRateDeg * Mathf.Deg2Rad * dt / TS;
             if (ang > 1e-4f)
@@ -937,7 +1090,7 @@ public sealed class SwingSequencer
                 facing = OctoMath.Norm(OctoMath.Rotate(facing, ax, Mathf.Min(ang, step)), facing);
             }
         }
-        else facing = facingWant;
+        else if (!(dt > 0f)) facing = facingWant;
         Vector3 bodyUp = -oral;
         Vector3 fw = facing - bodyUp * OctoMath.Dot(facing, bodyUp);
         return OctoMath.Look(OctoMath.Norm(fw, Perp(bodyUp)), bodyUp);
@@ -949,7 +1102,18 @@ public sealed class SwingSequencer
         Vector3 up = c.Up;
         // a holding arm is drawn from the body to its hold (OctopusBody.DrawHeld), sagging by the rope's slack
         body.ArmDrawn[a] = Use[a] == ArmUse.Hold;
+        if (Sling)
+        {
+            // many arms: the reach and the zip are drawn too (curves from the root; the web between the arms stays smooth)
+            body.ArmDrawn[a] = Use[a] == ArmUse.Hold || Use[a] == ArmUse.Zip || Use[a] == ArmUse.Reach;
+            body.ArmReach[a] = Use[a] == ArmUse.Reach;
+            body.ArmPosed[a] = Use[a] == ArmUse.Free || Use[a] == ArmUse.Groom;
+            if (Use[a] != ArmUse.Free) posedSet[a] = false;   // (its base pose is rewritten when it comes back)
+        }
         body.ArmSlack[a] = slot[a] >= 0 && Swing.Active[slot[a]] ? Mathf.Max(0f, Swing.Rope[slot[a]] - (Swing.Position - Swing.Pivot[slot[a]]).magnitude) : 0f;
+        // (many arms: a few mm of slack are no sag - the sag goes as its square root, and a sling's ropes sit at a hair's
+        // slack that came and went every tick, a flicker of the drawn runs)
+        if (Sling) body.ArmSlack[a] = Mathf.Max(0f, body.ArmSlack[a] - 0.004f * S);
         Vector3 aimAt;
         switch (Use[a])
         {
@@ -973,6 +1137,7 @@ public sealed class SwingSequencer
             case ArmUse.Reach:
             {
                 Vector3 tgt = ReachTarget(a, up, out float u);
+                if (Sling) body.ArmReachTarget[a] = tgt;
                 ch.SetTargetShape(tgt, 1f, true);
                 ch.ShapePull = ReachPull * Mathf.Min(1f, 4f * u + 0.25f); ch.PullSpeed = 0f;
                 ch.Tone = ReachTone; ch.CalmDamping = 0f; ch.SpeedCap = 0f;
@@ -982,6 +1147,31 @@ public sealed class SwingSequencer
             case ArmUse.Peel:
                 ch.Tone = FreeTone; ch.CalmDamping = 0f; ch.ShapePull = 0f; ch.SpeedCap = FreeSpeedCap * TS;
                 ResetLengths(ch);
+                aimAt = ch.X[ch.N - 1];
+                break;
+            case ArmUse.Strike:
+            {
+                // an eased fast reach at the intercept: the pull comes in over StrikeEaseSeconds, stretched to its limit
+                float u = Mathf.Clamp01((time - strikeStart[a]) / (StrikeEaseSeconds * TS));
+                ch.SetTargetShape(StrikeAt, 1f, true);
+                ch.ShapePull = 0.25f * (0.3f + 0.7f * u * u * (3f - 2f * u)); ch.PullSpeed = 0f;
+                ch.Tone = 3f; ch.CalmDamping = 0f; ch.SpeedCap = 0f;
+                for (int j = 0; j < ch.N - 1; j++) ch.LengthTarget[j] = ch.Spec.MaxStretch;
+                aimAt = StrikeAt;
+                break;
+            }
+            case ArmUse.Prey:
+                ch.ShapePull = 0f; ch.Tone = 1f; ch.CalmDamping = 0f; ch.SpeedCap = 0f;
+                aimAt = ch.X[ch.N - 1];
+                break;
+            case ArmUse.Groom:
+                aimAt = ch.X[ch.N - 1];
+                break;
+            case ArmUse.Free when Sling:
+                // display only: on its pose (OctopusBody posed arm); the chain settings matter only while it eases in
+                if (!posedSet[a]) ch.ClearTargetShape();
+                if (!posedSet[a] || poseIsNear[a] != NeighbourBusy(a)) ApplyPose(a);
+                ch.ShapePull = 0f; ch.Tone = FreeTone; ch.CalmDamping = FreeCalm; ch.SpeedCap = FreeSpeedCap * TS;
                 aimAt = ch.X[ch.N - 1];
                 break;
             default:
@@ -1032,7 +1222,10 @@ public sealed class SwingSequencer
             bool held = Use[a] == ArmUse.Hold || Use[a] == ArmUse.Zip;
             b.Anchored[a] = held;
             if (held) b.Anchor[a] = holdPivot[a];
-            b.Role[a] = Use[a] == ArmUse.Hold ? ArmRole.Anchor : Use[a] == ArmUse.Zip || Use[a] == ArmUse.Reach ? ArmRole.Grip : Use[a] == ArmUse.Peel ? ArmRole.Rest : ArmRole.Hang;
+            b.Role[a] = Use[a] == ArmUse.Hold ? ArmRole.Anchor : Use[a] == ArmUse.Zip || Use[a] == ArmUse.Reach ? ArmRole.Grip : Use[a] == ArmUse.Peel ? ArmRole.Rest
+                      : Use[a] == ArmUse.Strike || Use[a] == ArmUse.Prey ? ArmRole.Strike : Use[a] == ArmUse.Groom ? ArmRole.Groom
+                      : Sling && Curled(a) ? ArmRole.Tuck : ArmRole.Hang;
+            b.Striking[a] = Use[a] == ArmUse.Strike;
             b.Claiming[a] = Use[a] == ArmUse.Reach;
             if (b.Claiming[a]) b.ClaimPoint[a] = reachHit[a].point;
         }
@@ -1046,7 +1239,10 @@ public sealed class SwingSequencer
     void Sleep(OctopusController c, bool locomote)
     {
         bool rest = (Mode == Step.Hang || Mode == Step.Perch) && (!locomote || Arrived) && !AnyZip() && (c.Feeder == null || !c.Feeder.Feeding);
-        for (int a = 0; a < Use.Length && rest; a++) if (Use[a] == ArmUse.Reach || Use[a] == ArmUse.Peel) rest = false;
+        for (int a = 0; a < Use.Length && rest; a++) if (Use[a] == ArmUse.Reach || Use[a] == ArmUse.Peel || Use[a] >= ArmUse.Strike) rest = false;
+        // many arms: not before the sling is taken (or none is within reach for now)
+        if (Sling && rest && !playing && Swing.HoldCount < RestHolds && time >= supportNext && (c.Intent.mode == OctoMode.Rest || locomote && Arrived && !creeping)) rest = false;
+        if (Sling && rest && c.Intent.mode == OctoMode.Strike) rest = false;
         if (rest && Swing.HoldCount > 0)
         {
             for (int i = 0; i < PlannedSwing.MaxHolds; i++) if (Swing.Active[i] && Mathf.Abs(Swing.Rope[i] - Swing.RopeTarget[i]) > 1e-4f) rest = false;
@@ -1056,6 +1252,373 @@ public sealed class SwingSequencer
         Swing.Velocity = Vector3.zero;
         body.SleepPlanned();
         Sleeps++;
+    }
+
+    // ------------------------------------------------------------------ many arms: the sling
+
+    // The free arm whose root lies nearest p (-1: none); one beside a busy arm counts AdjacentPenalty x L farther
+    // (two neighbours working in different directions fold the web between them). (Choosing by the arm's facing
+    // instead - the least turn at its base - was tried: it changed which arms hold the sling and folded the web more.)
+    public const float AdjacentPenalty = 0.15f;
+    int NearestFree(Vector3 p)
+    {
+        int best = -1; float bd = float.MaxValue;
+        for (int a = 0; a < Use.Length; a++)
+        {
+            if (Use[a] != ArmUse.Free) continue;
+            float d = (body.Arms[a].X[0] - p).magnitude + (NeighbourBusy(a) ? AdjacentPenalty * L : 0f);
+            if (d < bd) { bd = d; best = a; }
+        }
+        return best;
+    }
+
+    bool AnyBusy()
+    {
+        for (int a = 0; a < Use.Length; a++)
+            if (Use[a] == ArmUse.Reach || Use[a] == ArmUse.Zip || Use[a] == ArmUse.Peel || Use[a] == ArmUse.Strike || Use[a] == ArmUse.Prey) return true;
+        return false;
+    }
+
+    // Every rope keeps the length it has (a sling of ropes that each reel toward their own length can be infeasible).
+    void FreezeRopes()
+    {
+        for (int i = 0; i < PlannedSwing.MaxHolds; i++) if (Swing.Active[i]) Swing.RopeTarget[i] = Swing.Rope[i];
+    }
+
+    // Off the sling onto one hold: the hold whose pivot lies nearest p (level; the crown: the one most nearly overhead,
+    // the gentlest start) stays, every other one peels off.
+    void KeepOne(OctopusController c, Vector3 p)
+    {
+        Vector3 up = c.Up;
+        int keepArm = -1; float bd = float.MaxValue;
+        for (int a = 0; a < Use.Length; a++)
+        {
+            if (Use[a] != ArmUse.Hold || slot[a] < 0) continue;
+            float d = Level(Swing.Pivot[slot[a]] - p, up).sqrMagnitude;
+            if (d < bd) { bd = d; keepArm = a; }
+        }
+        if (keepArm < 0) return;
+        for (int a = 0; a < Use.Length; a++) if (a != keepArm && Use[a] == ArmUse.Hold) ReleaseArm(a);
+        // the kept rope taut at the distance there is and kept so (no slack to fall into, no reel: the body swings
+        // off from where it hung; a rope paid out under a reach sank the body out of it)
+        int s = slot[keepArm];
+        Swing.Rope[s] = Mathf.Min(Swing.Rope[s], (Swing.Position - Swing.Pivot[s]).magnitude);
+        Swing.RopeTarget[s] = Swing.Rope[s];
+    }
+
+    // Resting with fewer than RestHolds holds: a support hold is looked for (over frames) and reached for slowly.
+    void TrySupport(OctopusController c)
+    {
+        if (Swing.HoldCount == 0 || Swing.HoldCount >= RestHolds || time < supportNext || Grounded || AnyBusy()) { supportIdx = -1; return; }
+        if (Swing.Amplitude > 6f * Mathf.Deg2Rad) return;
+        int r = ScanSupport(c, false);
+        if (r == 0) return;
+        int a = r > 0 ? NearestFree(supportHit.point) : -1;
+        if (a < 0) { supportNext = time + SupportRetrySeconds * TS; return; }
+        next = supportHit; nextRadius = supportR; supporting = true; HasNext = false;
+        BeginReach(c, a, CreepReachSeconds * TS, Step.Creep);
+    }
+
+    // A support hold. With branch hints: the hinted branches around the crown first (one probe each for the top). Then
+    // (or probe-only) a ring of casts from the crown at points around it - SupportAzimuths round, at two level
+    // distances, at the held pivot's height and a little above and below (aimed at points, not directions: a thin bar
+    // slips between the rays of a fan) - all at once or ScanPerFrame per frame within the query budget. A branch the
+    // arm can wrap, within reach, above the crown, not near a hold already taken; best: the one farthest round from
+    // the holds there are (a spread sling), then the nearer. 1 found, 0 scanning, -1 none.
+    const int SupportAzimuths = 16, SupportCasts = SupportAzimuths * 6;
+    static readonly float[] supportRing = { 0.35f, 0.6f }, supportRise = { 0f, 0.12f, -0.12f };
+    readonly BranchHint[] supportHints = new BranchHint[8];
+    int supportIdx = -1;
+    float supportBest, supportR;
+    SurfaceHit supportHit;
+    bool supportFound;
+
+    int ScanSupport(OctopusController c, bool all)
+    {
+        Vector3 up = c.Up, crown = Swing.Position, P = Pivot;
+        if (supportIdx < 0)
+        {
+            supportIdx = 0; supportBest = float.NegativeInfinity; supportFound = false;
+            if (c.Hints != null)
+            {
+                int n = c.Hints.Query(crown, up, -1f, 0.3f * L, CatchStretch * L, body.Spec.arm.TipRadius * S * 1.5f, 2f * L, supportHints);
+                for (int i = 0; i < n; i++)
+                {
+                    if (NearHold(supportHints[i].point, 0.7f)) continue;
+                    if (Mathf.Abs(OctoMath.Dot(supportHints[i].axis, up)) > BranchRoute.MaxAxisRise) continue;
+                    if (TopContact(c, supportHints[i].point, supportHints[i].radius, out SurfaceHit top)) Candidate(c, top, supportHints[i].radius);
+                }
+                if (supportFound) { supportIdx = -1; return 1; }
+                if (!all) return 0;   // (the casts from the next frame)
+            }
+        }
+        Vector3 t0 = Perp(up), t1 = OctoMath.Cross(up, t0);
+        for (int n = 0; (all || n < ScanPerFrame) && supportIdx < SupportCasts; n++, supportIdx++)
+        {
+            if (!all && !c.Spare(5)) return 0;
+            int k = supportIdx % SupportAzimuths, j = supportIdx / SupportAzimuths, ri = j % 2, hi = j / 2;
+            float az = k * 2f * Mathf.PI / SupportAzimuths + 0.1f;
+            Vector3 aim = crown + (t0 * Mathf.Cos(az) + t1 * Mathf.Sin(az)) * (supportRing[ri] * L) + up * (OctoMath.Dot(P - crown, up) + supportRise[hi] * L);
+            Vector3 d = aim - crown;
+            float len = d.magnitude;
+            if (!c.Cast(crown, d, len + 0.15f * L, out SurfaceHit h) || !c.HoldInside(h.point)) continue;
+            if (NearHold(h.point, 0.8f) || supportFound && (h.point - supportHit.point).magnitude < SupportSpacing * L) continue;   // (cheap: before the axis probes)
+            if (!ContactFromHit(c, h, out SurfaceHit top, out float r)) continue;
+            Candidate(c, top, r);
+        }
+        if (supportIdx < SupportCasts) return 0;
+        supportIdx = -1;
+        return supportFound ? 1 : -1;
+    }
+
+    bool NearHold(Vector3 p, float f)
+    {
+        for (int i = 0; i < PlannedSwing.MaxHolds; i++) if (Swing.Active[i] && (Swing.Pivot[i] - p).magnitude < f * SupportSpacing * L) return true;
+        return false;
+    }
+
+    void Candidate(OctopusController c, SurfaceHit top, float r)
+    {
+        Vector3 up = c.Up, crown = Swing.Position;
+        float cd = (top.point - crown).magnitude;
+        if (DebugTrace) DebugLog?.Invoke($"support candidate {top.point} cd {cd / L:F2} L rise {OctoMath.Dot(top.point - crown, up) / L:F2} L reach {CatchStretch * 0.97f * ExpectedRun(r, 0) / L:F2} L");
+        if (cd < 0.3f * L || cd > CatchStretch * 0.97f * ExpectedRun(r, 0)) return;
+        if (OctoMath.Dot(top.point - crown, up) < 0.1f * L || !c.HoldInside(top.point) || NearHold(top.point, 1f)) return;
+        Vector3 held = OctoMath.Norm(Level(Pivot - crown, up), Vector3.zero);
+        float score = -OctoMath.Dot(OctoMath.Norm(Level(top.point - crown, up), Vector3.zero), held) - 0.3f * cd / L;
+        if (score > supportBest) { supportBest = score; supportHit = top; supportR = r; supportFound = true; }
+    }
+
+    // ------------------------------------------------------------------ many arms: the hunt
+
+    void TickHunt(OctopusController c, in OctoIntent it)
+    {
+        IPreyTarget prey = it.prey;
+        bool strike = it.mode == OctoMode.Strike && prey != null;
+        if (strike) StrikeAt = it.intercept;
+        if (strike && !strikeLaunched && heldPrey == null && prey.CanBeGrabbed) { strikeLaunched = true; Launch(Mathf.Max(1, it.strikers)); }
+        if (it.mode != OctoMode.Strike) strikeLaunched = false;
+        for (int a = 0; a < Use.Length; a++)
+        {
+            TentacleChain ch = body.Arms[a];
+            if (Use[a] == ArmUse.Strike)
+            {
+                if (strike && heldPrey == null && prey.CanBeGrabbed)
+                {
+                    prey.GrabVolume(out Vector3 pa, out Vector3 pb, out float r);
+                    Vector3 tip = ch.X[ch.N - 1];
+                    if ((tip - ClosestOnSegment(tip, pa, pb)).magnitude < r + 0.08f * S)
+                    {
+                        heldPrey = prey; holdUntil = c.Time + c.HoldSeconds;
+                        Use[a] = ArmUse.Prey;
+                        c.NotifyGrab(prey);
+                        HoldPrey(a);   // wrapped at once: the strike's momentum must not carry the tip off for a frame
+                        continue;
+                    }
+                }
+                if (!strike || heldPrey != null || time - strikeStart[a] > 2.5f * ch.Spec.StrikeTime * TS)
+                {
+                    if (heldPrey == null) StrikeMisses++;
+                    Recover(a);
+                }
+            }
+            else if (Use[a] == ArmUse.Prey)
+            {
+                if (heldPrey == null || c.Time > holdUntil || it.mode == OctoMode.Retreat)
+                {
+                    IPreyTarget p = heldPrey; heldPrey = null;
+                    Recover(a);
+                    if (p != null) c.NotifyRelease(p);
+                }
+                else HoldPrey(a);
+            }
+        }
+    }
+
+    // Up to n free (or grooming) arms whose roots lie nearest the intercept, within a stretched arm's reach of it.
+    void Launch(int n)
+    {
+        for (int i = 0; i < n; i++)
+        {
+            int best = -1; float bd = float.MaxValue;
+            for (int a = 0; a < Use.Length; a++)
+            {
+                if (Use[a] != ArmUse.Free && Use[a] != ArmUse.Groom) continue;
+                TentacleChain ch = body.Arms[a];
+                float d = (StrikeAt - ch.X[0]).magnitude;
+                if (d <= 0.95f * ch.Spec.MaxStretch * ch.Length && d < bd) { bd = d; best = a; }
+            }
+            if (best < 0) return;
+            if (Use[best] == ArmUse.Groom) groomArm = -1;
+            TentacleChain sc = body.Arms[best];
+            sc.UnpinAll();
+            sc.ShapeRate = TentacleChain.FastShapeRate;
+            Use[best] = ArmUse.Strike; strikeStart[best] = time;
+            Strikes++;
+        }
+    }
+
+    void Recover(int a)
+    {
+        TentacleChain ch = body.Arms[a];
+        ch.UnpinAll();
+        ch.ClearTargetShape();
+        ResetLengths(ch);
+        ch.ShapeRate = TentacleChain.DefaultShapeRate;
+        ch.Tone = FreeTone;
+        Use[a] = ArmUse.Free;
+    }
+
+    // The holding arm's tip coils round the prey's grab volume (the wrap re-planned on the capsule every tick).
+    void HoldPrey(int a)
+    {
+        TentacleChain ch = body.Arms[a];
+        heldPrey.GrabVolume(out Vector3 pa, out Vector3 pb, out float r);
+        Vector3 tip = ch.X[ch.N - 1];
+        Vector3 contact = OctoMath.Norm(tip - ClosestOnSegment(tip, pa, pb), Vector3.up);
+        int avail = Mathf.Min(ch.N - 8, 14);
+        WrapMarch w = wrap[a];
+        w.PlanAroundCapsule(ch, ch.N - 1, pa, pb, r, contact, 1f, avail);
+        for (int i = 0; i < w.Count; i++) ch.Pin(w.Particle[i], w.Point[i], w.Normal[i], SurfaceHit.NoSource);
+        for (int j = 0; j < ch.N - 1; j++) ch.LengthTarget[j] = ch.Pinned[j + 1] ? 1f : 0.95f;
+    }
+
+    static Vector3 ClosestOnSegment(Vector3 p, Vector3 a, Vector3 b)
+    {
+        Vector3 ab = b - a;
+        float l2 = ab.sqrMagnitude;
+        return l2 > 1e-12f ? a + ab * Mathf.Clamp01(OctoMath.Dot(p - a, ab) / l2) : a;
+    }
+
+    // ------------------------------------------------------------------ many arms: idle poses, grooming
+
+    // Arm a's idle pose in body space (x size; the mantle is +Y, hanging down): it leaves the crown along its rest
+    // direction, bends down past the mantle and hangs there, its tip curled in - a third of the arms (1, 4, 7) curl up
+    // tightly instead. Every arm takes the same bend over its first RootBend of length (the web skirt spans neighbours
+    // there: two neighbours bending differently inverted it); past it each arm's droop, splay and curl differ a little
+    // (by its index). Kept off the shell.
+    // Beside a busy arm (holding, reaching, striking: it leaves the crown toward its work, the opposite way) the idle
+    // arm stays out along its rest direction a little longer (near: RootStraightNear .. RootBendNear) so the web
+    // between them is not folded through itself.
+    const float RootStraight = 0.1f, RootBend = 0.4f, RootStraightNear = 0.25f, RootBendNear = 0.55f, RootBendDeg = 80f;
+    void BuildPose(int a, Vector3[] p, bool near)
+    {
+        CephalopodSpec sp = body.Spec;
+        TentacleChain ch = body.Arms[a];
+        float r0 = near ? RootStraightNear : RootStraight, r1 = near ? RootBendNear : RootBend;
+        int n = ch.N;
+        float h = (Mathf.Sin(a * 12.9898f + 1.7f) * 43758.5453f) % 1f; if (h < 0f) h += 1f;   // a fixed per-arm variety
+        bool curl = a % 3 == 1;
+        float hangDeg = curl ? 30f : 4f + 12f * h;   // past the root bend
+        float curlFrom = curl ? (near ? 0.6f : 0.45f) : 0.66f + 0.08f * h, curlDeg = curl ? 300f : 70f + 60f * h;
+        float splay = (h - 0.5f) * 24f * Mathf.Deg2Rad;
+        Vector3 d = OctopusShape.ArmDir(sp, a), up = Vector3.up;
+        p[0] = OctopusShape.ArmRoot(sp, a) * S;
+        float sp1 = ch.Spacing;
+        for (int k = 0; k < n - 1; k++)
+        {
+            float s = (k + 0.5f) / (n - 1);
+            float u = Mathf.Clamp01((s - r0) / (r1 - r0)), th = RootBendDeg * u * u * (3f - 2f * u);
+            float w = Mathf.Clamp01((s - r1) / 0.15f);
+            w = w * w * (3f - 2f * w);
+            th += hangDeg * w;
+            float v = Mathf.Clamp01((s - curlFrom) / (1f - curlFrom));
+            th += curlDeg * v * v;
+            float t = th * Mathf.Deg2Rad;
+            Vector3 dd = OctoMath.Rotate(d, up, splay * w);
+            Vector3 q = p[k] + (dd * Mathf.Cos(t) + up * Mathf.Sin(t)) * sp1;
+            // off the mantle and head (a little more than the arm's radius there)
+            float clear = (ch.Spec.RadiusAt(ch.Spec.Spacing * (k + 1)) * 1.6f + 0.01f);
+            float dist = OctopusShape.ShellDistance(sp, q / S, out Vector3 outward);
+            if (dist < clear) q += outward * ((clear - dist) * S);
+            p[k + 1] = q;
+        }
+    }
+
+    bool Curled(int a) => a % 3 == 1;
+
+    // A neighbour around the crown is holding, reaching, striking or letting go.
+    bool NeighbourBusy(int a)
+    {
+        int n = Use.Length, l = (a + n - 1) % n, r = (a + 1) % n;
+        return Busy(Use[l]) || Busy(Use[r]);
+    }
+
+    static bool Busy(ArmUse u) => u != ArmUse.Free && u != ArmUse.Groom;
+
+    void ApplyPose(int a)
+    {
+        bool near = NeighbourBusy(a);
+        SetPose(a, near ? poseNear[a] : poseBase[a]);
+        poseIsNear[a] = near; posedSet[a] = true;
+    }
+
+    void SetPose(int a, Vector3[] src)
+    {
+        Vector3[] dst = body.ArmPoseLocal[a];
+        for (int k = 0; k < dst.Length; k++) dst[k] = src[k];
+    }
+
+    // At rest (once per rest, by chance): one idle arm strokes its tip slowly over the mantle beside it, two or three
+    // strokes, eased in and out, then hangs again. Display only (the pose moves; nothing is simulated).
+    void TickGroom(OctopusController c)
+    {
+        bool rest = Mode == Step.Hang && c.Intent.mode == OctoMode.Rest && !playing && !body.Asleep;
+        if (c.Intent.mode != OctoMode.Rest) groomed = false;
+        if (groomArm >= 0)
+        {
+            int a = groomArm;
+            if (Use[a] != ArmUse.Groom) { groomArm = -1; return; }
+            if (!rest || time >= groomEnd) { EndGroom(); return; }
+            float t = time - groomStart, total = groomEnd - groomStart, ease = GroomEaseSeconds * TS;
+            float amt = Mathf.Clamp01(Mathf.Min(t, total - t) / ease);
+            amt = amt * amt * (3f - 2f * amt);
+            float stroke = Mathf.Max(0f, t - ease) / (GroomStrokeSeconds * TS);
+            float tri = 1f - Mathf.Abs(2f * (stroke - Mathf.Floor(stroke)) - 1f);
+            tri = tri * tri * (3f - 2f * tri);
+            Vector3 g = groomFrom + (groomTo - groomFrom) * tri;
+            Vector3[] src = poseBase[a], dst = body.ArmPoseLocal[a];
+            int n = dst.Length;
+            Vector3 off = g - src[n - 1];
+            for (int k = 0; k < n; k++)
+            {
+                float s = (float)k / (n - 1), w = Mathf.Clamp01((s - 0.45f) / 0.5f);
+                dst[k] = src[k] + off * (amt * w * w * (3f - 2f * w));
+            }
+            return;
+        }
+        if (!rest || groomed || AnyBusy() || Swing.Velocity.magnitude > 2f * SleepSpeed * TS) return;
+        if (Swing.HoldCount < RestHolds && time >= supportNext) return;   // the sling first
+        groomed = true;
+        if (Rand() >= GroomChance) return;
+        int pick = (int)(Rand() * Use.Length), arm = -1;
+        for (int i = 0; i < Use.Length && arm < 0; i++) { int k = (pick + i) % Use.Length; if (Use[k] == ArmUse.Free && body.ArmPose[k] >= 1f && !Curled(k) && !NeighbourBusy(k)) arm = k; }
+        if (arm < 0) return;
+        // the stroke: along the mantle beside the arm's hanging part, a little off the skin
+        CephalopodSpec sp = body.Spec;
+        Vector3 mid = poseBase[arm][(int)(0.6f * (body.Arms[arm].N - 1))] / S;
+        float bt = 0.5f, bphi = 0f, bd = float.MaxValue;
+        for (int i = 0; i <= 6; i++)
+            for (int j = 0; j < 16; j++)
+            {
+                float tt = 0.3f + 0.08f * i, ph = j * Mathf.PI / 8f;
+                float dd = (OctopusShape.ShellPoint(sp, tt, ph) - mid).sqrMagnitude;
+                if (dd < bd) { bd = dd; bt = tt; bphi = ph; }
+            }
+        float lift = 1f + 2.5f * body.Arms[arm].Spec.TipRadius / Mathf.Max(sp.MantleRadius, 1e-3f);
+        groomFrom = OctopusShape.ShellPoint(sp, Mathf.Max(0.2f, bt - 0.15f), bphi, lift) * S;
+        groomTo = OctopusShape.ShellPoint(sp, Mathf.Min(0.85f, bt + 0.15f), bphi, lift) * S;
+        groomStrokes = 2 + (int)(Rand() * 2f);
+        groomArm = arm; groomStart = time;
+        groomEnd = time + (2f * GroomEaseSeconds + groomStrokes * GroomStrokeSeconds) * TS;
+        Use[arm] = ArmUse.Groom; Grooms++;
+    }
+
+    void EndGroom()
+    {
+        int a = groomArm;
+        groomArm = -1;
+        if (a >= 0 && Use[a] == ArmUse.Groom) { Use[a] = ArmUse.Free; ApplyPose(a); }
     }
 
     // ------------------------------------------------------------------ helpers

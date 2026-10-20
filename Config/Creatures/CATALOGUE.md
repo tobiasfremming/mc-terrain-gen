@@ -1996,6 +1996,7 @@ Restyles part ids (material layers) for this species: shading model (Skin, Chiti
 |---|---|---|---|---|---|---|
 | `rows` | LayerDef[] | Struct | - | rows, one per restyled part id |  |  |
 | `rows[].partId` | int | Count | - | the part id (material layer) this row styles: 0 body, 1 limb, 2 foot/claw/cone, 3 eye, 8 membrane, 9 band, 10+ new parts (CATALOGUE.md registry) | 0..15 |  |
+| `rows[].kind` | string | Text | - | instead of partId: the part KIND this row styles, by name (registry kinds: body, limb, teeth, ...; or a kind of this species' own: it gets a free slot, MaterialSlots) |  |  |
 | `rows[].model` | Skin / Chitin / Membrane / Eye / Claw | Enum | - | shading model: Skin, Chitin (no grain, glossy), Membrane, Eye, Claw (keratin: the tint, glossy) |  |  |
 | `rows[].noPattern` | bool | Flag | - | no pattern on this part |  |  |
 | `rows[].limbPattern` | bool | Flag | - | the limb pattern (mottle / spots) instead of the body's |  |  |
@@ -2055,25 +2056,25 @@ Palette dorsal/flank/belly + procedural pattern by rest arc length (CreaturePatt
 | `hueJitter` | float | Fraction | - | per-individual hue jitter |  |  |
 | `valueJitter` | float | Fraction | - | per-individual value jitter |  |  |
 
-## Material layers (mesh part ids; next free: 16)
+## Material layers (part kinds and their slots; legacy ids next free: 16 - a new kind takes none: NamedKinds)
 
-Creature.shader shades a part id by its row of the species' look-layer table (Kit/PartLayers.cs): a shading model (Skin, Chitin, Membrane, Eye, Claw) plus layers (pattern, scale grain, sheen, shimmer) and a tint. A new part takes the next free id and adds its row to PartLayers.Registry - no shader edit; a species restyles rows with the Layers module. Never reuse an id. A new shading MODEL is a shader edit: add it to CreatureLayers.hlsl + ShadingModel, with a CPU proof and the Unity pixel guard (CreaturePartLayerTests, CreatureShaderLayerTests).
+Creature.shader shades a part id by its row of the species' look-layer table (Kit/PartLayers.cs): a shading model (Skin, Chitin, Membrane, Eye, Claw) plus layers (pattern, scale grain, sheen, shimmer) and a tint. The table is full at the ids below (each keeps its slot in every species). A NEW part kind takes no global id: it is named in PartLayers.NamedKinds (or [Part(MaterialKinds)], or a species' own Layers row with `kind`) and gets a free slot per species (MaterialSlots); the part emits with PartMeshEmitter.Slot(kind). A species restyles rows with the Layers module (by part id or by kind). Never reuse an id. A new shading MODEL is a shader edit: add it to CreatureLayers.hlsl + ShadingModel, with a CPU proof and the Unity pixel guard (CreaturePartLayerTests, CreatureShaderLayerTests).
 
-| id | use | row (model, layers, tint) |
-|---|---|---|
-| 0 | body skin | Skin (Sheen, Shimmer) |
-| 1 | limb | Skin (LimbPattern, FineGrain, Sheen, Shimmer) |
-| 2 | foot, claw, rigid cone | Skin (NoPattern, FineGrain, Sheen, Shimmer, tint Pattern 0.3) |
-| 3 | eye | Eye (NoPattern, NoGrain) |
-| 4 | octopus arm | octopus shader family (CreatureOctopus.shader) |
-| 5 | octopus web | octopus shader family (CreatureOctopus.shader) |
-| 6 | octopus mantle | octopus shader family (CreatureOctopus.shader) |
-| 7 | octopus siphon | octopus shader family (CreatureOctopus.shader) |
-| 8 | membrane (wings, fins, antennae) | Membrane (NoPattern, NoGrain) |
-| 9 | arthropod band | Skin (Sheen, Shimmer, tint Band 0.9) |
-| 10 | armour plate (ArmourPlates) | Chitin (NoPattern, NoGrain) |
-| 11 | pincer, jaw (Pincer) | Claw (NoPattern, NoGrain, tint Pattern 0.3) |
-| 12 | armour scutes (ScuteRow) | Skin (Sheen, Shimmer) |
-| 13 | teeth (Jaw) | Skin (Sheen, Shimmer) |
-| 14 | tongue (Tongue) | Skin (Sheen, Shimmer) |
-| 15 | ray skin (RayBody, RayWing, WhipTail, CephalicLobe) | Skin (Sheen, Shimmer) |
+| id | kind | use | row (model, layers, tint) |
+|---|---|---|---|
+| 0 | `body` | body skin | Skin (Sheen, Shimmer) |
+| 1 | `limb` | limb | Skin (LimbPattern, FineGrain, Sheen, Shimmer) |
+| 2 | `foot` | foot, claw, rigid cone | Skin (NoPattern, FineGrain, Sheen, Shimmer, tint Pattern 0.3) |
+| 3 | `eye` | eye | Eye (NoPattern, NoGrain) |
+| 4 | `octopus-arm` | octopus arm | octopus shader family (CreatureOctopus.shader) |
+| 5 | `octopus-web` | octopus web | octopus shader family (CreatureOctopus.shader) |
+| 6 | `octopus-mantle` | octopus mantle | octopus shader family (CreatureOctopus.shader) |
+| 7 | `octopus-siphon` | octopus siphon | octopus shader family (CreatureOctopus.shader) |
+| 8 | `membrane` | membrane (wings, fins, antennae) | Membrane (NoPattern, NoGrain) |
+| 9 | `band` | arthropod band | Skin (Sheen, Shimmer, tint Band 0.9) |
+| 10 | `plate` | armour plate (ArmourPlates) | Chitin (NoPattern, NoGrain) |
+| 11 | `pincer` | pincer, jaw (Pincer) | Claw (NoPattern, NoGrain, tint Pattern 0.3) |
+| 12 | `scute` | armour scutes (ScuteRow) | Skin (Sheen, Shimmer) |
+| 13 | `teeth` | teeth (Jaw) | Skin (Sheen, Shimmer) |
+| 14 | `tongue` | tongue (Tongue) | Skin (Sheen, Shimmer) |
+| 15 | `ray-skin` | ray skin (RayBody, RayWing, WhipTail, CephalicLobe) | Skin (Sheen, Shimmer) |

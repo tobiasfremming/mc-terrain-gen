@@ -146,13 +146,16 @@ namespace CreatureKit
                 foreach (Param r in rows) md.Append($"| `{r.name}` | {Cell(r.type)} | {r.unit} | {r.size} | {Cell(r.meaning)} | {r.range} | {Cell(r.example)} |\n");
             }
 
-            md.Append($"\n## Material layers (mesh part ids; next free: {NextFreeMaterialLayer})\n\n");
+            md.Append($"\n## Material layers (part kinds and their slots; legacy ids next free: {NextFreeMaterialLayer} - a new kind takes none: NamedKinds)\n\n");
             md.Append("Creature.shader shades a part id by its row of the species' look-layer table (Kit/PartLayers.cs): a shading model ");
             md.Append("(" + string.Join(", ", Enum.GetNames(typeof(ShadingModel))) + ") plus layers (pattern, scale grain, sheen, shimmer) and a tint. ");
-            md.Append("A new part takes the next free id and adds its row to PartLayers.Registry - no shader edit; a species restyles rows with the Layers module. ");
+            md.Append("The table is full at the ids below (each keeps its slot in every species). A NEW part kind takes no global id: it is named in PartLayers.NamedKinds ");
+            md.Append("(or [Part(MaterialKinds)], or a species' own Layers row with `kind`) and gets a free slot per species (MaterialSlots); the part emits with PartMeshEmitter.Slot(kind). ");
+            md.Append("A species restyles rows with the Layers module (by part id or by kind). ");
             md.Append("Never reuse an id. A new shading MODEL is a shader edit: add it to CreatureLayers.hlsl + ShadingModel, with a CPU proof and the Unity pixel guard (CreaturePartLayerTests, CreatureShaderLayerTests).\n\n");
-            md.Append("| id | use | row (model, layers, tint) |\n|---|---|---|\n");
-            foreach (PartLayers.Entry e in PartLayers.Registry) md.Append($"| {e.Id} | {Cell(e.Use)} | {Cell(LayerCell(e))} |\n");
+            md.Append("| id | kind | use | row (model, layers, tint) |\n|---|---|---|---|\n");
+            foreach (PartLayers.Entry e in PartLayers.Registry) md.Append($"| {e.Id} | `{e.Kind}` | {Cell(e.Use)} | {Cell(LayerCell(e))} |\n");
+            foreach (PartLayers.Entry e in PartLayers.NamedKinds) md.Append($"| (per species) | `{e.Kind}` | {Cell(e.Use)} | {Cell(LayerCell(e))} |\n");
             markdown = md.ToString();
 
             // ------------------------------------------------------------ json
@@ -199,7 +202,7 @@ namespace CreatureKit
             j.Key("materialLayers").Open('[');
             foreach (PartLayers.Entry e in PartLayers.Registry)
             {
-                j.Open('{'); j.Key("id").Num(e.Id).Key("use").Str(e.Use).Key("model").Str(e.Octopus ? "Octopus" : e.Row.model.ToString()).Key("layers").Str(LayerCell(e)); j.Close('}');
+                j.Open('{'); j.Key("id").Num(e.Id).Key("kind").Str(e.Kind).Key("use").Str(e.Use).Key("model").Str(e.Octopus ? "Octopus" : e.Row.model.ToString()).Key("layers").Str(LayerCell(e)); j.Close('}');
             }
             j.Close(']');
             j.Key("nextFreeMaterialLayer").Num(NextFreeMaterialLayer);

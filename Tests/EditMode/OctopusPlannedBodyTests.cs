@@ -10,11 +10,13 @@ namespace TerrainGen.Tests
     {
         const float Dt = 1f / 60f;
 
-        [Test] public void Swinger_Asset_IsPlanned_OctopusIsNot()
+        // Both shipped cephalopods are planned (the tree octopus since 2026-10-20); the emergent path stays the
+        // default (locomotion 0: CephalopodSpec.Default, the emergent tests).
+        [Test] public void Swinger_And_Octopus_Assets_ArePlanned_DefaultIsNot()
         {
             Assert.IsTrue(OctopusSwingerTests.Spec().Planned, "Swinger.asset locomotion: planned");
             Assert.IsFalse(CephalopodSpec.Default.Planned);
-            Assert.IsFalse(CreatureKitAssets.Load("TreeOctopus").cephalopod.Planned);
+            Assert.IsTrue(CreatureKitAssets.Load("TreeOctopus").cephalopod.Planned, "TreeOctopus.asset locomotion: planned");
         }
 
         static Quaternion Hang(Vector3 forward) => OctoMath.Look(forward, Vector3.down);

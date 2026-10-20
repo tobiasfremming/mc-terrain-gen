@@ -55,7 +55,7 @@ public static class Program
           "finding: stop-go walk (throttle 0 on 27 % of a straight walk): 0.9x/1.1x distance 1.4 % apart (test fixture, Task 10); fails in Unity 2026-10-18 too (5.1733 vs 5.3894, 4.2 % apart)" },
         // (2026-10-20, kit services: check 13 PoseSweep and the Gait check on the drawn feet are new; what they found in the
         // shipped species on their first run - findings for the species' owners, full lists in the kit-services report)
-        { "CreatureKitTests(Apex).PoseSweep",
+        { "CreatureKitTests(Pterodactyl).PoseSweep",
           "finding: launch - wing.R bone 4 (a single-bone membrane triangle) inverts: the wing bone's matrix turns mirrored (det < 0) in the launch unfold; then a flipped normal on wing.R bone 5" },
         { "CreatureKitTests(Delver).PoseSweep",
           "finding: burrow dive / lunge / rise - triangles between spine joints 5 and 6 (the neck/fore-shell blend) invert and flip their normals as the body pitches into and out of the ground; once walking (joint 2/3, t=85 s)" },
@@ -67,7 +67,7 @@ public static class Program
           "finding: launch - the shoulder blend (spine joint 40 with arm bone 78) inverts; beat / flare (spine 14 with arm bones 72/75), touchdown (spine 11/12, 18/19), glide (spine 5/4) invert or flip normals; wing.R bone 13 normal flips in the beat" },
         { "CreatureKitTests(WingedSerpent).PoseSweep",
           "finding: launch / beat - the shoulder blend (spine joint 6 with arm bone 36) inverts; touchdown - an accordion kink of 75 deg at spine joint 2 (limit 18) with an inverted triangle at joint 1/2" },
-        { "CreatureKitTests(Apex).Gait",
+        { "CreatureKitTests(Pterodactyl).Gait",
           "finding: wing-walk - the planted hand's thumb claw (CreatureWings.ThumbTip, what stands on the ground) skates 3.3 % of the arm's length over a plant while the sim foot stays put" },
         { "CreatureKitTests(WingedSerpent).Gait",
           "finding: wing-walk - the planted hand's thumb claw skates 3.8 % of the arm's length over a plant (SkyDragon 0.99 %, under the 1 % bound)" },

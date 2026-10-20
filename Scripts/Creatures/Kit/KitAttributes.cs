@@ -66,6 +66,8 @@ namespace CreatureKit
         public string Summary = "", System = "", Status = "exists", Branch = "", UseWhen = "";
         public string Bones = "0";           // how many bones it takes, for the catalogue ("= joints", "3", ...)
         public int[] MaterialLayers = new int[0];
+        // part kinds by name with no global id (PartLayers.NamedKinds): a slot per species (MaterialSlots)
+        public string[] MaterialKinds = new string[0];
         // no legacy CreatureSpecies form (it exists only in kit assets): legacy-equivalence tests skip a species
         // that uses it (CreatureKitAssets.KitOnlyReason)
         public bool KitOnly;

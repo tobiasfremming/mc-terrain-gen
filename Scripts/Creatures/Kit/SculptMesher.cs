@@ -1,8 +1,9 @@
 // Creature kit: SculptMesher - polygonises a Sculpt's signed-distance field by surface nets (Gibson 1998, the
 // isosurface family this project's terrain uses) on a grid of `cell` metres, once per shape set:
-//   1. the grid covers the solid's bounds plus two cells; it is cut into 8^3-cell blocks, and each block keeps only the
+//   1. the grid covers the solid's bounds plus two cells; it is cut into 4^3-cell blocks, and each block keeps only the
 //      shapes that can change the field near it (bounds grown by the shape's blend and three cells) - a block outside
-//      an Intersect shape is outside the solid. Corners are evaluated once each, over their block's list.
+//      an Intersect shape is outside the solid. Corners are evaluated at most once, over their block's list; a corner
+//      a nearby value rules the surface out of keeps only its sign until a crossed cell needs its value.
 //   2. a vertex for every cell the surface crosses: the mean of its edge crossings, moved onto the surface by one Newton
 //      step (the cell's trilinear gradient) and kept within a quarter cell of its cell; its normal is the field's
 //      central-difference gradient there (smooth shading, no faceted glow).
@@ -112,6 +113,8 @@ namespace CreatureKit
             var listCount = new int[lists.Length];
             var fill = new float[lists.Length];   // a block the surface is far from: every corner gets this (0 = evaluate)
             var scratch = new int[shapes];
+            var steepIn = new float[lists.Length];    // how far the block's field may overstate a distance inside the solid
+            var steepOut = new float[lists.Length];   // ... and outside it (x 1.5, the slack the block fill allows the slope)
             float margin = 3f * h;
             for (int k = 0; k < bz; k++)
                 for (int j = 0; j < by; j++)
@@ -133,6 +136,15 @@ namespace CreatureKit
                         var l = new int[n];
                         Array.Copy(scratch, l, n);
                         lists[bi] = l; listCount[bi] = n;
+                        // a negative value can be overstated inside a union (or intersect) shape, a positive one inside a
+                        // subtracted shape (the solid's outside there)
+                        float sIn = 1f, sOut = 1f;
+                        for (int q = 0; q < n; q++)
+                        {
+                            float o = f.InsideOverstatement(l[q] >> 2);
+                            if (f.Op(l[q] >> 2) == SculptOp.Subtract) sOut = Mathf.Max(sOut, o); else sIn = Mathf.Max(sIn, o);
+                        }
+                        steepIn[bi] = 1.5f * sIn; steepOut[bi] = 1.5f * sOut;
                         // far from the surface (with a 1.5 x slack on the field's slope): no corner of it is on a crossed cell
                         float fc = f.Eval(0.5f * (a + b), l, n);
                         if (Mathf.Abs(fc) > 1.5f * (0.5f * (b - a).magnitude + 2f * h)) fill[bi] = fc > 0f ? SculptField.Far : -SculptField.Far;
@@ -140,18 +152,47 @@ namespace CreatureKit
 
             int Block(int i, int j, int k) => (Mathf.Min(k / B, bz - 1) * by + Mathf.Min(j / B, by - 1)) * bx + Mathf.Min(i / B, bx - 1);
 
-            // corner values, each once, over its block's list
+            // corner values, over its block's list (a corner belongs to block min(i / B, bx - 1) per axis). Inside a block an
+            // evaluated corner's |value| bounds how near the surface can be (slope <= 1.5 as for the block fill, times how
+            // far the block's ellipsoids can overstate a distance): the corners it puts out of reach get only their sign
+            // (+-Far, signOnly), and a crossed cell asks for the value of any such corner later (Exact). Within one block
+            // only: its list holds every shape that can change the sign of its corners.
             var val = new float[nx * ny * nz];
-            for (int k = 0; k < nz; k++)
-                for (int j = 0; j < ny; j++)
-                    for (int i = 0; i < nx; i++)
+            var done = new bool[val.Length];
+            var signOnly = new bool[val.Length];   // a corner whose sign is known (+-Far) but not yet its value
+            void Exact(int i, int j, int k, int c)
+            {
+                int bi = Block(i, j, k);
+                float v = f.Eval(lo.x + i * h, lo.y + j * h, lo.z + k * h, lists[bi], listCount[bi]);
+                val[c] = v; signOnly[c] = false;
+            }
+            for (int kb = 0; kb < bz; kb++)
+                for (int jb = 0; jb < by; jb++)
+                    for (int ib = 0; ib < bx; ib++)
                     {
-                        int bi = Block(i, j, k);
-                        val[(k * ny + j) * nx + i] = fill[bi] != 0f ? fill[bi] : f.Eval(lo + new Vector3(i, j, k) * h, lists[bi], listCount[bi]);
+                        int bi = (kb * by + jb) * bx + ib;
+                        int i0 = ib * B, j0 = jb * B, k0 = kb * B;
+                        int i1 = ib == bx - 1 ? nx : i0 + B, j1 = jb == by - 1 ? ny : j0 + B, k1 = kb == bz - 1 ? nz : k0 + B;
+                        float fb = fill[bi];
+                        if (fb != 0f)
+                        {
+                            for (int k = k0; k < k1; k++) for (int j = j0; j < j1; j++) for (int i = i0; i < i1; i++) val[(k * ny + j) * nx + i] = fb;
+                            continue;
+                        }
+                        int[] l = lists[bi]; int ln = listCount[bi];
+                        float reachIn = steepIn[bi] * h, reachOut = steepOut[bi] * h;
+                        // the corner nearest the block's middle first (it rules out the most), then the rest in order
+                        int ic = Mathf.Min(i0 + B / 2, i1 - 1), jc = Mathf.Min(j0 + B / 2, j1 - 1), kc = Mathf.Min(k0 + B / 2, k1 - 1);
+                        Corner(f, val, done, signOnly, lo, h, l, ln, ic, jc, kc, i0, i1, j0, j1, k0, k1, nx, ny, reachIn, reachOut);
+                        for (int k = k0; k < k1; k++)
+                            for (int j = j0; j < j1; j++)
+                                for (int i = i0; i < i1; i++)
+                                    if (!done[(k * ny + j) * nx + i]) Corner(f, val, done, signOnly, lo, h, l, ln, i, j, k, i0, i1, j0, j1, k0, k1, nx, ny, reachIn, reachOut);
                     }
 
             // 2. a vertex per crossed cell (kept inside its cell: no two vertices meet, no sliver triangles)
             var cellVert = new int[cx * cy * cz];
+            int nxy = nx * ny;
             var c8 = new float[8];
             float eps = 0.02f * h;
             for (int k = 0; k < cz; k++)
@@ -160,14 +201,19 @@ namespace CreatureKit
                     {
                         int ci = (k * cy + j) * cx + i;
                         cellVert[ci] = -1;
-                        int mask = 0;
-                        for (int c = 0; c < 8; c++)
-                        {
-                            float vv = val[((k + (c >> 2)) * ny + j + ((c >> 1) & 1)) * nx + i + (c & 1)];
-                            c8[c] = vv;
-                            if (vv < 0f) mask |= 1 << c;
-                        }
+                        // the sign mask first, straight from the corner array (most cells are not crossed)
+                        int c0 = (k * ny + j) * nx + i, c2 = c0 + nx, c4 = c0 + nxy, c6 = c4 + nx;
+                        int mask = (val[c0] < 0f ? 1 : 0) | (val[c0 + 1] < 0f ? 2 : 0) | (val[c2] < 0f ? 4 : 0) | (val[c2 + 1] < 0f ? 8 : 0)
+                                 | (val[c4] < 0f ? 16 : 0) | (val[c4 + 1] < 0f ? 32 : 0) | (val[c6] < 0f ? 64 : 0) | (val[c6 + 1] < 0f ? 128 : 0);
                         if (mask == 0 || mask == 255) continue;
+                        // a crossed cell needs its corners' values: those known by sign only are evaluated now, over their
+                        // own block's list (the value the full pass would have given them)
+                        if (signOnly[c0]) Exact(i, j, k, c0); if (signOnly[c0 + 1]) Exact(i + 1, j, k, c0 + 1);
+                        if (signOnly[c2]) Exact(i, j + 1, k, c2); if (signOnly[c2 + 1]) Exact(i + 1, j + 1, k, c2 + 1);
+                        if (signOnly[c4]) Exact(i, j, k + 1, c4); if (signOnly[c4 + 1]) Exact(i + 1, j, k + 1, c4 + 1);
+                        if (signOnly[c6]) Exact(i, j + 1, k + 1, c6); if (signOnly[c6 + 1]) Exact(i + 1, j + 1, k + 1, c6 + 1);
+                        c8[0] = val[c0]; c8[1] = val[c0 + 1]; c8[2] = val[c2]; c8[3] = val[c2 + 1];
+                        c8[4] = val[c4]; c8[5] = val[c4 + 1]; c8[6] = val[c6]; c8[7] = val[c6 + 1];
                         // mean of the edge crossings (local 0..1 coordinates)
                         Vector3 sum = Vector3.zero;
                         int cnt = 0;
@@ -232,6 +278,34 @@ namespace CreatureKit
                             Quad(pos, nrm, tris, a, b, c, d, outward);
                         }
                     }
+        }
+
+        // Evaluates corner i, j, k of a block and marks the block's corners its value puts out of the surface's reach:
+        // their sign is the same (+-Far, signOnly). Reach: metres of value per cell, inside and outside the solid.
+        static void Corner(SculptField f, float[] val, bool[] done, bool[] signOnly, Vector3 lo, float h, int[] l, int ln, int i, int j, int k,
+                           int i0, int i1, int j0, int j1, int k0, int k1, int nx, int ny, float reachIn, float reachOut)
+        {
+            int ci = (k * ny + j) * nx + i;
+            float v = f.Eval(lo.x + i * h, lo.y + j * h, lo.z + k * h, l, ln);   // = lo + new Vector3(i, j, k) * h
+            val[ci] = v; done[ci] = true;
+            float r = v < 0f ? -v / reachIn : v / reachOut;   // cells: no surface within r of this corner
+            if (!(r > 1f)) return;
+            float r2 = r * r, sv = v > 0f ? SculptField.Far : -SculptField.Far;
+            int ri = (int)r;
+            int ia = Math.Max(i0, i - ri), ib = Math.Min(i1, i + ri + 1), ja = Math.Max(j0, j - ri), jb = Math.Min(j1, j + ri + 1), ka = Math.Max(k0, k - ri), kb = Math.Min(k1, k + ri + 1);
+            for (int kk = ka; kk < kb; kk++)
+            {
+                int dk = kk - k;
+                for (int jj = ja; jj < jb; jj++)
+                {
+                    int dj = jj - j, row = (kk * ny + jj) * nx, djk = dj * dj + dk * dk;
+                    for (int ii = ia; ii < ib; ii++)
+                    {
+                        int di = ii - i;
+                        if (!done[row + ii] && di * di + djk < r2) { val[row + ii] = sv; done[row + ii] = signOnly[row + ii] = true; }
+                    }
+                }
+            }
         }
 
         // A crest finer than a cell can fold a quad over (its face against its vertex normals): turn such triangles to
@@ -325,7 +399,8 @@ namespace CreatureKit
 
         static SculptPiece.Tooth[] PlaceTeeth(Sculpt s, SculptField f)
         {
-            var list = new List<SculptPiece.Tooth>();
+            var teeth = new List<SculptPiece.Tooth>();
+            var list = new int[f.Count];
             SculptTeeth[] rows = s.teeth ?? new SculptTeeth[0];
             float h = Mathf.Max(Sculpt.MinCell, s.cell);
             for (int r = 0; r < rows.Length; r++)
@@ -344,16 +419,17 @@ namespace CreatureKit
                         // the lip: where the guide line, going along D, leaves the solid (the crossing nearest the guide point)
                         float R = 3f * row.length + 4f * h, step = 0.5f * h;
                         int steps = Mathf.CeilToInt(2f * R / step);
+                        int ln = RayList(f, g - D * R, g + D * R, h, list);
                         float best = float.NaN;
-                        float prev = f.Eval(g - D * R);
+                        float prev = f.Eval(g - D * R, list, ln);
                         for (int k = 1; k <= steps; k++)
                         {
                             float sk = -R + k * step;
-                            float cur = f.Eval(g + D * sk);
+                            float cur = f.Eval(g + D * sk, list, ln);
                             if (prev < 0f && cur >= 0f)
                             {
                                 float a = sk - step, b = sk;
-                                for (int it = 0; it < 14; it++) { float m = 0.5f * (a + b); if (f.Eval(g + D * m) < 0f) a = m; else b = m; }
+                                for (int it = 0; it < 14; it++) { float m = 0.5f * (a + b); if (f.Eval(g + D * m, list, ln) < 0f) a = m; else b = m; }
                                 float x = 0.5f * (a + b);
                                 if (float.IsNaN(best) || Mathf.Abs(x) < Mathf.Abs(best)) best = x;
                             }
@@ -368,7 +444,7 @@ namespace CreatureKit
                         outw -= D * Vector3.Dot(outw, D);
                         float sa = row.splayDeg * Mathf.Deg2Rad;
                         Vector3 dir = PartMeshEmitter.Unit(D * Mathf.Cos(sa) + PartMeshEmitter.Unit(outw, Vector3.zero) * Mathf.Sin(sa), D);
-                        list.Add(new SculptPiece.Tooth
+                        teeth.Add(new SculptPiece.Tooth
                         {
                             basePt = lip - dir * (row.sink * len), dir = dir, length = len,
                             radius = row.radius * Mathf.Lerp(0.75f, 1f, ends), curveDeg = row.curveDeg,
@@ -376,7 +452,22 @@ namespace CreatureKit
                     }
                 }
             }
-            return list.ToArray();
+            return teeth.ToArray();
+        }
+
+        // The shapes that can change the field's sign along the segment a..b (its box grown by margin): the lip search
+        // only asks for signs, so it sees the same crossings as over every shape at a fraction of the cost. Intersect
+        // shapes always count (outside one, the whole segment is outside).
+        static int RayList(SculptField f, Vector3 a, Vector3 b, float margin, int[] into)
+        {
+            Vector3 lo = Vector3.Min(a, b), hi = Vector3.Max(a, b);
+            int n = 0;
+            for (int q = 0; q < f.Count; q++)
+            {
+                int copies = f.Op(q) == SculptOp.Intersect ? (f.Mirrored(q) ? 3 : 1) : f.Touches(q, lo, hi, margin);
+                if (copies != 0) into[n++] = q << 2 | copies;
+            }
+            return n;
         }
     }
 }

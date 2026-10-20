@@ -119,7 +119,7 @@ public sealed class CreatureDebugView : MonoBehaviour
     static readonly Color32 kWaypoint = new Color32(0xFF, 0x40, 0xE0, 0xFF), kPivot = new Color32(0x40, 0xE0, 0xFF, 0xFF);
     static readonly Color32 kCatch = new Color32(0xFF, 0x9A, 0x30, 0xFF);
     static readonly Color32 kArc = new Color32(0xF0, 0xF0, 0xF0, 0xFF);
-    const int OctopusVertices = 2 * (3 + 3 + 3 + 1 + BranchRoute.MaxWaypoints + 1 + 16 + 4 + 7);
+    const int OctopusVertices = 2 * (3 + 3 + 3 + 1 + BranchRoute.MaxWaypoints + 1 + 16 + 4 + 7 + 4 * PlannedSwing.MaxHolds + 24 + 8 * 4);
 
     void Cross(Vector3 p, float r, Color32 c)
     {
@@ -163,12 +163,24 @@ public sealed class CreatureDebugView : MonoBehaviour
                 if (q.ArcCount > 0) Cross(q.PredictedApex, r, kArc);
             }
             if (q.Transfers > 0) { Cross(q.LastRelease, 0.6f * r, kRouteDone); Cross(q.LastCatch, 0.6f * r, kCatch); }
+            // many arms (the octopus): a striking arm's root -> the intercept (red, the intercept a red cross), a prey
+            // holder's tip -> the prey (magenta), a grooming arm's tip (white cross)
+            bool striking = false;
+            for (int a = 0; a < c.Body.ArmCount; a++)
+            {
+                TentacleChain ch = c.Body.Arms[a];
+                if (q.Use[a] == SwingSequencer.ArmUse.Strike) { Line(ch.X[0], q.StrikeAt, kBlocked); striking = true; }
+                else if (q.Use[a] == SwingSequencer.ArmUse.Prey && q.HeldPrey != null) Line(ch.X[ch.N - 1], q.HeldPrey.Position, kWaypoint);
+                else if (q.Use[a] == SwingSequencer.ArmUse.Groom) Cross(ch.X[ch.N - 1], 0.4f * r, kArc);
+            }
+            if (striking) Cross(q.StrikeAt, 0.8f * r, kBlocked);
             // the hunt: the head -> the spider it hunts (green: reachable, orange: its last check found it out of reach),
             // and where the last spider it gave up was when it gave up (grey cross; the lab readout says why)
             OctopusBrain br = c.Brain;
             if (br != null)
             {
-                if (br.Target != null && (br.Mode == OctopusBrain.State.Stalk || br.Mode == OctopusBrain.State.Feed || br.Mode == OctopusBrain.State.Eat))
+                if (br.Target != null && (br.Mode == OctopusBrain.State.Stalk || br.Mode == OctopusBrain.State.Feed || br.Mode == OctopusBrain.State.Eat
+                                          || br.Mode == OctopusBrain.State.Ambush || br.Mode == OctopusBrain.State.Strike || br.Mode == OctopusBrain.State.Hold))
                 {
                     Vector3 t = br.Target.Position;
                     Line(head, t, br.TargetReachable ? kGoal : kCatch);
