@@ -53,6 +53,21 @@ namespace CreatureKit
         void AfterSpreadWings(Matrix4x4[] bones, int offset);
     }
 
+    // A runtime whose part is a solid body that other parts keep out of (limbs, tentacles): an ellipsoid in world
+    // space, as it is drawn this sub-step (a DimpledOrb). Readers find obstacles among sim.PartRuntimes; zero GC.
+    public interface IBodyObstacle
+    {
+        void Ellipsoid(out Vector3 centre, out Quaternion rotation, out Vector3 halfAxes);
+    }
+
+    // A runtime that draws thin limbs other free parts keep out of (a Tendril yields to the BendyLegs): world capsules
+    // as drawn this step, segment a..b with radius r. Zero GC.
+    public interface ICapsuleSet
+    {
+        int CapsuleCount { get; }
+        void Capsule(int i, out Vector3 a, out Vector3 b, out float radius);
+    }
+
     // What a module gets to build a locomotion mode: the sim's ground and up field.
     public readonly struct ModeCtx
     {

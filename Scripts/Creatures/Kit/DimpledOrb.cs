@@ -29,6 +29,7 @@ namespace CreatureKit
         [Param(ParamUnit.Fraction, "pit radius x the lattice spacing (0.5 = pits touching)", Min = 0.1f, Max = 0.6f, Default = "0.42")] public float pitRadius = 0.42f;
         [Param(ParamUnit.Metres, "pit depth", Example = "golfball strider 0.005")] public float pitDepth = 0.004f;
         [Param(ParamUnit.Fraction, "how much darker a pit's floor is (dorsal channel drop)", Min = 0f, Max = 1f, Default = "0.5")] public float pitShade = 0.5f;
+        [Param(ParamUnit.Fraction, "uneven pits: most a little shallower, a seeded few much deeper and darker (0 = all alike)", Min = 0f, Max = 1f)] public float pitJitter;
         [Param(ParamUnit.Count, "mesh: icosphere subdivisions (4 = 2562 vertices, 5 = 10242)", Min = 2, Max = 6, Default = "5")] public int detail = 5;
         [Param(ParamUnit.Metres, "the point it rocks about, in the joint's frame (where it sits on the body)")] public Vector3 pivot;
         [Param(ParamUnit.Hz, "rocking spring frequency", Min = 0.2f, Max = 20f, Default = "2")] public float rockHz = 2f;
@@ -49,6 +50,7 @@ namespace CreatureKit
             if (pitCount < 0 || pitCount > 3000) return $"{id}: pitCount must be in 0..3000";
             if (pitRadius < 0.1f || pitRadius > 0.6f) return $"{id}: pitRadius must be in 0.1..0.6";
             if (pitDepth < 0f || pitDepth > 0.1f * radius) return $"{id}: pitDepth must be in 0..0.1 x radius";
+            if (pitJitter < 0f || pitJitter > 1f) return $"{id}: pitJitter must be in 0..1";
             if (detail < 2 || detail > 6) return $"{id}: detail must be in 2..6";
             if (!(rockHz > 0f) || rockDamping < 0f || rockGain < 0f || maxRockDeg < 0f) return $"{id}: rockHz > 0; rockDamping, rockGain, maxRockDeg >= 0";
             if (layer < 0 || layer >= PartLayers.MaxParts) return $"{id}: layer must be in 0..{PartLayers.MaxParts - 1}";
@@ -75,6 +77,16 @@ namespace CreatureKit
 
         // The mean chord between neighbouring centres of n on the unit sphere (hexagonal packing of 4 pi).
         public static float Spacing(int n) => n > 0 ? Mathf.Sqrt(8f * Mathf.PI / (Mathf.Sqrt(3f) * n)) : 2f;
+
+        // Pit k's depth factor with pitJitter j: most pits a little shallower, a seeded few up to 1 + 2.4 j deeper (never
+        // past 0.1 x the radius in all).
+        public float PitScale(int k)
+        {
+            if (!(pitJitter > 0f)) return 1f;
+            float h = 0.5f * (BendyLeg.Hash(7919, k) + 1f);
+            float f = 1f + pitJitter * (3f * h * h * h * h - 0.6f);
+            return Mathf.Min(f, 0.1f * radius / Mathf.Max(1e-9f, pitDepth));
+        }
 
         // The plain surface's dorsal value at unit height y (-1 under .. +1 on top), before the pits darken it.
         public static float DorsalOf(float y) => Mathf.Clamp(1.1f * y + 0.15f, -1f, 1f);
@@ -106,9 +118,10 @@ namespace CreatureKit
                     if (k >= 0 && delta < rho)
                     {
                         float x = delta / rho, e = 1f - x * x;
-                        h = -pitDepth * e * e;
-                        pitFrac = e * e;
-                        float dhds = 4f * pitDepth * x * e / rho / radius;   // d(height) / d(surface distance)
+                        float depth = pitJitter > 0f ? pitDepth * PitScale(k) : pitDepth;
+                        h = -depth * e * e;
+                        pitFrac = pitJitter > 0f ? e * e * (depth / pitDepth) : e * e;
+                        float dhds = 4f * depth * x * e / rho / radius;   // d(height) / d(surface distance)
                         Vector3 away = u - pits[k]; away -= u * Vector3.Dot(away, u);
                         if (away.sqrMagnitude > 1e-14f) tilt = away.normalized * dhds;
                     }
@@ -119,6 +132,7 @@ namespace CreatureKit
                 Vector3 nl = PartMeshEmitter.Unit(new Vector3(n0.x, n0.y / squash, n0.z / stretch), u);
                 Vector3 p = centre + R * local, nw = R * nl;
                 float dorsal = DorsalOf(u.y) - 1.4f * pitShade * pitFrac;
+                if (pitJitter > 0f) dorsal = Mathf.Max(-1.6f, dorsal);   // the deep pits: as dark as the darkest shallow one can go
                 float arc = radius * Mathf.Acos(Mathf.Clamp(u.z, -1f, 1f));
                 float ang = Mathf.Atan2(u.y, u.x) / (2f * Mathf.PI); if (ang < 0f) ang += 1f;
                 m.Vertex(p, nw, arc, ang, layer, dorsal, skin);
@@ -214,7 +228,7 @@ namespace CreatureKit
 
     // One orb of one individual: its bone at the pivot, rocked by a small-angle rotation vector on a damped spring
     // driven by the pivot's acceleration acting on the orb's centre of mass. Zero GC; main thread.
-    public sealed class DimpledOrbRuntime : IPartRuntime
+    public sealed class DimpledOrbRuntime : IPartRuntime, IBodyObstacle
     {
         const float kMaxAccel = 60f;
         readonly DimpledOrb p;
@@ -279,6 +293,16 @@ namespace CreatureKit
             Quaternion rot = sim.Rotations[p.at.joint];
             if (m > 1e-9f) rot = rot * Quaternion.AngleAxis(m * Mathf.Rad2Deg, theta / m);
             dst[offset + bone] = Matrix4x4.TRS(Pivot, rot, new Vector3(s, s, s));
+        }
+
+        // The orb as drawn: its centre, rotation (the joint's, rocked) and half axes (x radius, y squash, z stretch).
+        public void Ellipsoid(out Vector3 centre, out Quaternion rotation, out Vector3 halfAxes)
+        {
+            float s = sim.SizeScale, m = theta.magnitude;
+            rotation = sim.Rotations[p.at.joint];
+            if (m > 1e-9f) rotation = rotation * Quaternion.AngleAxis(m * Mathf.Rad2Deg, theta / m);
+            centre = Pivot + rotation * (arm * s);
+            halfAxes = new Vector3(p.radius, p.radius * p.squash, p.radius * p.stretch) * s;
         }
 
         public void EncapsulateBounds(ref Vector3 lo, ref Vector3 hi)

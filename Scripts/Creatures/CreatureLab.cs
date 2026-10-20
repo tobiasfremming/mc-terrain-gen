@@ -120,18 +120,13 @@ public sealed class CreatureLab : MonoBehaviour
 
     // Individual i's seed in enclosure k: a lone animal keeps seed + k (as before groups); a group's are consecutive,
     // seed + k + 1000 + i (part runtimes stagger on consecutive seeds: TuckRuntime's first random scare).
-    internal int SeedFor(int k, int i) => CountFor(k) > 1 ? seed + k + 1000 + i : seed + k;
+    internal int SeedFor(int k, int i) => CreatureKit.LabGroup.Seed(seed, k, i, CountFor(k));
 
     // Where individual i of n starts: the centre for a lone animal; a group spread round a ring at 0.4 x the safe
     // radius, each facing a little off the tangent.
+    // (the kit's group service: the group check spawns the same individuals offline)
     static void Start(Vector3 center, Vector3 up, Vector3 face, float safeRadius, int i, int n, out Vector3 at, out Vector3 dir)
-    {
-        if (n <= 1) { at = center; dir = face; return; }
-        Quaternion q = Quaternion.AngleAxis(360f * i / n + 17f, up);
-        Vector3 radial = q * face;
-        at = center + radial * (0.4f * safeRadius);
-        dir = Quaternion.AngleAxis(70f + 40f * ((i * 0.618034f) % 1f), up) * radial;
-    }
+        => CreatureKit.LabGroup.Start(center, up, face, safeRadius, i, n, out at, out dir);
 
     // Spawns enclosure k's individuals; the entry's sims.
     CreatureSim[] SpawnGroup(CreatureWorld world, int k, CreatureSpecies sp, EnclosureArea area, Vector3 face, float scale, PerchSpot[] perches)

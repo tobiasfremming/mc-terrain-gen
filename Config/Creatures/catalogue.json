@@ -373,6 +373,7 @@
         "Scolopendra",
         "ShaggyMonitor",
         "SkyDragon",
+        "StriderMatriarch",
         "Tarantula",
         "TentacleCrab",
         "TestHexapod",
@@ -1051,7 +1052,8 @@
       "useWhen": "harvestmen, stilt-legged and wobbly animals, any limb that should look flexible: non-uniform, kinked, bouncing legs",
       "summary": "Long thin springy limb generated from a few numbers (length, segment count, rise, arch, knee spread, seeded kinks and length jitter): walks as an arthropod leg (synergy IK), drawn as one continuous tapered tube blended through its joints, and flexes on its own - every joint lags the IK pose on a damped spring (inertia), sags, the lifted tip whips; a planted tip stays exactly on its foot.",
       "usedBy": [
-        "GolfballStrider"
+        "GolfballStrider",
+        "StriderMatriarch"
       ],
       "params": [
         {
@@ -1289,6 +1291,15 @@
           "example": "default 120"
         },
         {
+          "name": "femurLiftDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "upward turn at the first joint (a low coxa that clears a big body, then a steep femur up to a high knee); added to the arch's turns",
+          "range": "0..100",
+          "example": ""
+        },
+        {
           "name": "kneeAt",
           "type": "float",
           "unit": "Fraction",
@@ -1467,6 +1478,42 @@
           "meaning": "largest deflection of any joint, x the leg length",
           "range": "0..0.5",
           "example": "default 0.12"
+        },
+        {
+          "name": "hipStiffness",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "knees first: how stiff the hip's elevation is against the knees (0 = off, the IK pitches the whole leg; 4..12 = the knees and distal joints take the motion, a harvestman's stride)",
+          "range": "0..50",
+          "example": ""
+        },
+        {
+          "name": "swingHipDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "mid-swing: the hip lifts the leg by this much (knees first only)",
+          "range": "0..60",
+          "example": ""
+        },
+        {
+          "name": "swingKneeDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "mid-swing: the arch folds by this much more, spread over the knee joints (knees first only)",
+          "range": "0..120",
+          "example": ""
+        },
+        {
+          "name": "bodyMargin",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "kept this far outside any body obstacle (a DimpledOrb), plus the leg's radius; 0 = no collision with the body",
+          "range": "0..1",
+          "example": ""
         }
       ]
     },
@@ -3033,6 +3080,7 @@
         "ShaggyMonitor",
         "SkyDragon",
         "SkyManta",
+        "StriderMatriarch",
         "Swinger",
         "Tarantula",
         "TentacleCrab",
@@ -3643,6 +3691,7 @@
       "useWhen": "tentacles, feeding arms, feelers that touch the ground; on a spine body (soft bodies: Tentacle)",
       "summary": "Muscular tentacle rooted on a spine joint (TentacleChain physics: gravity, muscle tone toward a rest curl, a travelling writhe, exact length and bend limits). Hangs and swings while the body moves; when it stops, reaches out and holds its tip on the ground ahead (an eased pin: no tremble), feeling about, and lets go when the body walks on.",
       "usedBy": [
+        "StriderMatriarch",
         "TentacleCrab"
       ],
       "params": [
@@ -3852,6 +3901,42 @@
           "meaning": "material layer (part id): 1 the limbs', 9 the band colour's",
           "range": "1..9",
           "example": "default 1"
+        },
+        {
+          "name": "mode",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "behaviour: 0 feels the ground when the body stops; 1 maw: always writhing, probing the ground ahead and lashing",
+          "range": "0..1",
+          "example": ""
+        },
+        {
+          "name": "probeHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "maw: how fast a probing tip sweeps side to side",
+          "range": "0..5",
+          "example": "0.3"
+        },
+        {
+          "name": "lashEvery",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "maw: mean time between lashes (0 = never)",
+          "range": "0..",
+          "example": "8"
+        },
+        {
+          "name": "clearance",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "kept this far outside the body's obstacles (a DimpledOrb) and the limbs (BendyLegs), plus its radius; 0 = off",
+          "range": "0..",
+          "example": ""
         }
       ]
     },
@@ -6946,7 +7031,8 @@
       "useWhen": "a round abdomen (spiders, ticks), puffballs, seed heads, golf-ball or pitted shells; any heavy round mass that should wobble on its body",
       "summary": "A big round body on a bone of its own covered in golf-ball pits (spherical Fibonacci lattice, analytic pit normals, pits darkened through the dorsal channel); it rocks on a damped spring about a pivot when the body accelerates (bobs, starts, stops, turns).",
       "usedBy": [
-        "GolfballStrider"
+        "GolfballStrider",
+        "StriderMatriarch"
       ],
       "params": [
         {
@@ -7074,6 +7160,15 @@
           "meaning": "how much darker a pit's floor is (dorsal channel drop)",
           "range": "0..1",
           "example": "default 0.5"
+        },
+        {
+          "name": "pitJitter",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "uneven pits: most a little shallower, a seeded few much deeper and darker (0 = all alike)",
+          "range": "0..1",
+          "example": ""
         },
         {
           "name": "detail",
@@ -10131,7 +10226,8 @@
       "useWhen": "spiders, harvestmen, mites, any small-headed arthropod whose face sits low on a round body",
       "summary": "A small spider face set on a body: a rounded cap, a cluster of glossy eyes (a big pair, then smaller pairs further out and up), and two chelicera fangs hanging from its lower front, curling back. Rigid to its joint or riding a DimpledOrb's bone.",
       "usedBy": [
-        "GolfballStrider"
+        "GolfballStrider",
+        "StriderMatriarch"
       ],
       "params": [
         {
@@ -10570,7 +10666,8 @@
       "useWhen": "goofy, top-heavy or stilt-legged walkers, a tired or injured animal, anything that should look uncoordinated",
       "summary": "A clumsy walker: every so often (seeded per individual) the body lurches down front first and springs back, stopping for part of it to readjust; adds to CreatureSim.JointLift and sets Halt. Froude-timed.",
       "usedBy": [
-        "GolfballStrider"
+        "GolfballStrider",
+        "StriderMatriarch"
       ],
       "params": [
         {
@@ -12110,6 +12207,7 @@
         "Scolopendra",
         "ShaggyMonitor",
         "SkyDragon",
+        "StriderMatriarch",
         "Tarantula",
         "TentacleCrab",
         "TestHexapod",
@@ -12843,6 +12941,7 @@
         "Scolopendra",
         "ShaggyMonitor",
         "SkyDragon",
+        "StriderMatriarch",
         "Tarantula",
         "TentacleCrab",
         "TestHexapod",
@@ -13046,6 +13145,7 @@
         "GolfballStrider",
         "RockCrab",
         "Scolopendra",
+        "StriderMatriarch",
         "Tarantula",
         "TentacleCrab",
         "TreeSpider"
@@ -13466,6 +13566,7 @@
         "RockCrab",
         "Scolopendra",
         "SkyManta",
+        "StriderMatriarch",
         "TentacleCrab"
       ],
       "params": [
@@ -13740,6 +13841,7 @@
         "ShaggyMonitor",
         "SkyDragon",
         "SkyManta",
+        "StriderMatriarch",
         "Swinger",
         "Tarantula",
         "TentacleCrab",
@@ -14491,6 +14593,42 @@
         "Soar",
         "School",
         "Skin",
+        "Layers"
+      ]
+    },
+    {
+      "name": "StriderMatriarch",
+      "kitVersion": 1,
+      "plan": "Spine",
+      "bones": 151,
+      "parts": [
+        "SpineBody:body",
+        "Eyes:eyes",
+        "BendyLeg:L1",
+        "BendyLeg:L2",
+        "BendyLeg:L3",
+        "BendyLeg:L4",
+        "BendyLeg:R1",
+        "BendyLeg:R2",
+        "BendyLeg:R3",
+        "BendyLeg:R4",
+        "DimpledOrb:orb",
+        "SpiderFace:face",
+        "Stumble:stumble",
+        "Tendril:maw.a.L",
+        "Tendril:maw.a.R",
+        "Tendril:maw.b.L",
+        "Tendril:maw.b.R",
+        "Tendril:maw.c.L",
+        "Tendril:maw.c.R",
+        "Tendril:maw.d.L",
+        "Tendril:maw.d.R"
+      ],
+      "modules": [
+        "Walk",
+        "Wander",
+        "Skin",
+        "Chitin",
         "Layers"
       ]
     },

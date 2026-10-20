@@ -147,6 +147,8 @@ public sealed class CreatureSim
         for (int m = 0; m < modes.Length; m++) if (modes[m] is T t) return t;
         return null;
     }
+    // Every locomotion mode, highest priority first (tools: the pose sweep's phase channels). Read-only.
+    public ILocomotionMode[] LocomotionModes => modes;
     public FlightMode Mode => flight != null ? flight.Mode : FlightMode.Ground;
     // Per joint: the last grounding found ground within its window (a perched tail over a branch end does not).
     public readonly bool[] Supported;

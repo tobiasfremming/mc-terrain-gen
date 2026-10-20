@@ -55,17 +55,17 @@ MonoBehaviour:
         joints:
         - halfWidth: 0.035
           halfHeight: 0.03
-          clearance: 0.62
+          clearance: 0.56
           bendLimitDeg: 6
           rigid: 1
         - halfWidth: 0.04
           halfHeight: 0.034
-          clearance: 0.62
+          clearance: 0.56
           bendLimitDeg: 6
           rigid: 1
         - halfWidth: 0.03
           halfHeight: 0.028
-          clearance: 0.62
+          clearance: 0.56
           bendLimitDeg: 6
           rigid: 1
         profile: []
@@ -98,7 +98,7 @@ MonoBehaviour:
         mirror: 0
         role: 0
         gaitGroup: -1
-        restOffset: {x: 0.570411, y: 0, z: 0.814631}
+        restOffset: {x: 0.600667, y: 0, z: 0.857842}
         stepThreshold: 0.15
         stepDuration: 0.36
         stepLift: 0.11
@@ -113,8 +113,9 @@ MonoBehaviour:
         length: 1.55
         tarsusShare: 0.08
         lengthJitter: 0.35
-        riseDeg: 34
-        archDeg: 98
+        riseDeg: 10
+        archDeg: 154
+        femurLiftDeg: 80
         kneeAt: 0.27
         kneeSpread: 0.16
         kinkDeg: 12
@@ -135,6 +136,10 @@ MonoBehaviour:
         whip: 0.55
         coupling: 0.6
         maxDeflect: 0.07
+        hipStiffness: 8
+        swingHipDeg: 8
+        swingKneeDeg: 50
+        bodyMargin: 0.015
     - rid: 1003
       type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
@@ -147,7 +152,7 @@ MonoBehaviour:
         mirror: 0
         role: 0
         gaitGroup: -1
-        restOffset: {x: 1.040996, y: 0, z: 0.378891}
+        restOffset: {x: 0.963048, y: 0, z: 0.350521}
         stepThreshold: 0.16
         stepDuration: 0.4
         stepLift: 0.12
@@ -162,8 +167,9 @@ MonoBehaviour:
         length: 1.62
         tarsusShare: 0.08
         lengthJitter: 0.4
-        riseDeg: 28
-        archDeg: 92
+        riseDeg: 4
+        archDeg: 148
+        femurLiftDeg: 80
         kneeAt: 0.3
         kneeSpread: 0.3
         kinkDeg: 16
@@ -184,6 +190,10 @@ MonoBehaviour:
         whip: 0.6
         coupling: 0.6
         maxDeflect: 0.07
+        hipStiffness: 8
+        swingHipDeg: 8
+        swingKneeDeg: 50
+        bodyMargin: 0.015
     - rid: 1004
       type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
@@ -196,9 +206,9 @@ MonoBehaviour:
         mirror: 0
         role: 0
         gaitGroup: -1
-        restOffset: {x: 0.671665, y: 0, z: -0.27137}
+        restOffset: {x: 0.819851, y: 0, z: -0.331241}
         stepThreshold: 0.14
-        stepDuration: 0.32
+        stepDuration: 0.27
         stepLift: 0.1
         overshoot: 0.07
         footLength: 0
@@ -211,8 +221,9 @@ MonoBehaviour:
         length: 1.3
         tarsusShare: 0.08
         lengthJitter: 0.25
-        riseDeg: 38
-        archDeg: 104
+        riseDeg: 14
+        archDeg: 160
+        femurLiftDeg: 80
         kneeAt: 0.25
         kneeSpread: 0.12
         kinkDeg: 9
@@ -233,6 +244,10 @@ MonoBehaviour:
         whip: 0.45
         coupling: 0.6
         maxDeflect: 0.07
+        hipStiffness: 8
+        swingHipDeg: 8
+        swingKneeDeg: 50
+        bodyMargin: 0.015
     - rid: 1005
       type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
@@ -245,7 +260,7 @@ MonoBehaviour:
         mirror: 0
         role: 0
         gaitGroup: -1
-        restOffset: {x: 0.452795, y: 0, z: -0.784264}
+        restOffset: {x: 0.403667, y: 0, z: -0.699171}
         stepThreshold: 0.15
         stepDuration: 0.38
         stepLift: 0.1
@@ -260,8 +275,9 @@ MonoBehaviour:
         length: 1.42
         tarsusShare: 0.08
         lengthJitter: 0.45
-        riseDeg: 30
-        archDeg: 96
+        riseDeg: 6
+        archDeg: 152
+        femurLiftDeg: 80
         kneeAt: 0.33
         kneeSpread: 0.4
         kinkDeg: 18
@@ -282,6 +298,10 @@ MonoBehaviour:
         whip: 0.5
         coupling: 0.6
         maxDeflect: 0.07
+        hipStiffness: 8
+        swingHipDeg: 8
+        swingKneeDeg: 50
+        bodyMargin: 0.015
     - rid: 1006
       type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
@@ -294,7 +314,7 @@ MonoBehaviour:
         mirror: 0
         role: 0
         gaitGroup: -1
-        restOffset: {x: 0.598985, y: 0, z: 0.66524}
+        restOffset: {x: 0.65448, y: 0, z: 0.726874}
         stepThreshold: 0.15
         stepDuration: 0.34
         stepLift: 0.1
@@ -309,8 +329,9 @@ MonoBehaviour:
         length: 1.48
         tarsusShare: 0.08
         lengthJitter: 0.4
-        riseDeg: 36
-        archDeg: 100
+        riseDeg: 12
+        archDeg: 156
+        femurLiftDeg: 80
         kneeAt: 0.28
         kneeSpread: 0.2
         kinkDeg: 14
@@ -331,6 +352,10 @@ MonoBehaviour:
         whip: 0.55
         coupling: 0.6
         maxDeflect: 0.07
+        hipStiffness: 8
+        swingHipDeg: 8
+        swingKneeDeg: 50
+        bodyMargin: 0.015
     - rid: 1007
       type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
@@ -343,7 +368,7 @@ MonoBehaviour:
         mirror: 0
         role: 0
         gaitGroup: -1
-        restOffset: {x: 1.066875, y: 0, z: 0.285868}
+        restOffset: {x: 0.923422, y: 0, z: 0.24743}
         stepThreshold: 0.17
         stepDuration: 0.42
         stepLift: 0.12
@@ -358,8 +383,9 @@ MonoBehaviour:
         length: 1.68
         tarsusShare: 0.08
         lengthJitter: 0.3
-        riseDeg: 26
-        archDeg: 90
+        riseDeg: 2
+        archDeg: 146
+        femurLiftDeg: 80
         kneeAt: 0.32
         kneeSpread: 0.14
         kinkDeg: 11
@@ -380,6 +406,10 @@ MonoBehaviour:
         whip: 0.6
         coupling: 0.6
         maxDeflect: 0.07
+        hipStiffness: 8
+        swingHipDeg: 8
+        swingKneeDeg: 50
+        bodyMargin: 0.015
     - rid: 1008
       type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
@@ -392,7 +422,7 @@ MonoBehaviour:
         mirror: 0
         role: 0
         gaitGroup: -1
-        restOffset: {x: 0.789163, y: 0, z: -0.256415}
+        restOffset: {x: 0.814013, y: 0, z: -0.264489}
         stepThreshold: 0.14
         stepDuration: 0.35
         stepLift: 0.11
@@ -407,8 +437,9 @@ MonoBehaviour:
         length: 1.36
         tarsusShare: 0.08
         lengthJitter: 0.35
-        riseDeg: 33
-        archDeg: 102
+        riseDeg: 9
+        archDeg: 158
+        femurLiftDeg: 80
         kneeAt: 0.26
         kneeSpread: 0.35
         kinkDeg: 20
@@ -429,6 +460,10 @@ MonoBehaviour:
         whip: 0.5
         coupling: 0.6
         maxDeflect: 0.07
+        hipStiffness: 8
+        swingHipDeg: 8
+        swingKneeDeg: 50
+        bodyMargin: 0.015
     - rid: 1009
       type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
@@ -441,7 +476,7 @@ MonoBehaviour:
         mirror: 0
         role: 0
         gaitGroup: -1
-        restOffset: {x: 0.314695, y: 0, z: -0.64522}
+        restOffset: {x: 0.353975, y: 0, z: -0.725757}
         stepThreshold: 0.13
         stepDuration: 0.31
         stepLift: 0.09
@@ -456,8 +491,9 @@ MonoBehaviour:
         length: 1.25
         tarsusShare: 0.08
         lengthJitter: 0.3
-        riseDeg: 40
-        archDeg: 106
+        riseDeg: 16
+        archDeg: 162
+        femurLiftDeg: 80
         kneeAt: 0.24
         kneeSpread: 0.18
         kinkDeg: 8
@@ -478,6 +514,10 @@ MonoBehaviour:
         whip: 0.45
         coupling: 0.6
         maxDeflect: 0.07
+        hipStiffness: 8
+        swingHipDeg: 8
+        swingKneeDeg: 50
+        bodyMargin: 0.015
     - rid: 1010
       type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
@@ -485,7 +525,7 @@ MonoBehaviour:
         at:
           joint: 0
           side: -1
-          offset: {x: 0.016, y: -0.028, z: 0.045}
+          offset: {x: 0.016, y: 0.032, z: 0.045}
           slot: 0
         mirror: 0
         role: 1
@@ -507,6 +547,7 @@ MonoBehaviour:
         lengthJitter: 0.2
         riseDeg: -10
         archDeg: 45
+        femurLiftDeg: 0
         kneeAt: 0.4
         kneeSpread: 0.8
         kinkDeg: 8
@@ -527,6 +568,10 @@ MonoBehaviour:
         whip: 0.3
         coupling: 0.6
         maxDeflect: 0.07
+        hipStiffness: 0
+        swingHipDeg: 0
+        swingKneeDeg: 0
+        bodyMargin: 0.015
     - rid: 1011
       type: {class: BendyLeg, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
@@ -534,7 +579,7 @@ MonoBehaviour:
         at:
           joint: 0
           side: 1
-          offset: {x: 0.016, y: -0.028, z: 0.045}
+          offset: {x: 0.016, y: 0.032, z: 0.045}
           slot: 0
         mirror: 0
         role: 1
@@ -556,6 +601,7 @@ MonoBehaviour:
         lengthJitter: 0.2
         riseDeg: -10
         archDeg: 45
+        femurLiftDeg: 0
         kneeAt: 0.4
         kneeSpread: 0.8
         kinkDeg: 8
@@ -576,6 +622,10 @@ MonoBehaviour:
         whip: 0.3
         coupling: 0.6
         maxDeflect: 0.07
+        hipStiffness: 0
+        swingHipDeg: 0
+        swingKneeDeg: 0
+        bodyMargin: 0.015
     - rid: 1012
       type: {class: DimpledOrb, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:
@@ -583,7 +633,7 @@ MonoBehaviour:
         at:
           joint: 1
           side: 0
-          offset: {x: 0, y: 0.1, z: -0.05}
+          offset: {x: 0, y: 0.16, z: -0.05}
           slot: 0
         mirror: 0
         radius: 0.16
@@ -607,7 +657,7 @@ MonoBehaviour:
         at:
           joint: 0
           side: 0
-          offset: {x: 0, y: 0.022, z: 0.035}
+          offset: {x: 0, y: 0.082, z: 0.035}
           slot: 0
         mirror: 0
         on: 

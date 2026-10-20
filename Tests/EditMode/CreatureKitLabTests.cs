@@ -61,6 +61,7 @@ namespace TerrainGen.Tests
                 { "SkyManta", Habitat.Aviary },
                 { "Delver", Habitat.Plain },
                 { "Apex", Habitat.Aviary },
+                { "StriderMatriarch", Habitat.Plain },
             };
             foreach (string n in CreatureKitAssets.Species())
             {
