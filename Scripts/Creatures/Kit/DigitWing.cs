@@ -7,6 +7,8 @@
 //               air     a lag / flex about the finger's cross axis driven by the beat (AngleChain on the stroke angle:
 //                       each segment follows the one before with a damped spring, flexHz / flexDamping; the bend softly
 //                       saturates at flexDeg per joint) and, gliding, a small billow up (kBillow x flexDeg per joint);
+//                       in the landing flare (WingSpec.landingFlare) the drawn stroke is held raised and every joint cups
+//                       up toward flareCupDeg (the air under the pitched-up hand), blended by the flare's weight;
 //               ground  a droop toward world down (a damped spring per joint toward droopDeg x the sine of the segment's
 //                       angle off the vertical);
 //             every joint's bend clamped to maxBendDeg. The ground (walking: the nearest planted foot's plane; flaring and
@@ -51,6 +53,8 @@ namespace CreatureKit
         public float droopDeg = 8f;
         [Param(ParamUnit.Degrees, "the most any joint bends over the segment before it (air and ground)", Min = 1, Max = 90, Default = "25")]
         public float maxBendDeg = 25f;
+        [Param(ParamUnit.Degrees, "the landing flare (WingSpec.landingFlare on): each finger joint cups up (dorsal: the air under the pitched-up hand billows the span) toward this, blended by the flare's weight - the air flex's billow, harder (softly saturated at flexDeg like it)", Min = 0, Max = 45, Default = "8")]
+        public float flareCupDeg = 8f;
         [Param(ParamUnit.Metres, "the thumb claw's length along its curve", Example = "vesper 0.08")]
         public float thumbLength = 0.08f;
         [Param(ParamUnit.Degrees, "the thumb claw's curl down from its root to its tip", Min = 0, Max = 120, Default = "40")]
@@ -115,6 +119,7 @@ namespace CreatureKit
             if (!(flexDeg >= 0f) || !(droopDeg >= 0f)) return $"{id}: flexDeg, droopDeg >= 0";
             if (!(flexHz > 0f) || !(flexDamping > 0f) || !(maxBendDeg > 0f)) return $"{id}: flexHz, flexDamping, maxBendDeg > 0";
             if (!(thumbLength > 0f) || !(thumbCurlDeg >= 0f) || thumbCurlDeg > 120f) return $"{id}: thumbLength > 0, thumbCurlDeg in 0..120";
+            if (!(flareCupDeg >= 0f) || flareCupDeg > 45f) return $"{id}: flareCupDeg in 0..45";
             return null;
         }
 
@@ -133,6 +138,7 @@ namespace CreatureKit
     public sealed class DigitWingRuntime : IPartRuntime
     {
         const float kBillow = 0.3f;          // gliding: each joint billows up this x flexDeg
+        const float kFlareDamping = 1f;      // the landing flare: the flex chains' damping ratio when it is held
         const float kAirBlendSeconds = 0.25f; // the air <-> ground weight's time (x sqrt size)
         const float kThumbRadius = 0.5f;     // the thumb's root radius, x the leading finger's (it tapers to a point x 0.3)
         const int kLiftIterations = 10;      // ground: bisection steps for the root lift when the bend-limited chain sinks in
@@ -203,20 +209,27 @@ namespace CreatureKit
             CreatureFlight fl = sim.Flight;
             if (fl == null || !(dt > 0f)) return;
             float Te = IgnoreSizeForTest ? 1f : T;
-            ref WingState st = ref fl.Wings.State[w];
             bool ground = fl.Mode == FlightMode.Ground;
             float want = ground ? 0f : 1f;
             if (airW < 0f) airW = want;
             else airW = Mathf.MoveTowards(airW, want, dt / (kAirBlendSeconds * Te));
             bool glide = !ground && fl.Model.Gliding;
-            float strokeDeg = st.angle * Mathf.Rad2Deg;
+            // the drawn stroke (the landing flare holds it raised: CreatureWings.PosedAngle) drives the flex; the flare cups
+            // every joint toward flareCupDeg (WingSpec.landingFlare; 0 = the shipped billow)
+            float strokeDeg = fl.Wings.PosedAngle(w) * Mathf.Rad2Deg;
+            float flare = fl.Wings.FlareWeight(w);
+            float billow = glide ? kBillow * p.flexDeg : 0f;
+            if (flare > 0f) billow = Mathf.Lerp(billow, p.flareCupDeg, flare);
             float zeta = p.flexDamping;
+            // (held, the flare's chains settle without ringing: damped toward critical by its weight - underdamped, the drive's
+            // swing from the beat onto the held raise rang the fingers 4-5 deg a tick through the hold)
+            if (flare > 0f) zeta = Mathf.Lerp(zeta, Mathf.Max(zeta, kFlareDamping), flare);
             for (int k = 0; k < F; k++)
             {
                 float omega = 2f * Mathf.PI * hz[k] / Te;
                 // air: the beat drives the chain's root, every segment follows the one before (the lag); gliding, a billow
                 AngleChain a = flex[k];
-                for (int j = 1; j <= S; j++) a.SetOffset(j, glide ? kBillow * p.flexDeg : 0f);
+                for (int j = 1; j <= S; j++) a.SetOffset(j, billow);
                 a.Step(strokeDeg, dt, omega, zeta, p.maxBendDeg);
                 // ground: each joint's droop is a damped spring toward its gravity target (the last pose's)
                 int sub = Mathf.Clamp(Mathf.CeilToInt(omega * dt / 0.5f), 1, 64);
@@ -333,7 +346,7 @@ namespace CreatureKit
             var scale = new Vector3(sc, sc, sc);
             ref WingState st = ref fl.Wings.State[w];
             Vector3 wrist = dst[o + sp.LegBone(leg, 2)].GetColumn(3);
-            float flexW = airW < 0f ? 0f : airW * (1f - Mathf.Clamp01(st.fold));
+            float flexW = airW < 0f ? 0f : airW * (1f - Mathf.Clamp01(fl.Wings.DrawnFold(w)));
 
             // the ground plane: on the ground, the nearest planted foot's (point and normal); flaring or touching down,
             // the flight's ground below the girdle (level)

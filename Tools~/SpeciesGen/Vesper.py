@@ -185,6 +185,20 @@ FINGER_SPREAD = [20, 42, 64, 86]             # deg behind the forearm, wing spre
 # -125 / 943, -113 / 791; lift 35: 149 / 1300, 147 / 1174 (chosen: fold 120 + lift 35), 142 / 1015; lift 25: 150 / 1235,
 # 148 / 1116, 145 / 968. The fingers lie back along the forearm, standing up 35 deg, their tips behind the shoulders.
 FINGER_FOLD = [120, 122.5, 125, 127.5]
+# The landing flare's pose (deg; CreatureVesperTests.Vesper_LandingFlare_*): in the last 0.3 s x sqrt s before the
+# touchdown the fan >= 0.9 x its cruise glide width, the wrist ahead of the shoulder, the hand >= 30 deg nose-up to the path.
+# Measured (land seeds 1-3, the rock perch): the fan 81-85 deg (1.23-1.29 x the glide's 66), the wrist 0.9-1.4 m ahead,
+# the drawn fingers 49-50 deg nose-up to the smoothed path (the cupped finger roots read ~5 deg under the hand's 55). Pitch 50 left 36 deg on
+# land seed 1 (the margin wants >= 37.5). The hand is pitched to the descent's path (the velocity low-passed over 0.3 s x
+# sqrt s, about one braking stroke): pitched on the body it stood 1-25 deg to the path (the braking strokes swing the
+# velocity +-40 deg a beat); pitched to the raw velocity the held hand rocked with every stroke (up to 627 deg/s x sqrt s;
+# 122-213 smoothed, the bound 300). Measured against the smoothed path: 49-50 deg. The blend in (CreatureWings, 0.15 s x sqrt s): 0.2 left a 0.82 s flare (land seed 2) half blended at the window's
+# start (36 deg); 0.12 moved a finger tip 1.27 x its cruise step (Vesper_LandingFlare_NoPop wants <= 1.2); 0.15: 1.16.
+FLARE_SPREAD = 20           # the fan widened: the trailing finger this much further back (66 -> 86 deg leading to trailing)
+FLARE_SWEEP = 35            # the wrist swept forward about the girdle's up (ahead of the shoulder)
+FLARE_RAISE = 20            # the wings held raised (stroke angle up)
+FLARE_PITCH = 55            # the hand pitched nose-up to the flight path (the air brake)
+FLARE_CUP = 8               # each finger joint cups up toward this (deg; softly saturated at flexDeg)
 sp.add_part('DigitWing', {
     'id': 'wing', 'at': at(SHOULDER), 'mirror': 1, 'arm': 'arm',
     'spec': {
@@ -210,6 +224,15 @@ sp.add_part('DigitWing', {
         'area': 3,                           # aerodynamic wing area factor (lift)
         'scallop': 0, 'scallopByChord': 0, 'membraneBillow': 0, 'membraneDetail': 0, 'fingerKnuckles': 0,
         'wristKnuckle': 0, 'armMuscle': 0, 'forearmTwin': 0, 'thumbRadius': 0,
+        # the landing flare (WingSpec.landingFlare, task 3; the user: "make the wings flare when landing"): as the flight's
+        # Flare mode runs the drawn wings leave the beat for an air brake - held spread, raised, the wrist swept forward
+        # ahead of the shoulder, the four fingers fanned wider and the whole hand pitched nose-up, the fingers cupped
+        # (flareCupDeg below) - a bat's / a manta's broad cupped spread of four graded fingers, NOT a pterosaur's single
+        # swept spar. Only the drawn pose: the strokes that brake and land it are the flight's, unchanged. Blended in over
+        # 0.15 s x sqrt s of the flare, out over the touchdown's first 0.25 s x sqrt s (or 0.15 after a go-around). FLARE_*
+        # above.
+        'landingFlare': 1,
+        'flareSpreadDeg': FLARE_SPREAD, 'flareSweepDeg': FLARE_SWEEP, 'flareRaiseDeg': FLARE_RAISE, 'flarePitchDeg': FLARE_PITCH,
     },
     'fingerSegments': 4,                       # bones per finger
     'fingerRadius': [0.018, 0.016, 0.014, 0.012],   # each finger's root joint radius (the future skin)
@@ -219,6 +242,7 @@ sp.add_part('DigitWing', {
     'droopDeg': 8,                             # ground: how far gravity droops a folded finger joint
     'maxBendDeg': 25,                          # no finger joint ever bends further
     'thumbLength': 0.08, 'thumbCurlDeg': 40, 'thumbSegments': 2,   # the forward thumb claw
+    'flareCupDeg': FLARE_CUP,                  # the landing flare: the fingers cup up (the air under the pitched-up hand)
 })
 
 # ================================================================ the eyes (on the head's middle joint)

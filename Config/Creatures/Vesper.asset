@@ -325,6 +325,11 @@ MonoBehaviour:
           armMuscle: 0
           forearmTwin: 0
           thumbRadius: 0
+          landingFlare: 1
+          flareSpreadDeg: 20
+          flareSweepDeg: 35
+          flareRaiseDeg: 20
+          flarePitchDeg: 55
         fingerSegments: 4
         fingerRadius:
         - 0.018
@@ -340,6 +345,7 @@ MonoBehaviour:
         thumbLength: 0.08
         thumbCurlDeg: 40
         thumbSegments: 2
+        flareCupDeg: 8
     - rid: 1004
       type: {class: Eyes, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:

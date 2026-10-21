@@ -72,6 +72,9 @@ public sealed class CreatureWings
     readonly float[] armSign, patchSign;
     readonly float[] groundWeight;         // per wing: how far the current pose is the ground pose (groundLiftDeg)
     readonly float[] flankRise;            // per wing: this pose's flank attach rise (groundFlankRise x ground x fold^2)
+    // per wing: the fold the hand was last drawn with (= State.fold, but held open by the landing flare: PosedFold); the
+    // stroke state's own fold (State.fold) is the flight's and is never changed by the flare
+    readonly float[] drawnFold;
     readonly float[] ribRestLength;        // in the rest pose at scale 1
 
     public CreatureWings(CreatureSpecies sp, WingSpec[] wings, Vector3[] joints, Quaternion[] rotations, float scale = 1f)
@@ -97,7 +100,7 @@ public sealed class CreatureWings
         for (int w = 0; w < c; w++) { flankStart[w] = nodes; flankCount[w] = WingBoneLayout.FlankPatchCount(specs[w]); nodes += flankCount[w] + 1; }
         FlankNode = new Vector3[nodes];
         armSign = new float[c]; patchSign = new float[c]; groundWeight = new float[c];
-        flankRise = new float[c];
+        flankRise = new float[c]; drawnFold = new float[c];
         HandBoneOut = new Vector3[c]; HandFlex = new float[c];
 
         for (int w = 0; w < c; w++)
@@ -200,6 +203,91 @@ public sealed class CreatureWings
         return v.y * scale;
     }
 
+    // ---------------------------------------------------------------- the landing flare (WingSpec.landingFlare)
+
+    // The flare's blend (CreatureFlight steps it every sub-step): in over kFlareIn s x sqrt s from the Flare mode's start,
+    // held while it runs, out over kFlareOut s x sqrt s through the touchdown (inside the arms' handover to the legs: 0.6 x
+    // the touchdown's 0.5 s) or kFlareIn after a go-around. Flare is the eased (smoothstep) weight, x each wing's landingFlare.
+    // Only the drawn pose reads it (PoseWing, FlightWristTarget, PoseBetween, PoseHand, PosedAngle, FlareNormal): Advance, the stroke
+    // state and the flight model never do - the flare lands exactly as before; a wing with landingFlare 0 is unchanged.
+    // The flare pitches the hand to the flight path, not to the body: the braking strokes swing the path +-40 deg each beat
+    // while the body stays nearly level (airLevel), and a hand pitched on the body stood flat to the air half the time
+    // (Vesper: 1-25 deg nose-up to the path). The path is the descent's: the velocity low-passed over kFlarePathTau s x
+    // sqrt s (about one braking stroke; the velocity itself reverses ~80 deg in 0.15 s at a stroke's bottom, and a hand
+    // pitched to it rocked +-20-40 deg with every stroke - the beat coming back through the pitch, not a held brake).
+    internal const float FlareInSeconds = kFlareIn, FlareOutSeconds = kFlareOut;
+    const float kFlareIn = 0.15f, kFlareOut = 0.25f, kFlarePathTau = 0.3f;
+    float flareRamp;
+    Vector3 flareVel;    // the flight's velocity, low-passed (zero until the first airborne sub-step; a touchdown keeps the last)
+    Vector3 flarePath;   // its direction (unit, or zero)
+    // the flight path the flare is pitched to (unit; zero before the first airborne sub-step)
+    public Vector3 FlarePath => flarePath;
+    // RED hook (CreatureVesperTests): the flare pitched to the raw velocity (no low-pass)
+    internal static bool RawFlarePathForTest;
+    public float Flare { get; private set; }
+
+    // velocity: the flight model's (airborne); a touchdown keeps the last path
+    internal void StepFlare(float h, bool flaring, bool touchingDown, bool airborne, Vector3 velocity)
+    {
+        if (!(h > 0f)) return;
+        float time = flaring || !touchingDown ? kFlareIn : kFlareOut;
+        flareRamp = Mathf.MoveTowards(flareRamp, flaring ? 1f : 0f, h / (time * timeScale));
+        Flare = flareRamp * flareRamp * (3f - 2f * flareRamp);
+        if (airborne && velocity.sqrMagnitude > 1e-8f)
+        {
+            flareVel = flarePath.sqrMagnitude < 0.5f || RawFlarePathForTest ? velocity
+                     : flareVel + (velocity - flareVel) * Mathf.Min(1f, h / (kFlarePathTau * timeScale));
+            if (flareVel.sqrMagnitude > 1e-8f) flarePath = flareVel.normalized;
+        }
+    }
+
+    // The flare's hand normal: the beat's normal n0 (dorsal) turned toward the oncoming air until the hand stands
+    // flarePitchDeg nose-up to the flight path (flarePath) - in the plane of n0 and the path, so the leading
+    // edge rises and the air meets the ventral side - blended in by the flare weight. PoseHand lays the forearm into the
+    // turned hand's plane (its out axis), as it does for any hand normal. n0 as it is without a flare.
+    Vector3 FlareNormal(int w, Vector3 n0)
+    {
+        float fw = FlareWeight(w);
+        if (!(fw > 0f) || flarePath.sqrMagnitude < 0.5f) return n0;
+        Vector3 u = n0 - flarePath * Vector3.Dot(n0, flarePath);   // the beat's normal square to the path
+        if (u.sqrMagnitude < 1e-6f) return n0;                     // flying along the normal (straight up or down)
+        u.Normalize();
+        float p = specs[w].flarePitchDeg * Mathf.Deg2Rad;
+        Vector3 nt = u * Mathf.Cos(p) - flarePath * Mathf.Sin(p);
+        Vector3 n = Vector3.Lerp(n0.normalized, nt, fw);
+        return n.sqrMagnitude > 1e-8f ? n.normalized : n0;
+    }
+
+    // the fold wing w's hand was last drawn with (State.fold held open by the flare)
+    public float DrawnFold(int w) => drawnFold[w];
+
+    // wing w's flare weight: Flare x its landingFlare (0 = the shipped pose)
+    public float FlareWeight(int w) => Flare > 0f ? Flare * specs[w].landingFlare : 0f;
+
+    // The drawn stroke angle (rad): the beat's, blended to the flare's held raise (flareRaiseDeg) by the flare weight.
+    public float PosedAngle(int w)
+    {
+        float fw = FlareWeight(w);
+        return fw > 0f ? Mathf.Lerp(State[w].angle, specs[w].flareRaiseDeg * Mathf.Deg2Rad, fw) : State[w].angle;
+    }
+
+    // The wrist's offset from the shoulder in the flight pose (before the fold's pull-in), scaled: the rest tip turned
+    // about the stroke axis by the drawn angle, and in the flare swept forward about the girdle's up (flareSweepDeg).
+    Vector3 FlightRel(int w, Quaternion r, float sc)
+    {
+        Vector3 rel = Rotate(r * (tipLocal[w] - shoulderLocal[w]), r * axisLocal[w], side[w] * PosedAngle(w)) * sc;
+        float fw = FlareWeight(w);
+        if (fw > 0f) rel = Rotate(rel, r * Vector3.up, -side[w] * specs[w].flareSweepDeg * Mathf.Deg2Rad * fw);
+        return rel;
+    }
+
+    // The drawn fold: the flare holds the wing spread (fold x (1 - weight)).
+    float PosedFold(int w, float fold) { float fw = FlareWeight(w); return fw > 0f ? fold * (1f - fw) : fold; }
+
+    // The drawn stroke tilt (pronation / feather): faded out by the flare - the beat's tilt flips at every stroke's turn
+    // (feathered up, pronated down) and rolled the held hand 2-3 deg in a tick.
+    float PosedTilt(int w) { float fw = FlareWeight(w); return fw > 0f ? State[w].tilt * (1f - fw) : State[w].tilt; }
+
     // ---------------------------------------------------------------- wingbeat (physics side)
 
     public void Advance(float h, FlightModel m)
@@ -294,10 +382,11 @@ public sealed class CreatureWings
         Quaternion r = rs[attach[w]];
         Vector3 g = js[attach[w]];
         Vector3 axis = r * axisLocal[w];
-        float ang = side[w] * st.angle;
+        float ang = side[w] * PosedAngle(w);
         Vector3 shoulder = g + r * (shoulderLocal[w] * sc);
-        Vector3 rel = Rotate(r * (tipLocal[w] - shoulderLocal[w]), axis, ang) * sc;
-        Vector3 target = shoulder + rel * (1f - ws.foldReach * st.fold);
+        Vector3 rel = FlightRel(w, r, sc);
+        drawnFold[w] = PosedFold(w, st.fold);
+        Vector3 target = shoulder + rel * (1f - ws.foldReach * drawnFold[w]);
         Vector3 pole = r * poleLocal[w];
         Vector3 elbow = TwoBoneIK.Solve(shoulder, target, arm.upperLength * sc, arm.lowerLength * sc, pole, out Vector3 wrist);
         st.shoulder = shoulder; st.elbow = elbow; st.wrist = wrist;
@@ -307,7 +396,9 @@ public sealed class CreatureWings
         Vector3 hOut = wrist - elbow;
         hOut = hOut.sqrMagnitude > 1e-12f ? hOut.normalized : r * (Vector3.right * side[w]);
         Vector3 nw = Rotate(r * Vector3.up, axis, ang);
-        if (st.tilt != 0f) nw = Rotate(nw, hOut, side[w] * st.tilt);
+        float tilt = PosedTilt(w);
+        if (tilt != 0f) nw = Rotate(nw, hOut, side[w] * tilt);
+        nw = FlareNormal(w, nw);
         groundWeight[w] = 0f;
         PoseHand(w, js, rs, sc, nw);
         HandBoneOut[w] = st.handOut; HandFlex[w] = 0f;
@@ -327,6 +418,7 @@ public sealed class CreatureWings
         ref WingState st = ref State[w];
         st.shoulder = shoulder; st.elbow = elbow; st.wrist = wrist;
         st.fold = Mathf.Clamp01(fold);
+        drawnFold[w] = PosedFold(w, st.fold);
         Quaternion r = rotations[attach[w]];
         Vector3 hOut = wrist - elbow;
         hOut = hOut.sqrMagnitude > 1e-12f ? hOut.normalized : r * (Vector3.right * side[w]);
@@ -338,8 +430,10 @@ public sealed class CreatureWings
         if (flightWeight > 0f)
         {
             Vector3 axis = r * axisLocal[w];
-            Vector3 nf = Rotate(r * Vector3.up, axis, side[w] * st.angle);
-            if (st.tilt != 0f) nf = Rotate(nf, hOut, side[w] * st.tilt);
+            Vector3 nf = Rotate(r * Vector3.up, axis, side[w] * PosedAngle(w));
+            float tilt = PosedTilt(w);
+            if (tilt != 0f) nf = Rotate(nf, hOut, side[w] * tilt);
+            nf = FlareNormal(w, nf);
             nw = Vector3.Lerp(nw, nf, Mathf.Clamp01(flightWeight));
         }
         else { st.tilt = 0f; st.angleRate = 0f; }
@@ -389,10 +483,9 @@ public sealed class CreatureWings
     {
         WingSpec ws = specs[w];
         Quaternion r = rotations[attach[w]];
-        Vector3 axis = r * axisLocal[w];
         shoulder = joints[attach[w]] + r * (shoulderLocal[w] * scale);
-        Vector3 rel = Rotate(r * (tipLocal[w] - shoulderLocal[w]), axis, side[w] * State[w].angle) * scale;
-        return shoulder + rel * (1f - ws.foldReach * State[w].fold);
+        Vector3 rel = FlightRel(w, r, scale);
+        return shoulder + rel * (1f - ws.foldReach * PosedFold(w, State[w].fold));
     }
 
     public Vector3 ArmPole(int w) => rotations[attach[w]] * poleLocal[w];
@@ -413,6 +506,7 @@ public sealed class CreatureWings
     // Back to the spread glide pose's stroke state (a launch): angle 0, no upstroke.
     public void ResetStroke(float fold)
     {
+        flareRamp = 0f; Flare = 0f; flarePath = flareVel = Vector3.zero;
         for (int w = 0; w < State.Length; w++)
         {
             State[w].angle = 0f; State[w].angleRate = 0f; State[w].upstroke = false; State[w].upT = 0f;
@@ -429,7 +523,8 @@ public sealed class CreatureWings
         Quaternion r = rs[attach[w]];
         Vector3 hOut = wrist - st.elbow;
         hOut = hOut.sqrMagnitude > 1e-12f ? hOut.normalized : r * (Vector3.right * side[w]);
-        flankRise[w] = ws.groundFlankRise * groundWeight[w] * st.fold * st.fold;
+        float fold = drawnFold[w];
+        flankRise[w] = ws.groundFlankRise * groundWeight[w] * fold * fold;
 
         // Flank ribs (1: rear attach, 2: front attach) from the wrist to the flank. When the wrist comes in
         // line with the body (an arm reaching far forward in a wing-walk step, the body curled in a turn)
@@ -447,7 +542,7 @@ public sealed class CreatureWings
         Vector3 armN = Vector3.Cross(fore, st.shoulder - wrist);
         armN = armN.sqrMagnitude > 1e-10f ? armN.normalized : r * Vector3.up;
         float a0 = BehindArm(rearT - wrist, fore, armN);
-        float gap = kArmGapDeg * (1f - st.fold);
+        float gap = kArmGapDeg * (1f - fold);
         if (a0 < gap && gap > 0f) // folded (a wing-walk) it never slides: the folded wing lies along the body
         {
             float far = Mathf.Min(js.Length - 1, baseRear + kRearSlide);
@@ -505,7 +600,7 @@ public sealed class CreatureWings
         // barely changes). The hand's out axis is the forearm projected into the hand plane.
         Vector3 rr = RibDir[w * WingSpec.Ribs + 1];
         nw = nw.sqrMagnitude > 1e-12f ? nw.normalized : r * Vector3.up;
-        float fw = st.fold * st.fold;
+        float fw = fold * fold;
         if (fw > 0f)
         {
             // oriented dorsal by the girdle up: the stroke-turned normal can face away in a walk pose
@@ -526,7 +621,7 @@ public sealed class CreatureWings
         {
             Vector3 gu = r * Vector3.up;
             int fm = fingerCount[w] / 2;   // the middle finger (1 of 3)
-            float a1 = Mathf.Lerp(ws.fingerSpreadDeg[fm], ws.fingerFoldDeg[fm], st.fold) * Mathf.Deg2Rad;
+            float a1 = Mathf.Lerp(ws.fingerSpreadDeg[fm], ws.fingerFoldDeg[fm], fold) * Mathf.Deg2Rad;
             Vector3 d1 = Mathf.Cos(a1) * hOut + Mathf.Sin(a1) * hBack;
             Vector3 q = d1 - rr * Vector3.Dot(d1, rr);  // in the plane, square to the rib, on the fingers' side
             if (q.sqrMagnitude > 1e-6f)
@@ -534,6 +629,11 @@ public sealed class CreatureWings
                 q.Normalize();
                 float elev = Mathf.Asin(Mathf.Clamp(Vector3.Dot(q, gu), -1f, 1f)) * Mathf.Rad2Deg;
                 float turn = (lift - elev) * Mathf.Deg2Rad;
+                // (the landing flare: the lift turns the fan up to `lift` whatever its weight, and the flared fan's
+                // fingers point down - the turn would snap it up as the touchdown starts folding; it comes in as the
+                // flare goes out instead)
+                float flare = FlareWeight(w);
+                if (flare > 0f) turn *= 1f - flare;
                 if (turn > 0f)
                 {
                     float sgn = Vector3.Dot(Vector3.Cross(rr, q), gu) >= 0f ? 1f : -1f; // the sense that lifts q
@@ -552,7 +652,16 @@ public sealed class CreatureWings
             // the hand keeps its bind-pose relation to the forearm bone (its roll too: a hand rolled against the
             // forearm twists the wrist ring between the two bones)
             Quaternion hand = LowerArm(w, rs) * handOnArm[w];
-            st.handOut = hand * Vector3.forward; st.handNormal = hand * Vector3.up;
+            Vector3 bo = hand * Vector3.forward, bn = hand * Vector3.up;
+            // (the landing flare: the flight hand turns into it as the flare goes out, not at the first lift)
+            float flare = FlareWeight(w);
+            if (flare > 0f)
+            {
+                bo = Vector3.Slerp(hOut, bo, 1f - flare).normalized;
+                bn = Vector3.Slerp(nw, bn, 1f - flare);
+                bn = (bn - bo * Vector3.Dot(bn, bo)).normalized;
+            }
+            st.handOut = bo; st.handNormal = bn;
         }
 
         // Fingers fan out in the wing plane. Order invariant: finger k stays at least (nf + 1 - k) x gap ahead
@@ -562,10 +671,13 @@ public sealed class CreatureWings
         float ribAngle = Mathf.Atan2(Vector3.Dot(rr, hBack), Vector3.Dot(rr, hOut)) * Mathf.Rad2Deg;
         if (ribAngle < 0f) ribAngle += 360f;
         int nFing = fingerCount[w];
+        // the flare fans the fingers wider: the trailing one flareSpreadDeg further back, the others in proportion
+        float fan = FlareWeight(w) * ws.flareSpreadDeg / Mathf.Max(1, nFing - 1);
         for (int k = 0; k < nFing; k++)
         {
-            float deg = Mathf.Lerp(ws.fingerSpreadDeg[k], ws.fingerFoldDeg[k], st.fold);
-            deg = Mathf.Min(deg, ribAngle - (nFing + 1 - k) * Mathf.Lerp(ws.fingerMinGapDeg, ws.fingerFoldGapDeg, st.fold));
+            float deg = Mathf.Lerp(ws.fingerSpreadDeg[k], ws.fingerFoldDeg[k], fold);
+            if (fan != 0f) deg += fan * k;
+            deg = Mathf.Min(deg, ribAngle - (nFing + 1 - k) * Mathf.Lerp(ws.fingerMinGapDeg, ws.fingerFoldGapDeg, fold));
             float a = deg * Mathf.Deg2Rad;
             Vector3 d = Mathf.Cos(a) * hOut + Mathf.Sin(a) * hBack;
             int i = fingerStart[w] + k;

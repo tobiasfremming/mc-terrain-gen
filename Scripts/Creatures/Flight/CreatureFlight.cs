@@ -383,6 +383,9 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     internal bool SubStep(float dt, Vector3 target)
     {
         GateSurfaces();
+        // the drawn wings' landing flare (WingSpec.landingFlare; only the pose reads it): in with the Flare mode, out over
+        // the touchdown or a go-around
+        Wings.StepFlare(dt, Mode == FlightMode.Flare, Mode == FlightMode.Touchdown, Airborne, Model.Velocity);
         switch (Mode)
         {
             case FlightMode.Ground:

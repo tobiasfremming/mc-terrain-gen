@@ -3436,7 +3436,7 @@
           "type": "WingSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, thumbPlant, fanRearRollsWithFan, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius",
+          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, thumbPlant, fanRearRollsWithFan, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius, landingFlare, flareSpreadDeg, flareSweepDeg, flareRaiseDeg, flarePitchDeg",
           "range": "",
           "example": ""
         },
@@ -3511,6 +3511,15 @@
           "meaning": "the most any joint bends over the segment before it (air and ground)",
           "range": "1..90",
           "example": "default 25"
+        },
+        {
+          "name": "flareCupDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the landing flare (WingSpec.landingFlare on): each finger joint cups up (dorsal: the air under the pitched-up hand billows the span) toward this, blended by the flare's weight - the air flex's billow, harder (softly saturated at flexDeg like it)",
+          "range": "0..45",
+          "example": "default 8"
         },
         {
           "name": "thumbLength",
@@ -3633,7 +3642,7 @@
           "type": "WingSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, thumbPlant, fanRearRollsWithFan, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius",
+          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, thumbPlant, fanRearRollsWithFan, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius, landingFlare, flareSpreadDeg, flareSweepDeg, flareRaiseDeg, flarePitchDeg",
           "range": "",
           "example": ""
         },
@@ -3967,7 +3976,7 @@
           "type": "WingSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, thumbPlant, fanRearRollsWithFan, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius",
+          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, thumbPlant, fanRearRollsWithFan, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius, landingFlare, flareSpreadDeg, flareSweepDeg, flareRaiseDeg, flarePitchDeg",
           "range": "",
           "example": ""
         },
@@ -4303,7 +4312,7 @@
           "type": "WingSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, thumbPlant, fanRearRollsWithFan, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius",
+          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, thumbPlant, fanRearRollsWithFan, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius, landingFlare, flareSpreadDeg, flareSweepDeg, flareRaiseDeg, flarePitchDeg",
           "range": "",
           "example": ""
         }

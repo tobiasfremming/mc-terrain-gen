@@ -31,6 +31,10 @@ namespace TerrainGen.Tests
     // joints (4 + 7 joints kept), the tail long; walking, the knuckles planted ahead of the shoulder and out wide, the hock
     // high (DrakeLeg.walkOnHock), strides 1.8 x step 1's. REDs on rev 2: walkOnHock off (the hips droop), the step-1 finger
     // lift (they cross), drapeCapKeepsLength off (the tail whips); the long-neck REDs run on step 1's neck (StepOneNeck).
+    // The landing flare (rev 2 task 3, WingSpec.landingFlare): in the last 0.3 s x sqrt s before a touchdown on open ground or a
+    // rock perch the drawn wings are fanned >= 0.9 x their glide width, the wrists ahead of the shoulders, the fingers' plane
+    // >= 30 deg nose-up to the flight path; the flare is the drawn pose only (the flight with and without it is the same, tick
+    // by tick) and adds no pop through its start, the touchdown's blend out and a go-around. RED: landingFlare off.
     public class CreatureVesperTests
     {
         const float kDt = 1f / 60f;
@@ -1106,6 +1110,377 @@ namespace TerrainGen.Tests
             WallRun w = WallSession(StepOneNeck(f => f.trunkTurnBounded = false), VesperLabLayout.AviaryFactor);
             TestContext.Out.WriteLine($"RED: the head's largest step {w.head:F3} m (bound {w.headBound:F3} m)");
             Assert.Greater(w.head, w.headBound, "the head's largest step at the wall against its bound");
+        }
+
+        // ------------------------------------------------------------ the landing flare (task 3)
+
+        // The flare (WingSpec.landingFlare, on in Vesper.asset): coming in to land the wings open wide and pitch up into an
+        // air brake - a bat's / a manta's broad cupped spread of four graded fingers, not a pterosaur's single swept spar.
+        // Measured on the drawn skeleton (WriteBoneWorld every tick, as the renderer does), per wing:
+        //   fan    the angle between the leading and the trailing finger's root segments (deg)
+        //   ahead  the wrist ahead of the shoulder along the flight's heading (m)
+        //   pitch  the fingers' plane nose-up to the flight path: asin(-n . v) with n the fan's dorsal normal (side x
+        //          lead x trail) and v the flight path the flare is pitched to (CreatureWings.FlarePath: the descent's - the
+        //          velocity low-passed over about one braking stroke; deg; + = the air on the ventral side, the leading edge up)
+        //   hold   held (the Flare, the flare's weight at 1 on this tick and the last): the fan normal's turn in a tick, as a
+        //          rate in deg/s x sqrt s (kFlareHold bounds it: an air brake held, not the beat coming back through the pitch;
+        //          measured 122-213 - the body's own pitching, ~2 deg a tick at scale 4 - against 406-627 pitched to the raw
+        //          velocity, Red_Vesper_FlareRocks)
+        // In the last kFlareWindow s x sqrt s before the touchdown begins, every tick: fan >= kFlareFan x the wing's widest
+        // in the cruise glide, ahead > 0, pitch >= kFlarePitch (and >= kFlarePitch / kGreenShare on open ground: the margin;
+        // measured 49-50 deg against the smoothed path, the fan 1.23-1.29 x, the wrist 0.9-1.4 m ahead). RED (landingFlare 0): the shipped flare
+        // brakes with the beat - the fan half folded by the upstrokes (0.55 x), the wrist level with the shoulder (-0.02 to
+        // 0.15 m ahead), the hand -10 deg to the path.
+        const float kFlareWindow = 0.3f, kFlareFan = 0.9f, kFlarePitch = 30f, kFlareCruise = 10f, kFlareHold = 300f;
+        const float kFlarePop = 1.5f;   // no pop: a wrist or finger tip's step in a tick <= this x its largest in cruise (MeasureFlarePop)
+
+        internal struct WingLook { public float fan, ahead, pitch; public Vector3 n; }
+
+        internal static WingLook LookOf(CreatureSim sim, int w)
+        {
+            CreatureFlight fl = sim.Flight;
+            DigitWingRuntime rt = CreatureDigitWingTests.Runtime(sim, w);
+            int F = rt.Fingers;
+            Vector3 lead = rt.Joint(0, 1) - rt.Joint(0, 0), trail = rt.Joint(F - 1, 1) - rt.Joint(F - 1, 0);
+            Vector3 n = (fl.Wings.Side(w) * Vector3.Cross(lead, trail)).normalized;
+            Vector3 v = fl.Wings.FlarePath.sqrMagnitude > 0.5f ? fl.Wings.FlarePath : fl.Model.Velocity;
+            ref WingState st = ref fl.Wings.State[w];
+            return new WingLook
+            {
+                n = n,
+                fan = Vector3.Angle(lead, trail),
+                ahead = Vector3.Dot(st.wrist - st.shoulder, fl.Model.Forward),
+                pitch = v.sqrMagnitude > 1e-8f ? Mathf.Asin(Mathf.Clamp(-Vector3.Dot(n, v.normalized), -1f, 1f)) * Mathf.Rad2Deg : 0f,
+            };
+        }
+
+        internal struct FlareRun
+        {
+            public string name, problem;
+            public bool touched, perched, glided;
+            public float flareSeconds;              // the last flare's length before the touchdown (s)
+            public float[] cruiseFan, fan, ahead, pitch; // per wing: the widest cruise fan; the window's least fan, ahead, pitch
+            public float[] hold;                         // per wing: the held flare's fastest hand turn (deg/s x sqrt s)
+            public int heldTicks;
+        }
+
+        static float[] Filled(int n, float v) { var a = new float[n]; for (int i = 0; i < n; i++) a[i] = v; return a; }
+
+        // From the air (after kFlareCruise s x sqrt s of cruise, its widest gliding fan per wing - any tick in the air if it
+        // never glided), Land (rock: Perch on the command brain's rock) until the touchdown begins; the window's least fan,
+        // ahead and pitch per wing; then on to the ground (touched: the walking state reached; perched: on the rock).
+        internal static FlareRun MeasureFlare(CreatureSpecies sp, bool rock, int seed)
+        {
+            var r = new CreatureCommandBrainTests.Rig(sp, rock ? CreatureCommandBrainTests.Rock(sp.scale) : null, seed);
+            int W = sp.WingCount;
+            var o = new FlareRun { name = $"{(rock ? "perch" : "land")} (seed {seed})", cruiseFan = new float[W], fan = Filled(W, float.MaxValue), ahead = Filled(W, float.MaxValue), pitch = Filled(W, float.MaxValue), hold = new float[W] };
+            var bones = new Matrix4x4[sp.BoneCount];
+            r.Run(0.5f);
+            string a = r.Airborne();
+            if (a != null) { o.problem = $"{o.name}: {a}"; return o; }
+            var anyFan = new float[W];
+            int nc = Mathf.CeilToInt(kFlareCruise * r.T / kDt);
+            for (int i = 0; i < nc; i++)
+            {
+                r.Tick();
+                r.sim.WriteBoneWorld(bones, 0);
+                if (r.sim.Mode != FlightMode.Air) continue;
+                bool glide = r.sim.Flight.Model.Gliding;
+                for (int w = 0; w < W; w++)
+                {
+                    float f = LookOf(r.sim, w).fan;
+                    anyFan[w] = Mathf.Max(anyFan[w], f);
+                    if (glide) { o.cruiseFan[w] = Mathf.Max(o.cruiseFan[w], f); o.glided = true; }
+                }
+            }
+            if (!o.glided) System.Array.Copy(anyFan, o.cruiseFan, W);
+            r.brain.Command(rock ? CreatureCommand.Perch : CreatureCommand.Land);
+            int N = Mathf.CeilToInt(kFlareWindow * r.T / kDt), filled = 0, at = 0;
+            var ring = new WingLook[N * W];
+            int n = Mathf.CeilToInt(120f * r.T / kDt);
+            float flareStart = -1f;
+            var lastN = new Vector3[W];
+            var lastHeld = new bool[W];
+            for (int i = 0; i < n; i++)
+            {
+                FlightMode m0 = r.sim.Mode;
+                r.Tick();
+                r.sim.WriteBoneWorld(bones, 0);
+                if (r.sim.Mode == FlightMode.Flare && m0 != FlightMode.Flare) flareStart = r.sim.Time;
+                if (r.sim.Mode == FlightMode.Touchdown && m0 != FlightMode.Touchdown)
+                {
+                    o.touched = true;
+                    o.flareSeconds = flareStart >= 0f ? r.sim.Time - flareStart : 0f;
+                    for (int k = 0; k < filled; k++)
+                        for (int w = 0; w < W; w++)
+                        {
+                            WingLook l = ring[k * W + w];
+                            o.fan[w] = Mathf.Min(o.fan[w], l.fan); o.ahead[w] = Mathf.Min(o.ahead[w], l.ahead); o.pitch[w] = Mathf.Min(o.pitch[w], l.pitch);
+                        }
+                    break;
+                }
+                for (int w = 0; w < W; w++)
+                {
+                    WingLook l = ring[at * W + w] = LookOf(r.sim, w);
+                    bool held = r.sim.Mode == FlightMode.Flare && r.sim.Flight.Wings.FlareWeight(w) >= 0.999f;
+                    if (held && lastHeld[w])
+                    {
+                        o.hold[w] = Mathf.Max(o.hold[w], Vector3.Angle(lastN[w], l.n) / kDt * r.T);
+                        if (w == 0) o.heldTicks++;
+                    }
+                    lastN[w] = l.n; lastHeld[w] = held;
+                }
+                at = (at + 1) % N; filled = Mathf.Min(filled + 1, N);
+            }
+            if (!o.touched) { o.problem = $"{o.name}: never touched down ({r.State})"; return o; }
+            if (r.Until(() => r.sim.Mode == FlightMode.Ground, 10f) < 0f) { o.problem = $"{o.name}: the touchdown never ended ({r.State})"; return o; }
+            o.perched = r.sim.Flight.Perched;
+            var sb = new System.Text.StringBuilder();
+            for (int w = 0; w < W; w++) sb.Append($" wing {w}: fan {o.fan[w]:F1} deg (cruise {(o.glided ? "glide" : "air")} {o.cruiseFan[w]:F1}: {o.fan[w] / Mathf.Max(1e-3f, o.cruiseFan[w]):F2} x), wrist ahead {o.ahead[w]:F2} m, pitch {o.pitch[w]:F1} deg, held hand turning at most {o.hold[w]:F0} deg/s x sqrt s;");
+            TestContext.Out.WriteLine($"{o.name}: the flare {o.flareSeconds:F2} s ({o.heldTicks} ticks held), its last {kFlareWindow} s x sqrt s:{sb} perched {o.perched}; {r.State}");
+            return o;
+        }
+
+        internal static string FlarePoseProblem(in FlareRun o)
+        {
+            if (o.problem != null) return o.problem;
+            for (int w = 0; w < o.fan.Length; w++)
+            {
+                if (o.fan[w] < kFlareFan * o.cruiseFan[w]) return $"{o.name}, wing {w}: the fan {o.fan[w]:F1} deg before the touchdown < {kFlareFan} x its widest in the cruise glide ({o.cruiseFan[w]:F1} deg)";
+                if (!(o.ahead[w] > 0f)) return $"{o.name}, wing {w}: the wrist {-o.ahead[w]:F2} m behind the shoulder before the touchdown (wants ahead)";
+                if (o.pitch[w] < kFlarePitch) return $"{o.name}, wing {w}: the hand pitched {o.pitch[w]:F1} deg nose-up to the flight path before the touchdown (< {kFlarePitch})";
+            }
+            return null;
+        }
+
+        // The held flare is held: once the flare's weight is 1, the hand (the drawn fan's normal) turns at most kFlareHold
+        // deg/s x sqrt s - the body's own turns and the descent path's drift, not the braking strokes.
+        internal static string FlareHoldProblem(in FlareRun o)
+        {
+            if (o.problem != null) return o.problem;
+            if (o.heldTicks < 10) return $"{o.name}: the flare was held only {o.heldTicks} ticks";
+            for (int w = 0; w < o.hold.Length; w++)
+                if (o.hold[w] > kFlareHold) return $"{o.name}, wing {w}: the held flare's hand turned {o.hold[w]:F0} deg/s x sqrt s (> {kFlareHold}): it rocks with the strokes";
+            return null;
+        }
+
+        [Test] public void Vesper_LandingFlare_WingsOpenAndPitchUp()
+        {
+            CreatureSpecies sp = Vesper();
+            Assert.Greater(sp.wings[0].landingFlare, 0f, "Vesper.asset: landingFlare");
+            for (int seed = 1; seed <= 3; seed++)
+            {
+                FlareRun o = MeasureFlare(sp, false, seed);
+                string e = FlarePoseProblem(o) ?? FlareHoldProblem(o);
+                Assert.IsNull(e, e);
+                for (int w = 0; w < o.hold.Length; w++)
+                    Assert.LessOrEqual(o.hold[w], kGreenShare * kFlareHold, $"{o.name}, wing {w}: the held hand's turn rate against {kFlareHold} deg/s x sqrt s (the margin)");
+                for (int w = 0; w < o.fan.Length; w++)
+                    Assert.GreaterOrEqual(o.pitch[w], kFlarePitch / kGreenShare, $"{o.name}, wing {w}: the pitch's margin over {kFlarePitch} deg");
+            }
+        }
+
+        // The same flare on a rock perch (seeds 1.. until one perches; one that gives the perch up is CreatureCommandBrainTests')
+        [Test] public void Vesper_LandingFlare_PerchToo()
+        {
+            CreatureSpecies sp = Vesper();
+            for (int seed = 1; seed <= kPerchSeeds; seed++)
+            {
+                FlareRun o = MeasureFlare(sp, true, seed);
+                if (o.problem == null && !o.perched) { TestContext.Out.WriteLine($"seed {seed}: did not perch; the next seed"); continue; }
+                string e = FlarePoseProblem(o) ?? FlareHoldProblem(o);
+                Assert.IsNull(e, e);
+                return;
+            }
+            Assert.Fail($"no seed of 1..{kPerchSeeds} perched");
+        }
+
+        // RED: the flare pitched to the raw velocity (CreatureWings.RawFlarePathForTest) - the hand rocks with every braking
+        // stroke, past kFlareHold on land seed 1 or 2
+        [Test] public void Red_Vesper_FlareRocks()
+        {
+            CreatureSpecies sp = Vesper();
+            float worst = 0f;
+            CreatureWings.RawFlarePathForTest = true;
+            try
+            {
+                for (int seed = 1; seed <= 2; seed++)
+                {
+                    FlareRun o = MeasureFlare(sp, false, seed);
+                    Assert.IsNull(o.problem, o.problem);
+                    foreach (float h in o.hold) worst = Mathf.Max(worst, h);
+                }
+            }
+            finally { CreatureWings.RawFlarePathForTest = false; }
+            TestContext.Out.WriteLine($"RED: the held hand turned up to {worst:F0} deg/s x sqrt s (bound {kFlareHold})");
+            Assert.Greater(worst, kFlareHold, "the held flare's fastest hand turn against its bound");
+        }
+
+        // RED: landingFlare off (the shipped flare: slow braking strokes) - the pose clauses fail on seed 1
+        [Test] public void Red_Vesper_NoLandingFlare()
+        {
+            CreatureSpecies sp = NoFlare();
+            Assert.AreEqual(0f, sp.wings[0].landingFlare);
+            string e = FlarePoseProblem(MeasureFlare(sp, false, 1));
+            TestContext.Out.WriteLine("RED: " + e);
+            Assert.IsNotNull(e, "the flare's pose with landingFlare off");
+            StringAssert.DoesNotContain("never", e, "the RED is the pose, not a failed landing");
+        }
+
+        // No pop: each wing's wrist and finger tips (the drawn chains), their step in one tick through the flare's start, the
+        // touchdown's first FlareOutSeconds (the flare's blend out) and a forced go-around (the landing called off
+        // kGoAroundAt s x sqrt s into the flare, mid-blend) - over the larger of the same tick's step without the flare and
+        // the point's largest step in kFlareCruise s x sqrt s of cruise - <= kGreenShare x kFlarePop (seeds 1-2, landing and
+        // go-around; measured 1.10-1.16). Judged against the shipped pose's step too because the flight's own mode switch is
+        // in both: the first tick of the Flare (a faster braking stroke, before the flare's weight rises) moves a finger tip
+        // 1.37 x its cruise step with the flare and 1.53 x without. Not judged (reported): the touchdown's end, where the arms
+        // become legs (the fold snaps 0.65 -> 1 and the rear flank attach slides 6 joints in a tick: the finger tips 2.7-3.6 x
+        // their cruise step, with or without the flare - a shipped touchdown pop, not the flare's). The margin is thin (1.01-
+        // 1.17 against 1.2, the blend in's fastest tick); if Mono tips it, the knob is CreatureWings.kFlareIn 0.15 -> 0.17
+        // (the 0.82 s flare of land seed 2 still blends in before the pose window: 0.2 did not).
+        const float kFlareAfter = 2f, kGoAroundAt = 0.15f;
+
+        static int PointCount(CreatureSim sim)
+        {
+            int c = 0;
+            for (int w = 0; w < sim.Species.WingCount; w++) c += 1 + CreatureDigitWingTests.Runtime(sim, w).Fingers;
+            return c;
+        }
+
+        static void Points(CreatureSim sim, Vector3[] p)
+        {
+            int c = 0;
+            for (int w = 0; w < sim.Species.WingCount; w++)
+            {
+                DigitWingRuntime rt = CreatureDigitWingTests.Runtime(sim, w);
+                p[c++] = rt.Joint(0, 0);
+                for (int k = 0; k < rt.Fingers; k++) p[c++] = rt.Joint(k, rt.Segments);
+            }
+        }
+
+        static string PointName(CreatureSim sim, int i)
+        {
+            for (int w = 0; w < sim.Species.WingCount; w++)
+            {
+                int F = CreatureDigitWingTests.Runtime(sim, w).Fingers;
+                if (i == 0) return $"wing {w}'s wrist";
+                if (i <= F) return $"wing {w}'s finger {i - 1} tip";
+                i -= 1 + F;
+            }
+            return "?";
+        }
+
+        internal struct PopRun
+        {
+            public string name, problem;
+            public float worst, worstOff, added, whole, wholeOff, cruiseTip, cruiseWrist;   // see MeasureFlarePop
+            public float worstAt, addedAt, wholeAt;
+            public string worstName, addedName, wholeName;
+        }
+
+        static CreatureSpecies NoFlare() => Vesper(ps => { foreach (CreaturePart p in ps) if (p is DigitWing d) d.spec.landingFlare = 0f; });
+
+        // Lockstep: the asset (the flare on) and the same species with landingFlare 0, the same seed. The flare is the drawn
+        // pose only, so both fly exactly the same (every tick: the same mode and girdle - else `problem`); what differs is
+        // the drawn wrist and finger tips. goAround: the landing is called off in the flare (CreatureFlight.CancelLanding)
+        // kGoAroundAt s x sqrt s in and the run watched after it. Each point's step in a tick / its largest in cruise
+        // (kFlareCruise s x sqrt s in the air, not landing):
+        //   worst / worstOff  the largest in the flare's window, flare on / off - ticks ending in the Flare, the touchdown's
+        //                     first FlareOutSeconds s x sqrt s (the flare's blend out), the go-around's first
+        //                     2 x FlareInSeconds s x sqrt s
+        //   added             the largest in the window of the step with the flare over the larger of the step without it
+        //                     and the cruise's: the pop the flare adds (the flight's own mode switches - the flare's first
+        //                     braking stroke is a faster beat - are in both)
+        //   whole / wholeOff  from the flare's start to the end (kFlareAfter s x sqrt s on the ground, or after the go-around)
+        internal static PopRun MeasureFlarePop(CreatureSpecies sp, int seed, bool goAround)
+        {
+            var r = new CreatureCommandBrainTests.Rig(sp, null, seed);
+            var q = new CreatureCommandBrainTests.Rig(NoFlare(), null, seed);
+            var o = new PopRun { name = $"{(goAround ? "go-around" : "land")} (seed {seed})" };
+            var bones = new Matrix4x4[sp.BoneCount];
+            r.Run(0.5f); q.Run(0.5f);
+            string a = r.Airborne(), b = q.Airborne();
+            if (a != null || b != null) { o.problem = $"{o.name}: {a ?? b}"; return o; }
+            r.sim.WriteBoneWorld(bones, 0); q.sim.WriteBoneWorld(bones, 0);
+            int P = PointCount(r.sim), g = r.sim.Flight.Girdle;
+            Vector3[] prev = new Vector3[P], cur = new Vector3[P], prevQ = new Vector3[P], curQ = new Vector3[P];
+            float[] cruise = new float[P];
+            Points(r.sim, prev); Points(q.sim, prevQ);
+            int nc = Mathf.CeilToInt(kFlareCruise * r.T / kDt);
+            for (int i = 0; i < nc; i++)
+            {
+                FlightMode m0 = r.sim.Mode;
+                r.Tick(); q.Tick();
+                r.sim.WriteBoneWorld(bones, 0); Points(r.sim, cur);
+                q.sim.WriteBoneWorld(bones, 0); Points(q.sim, curQ);
+                if (m0 == FlightMode.Air && r.sim.Mode == FlightMode.Air && !r.sim.Flight.Landing)
+                    for (int k = 0; k < P; k++) cruise[k] = Mathf.Max(cruise[k], (cur[k] - prev[k]).magnitude);
+                System.Array.Copy(cur, prev, P); System.Array.Copy(curQ, prevQ, P);
+            }
+            o.cruiseWrist = cruise[0];
+            for (int k = 1; k < P; k++) o.cruiseTip = Mathf.Max(o.cruiseTip, cruise[k]);
+            r.brain.Command(CreatureCommand.Land); q.brain.Command(CreatureCommand.Land);
+            int n = Mathf.CeilToInt(120f * r.T / kDt), after = -1, afterTicks = Mathf.CeilToInt(kFlareAfter * r.T / kDt);
+            float outFor = CreatureWings.FlareOutSeconds * r.T, aroundFor = 2f * CreatureWings.FlareInSeconds * r.T, cancelAt = -1f;
+            int worstK = -1, addedK = -1, wholeK = -1;
+            bool watching = false, cancelled = false;
+            for (int i = 0; i < n && after != 0; i++)
+            {
+                FlightMode m0 = r.sim.Mode;
+                if (goAround && !cancelled && r.sim.Mode == FlightMode.Flare && r.sim.Flight.ModeTime >= kGoAroundAt * r.T)
+                {
+                    r.sim.Flight.CancelLanding(); q.sim.Flight.CancelLanding();
+                    cancelled = true; after = afterTicks; cancelAt = r.sim.Time;
+                }
+                r.Tick(); q.Tick();
+                r.sim.WriteBoneWorld(bones, 0); Points(r.sim, cur);
+                q.sim.WriteBoneWorld(bones, 0); Points(q.sim, curQ);
+                FlightMode m = r.sim.Mode;
+                if (q.sim.Mode != m || (q.sim.Joints[g] - r.sim.Joints[g]).sqrMagnitude > 1e-12f)
+                {
+                    o.problem = $"{o.name}: the flare changed the flight at t = {r.sim.Time:F2} s ({m}; {q.sim.Mode} without it; the girdles {(q.sim.Joints[g] - r.sim.Joints[g]).magnitude:F4} m apart)";
+                    return o;
+                }
+                if (m == FlightMode.Flare) watching = true;
+                bool window = m == FlightMode.Flare || (m == FlightMode.Touchdown && r.sim.Flight.ModeTime <= outFor)
+                              || (cancelled && r.sim.Time - cancelAt <= aroundFor);
+                if (watching)
+                    for (int k = 0; k < P; k++)
+                    {
+                        float c = Mathf.Max(1e-6f, cruise[k]), on = (cur[k] - prev[k]).magnitude, off = (curQ[k] - prevQ[k]).magnitude;
+                        if (on / c > o.whole) { o.whole = on / c; wholeK = k; o.wholeAt = r.sim.Time; }
+                        o.wholeOff = Mathf.Max(o.wholeOff, off / c);
+                        if (!window) continue;
+                        if (on / c > o.worst) { o.worst = on / c; worstK = k; o.worstAt = r.sim.Time; }
+                        o.worstOff = Mathf.Max(o.worstOff, off / c);
+                        float add = on / Mathf.Max(off, c);
+                        if (add > o.added) { o.added = add; addedK = k; o.addedAt = r.sim.Time; }
+                    }
+                System.Array.Copy(cur, prev, P); System.Array.Copy(curQ, prevQ, P);
+                if (!goAround && m0 == FlightMode.Touchdown && m == FlightMode.Ground) after = afterTicks;
+                else if (after > 0) after--;
+            }
+            if (!watching) o.problem = $"{o.name}: never flared ({r.State})";
+            else if (goAround && !cancelled) o.problem = $"{o.name}: the flare never ran {kGoAroundAt} s x sqrt s ({r.State})";
+            else if (after != 0) o.problem = $"{o.name}: {(goAround ? "the go-around" : "the landing")} not watched to its end ({r.State})";
+            o.worstName = worstK >= 0 ? PointName(r.sim, worstK) : "-";
+            o.addedName = addedK >= 0 ? PointName(r.sim, addedK) : "-";
+            o.wholeName = wholeK >= 0 ? PointName(r.sim, wholeK) : "-";
+            TestContext.Out.WriteLine($"{o.name}: cruise's largest step in a tick: wrist {o.cruiseWrist:F3} m, finger tips up to {o.cruiseTip:F3} m. The flare's window (x the point's largest in cruise): {o.worst:F2} ({o.worstName}, t = {o.worstAt:F2} s), without the flare {o.worstOff:F2}; the step over the larger of the shipped pose's and the cruise's: {o.added:F2} ({o.addedName}, t = {o.addedAt:F2} s). The whole run: {o.whole:F2} ({o.wholeName}, t = {o.wholeAt:F2} s), without the flare {o.wholeOff:F2}; {r.State}");
+            return o;
+        }
+
+        [Test] public void Vesper_LandingFlare_NoPop()
+        {
+            CreatureSpecies sp = Vesper();
+            Assert.Greater(sp.wings[0].landingFlare, 0f, "Vesper.asset: landingFlare");
+            foreach (bool goAround in new[] { false, true })
+                for (int seed = 1; seed <= 2; seed++)
+                {
+                    PopRun o = MeasureFlarePop(sp, seed, goAround);
+                    Assert.IsNull(o.problem, o.problem);
+                    Assert.LessOrEqual(o.added, kGreenShare * kFlarePop, $"{o.name}: {o.addedName}'s step in a tick over the larger of the shipped pose's and its largest in cruise, against {kFlarePop} (with the margin)");
+                }
         }
     }
 }

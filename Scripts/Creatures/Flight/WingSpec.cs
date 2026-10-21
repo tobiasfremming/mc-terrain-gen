@@ -107,6 +107,18 @@ public class WingSpec
     // The thumb's root radius, m at scale 1 (0 = 0.45 x the forearm radius).
     public float thumbRadius = 0f;
 
+    [Header("Landing flare (opt-in: landingFlare 0 = the shipped wing, bit for bit)")]
+    [Tooltip("The landing flare's weight, 0..1 (0 = off: the flare only brakes with the flight's slow strokes, as shipped). On, as the flight's Flare mode runs (CreatureWings.Flare: blended in over the flare's first 0.15 s x sqrt s, held to the touchdown, blended out over the touchdown's first 0.25 s x sqrt s - inside the arms' handover - or 0.15 s after a go-around) the drawn wing leaves its beat for the air brake: held spread (unfolded), raised (flareRaiseDeg), the wrist swept forward ahead of the shoulder (flareSweepDeg), the fingers fanned wider (flareSpreadDeg) and the whole hand pitched nose-up (flarePitchDeg) - a bat's / a manta's broad cupped spread, not a pterosaur's single swept spar. Only the drawn pose: the flight model's strokes, areas and tilts (what lands it) are untouched.")]
+    [Range(0f, 1f)] public float landingFlare = 0f;
+    [Tooltip("Flare: the fan widened by this much (deg): the trailing finger turns this far further back, the ones between it and the leading finger in proportion (the leading finger stays).")]
+    public float flareSpreadDeg = 20f;
+    [Tooltip("Flare: the wrist swept forward about the girdle's up by this much (deg) from the rest pose: the hand ahead of the shoulder.")]
+    public float flareSweepDeg = 35f;
+    [Tooltip("Flare: the held stroke angle (deg, + up about the stroke axis): the wings raised high.")]
+    public float flareRaiseDeg = 20f;
+    [Tooltip("Flare: the hand (its fingers' plane) turned toward the oncoming air until it stands this far (deg) nose-up to the flight path (the descent's: the velocity low-passed over 0.3 s x sqrt s, about one braking stroke - the hand is held, it does not rock with the strokes): the leading edge up, the trailing fingers down, the air on the ventral side - the air brake. Pitched to the path, not to the body: the braking strokes swing the path +-40 deg each beat while the body stays nearly level. The forearm is laid into the turned plane (the hand's out axis), as for any hand normal.")]
+    public float flarePitchDeg = 50f;
+
     // Fingers: the default (and the winged serpent's) finger count; a wing has FingerCount (fingerLengths.Length)
     public const int Fingers = 3, Ribs = 3;
     public const int MinFingers = 3, MaxFingers = 5;
