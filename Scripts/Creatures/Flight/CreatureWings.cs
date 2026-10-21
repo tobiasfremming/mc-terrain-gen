@@ -100,7 +100,7 @@ public sealed class CreatureWings
         for (int w = 0; w < c; w++) { flankStart[w] = nodes; flankCount[w] = WingBoneLayout.FlankPatchCount(specs[w]); nodes += flankCount[w] + 1; }
         FlankNode = new Vector3[nodes];
         armSign = new float[c]; patchSign = new float[c]; groundWeight = new float[c];
-        flankRise = new float[c]; drawnFold = new float[c];
+        flankRise = new float[c]; drawnFold = new float[c]; flareN = new Vector3[c];
         HandBoneOut = new Vector3[c]; HandFlex = new float[c];
 
         for (int w = 0; w < c; w++)
@@ -215,15 +215,19 @@ public sealed class CreatureWings
     // (Vesper: 1-25 deg nose-up to the path). The path is the descent's: the velocity low-passed over kFlarePathTau s x
     // sqrt s (about one braking stroke; the velocity itself reverses ~80 deg in 0.15 s at a stroke's bottom, and a hand
     // pitched to it rocked +-20-40 deg with every stroke - the beat coming back through the pitch, not a held brake).
+    // The held hand also turns at most kFlareTurnDeg deg/s x sqrt s in the world (flareN follows its target, a turn toward
+    // per sub-step): a long hovering perch flare's smoothed path still swung, and the body turned under it, and the hand
+    // followed both at 300-390 deg/s x sqrt s - it rocked (Unity: 340 on the rock perch).
     internal const float FlareInSeconds = kFlareIn, FlareOutSeconds = kFlareOut;
-    const float kFlareIn = 0.15f, kFlareOut = 0.25f, kFlarePathTau = 0.3f;
+    const float kFlareIn = 0.15f, kFlareOut = 0.25f, kFlarePathTau = 0.3f, kFlareTurnDeg = 180f;
+    readonly Vector3[] flareN;    // per wing: the flare's drawn hand normal (rate-bounded toward FlareTarget; zero = not set)
+    // RED hook (CreatureVesperTests): the held hand's turn rate unbounded (the target taken at once)
+    internal static bool NoFlareTurnBoundForTest;
     float flareRamp;
     Vector3 flareVel;    // the flight's velocity, low-passed (zero until the first airborne sub-step; a touchdown keeps the last)
     Vector3 flarePath;   // its direction (unit, or zero)
     // the flight path the flare is pitched to (unit; zero before the first airborne sub-step)
     public Vector3 FlarePath => flarePath;
-    // RED hook (CreatureVesperTests): the flare pitched to the raw velocity (no low-pass)
-    internal static bool RawFlarePathForTest;
     public float Flare { get; private set; }
 
     // velocity: the flight model's (airborne); a touchdown keeps the last path
@@ -235,26 +239,45 @@ public sealed class CreatureWings
         Flare = flareRamp * flareRamp * (3f - 2f * flareRamp);
         if (airborne && velocity.sqrMagnitude > 1e-8f)
         {
-            flareVel = flarePath.sqrMagnitude < 0.5f || RawFlarePathForTest ? velocity
+            flareVel = flarePath.sqrMagnitude < 0.5f ? velocity
                      : flareVel + (velocity - flareVel) * Mathf.Min(1f, h / (kFlarePathTau * timeScale));
             if (flareVel.sqrMagnitude > 1e-8f) flarePath = flareVel.normalized;
         }
+        // the held hand follows its target at a bounded rate (snapped while the flare is out: nothing is drawn of it)
+        float step = kFlareTurnDeg * Mathf.Deg2Rad / timeScale * h;
+        for (int w = 0; w < specs.Length; w++)
+        {
+            if (!(specs[w].landingFlare > 0f)) continue;
+            Quaternion r = rotations[attach[w]];
+            Vector3 n0 = Rotate(r * Vector3.up, r * axisLocal[w], side[w] * specs[w].flareRaiseDeg * Mathf.Deg2Rad);
+            Vector3 nt = FlareTarget(w, n0);
+            if (nt.sqrMagnitude < 0.5f) continue;
+            flareN[w] = !(FlareWeight(w) > 0f) || flareN[w].sqrMagnitude < 0.5f || NoFlareTurnBoundForTest ? nt
+                      : Vector3.RotateTowards(flareN[w], nt, step, 0f).normalized;
+        }
     }
 
-    // The flare's hand normal: the beat's normal n0 (dorsal) turned toward the oncoming air until the hand stands
-    // flarePitchDeg nose-up to the flight path (flarePath) - in the plane of n0 and the path, so the leading
-    // edge rises and the air meets the ventral side - blended in by the flare weight. PoseHand lays the forearm into the
-    // turned hand's plane (its out axis), as it does for any hand normal. n0 as it is without a flare.
+    // The flare's target hand normal from the held pose's normal n0 (dorsal): turned toward the oncoming air until the hand
+    // stands flarePitchDeg nose-up to the flight path (flarePath) - in the plane of n0 and the path, so the leading edge
+    // rises and the air meets the ventral side. Zero when there is no path or it runs along n0.
+    Vector3 FlareTarget(int w, Vector3 n0)
+    {
+        if (flarePath.sqrMagnitude < 0.5f) return Vector3.zero;
+        Vector3 u = n0 - flarePath * Vector3.Dot(n0, flarePath);   // the held normal square to the path
+        if (u.sqrMagnitude < 1e-6f) return Vector3.zero;           // flying along the normal (straight up or down)
+        u.Normalize();
+        float p = specs[w].flarePitchDeg * Mathf.Deg2Rad;
+        return u * Mathf.Cos(p) - flarePath * Mathf.Sin(p);
+    }
+
+    // The flare's hand normal: the beat's normal n0 blended by the flare weight to the flare's (flareN: FlareTarget followed
+    // at a bounded rate). PoseHand lays the forearm into the turned hand's plane (its out axis), as it does for any hand
+    // normal. n0 as it is without a flare.
     Vector3 FlareNormal(int w, Vector3 n0)
     {
         float fw = FlareWeight(w);
-        if (!(fw > 0f) || flarePath.sqrMagnitude < 0.5f) return n0;
-        Vector3 u = n0 - flarePath * Vector3.Dot(n0, flarePath);   // the beat's normal square to the path
-        if (u.sqrMagnitude < 1e-6f) return n0;                     // flying along the normal (straight up or down)
-        u.Normalize();
-        float p = specs[w].flarePitchDeg * Mathf.Deg2Rad;
-        Vector3 nt = u * Mathf.Cos(p) - flarePath * Mathf.Sin(p);
-        Vector3 n = Vector3.Lerp(n0.normalized, nt, fw);
+        if (!(fw > 0f) || flareN[w].sqrMagnitude < 0.5f) return n0;
+        Vector3 n = Vector3.Lerp(n0.normalized, flareN[w], fw);
         return n.sqrMagnitude > 1e-8f ? n.normalized : n0;
     }
 
@@ -507,6 +530,7 @@ public sealed class CreatureWings
     public void ResetStroke(float fold)
     {
         flareRamp = 0f; Flare = 0f; flarePath = flareVel = Vector3.zero;
+        for (int w = 0; w < flareN.Length; w++) flareN[w] = Vector3.zero;
         for (int w = 0; w < State.Length; w++)
         {
             State[w].angle = 0f; State[w].angleRate = 0f; State[w].upstroke = false; State[w].upT = 0f;

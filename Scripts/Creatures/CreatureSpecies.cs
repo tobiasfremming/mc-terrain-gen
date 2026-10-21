@@ -444,7 +444,11 @@ public class CreatureSpecies : ScriptableObject
     public int WingBone(int wing, int k) => Layout.WingBone(wing, k);
     public int EyeBone(int eye) => Layout.EyeBone(eye);
     public int AntennaBone(int antenna, int k) => Layout.ChainBone(antenna, k);
-    public float BodyLength => headCapLength + ArcToJoint(JointCount - 1) + tailTipLength;
+    // (uniform: the literal pre-spacing expression, inline - not through ArcToJoint: Mono evaluates float arithmetic with
+    // double intermediates, and ArcToJoint's float return rounds spacing x (n - 1) first; DesertMonitor's 0.06 x 25 then
+    // gave 1.59000003 instead of the shipped 1.58999991)
+    public float BodyLength => UniformSpacing ? headCapLength + spacing * (JointCount - 1) + tailTipLength
+                                              : headCapLength + ArcToJoint(JointCount - 1) + tailTipLength;
 
     // ---- per-joint spine spacing (segmentLengths; uniform = the literal `spacing` arithmetic, to the bit)
     public bool UniformSpacing => segmentLengths == null || segmentLengths.Length == 0;

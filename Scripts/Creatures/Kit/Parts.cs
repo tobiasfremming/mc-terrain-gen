@@ -400,10 +400,26 @@ namespace CreatureKit
             spec = s;
         }
 
+        // Whether this wing's drawn pose reads the landing flare (WingSpec.landingFlare): only the DigitWing's does (the
+        // others draw from the flight's angle and fold) - landingFlare on any other wing is refused (it would do nothing).
+        protected virtual bool DrawsLandingFlare => false;
+
         public override string Validate(in SpeciesCtx c)
         {
             if (spec == null) return $"{id}: no spec";
             if (!(c.Find(arm) is Leg2Bone)) return $"{id}: arm '{arm}' must name a Leg2Bone";
+            return FlareProblem();
+        }
+
+        string FlareProblem()
+        {
+            if (!(spec.landingFlare >= 0f) || spec.landingFlare > 1f) return $"{id}: landingFlare in 0..1";
+            if (spec.landingFlare > 0f && !DrawsLandingFlare)
+                return $"{id}: a {Meta.Name} does not draw the landing flare (only a DigitWing does): landingFlare must be 0";
+            if (!(spec.flareSpreadDeg >= 0f) || spec.flareSpreadDeg > 45f) return $"{id}: flareSpreadDeg in 0..45";
+            if (!(spec.flareSweepDeg >= 0f) || spec.flareSweepDeg > 90f) return $"{id}: flareSweepDeg in 0..90";
+            if (!(spec.flareRaiseDeg >= -30f) || spec.flareRaiseDeg > 60f) return $"{id}: flareRaiseDeg in -30..60";
+            if (!(spec.flarePitchDeg >= 0f) || spec.flarePitchDeg > 80f) return $"{id}: flarePitchDeg in 0..80";
             return null;
         }
     }

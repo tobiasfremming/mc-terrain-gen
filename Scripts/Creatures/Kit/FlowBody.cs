@@ -245,7 +245,10 @@ namespace CreatureKit
         // silently misdraw or misplace: refused here, naming the part.
         internal const float MaxSpacingStep = 1.25f;
         static readonly HashSet<string> kHonoursSpacing = new HashSet<string> { "FlowBody", "Leg2Bone", "DrakeLeg", "DigitWing", "Eyes", "AttachedChain" };
-        static readonly HashSet<string> kModuleRefusesSpacing = new HashSet<string> { "Climb", "ClimbExcursion", "Soar" };
+        // the modules allowed on a varying chain: the ones Vesper and the Apex are built with (an allow-list, as the parts':
+        // a module not listed - Climb, Soar, Tunnel's Burrow, Slither ... - may lay the body at sp.spacing x the arc)
+        static readonly HashSet<string> kModuleHonoursSpacing = new HashSet<string>
+            { "Walk", "Wander", "Fly", "FlightExcursion", "QuadLaunch", "SkeletonOnly", "Skin", "Layers", "Membrane" };
 
         string ValidateSpacing(in SpeciesCtx c)
         {
@@ -267,7 +270,7 @@ namespace CreatureKit
             {
                 CreatureModule m = c.Modules[i];
                 if (m == null) continue;
-                if (kModuleRefusesSpacing.Contains(m.Meta.Name))
+                if (!kModuleHonoursSpacing.Contains(m.Meta.Name))
                     return $"module {m.Meta.Name} supports only a uniformly spaced spine; {id} has per-joint spacing (its profile's spacing channel)";
                 if (m is Fly f && f.twist.Enabled)
                     return $"module Fly: the twisting air chain (twist) supports only a uniformly spaced spine; {id} has per-joint spacing (its profile's spacing channel)";

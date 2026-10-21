@@ -106,6 +106,8 @@ namespace CreatureKit
             fingerRadius = (float[])fingerRadius?.Clone();
         }
 
+        protected override bool DrawsLandingFlare => true;   // its drawn pose reads WingSpec.landingFlare (the flare's pose)
+
         public override string Validate(in SpeciesCtx c)
         {
             string e = base.Validate(c);
@@ -156,6 +158,7 @@ namespace CreatureKit
         readonly float[] rootLift;                        // per finger: the ground's lift at the root (deg)
         readonly Vector3[] thumb;                         // TS + 1 joints
         float airW = -1f;
+        float heldBend, drawFlare;   // the landing flare: each joint's held (cupped) bend, the flare's weight as drawn
         bool posed;
 
         // RED hooks (CreatureDigitWingTests): the ground plane ignored; the chains in plain seconds
@@ -220,6 +223,7 @@ namespace CreatureKit
             float flare = fl.Wings.FlareWeight(w);
             float billow = glide ? kBillow * p.flexDeg : 0f;
             if (flare > 0f) billow = Mathf.Lerp(billow, p.flareCupDeg, flare);
+            heldBend = billow;
             float zeta = p.flexDamping;
             // (held, the flare's chains settle without ringing: damped toward critical by its weight - underdamped, the drive's
             // swing from the beat onto the held raise rang the fingers 4-5 deg a tick through the hold)
@@ -290,7 +294,11 @@ namespace CreatureKit
                 droopTarget[i] = new Vector2(Vector3.Dot(gp, n), Vector3.Dot(gp, b)) * p.droopDeg;
                 // the bend: the air flex (dorsal) + the droop, clamped to maxBendDeg
                 Vector2 e = droop[i];
-                e.x += flexW * Flex(a.Bend(j + 1));
+                // (the landing flare: the drawn bend goes to the held cup by the flare's weight - the chains' own lag
+                // settling after the beat rolled the held fan 1 deg a tick, 210-240 deg/s x sqrt s on long perch flares)
+                float bend = a.Bend(j + 1);
+                if (drawFlare > 0f) bend = Mathf.Lerp(bend, heldBend, drawFlare);
+                e.x += flexW * Flex(bend);
                 float mag = e.magnitude;
                 if (mag > maxB) { e *= maxB / mag; mag = maxB; }
                 Vector3 dPrev = d, nPrev = n;
@@ -347,6 +355,7 @@ namespace CreatureKit
             ref WingState st = ref fl.Wings.State[w];
             Vector3 wrist = dst[o + sp.LegBone(leg, 2)].GetColumn(3);
             float flexW = airW < 0f ? 0f : airW * (1f - Mathf.Clamp01(fl.Wings.DrawnFold(w)));
+            drawFlare = fl.Wings.FlareWeight(w);
 
             // the ground plane: on the ground, the nearest planted foot's (point and normal); flaring or touching down,
             // the flight's ground below the girdle (level)

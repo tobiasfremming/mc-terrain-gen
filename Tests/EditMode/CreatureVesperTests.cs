@@ -496,7 +496,10 @@ namespace TerrainGen.Tests
             string profile = ProfileProblem(sp, StandingHeights(sp));
             string walk = WalkProblem(sp, out string report);
             TestContext.Out.WriteLine($"RED: standing: {profile}; walking: {walk} ({report})");
-            Assert.IsNotNull(profile); StringAssert.Contains("hips", profile);
+            Assert.IsNotNull(profile);
+            // the hips' height clause itself (not the hump clause, which names the hips too)
+            StringAssert.StartsWith($"the hips (joint {Hips(sp)}) stand ", profile);
+            StringAssert.Contains($"high (< {kHipsMin})", profile);
             Assert.IsNotNull(walk);
         }
 
@@ -1124,17 +1127,23 @@ namespace TerrainGen.Tests
         //          velocity low-passed over about one braking stroke; deg; + = the air on the ventral side, the leading edge up)
         //   hold   held (the Flare, the flare's weight at 1 on this tick and the last): the fan normal's turn in a tick, as a
         //          rate in deg/s x sqrt s (kFlareHold bounds it: an air brake held, not the beat coming back through the pitch;
-        //          measured 122-213 - the body's own pitching, ~2 deg a tick at scale 4 - against 406-627 pitched to the raw
-        //          velocity, Red_Vesper_FlareRocks)
+        //          the hand follows its target at most 180 deg/s x sqrt s and the held fingers keep their cup, not the chains'
+        //          settling lag; measured up to 203 over land seeds 1-3 and the 19 perching seeds of 1-24, against 381 with
+        //          the rate unbounded, Red_Vesper_FlareRocks; Vesper_LandingFlare_HeldOnEveryFlare)
         // In the last kFlareWindow s x sqrt s before the touchdown begins, every tick: fan >= kFlareFan x the wing's widest
-        // in the cruise glide, ahead > 0, pitch >= kFlarePitch (and >= kFlarePitch / kGreenShare on open ground: the margin;
-        // measured 49-50 deg against the smoothed path, the fan 1.23-1.29 x, the wrist 0.9-1.4 m ahead). RED (landingFlare 0): the shipped flare
+        // in the cruise glide, ahead > 0 (along the body's forward at the shoulder joint: the frame the sweep is posed in), pitch >= kFlarePitch
+        // (and >= kFlarePitch / kGreenShare on open ground; ahead >= kFlareAheadShare of the reach: the margins;
+        // measured 49-50 deg against the smoothed path, the fan 1.23-1.29 x, the wrist 1.34-1.40 m ahead). RED (landingFlare 0): the shipped flare
         // brakes with the beat - the fan half folded by the upstrokes (0.55 x), the wrist level with the shoulder (-0.02 to
         // 0.15 m ahead), the hand -10 deg to the path.
         const float kFlareWindow = 0.3f, kFlareFan = 0.9f, kFlarePitch = 30f, kFlareCruise = 10f, kFlareHold = 300f;
+        // the margin on "ahead > 0": the wrist ahead by at least this share of its reach from the shoulder along the body
+        // (~15 deg of sweep; measured 0.51-0.54 - flareSweepDeg 35 - on land seeds 1-3 and the perch runs; the shipped flare
+        // -0.06 / -0.03)
+        const float kFlareAheadShare = 0.25f;
         const float kFlarePop = 1.5f;   // no pop: a wrist or finger tip's step in a tick <= this x its largest in cruise (MeasureFlarePop)
 
-        internal struct WingLook { public float fan, ahead, pitch; public Vector3 n; }
+        internal struct WingLook { public float fan, ahead, aheadShare, pitch; public Vector3 n; }
 
         internal static WingLook LookOf(CreatureSim sim, int w)
         {
@@ -1145,11 +1154,19 @@ namespace TerrainGen.Tests
             Vector3 n = (fl.Wings.Side(w) * Vector3.Cross(lead, trail)).normalized;
             Vector3 v = fl.Wings.FlarePath.sqrMagnitude > 0.5f ? fl.Wings.FlarePath : fl.Model.Velocity;
             ref WingState st = ref fl.Wings.State[w];
+            // ahead along the body's forward at the wing's shoulder joint (the frame the flare's sweep is posed in), not the
+            // flight model's heading: in a slow perch flare the drawn body yaws 25-55 deg off the heading while the model
+            // turns onto the rock, and along the heading the inside wing's wrist read up to 0.7 m behind although both
+            // wrists stood 1.40 m ahead of their shoulders in the body (perch seeds 5, 8, 9 offline; seed 1 in Unity)
+            Vector3 bodyFwd = sim.Rotations[sim.Species.legs[sim.Species.wings[w].leg].attachJoint] * Vector3.forward;
+            Vector3 rel = st.wrist - st.shoulder;
+            float ahead = Vector3.Dot(rel, bodyFwd);
             return new WingLook
             {
                 n = n,
                 fan = Vector3.Angle(lead, trail),
-                ahead = Vector3.Dot(st.wrist - st.shoulder, fl.Model.Forward),
+                ahead = ahead,
+                aheadShare = ahead / Mathf.Max(1e-4f, rel.magnitude),
                 pitch = v.sqrMagnitude > 1e-8f ? Mathf.Asin(Mathf.Clamp(-Vector3.Dot(n, v.normalized), -1f, 1f)) * Mathf.Rad2Deg : 0f,
             };
         }
@@ -1159,7 +1176,7 @@ namespace TerrainGen.Tests
             public string name, problem;
             public bool touched, perched, glided;
             public float flareSeconds;              // the last flare's length before the touchdown (s)
-            public float[] cruiseFan, fan, ahead, pitch; // per wing: the widest cruise fan; the window's least fan, ahead, pitch
+            public float[] cruiseFan, fan, ahead, aheadShare, pitch; // per wing: the widest cruise fan; the window's least fan, ahead (m; and as a share of the wrist's reach from the shoulder), pitch
             public float[] hold;                         // per wing: the held flare's fastest hand turn (deg/s x sqrt s)
             public int heldTicks;
         }
@@ -1173,7 +1190,7 @@ namespace TerrainGen.Tests
         {
             var r = new CreatureCommandBrainTests.Rig(sp, rock ? CreatureCommandBrainTests.Rock(sp.scale) : null, seed);
             int W = sp.WingCount;
-            var o = new FlareRun { name = $"{(rock ? "perch" : "land")} (seed {seed})", cruiseFan = new float[W], fan = Filled(W, float.MaxValue), ahead = Filled(W, float.MaxValue), pitch = Filled(W, float.MaxValue), hold = new float[W] };
+            var o = new FlareRun { name = $"{(rock ? "perch" : "land")} (seed {seed})", cruiseFan = new float[W], fan = Filled(W, float.MaxValue), ahead = Filled(W, float.MaxValue), aheadShare = Filled(W, float.MaxValue), pitch = Filled(W, float.MaxValue), hold = new float[W] };
             var bones = new Matrix4x4[sp.BoneCount];
             r.Run(0.5f);
             string a = r.Airborne();
@@ -1215,7 +1232,7 @@ namespace TerrainGen.Tests
                         for (int w = 0; w < W; w++)
                         {
                             WingLook l = ring[k * W + w];
-                            o.fan[w] = Mathf.Min(o.fan[w], l.fan); o.ahead[w] = Mathf.Min(o.ahead[w], l.ahead); o.pitch[w] = Mathf.Min(o.pitch[w], l.pitch);
+                            o.fan[w] = Mathf.Min(o.fan[w], l.fan); o.ahead[w] = Mathf.Min(o.ahead[w], l.ahead); o.aheadShare[w] = Mathf.Min(o.aheadShare[w], l.aheadShare); o.pitch[w] = Mathf.Min(o.pitch[w], l.pitch);
                         }
                     break;
                 }
@@ -1236,7 +1253,7 @@ namespace TerrainGen.Tests
             if (r.Until(() => r.sim.Mode == FlightMode.Ground, 10f) < 0f) { o.problem = $"{o.name}: the touchdown never ended ({r.State})"; return o; }
             o.perched = r.sim.Flight.Perched;
             var sb = new System.Text.StringBuilder();
-            for (int w = 0; w < W; w++) sb.Append($" wing {w}: fan {o.fan[w]:F1} deg (cruise {(o.glided ? "glide" : "air")} {o.cruiseFan[w]:F1}: {o.fan[w] / Mathf.Max(1e-3f, o.cruiseFan[w]):F2} x), wrist ahead {o.ahead[w]:F2} m, pitch {o.pitch[w]:F1} deg, held hand turning at most {o.hold[w]:F0} deg/s x sqrt s;");
+            for (int w = 0; w < W; w++) sb.Append($" wing {w}: fan {o.fan[w]:F1} deg (cruise {(o.glided ? "glide" : "air")} {o.cruiseFan[w]:F1}: {o.fan[w] / Mathf.Max(1e-3f, o.cruiseFan[w]):F2} x), wrist ahead {o.ahead[w]:F2} m ({o.aheadShare[w]:F2} of its reach), pitch {o.pitch[w]:F1} deg, held hand turning at most {o.hold[w]:F0} deg/s x sqrt s;");
             TestContext.Out.WriteLine($"{o.name}: the flare {o.flareSeconds:F2} s ({o.heldTicks} ticks held), its last {kFlareWindow} s x sqrt s:{sb} perched {o.perched}; {r.State}");
             return o;
         }
@@ -1276,43 +1293,74 @@ namespace TerrainGen.Tests
                 for (int w = 0; w < o.hold.Length; w++)
                     Assert.LessOrEqual(o.hold[w], kGreenShare * kFlareHold, $"{o.name}, wing {w}: the held hand's turn rate against {kFlareHold} deg/s x sqrt s (the margin)");
                 for (int w = 0; w < o.fan.Length; w++)
+                {
                     Assert.GreaterOrEqual(o.pitch[w], kFlarePitch / kGreenShare, $"{o.name}, wing {w}: the pitch's margin over {kFlarePitch} deg");
+                    Assert.GreaterOrEqual(o.aheadShare[w], kFlareAheadShare, $"{o.name}, wing {w}: the wrist ahead of the shoulder as a share of its reach (the margin)");
+                }
             }
         }
 
-        // The same flare on a rock perch (seeds 1.. until one perches; one that gives the perch up is CreatureCommandBrainTests')
+        // The same flare on a rock perch: the pose (fan, ahead with its margin, pitch) on the first kFlarePerchRuns seeds that
+        // perch (from 1; one that gives the perch up is CreatureCommandBrainTests'); the hold on the first of them, as before.
+        // (Several runs: the perch flare is slow and turning, the drawn body yaws 25-55 deg off the flight's heading - the
+        // reason `ahead` is measured in the body's frame, LookOf - and one chaotic path, Unity's seed 1, is not the property.
+        // The hold is not judged on the others: long hovering perch flares (4-6 s) exceed kFlareHold on 6 of perch seeds 1-24
+        // offline, 303-391 deg/s x sqrt s - the low-passed path swinging with the vertical speed, or the body itself turning;
+        // a known follow-up, not this test's pose.)
+        const int kFlarePerchRuns = 3;
         [Test] public void Vesper_LandingFlare_PerchToo()
         {
             CreatureSpecies sp = Vesper();
-            for (int seed = 1; seed <= kPerchSeeds; seed++)
+            int judged = 0;
+            for (int seed = 1; seed <= kPerchSeeds + 6 && judged < kFlarePerchRuns; seed++)
             {
                 FlareRun o = MeasureFlare(sp, true, seed);
                 if (o.problem == null && !o.perched) { TestContext.Out.WriteLine($"seed {seed}: did not perch; the next seed"); continue; }
-                string e = FlarePoseProblem(o) ?? FlareHoldProblem(o);
+                string e = FlarePoseProblem(o) ?? (judged == 0 ? FlareHoldProblem(o) : null);
                 Assert.IsNull(e, e);
-                return;
+                for (int w = 0; w < o.aheadShare.Length; w++)
+                    Assert.GreaterOrEqual(o.aheadShare[w], kFlareAheadShare, $"{o.name}, wing {w}: the wrist ahead of the shoulder as a share of its reach (the margin)");
+                judged++;
             }
-            Assert.Fail($"no seed of 1..{kPerchSeeds} perched");
+            Assert.AreEqual(kFlarePerchRuns, judged, $"perching seeds of 1..{kPerchSeeds + 6}");
         }
 
-        // RED: the flare pitched to the raw velocity (CreatureWings.RawFlarePathForTest) - the hand rocks with every braking
-        // stroke, past kFlareHold on land seed 1 or 2
+        // The held flare is held on every flare: land seeds 1-3 and every seed of 1..kFlareHoldPerchSeeds that perches on the
+        // rock (the long hovering perch flares, where the smoothed path swings and the body turns under the hand) - the
+        // held hand's fastest turn <= kGreenShare x kFlareHold. Worst measured is reported.
+        const int kFlareHoldPerchSeeds = 24;
+
+        static float HoldWorst(CreatureSpecies sp, out string where, out int runs)
+        {
+            float worst = 0f; where = "-"; runs = 0;
+            for (int seed = 1; seed <= kFlareHoldPerchSeeds + 3; seed++)
+            {
+                bool rock = seed > 3;
+                FlareRun o = MeasureFlare(sp, rock, rock ? seed - 3 : seed);
+                if (o.problem != null || (rock && !o.perched) || o.heldTicks < 10) continue;
+                runs++;
+                for (int w = 0; w < o.hold.Length; w++)
+                    if (o.hold[w] > worst) { worst = o.hold[w]; where = $"{o.name}, wing {w}"; }
+            }
+            TestContext.Out.WriteLine($"{runs} held flares judged; the held hand's fastest turn {worst:F0} deg/s x sqrt s ({where}; bound {kFlareHold})");
+            return worst;
+        }
+
+        [Test] public void Vesper_LandingFlare_HeldOnEveryFlare()
+        {
+            float worst = HoldWorst(Vesper(), out string where, out int runs);
+            Assert.GreaterOrEqual(runs, 10, "held flares judged (land seeds 1-3 and the perching seeds)");
+            Assert.LessOrEqual(worst, kGreenShare * kFlareHold, $"{where}: the held hand's fastest turn against {kFlareHold} deg/s x sqrt s (the margin)");
+        }
+
+        // RED: the held hand's turn rate unbounded (CreatureWings.NoFlareTurnBoundForTest: the hand on its target at once) -
+        // on the long hovering perch flares it rocks with the smoothed path's swing and the body's turns, past kFlareHold
         [Test] public void Red_Vesper_FlareRocks()
         {
-            CreatureSpecies sp = Vesper();
-            float worst = 0f;
-            CreatureWings.RawFlarePathForTest = true;
-            try
-            {
-                for (int seed = 1; seed <= 2; seed++)
-                {
-                    FlareRun o = MeasureFlare(sp, false, seed);
-                    Assert.IsNull(o.problem, o.problem);
-                    foreach (float h in o.hold) worst = Mathf.Max(worst, h);
-                }
-            }
-            finally { CreatureWings.RawFlarePathForTest = false; }
-            TestContext.Out.WriteLine($"RED: the held hand turned up to {worst:F0} deg/s x sqrt s (bound {kFlareHold})");
+            float worst;
+            CreatureWings.NoFlareTurnBoundForTest = true;
+            try { worst = HoldWorst(Vesper(), out _, out _); }
+            finally { CreatureWings.NoFlareTurnBoundForTest = false; }
             Assert.Greater(worst, kFlareHold, "the held flare's fastest hand turn against its bound");
         }
 

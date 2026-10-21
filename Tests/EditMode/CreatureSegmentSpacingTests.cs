@@ -231,7 +231,7 @@ namespace TerrainGen.Tests
 
         // ------------------------------------------------------------ refused where not honoured
 
-        static CompiledSpecies Compile(System.Action<List<CreaturePart>> edit)
+        static CompiledSpecies Compile(System.Action<List<CreaturePart>> edit, System.Action<List<CreatureModule>> editModules = null)
         {
             CreatureSpecies a = CreatureKitAssets.LoadAsset("Vesper");
             var sp = ScriptableObject.CreateInstance<CreatureSpecies>();
@@ -242,6 +242,7 @@ namespace TerrainGen.Tests
             sp.parts = ps;
             sp.modules = new List<CreatureModule>();
             foreach (CreatureModule m in a.modules) sp.modules.Add(m.Clone());
+            editModules?.Invoke(sp.modules);
             return sp.Compiled;
         }
 
@@ -266,6 +267,26 @@ namespace TerrainGen.Tests
             // the varying Vesper alone composes
             CompiledSpecies alone = Compile(ps => SetSpacing(ps, kHeadSpacing, kTailSpacing));
             Assert.IsNull(alone.Error, alone.Error);
+        }
+
+        // Modules are an allow-list too (FlowBody.kModuleHonoursSpacing: the ones Vesper and the Apex are built with): any
+        // other is refused on a varying chain, naming it. RED (the old deny-list, Climb / ClimbExcursion / Soar only):
+        // Slither - its head wave untested on per-joint segments - composed. (Tunnel, whose Burrow lays the body at
+        // sp.spacing x the arc, needs a Burrow part, which the parts' allow-list already refuses.)
+        [Test] public void VaryingSpacing_UnlistedModuleRefused()
+        {
+            CompiledSpecies varying = Compile(ps => SetSpacing(ps, kHeadSpacing, kTailSpacing), ms => ms.Add(new Slither()));
+            TestContext.Out.WriteLine(varying.Error ?? "(no error)");
+            Assert.IsNotNull(varying.Error, "Slither composed with a varying chain");
+            StringAssert.Contains("module Slither supports only a uniformly spaced spine", varying.Error);
+            // ... and composes on the uniform chain (the refusal is the spacing's)
+            CompiledSpecies uniform = Compile(ps =>
+            {
+                foreach (CreaturePart p in ps) if (p is FlowBody fb) for (int k = 0; k < fb.profile.Length; k++) fb.profile[k].spacing = 0f;
+            }, ms => ms.Add(new Slither()));
+            Assert.IsNull(uniform.Error, uniform.Error);
+            // every module the varying Vesper (and the Apex) is built with is on the list: the asset composes
+            Assert.IsNull(Compile(ps => SetSpacing(ps, kHeadSpacing, kTailSpacing)).Error);
         }
     }
 }

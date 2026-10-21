@@ -153,6 +153,42 @@ namespace TerrainGen.Tests
             Assert.IsNotNull(ok.Validate(noSkel), "needs SkeletonOnly");
         }
 
+        // The landing flare's data (WingSpec.landingFlare and its pose numbers): in range on a DigitWing, and refused on any
+        // other wing - only the DigitWing's drawn pose reads it (FleshWing and PteroWing draw from the flight's angle and
+        // fold), so on them it would do nothing. RED (before the checks): every one below composed.
+        [Test] public void DigitWing_Validate_LandingFlare()
+        {
+            var ctx = new SpeciesCtx(new CreaturePart[] { CreatureFleshWingTests.Arm(), Wing() }, new CreatureModule[] { new SkeletonOnly() }, 24, false);
+            DigitWing ok = Wing();
+            ok.spec.landingFlare = 1f;
+            Assert.IsNull(ok.Validate(ctx), "a DigitWing takes the landing flare");
+            DigitWing Bad(System.Action<WingSpec> f) { var b = (DigitWing)ok.Clone(); f(b.spec); return b; }
+            foreach (var (name, edit) in new (string, System.Action<WingSpec>)[]
+            {
+                ("landingFlare", w => w.landingFlare = 1.5f), ("landingFlare", w => w.landingFlare = -0.1f),
+                ("flareSpreadDeg", w => w.flareSpreadDeg = -5f), ("flareSpreadDeg", w => w.flareSpreadDeg = 50f),
+                ("flareSweepDeg", w => w.flareSweepDeg = -5f), ("flareSweepDeg", w => w.flareSweepDeg = 100f),
+                ("flareRaiseDeg", w => w.flareRaiseDeg = -40f), ("flareRaiseDeg", w => w.flareRaiseDeg = 70f),
+                ("flarePitchDeg", w => w.flarePitchDeg = -5f), ("flarePitchDeg", w => w.flarePitchDeg = 85f),
+                ("flarePitchDeg", w => w.flarePitchDeg = float.NaN),
+            })
+            {
+                string e = Bad(edit).Validate(ctx);
+                Assert.IsNotNull(e, name + " out of range");
+                StringAssert.Contains(name, e);
+            }
+            // a FleshWing (and any wing but a DigitWing) refuses it; off (0) it composes as before
+            var flesh = CreatureFleshWingTests.Wing();
+            flesh.spec = CreatureFleshWingTests.Spec();
+            var fctx = new SpeciesCtx(new CreaturePart[] { CreatureFleshWingTests.Arm(), flesh }, new CreatureModule[0], 24, false);
+            Assert.IsNull(flesh.Validate(fctx), flesh.Validate(fctx));
+            flesh.spec.landingFlare = 1f;
+            string fe = flesh.Validate(fctx);
+            TestContext.Out.WriteLine(fe ?? "(no error)");
+            Assert.IsNotNull(fe, "landingFlare on a FleshWing");
+            StringAssert.Contains("landingFlare", fe);
+        }
+
         // One thumb: the part's thumbLength is the flight's (spec.thumbLength, what CreatureWings.ThumbTip reads), and the
         // drawn claw ends on ThumbTip - in the air and on the ground.
         [Test] public void DigitWing_Thumb_EndsOnTheContact()
