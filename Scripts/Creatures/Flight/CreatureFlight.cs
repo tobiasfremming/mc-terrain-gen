@@ -25,6 +25,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     const float kVault = 2.4f;           // launch: upward girdle speed, m/s at scale 1
     const float kArmHandover = 0.6f;     // fraction of the launch / touchdown over which the arms hand over
     const float kHeadLead = 0.55f;       // launch: the tail takes over this fraction of the launch later than the head
+    const float kFloorLiftRate = 4f;     // m/s at scale 1 (x sqrt s): FlightSpec.floorLiftEased, a floor rise's fastest lift
     const int kGroundProbeEvery = 4;     // sub-steps between ground probes below the girdle
     const float kAltitudeWindow = 30f;   // m at scale 1: how far below the girdle the ground is looked for
     const float kTouchMargin = 0.35f;    // m at scale 1 above clearance: the flare's target height
@@ -478,7 +479,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             }
         Model.Integrate(dt, Wings);
         Contain();
-        ProbeGround();
+        ProbeGround(dt);
         if (Chain.Twist != null)
         {
             // the twisting head's path stays in the aviary and above the ground; calm while launching or landing
@@ -519,7 +520,10 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     // The ground under the girdle, a few times a second (every sub-step when low), and the floor: the girdle
     // stays at least its clearance above it. The probe starts at the girdle (the first surface below it: a
     // rock or a branch it flies over, not just the terrain) and reaches kAltitudeWindow down.
-    void ProbeGround()
+    // (FlightSpec.floorLiftEased: a rise of the floor itself lifts the girdle at most kFloorLiftRate a second - flown low
+    // over a rock's edge the floor jumps by the rock's height and the girdle was snapped up by it in one sub-step.)
+    float floorH, floorOwed; bool floorValid;   // FlightSpec.floorLiftEased: the floor's height, the rise still owed
+    void ProbeGround(float dt)
     {
         Vector3 p = Model.Position, up = Model.Up;
         float clear = sp.joints[girdle].clearance * scale;
@@ -530,12 +534,24 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             else if (float.IsInfinity(HeightAboveGround)) GroundBelow = p - up * (kAltitudeWindow * scale);
         }
         HeightAboveGround = Vector3.Dot(p - GroundBelow, up);
-        if (HeightAboveGround < clear)
+        float floorClear = clear;
+        if (f.floorLiftEased)
         {
-            Model.Position = p + up * (clear - HeightAboveGround);
+            // the floor's own rise (the surface below jumped up: a rock's edge passed under the girdle) is owed and paid off
+            // at kFloorLiftRate a second; only what the girdle is below its clearance beyond one sub-step's lift is ever owed
+            // (a lift of at most one sub-step's, flat ground: nothing owed - exactly the shipped floor)
+            float gh = Vector3.Dot(GroundBelow, up), step = kFloorLiftRate * T * dt;
+            if (floorValid && gh > floorH) floorOwed += gh - floorH;
+            floorH = gh; floorValid = true;
+            floorOwed = Mathf.Clamp(floorOwed - step, 0f, Mathf.Max(0f, clear - HeightAboveGround - step));
+            if (floorOwed > 0f) floorClear = clear - floorOwed;
+        }
+        if (HeightAboveGround < floorClear)
+        {
+            Model.Position = p + up * (floorClear - HeightAboveGround);
             float vu = Vector3.Dot(Model.Velocity, up);
             if (vu < 0f) Model.Velocity -= up * vu;
-            HeightAboveGround = clear;
+            HeightAboveGround = floorClear;
         }
     }
 
@@ -744,6 +760,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
 
     void BeginTouchdown()
     {
+        floorValid = false; floorOwed = 0f;
         Array.Copy(sim.Joints, snapshot, n);
         DiveFold = 0f; Model.DemandCap = float.MaxValue;
         touchSpeed = Vector3.ProjectOnPlane(Model.Velocity, Model.Up).magnitude;

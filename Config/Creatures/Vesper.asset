@@ -364,6 +364,7 @@ MonoBehaviour:
           tailSag: 0
           headStabilise: 1.2
           headStabiliseBounded: 1
+          trunkTurnBounded: 1
           airNeckStance: 0.3
           launchHeadOnNeck: 1
           touchdownAtStance: 1
@@ -372,6 +373,7 @@ MonoBehaviour:
           perchTubeOnApproach: 1
           drapeOwnHeading: 1
           perchFrontLevel: 1
+          floorLiftEased: 1
           avoidLookahead: 2.4
           avoidMargin: 0.35
           perchGrip: 0

@@ -48,6 +48,7 @@
     <UnityOnlySources Include="$(TG)\Scripts\Creatures\AssemblyInfo.cs" />          <!-- InternalsVisibleTo: one assembly here -->
     <UnityOnlySources Include="$(TG)\Scripts\Creatures\CreatureWorld.cs" />         <!-- MonoBehaviour, renderers, scene -->
     <UnityOnlySources Include="$(TG)\Scripts\Creatures\CreatureLab.cs" />           <!-- MonoBehaviour, scene building -->
+    <UnityOnlySources Include="$(TG)\Scripts\Creatures\VesperLab.cs" />            <!-- MonoBehaviour, IMGUI, player, aviary GameObjects (its logic: VesperLabMenu, VesperLabLayout) -->
     <UnityOnlySources Include="$(TG)\Scripts\Creatures\CreatureDebugView.cs" />     <!-- MonoBehaviour, GL / Gizmos -->
     <UnityOnlySources Include="$(TG)\Scripts\Creatures\CreatureEnclosure.cs" />     <!-- curb mesh GameObject -->
     <UnityOnlySources Include="$(TG)\Scripts\Creatures\EnclosurePlant.cs" />        <!-- plant prototype GameObjects -->

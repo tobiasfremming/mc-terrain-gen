@@ -17,7 +17,10 @@ namespace TerrainGen.Tests
     // spine, the two wings' tips >= the chest's half width apart. No pops (task D): in the air the head's largest step in a
     // tick <= 3 x the girdle's + 0.02 L (headStabiliseBounded), through a rock perch or a landing neither the girdle nor the
     // head - nor any joint (drapeOwnHeading) - moves more than 0.05 L in a tick (touchdownFromHover), perched on a rock
-    // it stays on top (perchFrontLevel), each with a RED (flag off). The REDs: a supple head; wing arms carried folded and a
+    // it stays on top (perchFrontLevel), flown low past a rock's edge the girdle is not snapped up (floorLiftEased), in VesperLab's aviary (kAviaryFactor x the
+    // lab's radius) it is on the containment wall <= 2 % of its air time and the head does not swing at the wall
+    // (trunkTurnBounded), each with a
+    // RED (flag off). The REDs: a supple head; wing arms carried folded and a
     // wrist planted off its thumb (the walk); folded fingers that cross over the back. The Apex's flat-bob RED covers the
     // bob thresholds (the same), CreatureApexTests the fly-and-land problem.
     public class CreatureVesperTests
@@ -512,6 +515,132 @@ namespace TerrainGen.Tests
             string e = PerchedProblem(Vesper(null, f => f.perchFrontLevel = false), 1);
             TestContext.Out.WriteLine("RED: " + e);
             Assert.IsNotNull(e);
+        }
+        // ------------------------------------------------------------ low past a rock's edge (task E)
+
+        // Perch from the ground beside a tall rock (2.4 x 1 m at scale 1, centred (2.5, 0, 1.25) x s: Vesper's launch from the
+        // aviary's middle vaults up right past its edge, below its top), the first kLowRockSeconds s x sqrt s: the girdle
+        // never moves more than 0.05 L in one tick. RED (FlightSpec.floorLiftEased off): the air floor (the girdle kept its
+        // clearance above the surface below it) jumped by the rock's height as the girdle crossed its edge, and the girdle
+        // was snapped up 1.53 m in one tick (in the task-4 perch sweep also 1.36 m on a low pass while giving up).
+        const float kLowRockSeconds = 5f;
+        internal static string LowOverRockProblem(CreatureSpecies sp)
+        {
+            var rock = new WingedTestSurfaces().AddRock(new Vector3(2.5f, 0f, 1.25f) * sp.scale, new Vector3(2.4f, 1f, 2.4f) * sp.scale, 11);
+            var r = new CreatureCommandBrainTests.Rig(sp, rock, 1);
+            r.brain.Command(CreatureCommand.Perch);
+            int g = r.sim.Flight.Girdle, n = Mathf.CeilToInt(kLowRockSeconds * r.T / kDt), launches = 0;
+            float worst = 0f, at = 0f; FlightMode during = FlightMode.Ground;
+            for (int i = 0; i < n; i++)
+            {
+                Vector3 g0 = r.sim.Joints[g];
+                FlightMode m0 = r.sim.Mode;
+                r.Tick();
+                if (m0 == FlightMode.Ground && r.sim.Mode == FlightMode.Launch) launches++;
+                float j = (r.sim.Joints[g] - g0).magnitude;
+                if (j > worst) { worst = j; at = r.sim.Time; during = r.sim.Mode; }
+            }
+            float bound = kTouchJump * r.L;
+            TestContext.Out.WriteLine($"{launches} launch(es); largest girdle step in a tick {worst:F3} m at t = {at:F2} s ({during}); bound {bound:F3} m; {r.State}");
+            if (launches == 0) return $"never launched ({r.State})";
+            return worst > bound ? $"the girdle jumped {worst:F3} m in one tick at t = {at:F2} s ({during}; > {kTouchJump} L = {bound:F3} m)" : null;
+        }
+
+        [Test] public void Vesper_LowOverRock_NoGirdleJump()
+        {
+            CreatureSpecies sp = Vesper();
+            Assert.IsTrue(sp.flight.floorLiftEased, "Vesper.asset: floorLiftEased");
+            string e = LowOverRockProblem(sp);
+            Assert.IsNull(e, e);
+        }
+
+        [Test] public void Red_Vesper_LowOverRockJump()
+        {
+            string e = LowOverRockProblem(Vesper(null, f => f.floorLiftEased = false));
+            TestContext.Out.WriteLine("RED: " + e);
+            Assert.IsNotNull(e);
+        }
+        // ------------------------------------------------------------ the aviary's wall (task E)
+
+        // The command brain's session in an aviary of radius `factor` x the kit's lab radius (KitChecks.LabArea: 27.1 m,
+        // safe 17.9 m at scale 4) with the command tests' rock (4.8 x 2 m at (10, 0, 5)): Fly 60, Circle 30, Perch 60, Fly 60
+        // (s x sqrt s), seeds 1-3. Measured: the share of the air time spent on the containment wall (the girdle at the
+        // safe radius: Contain() cutting the outward speed) and the head's largest step in a tick in the air.
+        // Vesper's cruise turn radius R = 5.24 m and the wall turn's 1.7 R circle need a safe disc well over 2 x 1.7 R =
+        // 17.8 m; the lab's is 17.9 m and Vesper spent ~10 % of its air time on the wall there. Raising maxBankDeg or
+        // lowering cruiseSpeed does not cure it (the kit's aviary is sized from R and shrinks with it; in a fixed 27.1 m
+        // aviary bank 45-50 deg and cruise 2.6 m/s still left 5.9-8.7 %): VesperLab's aviary is kAviaryFactor x the lab
+        // radius (40.7 m; safe 31.5 m) - wall <= kWallShare of the air time there. RED: the lab radius (factor 1).
+        // At the wall the cut outward speed and the turn reverse the flight within a few tenths of a second; the trunk
+        // followed and the head swung up to 3 m in a tick. FlightSpec.trunkTurnBounded turns the trunk and the head target
+        // at a bounded rate: the head's largest step stays within Vesper_Flight_NoHeadJump's rule (3 x the girdle's + 0.02 L;
+        // 0.61 m measured, offline). RED: the flag off (3.06 m).
+        internal const float kAviaryFactor = 1.5f;
+        const float kWallShare = 0.02f;
+        internal static EnclosureArea Aviary(CreatureSpecies sp, float factor)
+        {
+            EnclosureArea lab = KitChecks.LabArea(sp);
+            EnclosureArea a = EnclosureArea.For(lab.center, lab.up, lab.radius * factor, sp, CreatureLab.MaxScale(sp));
+            a.maxHeight = lab.maxHeight;
+            return a;
+        }
+
+        internal static void WallSession(CreatureSpecies sp, float factor, out float wallShare, out float head, out float headBound, out string report)
+        {
+            EnclosureArea area = Aviary(sp, factor);
+            float s = sp.scale, T = Mathf.Sqrt(s);
+            int air = 0, wall = 0;
+            head = 0f;
+            float girdle = 0f;
+            for (int seed = 1; seed <= 3; seed++)
+            {
+                var sim = new CreatureSim(sp, CreatureCommandBrainTests.Rock(s), _ => Vector3.up, area.center, Vector3.forward, s, seed) { Bounds = area };
+                var brain = new CommandBrain(area, seed);
+                for (int k = 0; k < 4; k++)
+                {
+                    brain.Command(k == 1 ? CreatureCommand.Circle : k == 2 ? CreatureCommand.Perch : CreatureCommand.Fly);
+                    int n = Mathf.CeilToInt((k == 1 ? 30f : 60f) * T / kDt);
+                    for (int i = 0; i < n; i++)
+                    {
+                        FlightMode m0 = sim.Mode;
+                        Vector3 h0 = sim.Joints[0], g0 = sim.Joints[sim.Flight.Girdle];
+                        sim.Tick(kDt, brain.Target(sim, kDt));
+                        if (m0 != FlightMode.Air || sim.Mode != FlightMode.Air) continue;
+                        air++;
+                        head = Mathf.Max(head, (sim.Joints[0] - h0).magnitude);
+                        girdle = Mathf.Max(girdle, (sim.Joints[sim.Flight.Girdle] - g0).magnitude);
+                        if (area.PlanarDistance(sim.Flight.Model.Position) >= area.safeRadius - 1e-3f) wall++;
+                    }
+                }
+            }
+            wallShare = wall / (float)Mathf.Max(1, air);
+            headBound = kHeadJumpGirdles * girdle + kHeadJumpSlack * All<FlowBody>(sp)[0].BodyLength * s;
+            report = $"aviary radius {area.radius:F1} m (safe {area.safeRadius:F1} m, {factor} x the lab's): {air * kDt:F0} s in the air, {wallShare * 100f:F2} % of it on the wall; the head's largest step in a tick {head:F3} m (bound {headBound:F3} m: {kHeadJumpGirdles} x the girdle's {girdle:F3} m + {kHeadJumpSlack} L)";
+            TestContext.Out.WriteLine(report);
+        }
+
+        [Test] public void Vesper_Aviary_WallContact()
+        {
+            CreatureSpecies sp = Vesper();
+            Assert.IsTrue(sp.flight.trunkTurnBounded, "Vesper.asset: trunkTurnBounded");
+            WallSession(sp, kAviaryFactor, out float share, out float head, out float bound, out string report);
+            Assert.LessOrEqual(share, kWallShare, report);
+            Assert.LessOrEqual(head, bound, report);
+        }
+
+        [Test] public void Red_Vesper_Aviary_LabRadius()
+        {
+            WallSession(Vesper(), 1f, out float share, out _, out _, out string report);
+            TestContext.Out.WriteLine("RED: " + report);
+            Assert.Greater(share, kWallShare);
+        }
+
+        [Test] public void Red_Vesper_Aviary_TrunkFlip()
+        {
+            CreatureSpecies sp = Vesper(null, f => f.trunkTurnBounded = false);
+            WallSession(sp, kAviaryFactor, out _, out float head, out float bound, out string report);
+            TestContext.Out.WriteLine("RED: " + report);
+            Assert.Greater(head, bound);
         }
     }
 }

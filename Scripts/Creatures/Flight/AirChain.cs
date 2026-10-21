@@ -41,6 +41,9 @@ public sealed class AirChain
     public Vector3 HeadTarget { get; private set; }
     // FlightSpec.headStabiliseBounded: the trunk's lead velocity (the girdle's, low-passed over kHeadingTau)
     Vector3 leadVel, leadAcc;
+    // FlightSpec.trunkTurnBounded: the trunk's lead direction, turned toward the lead velocity at most kTrunkTurnRate
+    Vector3 leadDir, headDir;
+    const float kTrunkTurnRate = 2f;   // rad/s at scale 1 (/ sqrt s)
 
     // The twisting chain (FlightSpec.twist enabled: the dragon): the body follows the head's path (AirTwist)
     // instead of trailing the girdle. Null otherwise - the pull chain below runs exactly as before.
@@ -85,7 +88,7 @@ public sealed class AirChain
     public void Reset(Vector3 girdlePos, Vector3 girdleVel)
     {
         smoothPos = girdlePos; smoothVel = girdleVel; smoothAcc = Vector3.zero; Time = 0f;
-        leadVel = girdleVel; leadAcc = Vector3.zero;
+        leadVel = girdleVel; leadAcc = Vector3.zero; leadDir = Vector3.zero; headDir = Vector3.zero;
         HeadTarget = girdlePos;
         Twist?.Reset();
     }
@@ -114,6 +117,16 @@ public sealed class AirChain
             gv = leadVel;
         }
         Vector3 vh = Norm(gv, Norm(joints[girdle] - joints[Mathf.Min(girdle + 1, n - 1)], Vector3.forward));
+        if (f.trunkTurnBounded)
+        {
+            // FlightSpec.trunkTurnBounded: the trunk's lead direction turns at most kTrunkTurnRate toward the (lead)
+            // velocity's. At the containment wall the outward speed is cut and the turn then reverses what is left
+            // within a few tenths of a second: the lead velocity passed through nothing and its direction (the trunk,
+            // and the neck laid from it) swung up to 150 deg in a few ticks - the head 3 m and more in one tick.
+            if (leadDir.sqrMagnitude < 0.5f) leadDir = vh;
+            else leadDir = Norm(Vector3.RotateTowards(leadDir, vh, kTrunkTurnRate / timeScale * h, 0f), vh);
+            vh = leadDir;
+        }
         Vector3 side = Vector3.Cross(vh, up);
         side = side.sqrMagnitude > 1e-10f ? side.normalized : Vector3.right;
         float und = f.airUndulationDeg * Mathf.Deg2Rad * Mathf.Sin(2f * Mathf.PI * f.airUndulationHz / timeScale * Time);
@@ -150,6 +163,14 @@ public sealed class AirChain
             Vector3 trunkDir = n > girdle + 1 ? Norm(joints[girdle] - joints[girdle + 1], dir) : dir;
             // FlightSpec.headStabiliseBounded: the head looks at most kMaxHeadTurnDeg off the trunk's line (in the neck's reach)
             if (f.headStabiliseBounded) dir = Cone(trunkDir, dir, kMaxHeadTurnCos, kMaxHeadTurnSin);
+            if (f.trunkTurnBounded)
+            {
+                // (and the head target's direction turns at most twice that: the cone round the trunk's line flipped
+                // side when the smoothed velocity pointed nearly opposite the trunk, mid-reversal)
+                if (headDir.sqrMagnitude < 0.5f) headDir = dir;
+                else headDir = Norm(Vector3.RotateTowards(headDir, dir, 2f * kTrunkTurnRate / timeScale * h, 0f), dir);
+                dir = headDir;
+            }
             Vector3 target = smoothPos + dir * (kNeckSlack * seg * girdle);
             // the neck's sagittal plane: across it the girdle's banked side (airNeckStance turns the neck up in it)
             Vector3 across = restCos != null ? Norm(Vector3.Cross(vh, bankedUp), side) : side;

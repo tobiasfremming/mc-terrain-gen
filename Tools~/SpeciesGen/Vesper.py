@@ -205,6 +205,10 @@ sp.add_module('Fly', {
         # up to 62 deg in a tick: the bend-limited neck flipped and the head jumped up to 7.45 m in one tick
         # (CreatureVesperTests.Vesper_Flight_NoHeadJump).
         'headStabiliseBounded': 1,
+        # the trunk (and the head target's direction) turn at most 2 rad/s / sqrt s (FlightSpec.trunkTurnBounded): at the
+        # aviary's wall the outward speed is cut and the turn reverses what is left in a few tenths of a second; the trunk
+        # followed that reversal in a few ticks and the head swung 1.8-3 m in one tick (task E)
+        'trunkTurnBounded': 1,
         'airNeckStance': 0.3,
         'launchHeadOnNeck': 1, 'touchdownAtStance': 1, 'launchTailBySegment': 1,
         # a touchdown's first frame is the hovering body (FlightSpec.touchdownFromHover): begun on a tick's last sub-step
@@ -221,6 +225,10 @@ sp.add_module('Fly', {
         # on the floor, the neck followed and the body sank into the rock: the girdle from 4.07 to 1.72 m)
         # (CreatureVesperTests.Vesper_Touchdown_NoGirdleJump, Vesper_Perched_StaysOnTheRock)
         'drapeOwnHeading': 1, 'perchFrontLevel': 1,
+        # flown low past a rock's edge (a launch beside it), the air floor lifts the girdle at most 4 m/s x sqrt s
+        # (FlightSpec.floorLiftEased); off, it snapped up by the rock's height in one sub-step: 1.4-1.5 m in a tick
+        # (CreatureVesperTests.Vesper_LowOverRock_NoGirdleJump)
+        'floorLiftEased': 1,
         'avoidLookahead': 2.4, 'avoidMargin': 0.35, 'perchGrip': 0, 'perchMinRadius': 0.06, 'pursuitGain': 0,
         'legTuckOut': 0, 'legTuckDown': 0, 'legTuckReach': 0,
         'touchdownTogether': 1,
