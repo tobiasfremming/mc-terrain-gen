@@ -334,10 +334,12 @@ namespace TerrainGen.Tests
             var sim = FlowKit.Sim(sp, s);
             string miss = null;
             var tips = new Vector3[sp.WingCount]; var have = new bool[sp.WingCount];
-            for (int t = 0; t < 180; t++)
+            // (x sqrt s: a larger individual's first steps settle in Froude time - the same samples at scale 1)
+            int n = Mathf.RoundToInt(180f * Mathf.Sqrt(s)), settle = Mathf.RoundToInt(30f * Mathf.Sqrt(s));
+            for (int t = 0; t < n; t++)
             {
                 sim.Tick(kDt, new Vector3(0f, 0f, 50f * s));
-                if (t < 30 || t % 5 != 0) continue;
+                if (t < settle || t % 5 != 0) continue;
                 m.Pose(sim);
                 Vector3 gf = Vector3.ProjectOnPlane(sim.Rotations[kShoulder] * Vector3.forward, Vector3.up).normalized;
                 Vector3 right = Vector3.Cross(Vector3.up, gf);

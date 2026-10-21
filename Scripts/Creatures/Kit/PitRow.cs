@@ -160,12 +160,11 @@ namespace CreatureKit
 
         ulong CacheKey(FlowBody body, PartMeshEmitter m)
         {
-            ulong h = RestMeshCache.Mix(RestMeshCache.Seed, 0x5017);   // PitRow
-            h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, fromU), toU), angleDeg), count), radius);
-            h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, depth), rim), aspect), slantDeg), sizeGrowth);
-            h = RestMeshCache.Mix(RestMeshCache.Mix(h, at.side), mirror);
+            // every serialized field of this row (its side too) and of the body it sits on (RestMeshCache.MixData), the
+            // test hooks, the rest pose
+            ulong h = RestMeshCache.MixData(RestMeshCache.MixData(RestMeshCache.Mix(RestMeshCache.Seed, 0x5017), this), body);   // PitRow
             h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, ReverseWindingForTest), RigidSkinForTest), TornSkinForTest), SurfaceBiasForTest);
-            return RestMeshCache.MixRest(body.ShapeKey(h), m);
+            return RestMeshCache.MixRest(h, m);
         }
 
         static Vector4 Skin(Vector4 skin, FlowBody body, int ring) => TornSkinForTest && (ring & 1) == 1 ? PartMeshEmitter.Rigid(body.jointCount - 1) : skin;

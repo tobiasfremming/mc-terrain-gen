@@ -26,6 +26,10 @@ namespace CreatureKit
         // zeroed, as a contact would. The chain's own rule is unchanged.
         public void Hold(int i, float deg) { a[i] = deg; v[i] = 0f; }
 
+        // A coupling from outside the chain (Dewlap: neighbouring stations' chains drawn toward each other): link i set
+        // to `deg` moving at `rate` (deg/s). The chain's own rule is unchanged.
+        public void Set(int i, float deg, float rate) { a[i] = deg; v[i] = rate; }
+
         public AngleChain(int links)
         {
             int n = Mathf.Max(2, links);

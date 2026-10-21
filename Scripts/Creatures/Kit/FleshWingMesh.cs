@@ -23,13 +23,16 @@ namespace CreatureKit
 
         // test hook (CreatureFleshWingTests): the uv0.y offset that marks the rim's vertices
         internal const float RimMark = 4f;
+        // diagnostics: zero thickness (the mid-surface alone: is a flip the skins' or the fold's?)
         internal static bool FlatForTest;
+        // RED hook (CreatureFleshWingTests.Red_FleshWing_OpenWithoutRims): the rims left out
         internal static bool NoRimsForTest;
         // RED hook (CreatureFleshWingTests.Red_FleshWing_NoKnuckles_BonesWithoutSkin): the wrist knuckles left out
         internal static bool NoKnucklesForTest;
         // the knuckles' radius x padRadius (Knuckles: the bones the sail does not ride, hidden in the club)
         internal const float KnuckleRadius = 0.25f;
-        internal static float KnuckleScaleForTest = 1f;   // RED hook (Red_FleshWing_BigKnuckles_ShowOutsideTheClub)   // RED hook (CreatureFleshWingTests.Red_FleshWing_OpenWithoutRims): the rims left out   // diagnostics: zero thickness (the mid-surface alone: is a flip the skins' or the fold's?)
+        // RED hook (CreatureFleshWingTests.Red_FleshWing_BigKnuckles_ShowOutsideTheClub): the knuckles this much larger
+        internal static float KnuckleScaleForTest = 1f;
 
         public override void EmitMesh(PartMeshEmitter m, in PartCtx c)
         {
@@ -37,8 +40,21 @@ namespace CreatureKit
             int w = PteroWing.WingIndex(KitView.Parts(m.Species), c.Index);
             if (w >= m.WingSpecs.Length) return;
             int extra = m.Species.Layout.Start(c.Index) + FlightBones;
+            // the wing's mesh only depends on the species' part data (its own, the arm's, the body's), its bones' place in
+            // the layout, the rest pose and the bind's bones (the arm and the spread wing): built once, then replayed
+            // (RestMeshCache - ~0.5 ms a wing)
+            ulong key = RestMeshCache.Mix(RestMeshCache.MixData(RestMeshCache.Mix(RestMeshCache.Seed, 0xF1E5), this), w);
+            foreach (CreaturePart q in KitView.Parts(m.Species)) key = RestMeshCache.MixData(key, q);
+            key = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(key, extra), FlatForTest), NoRimsForTest), NoKnucklesForTest);
+            key = RestMeshCache.MixBones(RestMeshCache.MixRest(RestMeshCache.Mix(key, KnuckleScaleForTest), m), m);
+            string[] kinds = stripes > 0 ? kKindsStriped : kKinds;
+            if (RestMeshCache.TryReplay(m, key, kinds)) return;
+            int firstVertex = m.VertexCount, firstTri = m.Lists.tris.Count;
             new FleshBuilder(this, m, w, extra).Build();
+            RestMeshCache.Store(m, key, firstVertex, firstTri, kinds);
         }
+
+        static readonly string[] kKinds = { "wingfan" }, kKindsStriped = { "wingfan", "wingstripe" };
 
         // One grid of the sail (the fan from the wrist, or the flank patches from the elbow) on its mid-surface: per sample
         // the point, the unit dorsal normal, the half thickness, the skin and uv0; per cell the kind (material slot).

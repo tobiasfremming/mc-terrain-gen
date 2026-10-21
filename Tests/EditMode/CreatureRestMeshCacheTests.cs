@@ -5,7 +5,7 @@ using CreatureKit;
 
 namespace TerrainGen.Tests
 {
-    // RestMeshCache (Apex redesign, task 10): FlowBody, PitRow, Dewlap and CrestBeakHead record the rest mesh they emit and
+    // RestMeshCache (Apex redesign, task 10): FlowBody, PitRow, Dewlap, CrestBeakHead and FleshWing record the rest mesh they emit and
     // replay it on the next build of the same data (the Apex's mesh build fell from ~10 to ~2 ms offline; CreatureKitTests 4
     // allows 5). Invariants: a replay is the uncached mesh bit for bit (every vertex attribute and index), the cache is hit,
     // and an edit to any part's data builds afresh (the keys follow the data). The RED collapses every key into one: an
@@ -89,6 +89,26 @@ namespace TerrainGen.Tests
             CreatureSpecies sp = FlowKit.Build("RestMeshCacheHump", 1f, parts, new CreatureModule[] { new Walk { speed = 0.8f, turnRateDeg = 160f, accel = 2f, turnSlowdown = 0.5f } });
             string db = Diff(Uncached(sp), Read(sp));
             return db != null ? $"edited body: stale mesh ({db})" : null;
+        }
+
+        // The wings too (CreatureFleshWingTests' flyer: a FlowBody and two FleshWings), and an edit of the wing, of its arm
+        // or of the wing's shared flight spec builds afresh.
+        [Test] public void FleshWing_Replay_IsTheUncachedMesh_EditsBuildAfresh()
+        {
+            RestMeshCache.ClearForTest();
+            CreatureSpecies sp = CreatureFleshWingTests.Species();
+            Bytes truth = Uncached(sp);
+            Read(sp);
+            int hits = RestMeshCache.Hits;
+            Assert.IsNull(Diff(truth, Read(sp)), "replayed build");
+            Assert.AreEqual(3, RestMeshCache.Hits - hits, "the body and both wings replayed");
+            foreach (CreatureSpecies edited in new[]
+            {
+                CreatureFleshWingTests.Species(w => w.rootThickness = 0.09f, name: "EditedWing"),
+                CreatureFleshWingTests.Species(arm: a => a.lowerLength = 0.52f, name: "EditedArm"),
+                CreatureFleshWingTests.Species(w => w.spec.fingerSpreadDeg = new[] { 18f, 34f, 50f, 66f, 82f }, name: "EditedSpec"),
+            })
+                Assert.IsNull(Diff(Uncached(edited), Read(edited)), edited.name + ": stale mesh");
         }
 
         // RED: one key for everything - the edited pit row replays the plain one's mesh (or another part's)

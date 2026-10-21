@@ -954,6 +954,27 @@ namespace TerrainGen.Tests
             return o;
         }
 
+        // As PoseHead, for any species at its own scale after walking `seconds` (straight ahead); First = the head's first
+        // vertex (its bones), so a hit before it is the body's (or another part drawn before the head).
+        static Posed PoseHeadWalked(CreatureSpecies sp, float gape, float seconds)
+        {
+            float s = sp.scale;
+            CreatureSim sim = FlowKit.Sim(sp, s);
+            for (int t = 0, n = Mathf.RoundToInt(seconds / FlowKit.kDt); t < n; t++)
+                sim.Tick(FlowKit.kDt, sim.Joints[0] + sim.Rotations[0] * Vector3.forward * (2f * s));
+            CrestBeakHeadRuntime rt = Runtime(sim);
+            rt.GapeOverride = gape;
+            var m = new CreaturePteroWingTests.Skinned(sp);
+            m.Pose(sim);
+            Matrix4x4[] bones = FlowKit.Bones(sim), bind = CreatureRestPose.BindPoses(sp);
+            Matrix4x4 toHead = (bones[rt.UpperBone] * bind[rt.UpperBone] * SkullFrame(sp)).inverse;
+            int first = m.P.Length;
+            for (int i = 0; i < m.P.Length; i++) { int b = (int)m.Uv2[i].x; if ((b == rt.UpperBone || b == rt.JawBone) && i < first) first = i; }
+            var o = new Posed { P = new Vector3[m.P.Length], T = m.T, Uv1 = m.Uv1, First = first };
+            for (int i = 0; i < o.P.Length; i++) o.P[i] = toHead.MultiplyPoint3x4(m.P[i]);
+            return o;
+        }
+
         // Moeller-Trumbore: the ray from o along d hits triangle abc ahead of it.
         static bool Hit(Vector3 o, Vector3 d, Vector3 a, Vector3 b, Vector3 c)
         {
@@ -1095,10 +1116,14 @@ namespace TerrainGen.Tests
         //   back     from 5 cm behind the jaw's front, between the lips (1/4, 1/2, 3/4 of the way from the upper lip to
         //            the opened jaw's), at x -1, 0, +1 cm, toward the throat (straight back, 10 deg up, 10 deg down);
         //   sideways from the middle of the mouth over the cheek web's reach (of the default head) toward each side.
-        internal static string InsideMouthProblem(CreatureSpecies sp, out int wrong, out int rays)
+        internal static string InsideMouthProblem(CreatureSpecies sp, out int wrong, out int rays) => InsideMouthProblem(sp, 0f, out wrong, out rays);
+
+        // walkSeconds > 0: the species (any, at its own scale) walks that long first and the mouth opens in its walking
+        // pose - the neck bent by the walk, the body's front end moved in the head (the Apex's gate, task 10).
+        internal static string InsideMouthProblem(CreatureSpecies sp, float walkSeconds, out int wrong, out int rays)
         {
             CrestBeakHead h = Part(sp);
-            Posed m = PoseHead(sp, h.gapeDeg);
+            Posed m = walkSeconds > 0f ? PoseHeadWalked(sp, h.gapeDeg, walkSeconds) : PoseHead(sp, h.gapeDeg);
             MaterialSlots slots = MaterialSlots.For(sp);
             int mouth = slots.SlotOf("mouth"), teeth = slots.SlotOf(h.toothKind);
             Matrix4x4 open = h.JawPose(h.gapeDeg);

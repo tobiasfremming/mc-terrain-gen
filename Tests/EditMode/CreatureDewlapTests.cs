@@ -223,8 +223,9 @@ namespace TerrainGen.Tests
 
         // null, or where the rest link bones leave the drawn sail: at each station's mesh column, every link's root (the
         // rest bone's origin) within 1 mm of the column's midline (the two faces' rows 1.. averaged, the creases' sideways
-        // ripple taken out, carried up to h = 0) and the last link's end within 1 mm of the rim's lowest point. worst: the
-        // largest miss (m).
+        // ripple taken out, carried up past h = 0 - and, at a station the rear sweep cuts short, on down past the full
+        // row) and the last link's end within 1 mm of the rim's lowest point (a swept station: that point within 1 mm of
+        // its links). worst: the largest miss (m).
         static string RowsProblem(CreatureSpecies sp, int first, out float worst)
         {
             Dewlap d = Part(sp);
@@ -243,7 +244,11 @@ namespace TerrainGen.Tests
                 Vector3 x = q * Vector3.right;
                 var mid = new Vector3[F + 1];
                 for (int r = 1; r <= F; r++) mid[r] = Vector3.ProjectOnPlane(0.5f * (v[col + r] + v[col + prof - 1 - r]), x);
-                mid[0] = 2f * mid[1] - mid[2];   // the rows' line carried up to h = 0 (row 0 itself sits on the throat's facets)
+                // the rows' line carried up past h = 0 (row 0 itself sits on the throat's facets) and, where the rear sweep
+                // cuts the drawn row short (its links are the full row's), on down past the full row's end
+                Vector3 up = (mid[1] - mid[2]).normalized;
+                mid[0] = mid[1] + up;                                    // (1 m: past any root)
+                if (d.RearScale(k) < 1f) mid[F] = mid[F - 1] - up;       // (past any row's end)
                 for (int l = 0; l < L; l++)
                 {
                     Vector3 o = Vector3.ProjectOnPlane(bones[start + k * L + l].GetColumn(3), x);
@@ -261,7 +266,23 @@ namespace TerrainGen.Tests
                 float len = L > 1 ? ((Vector3)lastB.GetColumn(3) - (Vector3)bones[start + k * L + L - 2].GetColumn(3)).magnitude
                                   : ((Vector3)lastB.GetColumn(3) - v[col + F + B / 2]).magnitude;
                 Vector3 tip = (Vector3)lastB.GetColumn(3) - ((Vector3)lastB.GetColumn(1)).normalized * len;
-                float miss = (tip - v[col + F + B / 2]).magnitude;
+                Vector3 low = v[col + F + B / 2];
+                float miss;
+                if (d.RearScale(k) < 1f)
+                {
+                    // the swept rear is the full row cut short: its rim's lowest point lies on the station's links
+                    miss = float.MaxValue;
+                    for (int l = 0; l < L; l++)
+                    {
+                        Vector3 a = bones[start + k * L + l].GetColumn(3), b = l + 1 < L ? (Vector3)bones[start + k * L + l + 1].GetColumn(3) : tip, ab = b - a;
+                        float t = Mathf.Clamp01(Vector3.Dot(low - a, ab) / Mathf.Max(ab.sqrMagnitude, 1e-12f));
+                        miss = Mathf.Min(miss, (a + ab * t - low).magnitude);
+                    }
+                    worst = Mathf.Max(worst, miss);
+                    if (miss > 0.001f) return $"station {k} (swept): the rim's lowest point is {miss * 1000f:F1} mm off its links";
+                    continue;
+                }
+                miss = (tip - low).magnitude;
                 worst = Mathf.Max(worst, miss);
                 if (miss > 0.001f) return $"station {k}: its last link ends {miss * 1000f:F1} mm from the rim's lowest point";
             }
@@ -638,6 +659,234 @@ namespace TerrainGen.Tests
 
         [Test] public void Dewlap_NoInvertedTriangles() => Assert.IsNull(InvertedProblem(Species(Flap())));
 
+        // ------------------------------------------------------------ a heavy bob (the Apex in flight)
+
+        // The Apex (its own body, wings, flight and bob - the girdle heaves ~13 % of the body every beat) with its sail
+        // replaced by the part's DEFAULTS on the Apex's neck: joints 1..7 (the last station on the girdle joint, the
+        // chest), the Apex's depths, every other field the part's default.
+        internal static CreatureSpecies HeavyBobSpecies(System.Action<Dewlap> edit = null) => CreatureApexTests.Apex(ps =>
+        {
+            for (int i = 0; i < ps.Count; i++)
+                if (ps[i] is Dewlap old)
+                {
+                    var d = new Dewlap { id = old.id, fromJoint = 1, toJoint = 7, depthAt = (float[])old.depthAt.Clone() };
+                    edit?.Invoke(d);
+                    ps[i] = d;
+                }
+        });
+
+        // null, or the first frame in which the sail turns over: a launch from a short walk, the climb-out and a beating
+        // cruise (goals: altitude 6 x s, the cruise speed; `seconds` x sqrt s in all), every 2nd frame: no sail triangle
+        // inverted (skinned winding against its bind winding) and no sail vertex normal turned away from a triangle it
+        // belongs to (the rim's shading flip), on triangles clean at bind. frames: frames judged; minDot: the least
+        // normal-to-face dot seen (unit vectors).
+        internal static string HeavyBobProblem(CreatureSpecies sp, float seconds, out int frames, out float minDot)
+        {
+            frames = 0; minDot = 1f;
+            float s = sp.scale, T = Mathf.Sqrt(s), dt = FlowKit.kDt;
+            int slot = MaterialSlots.For(sp).SlotOf("dewlap");
+            Mesh mesh = CreatureKitAssets.BuildMesh(sp);
+            Vector3[] n0 = mesh.normals;
+            Object.DestroyImmediate(mesh);
+            var m = new CreaturePteroWingTests.Skinned(sp);
+            var tris = new List<int>();
+            for (int k = 0; k < m.T.Length; k += 3)
+            {
+                int i0 = m.T[k], i1 = m.T[k + 1], i2 = m.T[k + 2];
+                if (m.Part(i0) != slot || m.Part(i1) != slot || m.Part(i2) != slot) continue;
+                Vector3 f = Vector3.Cross(m.V[i1] - m.V[i0], m.V[i2] - m.V[i0]);
+                if (f.sqrMagnitude < 1e-20f) continue;
+                f.Normalize();
+                if (Vector3.Dot(n0[i0], f) > 0.5f && Vector3.Dot(n0[i1], f) > 0.5f && Vector3.Dot(n0[i2], f) > 0.5f) { tris.Add(i0); tris.Add(i1); tris.Add(i2); }
+            }
+            Assert.Greater(tris.Count, 3000, "the sail's triangles clean at bind");
+            var nrm = new Vector3[m.V.Length];
+            CreatureSim sim = FlowKit.Sim(sp, s);
+            for (int t = 0; t < 30; t++) sim.Tick(dt, sim.Joints[0] + sim.Rotations[0] * Vector3.forward * (2f * s));
+            sim.Flight.Launch(6f * s);
+            bool flew = false;
+            for (int t = 0, N = Mathf.RoundToInt(seconds * T / dt); t < N; t++)
+            {
+                sim.Flight.SetGoals(6f * s, sp.flight.cruiseSpeed * T, 0f);
+                sim.Tick(dt, sim.Joints[0]);
+                flew |= sim.Mode == FlightMode.Air;
+                if (t % 2 != 1) continue;
+                m.Pose(sim);
+                frames++;
+                int bad = m.Inverted(slot, out string where);
+                if (bad > 0) return $"t={sim.Time:F2} s ({sim.Mode}): {bad} sail triangles inverted, first {where}";
+                for (int i = 0; i < m.V.Length; i++)
+                {
+                    if (m.Part(i) != slot) continue;
+                    Vector4 w = m.Uv2[i];
+                    nrm[i] = (w.z * m.Skin((int)w.x).MultiplyVector(n0[i]) + w.w * m.Skin((int)w.y).MultiplyVector(n0[i])).normalized;
+                }
+                for (int k = 0; k < tris.Count; k += 3)
+                {
+                    Vector3 a = m.P[tris[k]], f = Vector3.Cross(m.P[tris[k + 1]] - a, m.P[tris[k + 2]] - a);
+                    if (f.sqrMagnitude < 1e-20f) continue;
+                    f.Normalize();
+                    for (int q = 0; q < 3; q++)
+                    {
+                        float d = Vector3.Dot(nrm[tris[k + q]], f);
+                        if (d < minDot) minDot = d;
+                        if (!(d > 0f)) return $"t={sim.Time:F2} s ({sim.Mode}): sail vertex {tris[k + q]}'s normal faces away from its triangle (dot {d:F2})";
+                    }
+                }
+            }
+            return flew ? null : "it never flew";
+        }
+
+        [Test] public void Dewlap_HeavyBob_RimNeverTurnsOver()
+        {
+            string e = HeavyBobProblem(HeavyBobSpecies(), 60f, out int frames, out float minDot);
+            TestContext.Out.WriteLine($"the part's defaults on the Apex in flight: {frames} frames judged, least normal-to-face dot {minDot:F3}");
+            Assert.IsNull(e, e);
+        }
+
+        // RED: the same flight with the stations uncoupled (no lean smoothing, no neighbour pull, no twist limit): the
+        // girdle station swings apart from its neighbour and the sheet between them turns over.
+        [Test] public void Red_Dewlap_HeavyBob_Uncoupled()
+        {
+            Dewlap.NoCouplingForTest = true;
+            try
+            {
+                string e = HeavyBobProblem(HeavyBobSpecies(), 60f, out _, out _);
+                TestContext.Out.WriteLine("RED: " + e);
+                Assert.IsNotNull(e, "uncoupled stations must turn the rim over under the Apex's bob");
+            }
+            finally { Dewlap.NoCouplingForTest = false; }
+        }
+
+        // ------------------------------------------------------------ a pouch, not a card
+
+        // The bind mesh's column at station k: the vertex index of its profile's first point.
+        static int Column(Dewlap d, int first, int k)
+        {
+            int prof = 2 * (Dewlap.RowsPerLink * d.links + 1) + (Dewlap.RimSegments - 1), ci = k * Dewlap.ColumnsPerSpan;
+            return ci == 0 ? first : first + prof * (ci + 1);
+        }
+
+        // null, or why the sail is a flat card: at the middle station its sheet (the two faces' distance, row by row) is
+        // thicker just under the throat than at the rim (>= 1.2 x thickness at the first row), bellies out halfway down
+        // (>= thickness + 0.9 x billow x depth at its widest, and > 1.5 x thickness), and meets the rim at the sheet's own
+        // thickness. first, widest: m.
+        static string PouchProblem(Dewlap d, out float first, out float widest)
+        {
+            CreatureSpecies sp = Species(d);
+            int f0 = VertexCount(Parts(true, null)), F = Dewlap.RowsPerLink * d.links;
+            int prof = 2 * (F + 1) + (Dewlap.RimSegments - 1);
+            Mesh mesh = FlowKit.Mesh(sp);
+            Vector3[] v = mesh.vertices;
+            Object.DestroyImmediate(mesh);
+            int col = Column(d, f0, d.stations / 2);
+            float Thick(int r) => (v[col + r] - v[col + prof - 1 - r]).magnitude;
+            first = Thick(1); widest = 0f;
+            for (int r = 1; r <= F; r++) widest = Mathf.Max(widest, Thick(r));
+            float depth = (v[col + F + Dewlap.RimSegments / 2] - v[col]).magnitude;
+            if (!(first >= 1.2f * d.thickness)) return $"the sheet is {first * 1000f:F1} mm thick under the throat (< 1.2 x {d.thickness * 1000f:F0} mm)";
+            if (!(widest >= d.thickness + 0.9f * d.billow * depth) || !(widest > 1.5f * d.thickness)) return $"no belly: at most {widest * 1000f:F1} mm thick (the sheet {d.thickness * 1000f:F0} mm, the row {depth * 1000f:F0} mm deep)";
+            if (Mathf.Abs(Thick(F) - d.thickness) > 0.15f * d.thickness) return $"the sheet meets the rim {Thick(F) * 1000f:F2} mm thick, not {d.thickness * 1000f:F0}";
+            return null;
+        }
+
+        [Test] public void Dewlap_IsAPouch_ThickAtTheRoot_Bellied()
+        {
+            string e = PouchProblem(Flap(), out float first, out float widest);
+            TestContext.Out.WriteLine($"mid station: {first * 1000f:F1} mm under the throat, {widest * 1000f:F1} mm at the belly (sheet {Flap().thickness * 1000f:F0} mm)");
+            Assert.IsNull(e, e);
+        }
+
+        // RED: no belly, no root swell - the old constant-thickness card.
+        [Test] public void Red_Dewlap_FlatCard()
+        {
+            Dewlap d = Flap(); d.billow = 0f; d.rootThickness = d.thickness;
+            StringAssert.Contains("thick", PouchProblem(d, out _, out _) ?? "", "a constant-thickness sheet must fail");
+        }
+
+        // null, or why the rear end is square: the chest end's row (the last column, rim to root) is at most
+        // 1.5 x RearEnd of the deepest row, and over the sweep the rows shorten column by column toward it (a rounded
+        // end, no step back down). ratio: the last row / the deepest.
+        static string RearProblem(Dewlap d, out float ratio)
+        {
+            CreatureSpecies sp = Species(d);
+            int f0 = VertexCount(Parts(true, null)), F = Dewlap.RowsPerLink * d.links, B = Dewlap.RimSegments;
+            int prof = 2 * (F + 1) + (B - 1), cols = (d.stations - 1) * Dewlap.ColumnsPerSpan + 1;
+            Mesh mesh = FlowKit.Mesh(sp);
+            Vector3[] v = mesh.vertices;
+            Object.DestroyImmediate(mesh);
+            var depth = new float[cols];
+            float deepest = 0f;
+            for (int ci = 0; ci < cols; ci++)
+            {
+                int col = ci == 0 ? f0 : f0 + prof * (ci + 1);
+                depth[ci] = (v[col + F + B / 2] - 0.5f * (v[col] + v[col + prof - 1])).magnitude;
+                deepest = Mathf.Max(deepest, depth[ci]);
+            }
+            ratio = depth[cols - 1] / deepest;
+            if (ratio > 1.5f * Dewlap.RearEnd) return $"the chest end's row is {ratio:F2} of the deepest: a square rear end";
+            int from = Mathf.FloorToInt((1f - d.rearSweep) * (cols - 1)) + 1;
+            for (int ci = from + 1; ci < cols; ci++)
+                if (depth[ci] > depth[ci - 1] + 1e-4f) return $"column {ci} is deeper ({depth[ci] * 1000f:F0} mm) than column {ci - 1} ({depth[ci - 1] * 1000f:F0} mm) in the sweep";
+            return null;
+        }
+
+        [Test] public void Dewlap_RearEnd_SweepsIntoTheChest()
+        {
+            string e = RearProblem(Flap(), out float ratio);
+            TestContext.Out.WriteLine($"the chest end's row: {ratio:F2} of the deepest");
+            Assert.IsNull(e, e);
+        }
+
+        // RED: no sweep - the old square rear end.
+        [Test] public void Red_Dewlap_SquareRear()
+        {
+            Dewlap d = Flap(); d.rearSweep = 0f;
+            StringAssert.Contains("square rear end", RearProblem(d, out _) ?? "");
+        }
+
+        // The pouch puffs out with the swing: while it swings some sail bone is widened across the sheet (its x scale over
+        // its y), and once settled the bones are square again. widest: the largest x / y; settled: after a 10 s halt.
+        static float MostPuff(Dewlap d, out float settled)
+        {
+            CreatureSpecies sp = Species(d);
+            CreatureSim sim = FlowKit.Sim(sp, 1f);
+            int start = sp.Layout.Start(KitView.Parts(sp).Count - 1), n = d.stations * d.links;
+            float most = 1f;
+            float Puff()
+            {
+                Matrix4x4[] w = FlowKit.Bones(sim);
+                float p = 1f;
+                for (int i = start; i < start + n; i++) p = Mathf.Max(p, ((Vector3)w[i].GetColumn(0)).magnitude / ((Vector3)w[i].GetColumn(1)).magnitude);
+                return p;
+            }
+            for (int t = 0; t < 420; t++)
+            {
+                sim.Tick(FlowKit.kDt, t < 180 ? new Vector3(0f, 0f, 30f) : new Vector3(30f, 0f, 2f));
+                if (t % 5 == 4) most = Mathf.Max(most, Puff());
+            }
+            sim.Halt = true;
+            for (int t = 0; t < 600; t++) sim.Tick(FlowKit.kDt, new Vector3(30f, 0f, 2f));
+            settled = Puff();
+            return most;
+        }
+
+        [Test] public void Dewlap_Billows_WithTheSwing()
+        {
+            float most = MostPuff(Flap(), out float settled);
+            TestContext.Out.WriteLine($"widest puff {most:F3} x, settled {settled:F5} x");
+            Assert.Greater(most, 1.02f, "the swinging pouch puffs out");
+            Assert.LessOrEqual(most, 1f + Dewlap.PuffPerBillow * Flap().billow + 1e-4f, "at most PuffPerBillow x billow");
+            Assert.Less(settled, 1.002f, "settled, the pouch is back to its drawn width");
+        }
+
+        // RED: billow 0 never puffs.
+        [Test] public void Red_Dewlap_NoBillow_NoPuff()
+        {
+            Dewlap d = Flap(); d.billow = 0f;
+            Assert.AreEqual(1f, MostPuff(d, out _), 1e-5f, "billow 0 never puffs");
+        }
+
         // The sail's triangles wind with their vertex normals (outward on both faces, the rim and the end caps).
         [Test] public void Dewlap_WindsOutward()
         {
@@ -670,6 +919,12 @@ namespace TerrainGen.Tests
             var noBody = new SpeciesCtx(new List<CreaturePart> { Flap() }, new CreatureModule[0], 24, false);
             Assert.IsNotNull(Flap().Validate(noBody));
             Assert.IsNull(Flap().Validate(ctx));
+            Dewlap thinRoot = Flap(); thinRoot.rootThickness = 0.5f * thinRoot.thickness;
+            StringAssert.Contains("rootThickness", thinRoot.Validate(ctx));
+            Dewlap balloon = Flap(); balloon.billow = 0.5f;
+            StringAssert.Contains("billow", balloon.Validate(ctx));
+            Dewlap loose = Flap(); loose.maxTwistDeg = 0f;
+            StringAssert.Contains("maxTwistDeg", loose.Validate(ctx));
         }
     }
 }

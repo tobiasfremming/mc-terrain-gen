@@ -1,8 +1,8 @@
 // Creature kit service (Apex redesign, task 10): a cache of the rest-pose mesh a surface part emits onto a FlowBody
-// (PitRow, Dewlap; FlowBody itself). Such a part samples the body's drawn surface (FlowBody.SurfaceAt: six monotone cubics and finite
+// (PitRow, Dewlap; FlowBody, CrestBeakHead and FleshWing themselves). Such a part samples the body's drawn surface (FlowBody.SurfaceAt: six monotone cubics and finite
 // differences per call) for every vertex - exact, but slow: the Apex's ten pits alone took ~4 ms of a 5 ms mesh budget
 // (CreatureKitTests 4, MeshTime). The mesh depends only on the part's data, the body's shape data and the rest pose the
-// emitter draws on, so the part keys it on all three (Key, Mix, FlowBody.ShapeKey, MixRest), records what it emitted the
+// emitter draws on, so the part keys it on all three (Key, MixData, MixRest, MixBones), records what it emitted the
 // first time (Store) and replays it after (TryReplay): the same vertices, triangles and skins bit for bit, its named
 // kinds re-resolved to this species' slots. Build-time only: it allocates; the cache is bounded (cleared when full).
 using System;
@@ -35,6 +35,50 @@ namespace CreatureKit
         public static ulong Mix(ulong h, int i) { h ^= (uint)i; return h * 1099511628211UL; }
         public static ulong Mix(ulong h, bool b) => Mix(h, b ? 1 : 0);
         public static ulong Mix(ulong h, Vector3 v) => Mix(Mix(Mix(h, v.x), v.y), v.z);
+
+        public static ulong Mix(ulong h, Matrix4x4 m)
+        {
+            for (int r = 0; r < 4; r++) h = Mix(Mix(Mix(Mix(h, m[r, 0]), m[r, 1]), m[r, 2]), m[r, 3]);
+            return h;
+        }
+
+        // Every serialized value of a part's data (fields of numbers, flags, enums, strings, vectors, colours, and arrays,
+        // lists and nested [Serializable] objects of them): a key that follows any edit of the part.
+        public static ulong MixData(ulong h, object o)
+        {
+            if (o == null) return Mix(h, -7);
+            switch (o)
+            {
+                case float f: return Mix(h, f);
+                case int i: return Mix(h, i);
+                case bool b: return Mix(h, b);
+                case string str: return Mix(h, str.GetHashCode());
+                case Enum e: return Mix(h, Convert.ToInt32(e));
+                case Vector2 v2: return Mix(Mix(h, v2.x), v2.y);
+                case Vector3 v3: return Mix(h, v3);
+                case Vector4 v4: return Mix(Mix(Mix(Mix(h, v4.x), v4.y), v4.z), v4.w);
+                case Color c: return Mix(Mix(Mix(Mix(h, c.r), c.g), c.b), c.a);
+                case System.Collections.IList list:
+                    h = Mix(h, list.Count);
+                    foreach (object it in list) h = MixData(h, it);
+                    return h;
+            }
+            foreach (System.Reflection.FieldInfo f in o.GetType().GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
+            {
+                if (f.IsNotSerialized || (!f.IsPublic && !f.IsDefined(typeof(SerializeField), false))) continue;
+                h = MixData(h, f.GetValue(o));
+            }
+            return h;
+        }
+
+        // The emitter's rest bones (the bind: spine, legs, the spread wings).
+        public static ulong MixBones(ulong h, PartMeshEmitter m)
+        {
+            if (m.Bones == null) return Mix(h, -3);
+            h = Mix(h, m.Bones.Length);
+            for (int i = 0; i < m.Bones.Length; i++) h = Mix(h, m.Bones[i]);
+            return h;
+        }
 
         // The rest pose the emitter draws on: every spine joint's place and frame.
         public static ulong MixRest(ulong h, PartMeshEmitter m)

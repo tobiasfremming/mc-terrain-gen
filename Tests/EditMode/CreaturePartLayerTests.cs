@@ -72,6 +72,10 @@ namespace TerrainGen.Tests
             var ids = new HashSet<int>();
             foreach (CreatureModule m in KitView.Modules(sp.Compiled.Runtime))
                 if (m is Layers l && l.rows != null) foreach (LayerDef d in l.rows) ids.Add(d.partId);
+            // a slot holding a named kind (MaterialSlots: a kit part's own kind, e.g. the Apex's) has that kind's row, not a
+            // legacy look (asserted by CreatureMaterialSlotsTests.NamedSlotRowProblem, every shipped species)
+            MaterialSlots slots = MaterialSlots.For(sp);
+            for (int i = 0; i < PartLayers.MaxParts; i++) if (slots.KindOfSlot[i] != null) ids.Add(i);
             return ids;
         }
 
@@ -98,7 +102,7 @@ namespace TerrainGen.Tests
             }
             for (int id = 4; id <= 7; id++) Assert.IsTrue(PartLayers.Registry[id].Octopus && PartLayers.LegacyRow(id).Equals(PartLayers.LegacyRow(0)), $"octopus id {id}");
             // every shipped species gets exactly the registry, except the rows its Layers module restyles (those are the
-            // module's rows exactly)
+            // module's rows exactly) and the slots of its named kinds
             foreach (string n in CreatureKitAssets.Species())
             {
                 CreatureSpecies sp = CreatureKitAssets.Load(n);
@@ -107,7 +111,9 @@ namespace TerrainGen.Tests
                 var own = new Dictionary<int, PartLayer>();
                 foreach (CreatureModule m in KitView.Modules(sp.Compiled.Runtime))
                     if (m is Layers l && l.rows != null) foreach (LayerDef d in l.rows) own[d.partId] = d.ToRow();
+                MaterialSlots slots = MaterialSlots.For(sp);
                 for (int id = 0; id < PartLayers.MaxParts; id++)
+                    if (slots.KindOfSlot[id] == null)   // (a named kind's slot: its kind's row, CreatureMaterialSlotsTests.NamedSlotRowProblem)
                     Assert.IsTrue(rows[id].Equals(own.TryGetValue(id, out PartLayer r) ? r : PartLayers.LegacyRow(id)), $"{n}: part {id} is {rows[id]}");
             }
         }

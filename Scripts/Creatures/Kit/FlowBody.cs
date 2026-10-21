@@ -109,24 +109,6 @@ namespace CreatureKit
         public override int MeshOrder => 100;
         protected override void CopyArrays() { profile = (FlowKey[])profile?.Clone(); }
 
-        // The data the drawn surface depends on (RestMeshCache: parts that sample it - PitRow, Dewlap - key their cached
-        // meshes on it, with the rest pose and their own data).
-        internal ulong ShapeKey(ulong h)
-        {
-            h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, jointCount), spacing), headCapLength), tailTipLength);
-            h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, humpSharpness), keelSharpness), bladeExponent), ovalMaxAspect);
-            h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, ringSegments), ringsPerSegment), rigidHeadJoints);
-            int n = profile?.Length ?? 0;
-            h = RestMeshCache.Mix(h, n);
-            for (int i = 0; i < n; i++)
-            {
-                FlowKey k = profile[i];
-                h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, k.t), k.halfWidth), k.halfHeight), k.clearance), k.bendLimitDeg);
-                h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, k.hump), k.keel), k.flank), k.blade);
-            }
-            return h;
-        }
-
         // IMaterialKinds: the kinds this body draws (data) - a slot only for a colour it uses, so a species short of kit
         // slots can draw the tail and the stripe in a kind it already has (tailKind / dorsalStripeKind).
         public void Kinds(List<string> into)
@@ -304,10 +286,10 @@ namespace CreatureKit
 
         ulong CacheKey(PartMeshEmitter m)
         {
-            ulong h = RestMeshCache.Mix(RestMeshCache.Seed, 0xF10B);   // FlowBody
-            h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, tailColourFrom), dorsalStripeTo), dorsalStripeWidthDeg), FlipNormalsForTest);
-            h = RestMeshCache.Mix(RestMeshCache.Mix(h, (tailKind ?? "").GetHashCode()), (dorsalStripeKind ?? "").GetHashCode());
-            return RestMeshCache.MixRest(ShapeKey(h), m);
+            // every serialized field of this body (RestMeshCache.MixData: any edit rebuilds), the test hook, the rest pose
+            ulong h = RestMeshCache.MixData(RestMeshCache.Mix(RestMeshCache.Seed, 0xF10B), this);   // FlowBody
+            h = RestMeshCache.Mix(h, FlipNormalsForTest);
+            return RestMeshCache.MixRest(h, m);
         }
 
         struct Rings : SpineBody.IBodyRings

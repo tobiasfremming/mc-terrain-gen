@@ -35,8 +35,14 @@ namespace TerrainGen.Tests
 
         static bool Same(PartLayer a, PartLayer b) => a.Equals(b) && a.tint.a == b.tint.a;
 
-        // Every shipped species: no named kind, the table exactly as before, and every part id its mesh emits is a slot
-        // the species is known to use (the scan behind the free-slot choice is complete).
+        // Species built on the parts with named kinds (the Apex redesign's FlowBody, CrestBeakHead, PitRow, Dewlap,
+        // FleshWing): their named kinds take kit slots by design; every other check below holds for them too, every slot
+        // not holding a named kind keeps its legacy row, and every named slot has its kind's row (NamedSlotRowProblem).
+        static readonly HashSet<string> kNamedKindSpecies = new HashSet<string> { "Apex" };
+
+        // Every shipped species: no named kind (but kNamedKindSpecies), the table exactly as before (but the named kinds'
+        // slots), and every part id its mesh emits is a slot the species is known to use (the scan behind the free-slot
+        // choice is complete).
         [Test] public void Shipped_SlotsAreTheLegacyIds_TablesUnchanged()
         {
             foreach (string name in CreatureKitAssets.Species())
@@ -44,10 +50,13 @@ namespace TerrainGen.Tests
                 CreatureSpecies sp = CreatureKitAssets.Load(name);
                 MaterialSlots s = MaterialSlots.For(sp);
                 Assert.IsNull(s.Problem, name);
-                for (int i = 0; i < PartLayers.MaxParts; i++) Assert.IsNull(s.KindOfSlot[i], $"{name}: slot {i} holds a named kind");
+                bool named = kNamedKindSpecies.Contains(name);
+                for (int i = 0; i < PartLayers.MaxParts; i++) if (!named) Assert.IsNull(s.KindOfSlot[i], $"{name}: slot {i} holds a named kind");
                 foreach (PartLayers.Entry e in PartLayers.Registry) Assert.AreEqual(e.Id, s.SlotOf(e.Kind), $"{name}: {e.Kind}");
                 PartLayer[] now = PartLayers.Rows(sp), old = OldRows(sp);
-                for (int i = 0; i < now.Length; i++) Assert.IsTrue(Same(now[i], old[i]), $"{name}: row {i} {now[i]} vs {old[i]}");
+                for (int i = 0; i < now.Length; i++) if (s.KindOfSlot[i] == null) Assert.IsTrue(Same(now[i], old[i]), $"{name}: row {i} {now[i]} vs {old[i]}");
+                string named2 = NamedSlotRowProblem(sp, now);
+                Assert.IsNull(named2, named2);
                 if (sp.bodyPlan == CreatureBodyPlan.Cephalopod) continue;   // the octopus mesh and shader: ids 4-7 (core)
                 Mesh mesh = CreatureKitAssets.BuildMesh(sp);
                 var uv1 = new List<Vector2>(); mesh.GetUVs(1, uv1);
@@ -56,6 +65,38 @@ namespace TerrainGen.Tests
                 foreach (Vector2 u in uv1) ids.Add(Mathf.RoundToInt(u.x));
                 foreach (int id in ids) Assert.IsTrue(id >= 0 && id < PartLayers.MaxParts && s.Used[id], $"{name}: its mesh emits part id {id}, which the slot scan does not count as used");
             }
+        }
+
+        // Every slot holding a named kind has that kind's row: the species' Layers row naming the kind if it has one,
+        // else the kind's PartLayers.NamedKinds default (a kind with neither keeps the slot's legacy row).
+        internal static string NamedSlotRowProblem(CreatureSpecies sp, PartLayer[] rows)
+        {
+            MaterialSlots s = MaterialSlots.For(sp);
+            for (int i = 0; i < PartLayers.MaxParts; i++)
+            {
+                string kind = s.KindOfSlot[i];
+                if (kind == null) continue;
+                PartLayer want = PartLayers.Find(kind, out PartLayers.Entry e) ? e.Row : PartLayers.LegacyRow(i);
+                foreach (CreatureModule m in KitView.Modules(sp.Compiled.Runtime))
+                    if (m is Layers l && l.rows != null)
+                        foreach (LayerDef d in l.rows) if (d.kind == kind) want = d.ToRow();
+                if (!Same(rows[i], want)) return $"{sp.name}: slot {i} ({kind}) is {rows[i]}, not its kind's row {want}";
+            }
+            return null;
+        }
+
+        // RED: a wrong row in a named slot (the Apex's wingfan slot given the body's row) is caught.
+        [Test] public void Red_NamedSlot_WrongRow_IsCaught()
+        {
+            CreatureSpecies sp = CreatureKitAssets.Load("Apex");
+            PartLayer[] rows = PartLayers.Rows(sp);
+            Assert.IsNull(NamedSlotRowProblem(sp, rows));
+            int slot = MaterialSlots.For(sp).SlotOf("wingfan");
+            Assert.GreaterOrEqual(slot, PartLayers.LegacyIds);
+            rows[slot] = PartLayers.LegacyRow(0);
+            string e = NamedSlotRowProblem(sp, rows);
+            TestContext.Out.WriteLine("RED: " + e);
+            StringAssert.Contains("wingfan", e);
         }
 
         static CreatureSpecies WithGlow(string kind, params LayerDef[] rows)

@@ -12,7 +12,9 @@
       "system": "CreatureSim chain (ISpineChainBody) + FlowBody.EmitMesh",
       "useWhen": "a body whose neck, trunk and tail flow into each other with a section an ellipse cannot draw: humped backs, keeled chests, ribbon or paddle tails",
       "summary": "One chain from the head to the tail tip (the sim runs it like a SpineBody's) drawn as one flowing surface with a shaped section: superellipse from oval to tall ribbon (blade), a sharp dorsal hump, a keel, flank masses. The neck and the tail are the same chain as the trunk; a head part sits on joint 0.",
-      "usedBy": [],
+      "usedBy": [
+        "Apex"
+      ],
       "params": [
         {
           "name": "id",
@@ -2210,7 +2212,9 @@
       "system": "CreatureLegs (gait groups, throttle, sway) + DrakeLeg.EmitMesh (LimbLoft)",
       "useWhen": "dragons, wyverns, raptors, birds: any digitigrade hind leg standing on toes with talons",
       "summary": "Slim dragon hind leg: walks as a Leg2Bone (TwoBoneIK, pole, limits, a raised hock as the ankle), drawn with a muscular haunch blended into the trunk (into a FlowBody's drawn section), a lean thigh, a ball knee, a slim shin, a knobbly raised hock, a long metatarsus, knuckled toes on the ground with dark curved talons touching down at the foot point, an optional hallux.",
-      "usedBy": [],
+      "usedBy": [
+        "Apex"
+      ],
       "params": [
         {
           "name": "id",
@@ -2506,6 +2510,7 @@
       "useWhen": "lizards, mammals, birds' legs, wing arms",
       "summary": "Vertebrate two-bone limb: TwoBoneIK with a pole, rounded knee blend, swing/knee limits (R16), keep-out (R28). Also the wyvern's wing arm.",
       "usedBy": [
+        "Apex",
         "DesertMonitor",
         "Hexadrake",
         "KitMonitor",
@@ -3322,7 +3327,9 @@
       "system": "CreatureFlight + CreatureWings (beat, fold, wing-walk) + FleshWingRuntime (span and chord chains; stage Late) + FleshWingMesh",
       "useWhen": "meaty manta-like wings that fold into tall soft blades and are walked on (the Apex); not a membrane between bony fingers. The steep folded blades come from the arm's proportions: a short humerus and a long forearm (upper << lower, e.g. 0.2 / 0.5 on a 0.5 m chest), the wrist's restOffset behind the shoulder (z ~ -0.22) and close in (x ~ 0.06), pole (0.2, 1, -0.4): the forearm stands near vertical and the folded fingers run up along it, side by side over the back",
       "summary": "A soft, thick, folding wing on an arm limb (a Leg2Bone it names), flown, folded and walked on like a Wing (CreatureFlight + CreatureWings): two skins offset by a thickness law (thick root and arm, thin tip and trailing edge) joined by a rounded rim, a fleshy arm inside the leading edge, a blunt soft pad at the wrist that it walks on, lengthwise stripes along the rays; span chains along the fingers and a chord chain across the rays (the outer wing lags and whips, the trailing edge feathers and billows).",
-      "usedBy": [],
+      "usedBy": [
+        "Apex"
+      ],
       "params": [
         {
           "name": "id",
@@ -4071,6 +4078,7 @@
       "useWhen": "always (every shipped species has two eye bones)",
       "summary": "Two glossy eye spheres on their own bones (sp.EyeBone), placed at the socket (joint, offset x mirrored); cluster eyes ride them (spiders).",
       "usedBy": [
+        "Apex",
         "Crocodile",
         "DaddyLongLegs",
         "Delver",
@@ -4400,7 +4408,9 @@
       "system": "DewlapRuntime (part runtime, stage AfterLimbs: two AngleChains per station) + Dewlap.EmitMesh",
       "useWhen": "a dewlap, throat fan, pelican pouch or throat sail hanging under a FlowBody's neck",
       "summary": "A broad pale throat sail hanging from a FlowBody's neck joints (fromJoint..toJoint, jaw end first) on its own little chain: `stations` stations of `links` links, a nearly straight lower edge (edgeStraightness), a thin double-sided sheet with faint lengthwise creases and a soft round rim along the edge. It swings behind the neck's motion (each station's acceleration drives two damped AngleChains, gravity pulls toward hanging) and never rises above the neck.",
-      "usedBy": [],
+      "usedBy": [
+        "Apex"
+      ],
       "params": [
         {
           "name": "id",
@@ -4934,7 +4944,9 @@
       "system": "TailFlourishRuntime (part runtime, stage Late; the LAST part: writes over the body's tail bones)",
       "useWhen": "a long decorative tail that should look alive without steering anything: ribbon tails, plumes, a dragon's tail in flight",
       "summary": "The living tail: a pose drawn over the sim's tail joints (the walk and the flight untouched). Standing, the tail rises in a calm loop above the hips and drifts; in the air (eased in by the flight's air weight) a travelling roll about each bone's own axis, growing to the tip, and a lazy curl travelling down it. Added bend clamped to each joint's bend limit.",
-      "usedBy": [],
+      "usedBy": [
+        "Apex"
+      ],
       "params": [
         {
           "name": "id",
@@ -8434,7 +8446,9 @@
       "system": "CrestBeakHeadRuntime (part runtime, stage Late: jaw, upper head, eye bones) + CrestBeakHead.EmitMesh (SculptMesher pieces, cached; teeth as horns; cheek webs skinned between the bones)",
       "useWhen": "a serpent- or dragon-like head ending in a beak, on a FlowBody (or SpineBody) head joint: crested, toothed beaks; the Apex",
       "summary": "The beaked serpent head: a long, slightly flattened SDF skull flowing into a pointed, hooked beak, small eyes under a soft brow, a mouth line running back past the eye with rows of small interlocking teeth (fangs at the lower jaw's tip, a knob under it), a deep fleshy lower jaw running back into the throat, a pink mouth inside with cheek webs that stretch when it gapes, sickle crests (a prong widening into a crescent that hooks back) on top of the upper beak, and a jaw on its own bone that hangs a little open at rest and gapes wide on its own call timer while the upper head tips up. Rigid to the body's head joint; its back overlaps the neck so the outline runs on; carries the species' eyes.",
-      "usedBy": [],
+      "usedBy": [
+        "Apex"
+      ],
       "params": [
         {
           "name": "id",
@@ -10525,7 +10539,9 @@
       "system": "mesh only (PitRow.EmitMesh), skinned like the FlowBody rings under it",
       "useWhen": "breathing holes along a throat or flank, nostrils, sensory pits on a FlowBody",
       "summary": "A row of recessed pits with soft pale raised rims on a FlowBody's surface (count from fromU to toU at section angle angleDeg; mirror for both sides): spiracles, nostrils, sensory pits - oblique slits (aspect, slantDeg) growing toward the head (sizeGrowth). Dark cup (kind pit), belly-coloured rim, skinned with the body's rings.",
-      "usedBy": [],
+      "usedBy": [
+        "Apex"
+      ],
       "params": [
         {
           "name": "id",
@@ -13892,6 +13908,7 @@
       "needs": "Fly",
       "summary": "Rest, Face, Patrol, Soar, Landing on perches; predictive wall turn-back (FlightBrain).",
       "usedBy": [
+        "Apex",
         "Hexadrake",
         "Pterodactyl",
         "SkyDragon",
@@ -14272,6 +14289,7 @@
       "needs": "",
       "summary": "Safe-disc points, walk, pause, glance (WanderBrain). Containment is structural: the head is clamped to the safe radius.",
       "usedBy": [
+        "Apex",
         "Crocodile",
         "DaddyLongLegs",
         "Delver",
@@ -14457,6 +14475,7 @@
       "needs": "Wing parts",
       "summary": "Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlight, FlightModel, AirChain). Froude-scaled. twist: the twisting Chinese-dragon air chain (AirTwist).",
       "usedBy": [
+        "Apex",
         "Hexadrake",
         "Pterodactyl",
         "SkyDragon",
@@ -14679,6 +14698,7 @@
       "needs": "Fly",
       "summary": "A quadrupedal launch: a crouch on the four limbs (the body lowered by crouchDepth over crouchSeconds), then a vault at vaultSpeed off the folded wing arms; the wings open at the top (CreatureFlight.Launch). Without it a flyer hops off at the shipped 2.4 m/s.",
       "usedBy": [
+        "Apex",
         "Pterodactyl"
       ],
       "params": [
@@ -15006,6 +15026,7 @@
       "needs": "SpineBody",
       "summary": "Head steering in the tangent plane, chain, grounding, gait groups, girdle sway (CreatureSim.SubStep, CreatureLegs). The default locomotion of a spine body.",
       "usedBy": [
+        "Apex",
         "Crocodile",
         "DaddyLongLegs",
         "Delver",
@@ -15638,6 +15659,7 @@
       "needs": "",
       "summary": "Restyles part ids (material layers) for this species: shading model (Skin, Chitin, Membrane, Eye, Claw), tint, smoothness, and which layers (pattern, scale grain, sheen, shimmer) each has. Rows not listed keep the registry's (Kit/PartLayers.cs). A new part needs a row, never a shader edit.",
       "usedBy": [
+        "Apex",
         "Crocodile",
         "Delver",
         "GiantCentipede",
@@ -15787,6 +15809,7 @@
       "needs": "",
       "summary": "Translucent veined membrane (part 8, the Membrane shading model, CreatureMembrane.hlsl): wings, FinStrip fins, antennae - any part whose layer row is Membrane.",
       "usedBy": [
+        "Apex",
         "FinnedSandEel",
         "Hexadrake",
         "Pterodactyl",
@@ -15914,6 +15937,7 @@
       "needs": "",
       "summary": "Palette dorsal/flank/belly + procedural pattern by rest arc length (CreaturePattern.hlsl); per-individual size/hue/value jitter. Layers of parts 0-2.",
       "usedBy": [
+        "Apex",
         "Crocodile",
         "DaddyLongLegs",
         "Delver",
@@ -16082,6 +16106,37 @@
     }
   ],
   "species": [
+    {
+      "name": "Apex",
+      "kitVersion": 1,
+      "plan": "Spine",
+      "bones": 109,
+      "parts": [
+        "FlowBody:body",
+        "Leg2Bone:arm.L",
+        "Leg2Bone:arm.R",
+        "DrakeLeg:hind.L",
+        "DrakeLeg:hind.R",
+        "FleshWing:wing.L",
+        "FleshWing:wing.R",
+        "Eyes:eyes",
+        "CrestBeakHead:head",
+        "Dewlap:throat",
+        "PitRow:spiracles.L",
+        "PitRow:spiracles.R",
+        "TailFlourish:tail"
+      ],
+      "modules": [
+        "Walk",
+        "Fly",
+        "QuadLaunch",
+        "Wander",
+        "FlightExcursion",
+        "Skin",
+        "Membrane",
+        "Layers"
+      ]
+    },
     {
       "name": "Crocodile",
       "kitVersion": 1,
