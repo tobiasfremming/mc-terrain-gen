@@ -26,7 +26,8 @@ public enum CreatureCommand { Stand, WalkAround, WalkTo, Fly, Circle, Land, Perc
 // Launch is only possible from the ground, and the crouch, vault and touchdown run to their end, so a command given
 // during them waits for the mode it needs (the queue is the command itself). Uses only CreatureFlight's public surface
 // (Launch, SetGoals, Land, CancelLanding, Mode, OnFinal, Model, TurnRadius, ProbeDown, TurnToward, WallTurn, LegClear,
-// PlanHold, Avoidance.SetPerch - as FlightBrain does) and sim.Halt; FlightBrain is untouched.
+// PlanHold - as FlightBrain does) and sim.Halt; FlightBrain is untouched. A touchdown meant for the perch that ends off it
+// counts as a failed attempt too. Flyers that perch on rocks want FlightSpec.perchTubeOnApproach (Vesper has it).
 // Allocation-free after construction; deterministic for a seed; main thread.
 public sealed class CommandBrain : ICreatureBrain
 {
@@ -44,7 +45,7 @@ public sealed class CommandBrain : ICreatureBrain
     const string kNoPerchUp = "no perch in reach: taking off, then landing on open ground", kNoPerchDown = "no perch in reach: touching down on open ground";
     const string kGaveUpLanding = "could not reach the perch: landing on open ground", kGaveUpDown = "could not reach the perch: touching down on open ground";
     const string kGaveUpLanded = "could not reach the perch: on open ground";
-    const string kCannotFly = "cannot fly: standing";
+    const string kCannotFly = "cannot fly: standing", kLooking = "looking for a perch", kHopping = "hopping down";
 
     const float kWallMargin = 1.4f;    // waypoints and the circle keep this many turn radii inside the safe radius (FlightBrain's)
     const float kWaypointMin = 4f, kWaypointMax = 8f;   // s at scale 1 (x sqrt s) on one waypoint at most
@@ -57,7 +58,9 @@ public sealed class CommandBrain : ICreatureBrain
     const float kArriveMin = 0.4f;
     const int kPerchFailsMax = 2;      // perch attempts that time out before it settles for open ground
     const float kPerchTimeout = 30f;   // s at scale 1 (x sqrt s): one perch attempt (line-up and final) at most
+    const float kHopHeight = 0.75f;    // a perch higher than this x the longest walking leg is hopped down from, not walked off
     const int kMaxCandidates = 64;     // perch candidates kept per scan
+    const int kScanProbes = 40;        // probes down a frame the perch scan makes at most
     const int kApproachTries = 8;      // the nearest perch surfaces given the full approach check
     const float kLineUpDeg = 20f;      // the landing is asked for with the spot this well ahead ...
     const float kFinalRadii = 1.2f;    // ... and more than flareDistance + this many turn radii away (the autopilot's final: 25 deg, 1)
@@ -88,14 +91,30 @@ public sealed class CommandBrain : ICreatureBrain
     // the perch timed out (the landing autopilot did not get it down there)
     public bool NoPerch { get; private set; }
     public bool PerchGaveUp { get; private set; }
+    // Perch landings that touched down off the perch since the last command (each a failed attempt; tests, debug)
+    public int PerchMisses { get; private set; }
+    // On the ground on the perch it was landed on (checked under the girdle at the touchdown and every ground tick after;
+    // cleared by a take-off or by walking off it)
+    public bool OnPerch { get; private set; }
+    // WalkTo reached its point (Current has turned to Stand); cleared by the next command
+    public bool Arrived => arrived;
 
     // RED hook (tests): ignore the transitions - walk commands return the walk's target even while airborne
     internal bool ignoreTransitions;
+    // test hooks: a perch landing asked for this far (m) short of the perch along its final (a touchdown beside the rock);
+    // a perch that is never lined up on (unreachable: every attempt times out)
+    internal float perchMissBy;
+    internal bool perchUnreachable;
+    internal int perchFailsMax = kPerchFailsMax;
+    internal bool keepStaleOnPerch;
+    internal bool noHopDown;   // RED hook: a walk command on a high perch walks off the edge   // RED hook: OnPerch not re-checked on the ground (stale after walking off)   // (tests: more attempts)
 
     Landing landing;         // what this brain's own landing in progress is for
     float landingLeft;       // its timeout
     int perchFails;
-    bool perchScanned;       // Perch from the ground: the scan for one was made
+    bool scanBegun, scanDone;   // Perch: the scan for perches (once per command, spread over frames)
+    int scanCells, scanNext, scanStart, scanStride, scanHalf, candCount;
+    float scanReach, scanTop, scanStep;
     bool arrived;            // WalkTo reached its point (now Stand)
     float faceLeft = -1f;    // taking off: time left turning toward a clear launch run (< 0: not started)
     Vector3 waypoint;
@@ -104,6 +123,10 @@ public sealed class CommandBrain : ICreatureBrain
     bool circlePlanned;
     bool approachPlanned, approachStaged;   // Perch: a perch chosen; flying out to its staging point
     Vector3 approachPoint, stagePoint;
+    bool looking;
+    bool hopping;            // hopping down from a high perch to walk (take-off, landing on open ground)
+    float perchTopH;         // the perch it is on: its top's height over the area's ground
+    float hindLeg = -1f;     // the longest walking (non-wing) leg, m (this individual's)            // Perch in the air: the scan is still running this frame
     int approachSource;
 
     public CommandBrain(EnclosureArea area, int seed)
@@ -118,7 +141,8 @@ public sealed class CommandBrain : ICreatureBrain
     public void Command(CreatureCommand c, Vector3 point = default)
     {
         Current = c; Point = point;
-        perchFails = 0; perchScanned = false; NoPerch = false; PerchGaveUp = false; arrived = false;
+        hopping = false;
+        perchFails = 0; PerchMisses = 0; scanBegun = false; scanDone = false; candCount = 0; NoPerch = false; PerchGaveUp = false; arrived = false;
         faceLeft = -1f; circlePlanned = false; waypointLeft = 0f; approachPlanned = false;
     }
 
@@ -142,7 +166,28 @@ public sealed class CommandBrain : ICreatureBrain
             Doing = Current == CreatureCommand.Stand || Current == CreatureCommand.Land ? (arrived ? kArrived : kStanding) : kCannotFly;
             return sim.Joints[0];
         }
-        if (fl.Mode == FlightMode.Ground && !fl.Crouching) { landing = Landing.None; approachPlanned = false; }   // whatever landing it was is over
+        if (fl.Mode == FlightMode.Ground && !fl.Crouching)
+        {
+            // whatever landing it was is over; one meant for the perch that ended off it (beside the rock) is a failed
+            // attempt: it takes off for another, up to kPerchFailsMax, then stays on the open ground it is on
+            // (the flight's Perched only says the landing was on a perch source; whether it came down on the perch's top or
+            // beside the rock is a probe down under the girdle)
+            if (landing == Landing.Perch)
+            {
+                OnPerch = OnPerchSurface(sim, fl);
+                perchTopH = Vector3.Dot(approachPoint - area.center, area.up);   // the perch's height over the area's ground
+            }
+            else if (landing == Landing.Open) OnPerch = false;
+            // walked off the perch (a walk command, the Wander, a WalkTo): no longer on it - one probe a tick while it is
+            else if (OnPerch && !keepStaleOnPerch) OnPerch = OnPerchSurface(sim, fl);
+            hopping = false;   // (a hop down ends on the ground)
+            if (landing == Landing.Perch && !OnPerch)
+            {
+                PerchMisses++;
+                if (++perchFails >= perchFailsMax) { NoPerch = true; PerchGaveUp = true; }
+            }
+            landing = Landing.None; approachPlanned = false;
+        }
         switch (Current)
         {
             case CreatureCommand.Fly:
@@ -162,17 +207,27 @@ public sealed class CommandBrain : ICreatureBrain
         switch (fl.Mode)
         {
             case FlightMode.Ground:
-                if (fl.Crouching) { Doing = Pick(kUpThenStand, kUpThenWalk, kUpThenWalkTo); return head; } // the vault comes: land after it
+                if (fl.Crouching) { Doing = hopping ? kHopping : Pick(kUpThenStand, kUpThenWalk, kUpThenWalkTo); return head; } // the vault comes: land after it
+                // on a perch higher than its hind legs are long, a walk does not step off the edge (the walking body crept
+                // and sank into a 2 m rock): it hops down - takes off and lands on open ground (near WalkTo's point), then
+                // walks. Standing, it stays up there.
+                // (at once: no turning on the perch toward a clear launch run - it cannot walk up there)
+                if (OnPerch && Current != CreatureCommand.Stand && !noHopDown && perchTopH > kHopHeight * HindLegLength(sim))
+                {
+                    if (fl.Launch(Vector3.Dot(area.center, area.up) + 0.5f * Roof(sim))) { hopping = true; OnPerch = false; faceLeft = -1f; waypointLeft = 0f; }
+                    Doing = kHopping;
+                    return head;
+                }
                 return Walk(sim, fl, dt);
             case FlightMode.Launch:
-                Doing = Pick(kUpThenStand, kUpThenWalk, kUpThenWalkTo);
+                Doing = hopping ? kHopping : Pick(kUpThenStand, kUpThenWalk, kUpThenWalkTo);
                 return head;
             case FlightMode.Touchdown:
-                Doing = Pick(kDownToStand, kDownToWalk, kDownToWalkTo);
+                Doing = hopping ? kHopping : Pick(kDownToStand, kDownToWalk, kDownToWalkTo);
                 return head;
             default:
                 // airborne: land on open ground first (near the point for WalkTo)
-                Doing = Pick(kLandToStand, kLandToWalk, kLandToWalkTo);
+                Doing = hopping ? kHopping : Pick(kLandToStand, kLandToWalk, kLandToWalkTo);
                 KeepLanding(sim, fl, dt, Landing.Open);
                 return head;
         }
@@ -201,7 +256,7 @@ public sealed class CommandBrain : ICreatureBrain
             }
             default:
                 sim.Halt = true;
-                Doing = arrived ? kArrived : fl != null && fl.Perched ? kPerchedStanding : kStanding;
+                Doing = arrived ? kArrived : OnPerch ? kPerchedStanding : kStanding;
                 return head;
         }
     }
@@ -255,7 +310,7 @@ public sealed class CommandBrain : ICreatureBrain
             return head + mid * (2f * sim.SizeScale);
         }
         float alt = Vector3.Dot(area.center, area.up) + Lerp(0.4f, 0.8f, Rand()) * Roof(sim);
-        if (fl.Launch(alt)) { Doing = doing; faceLeft = -1f; waypointLeft = 0f; }
+        if (fl.Launch(alt)) { Doing = doing; faceLeft = -1f; waypointLeft = 0f; OnPerch = false; }
         return head;
     }
 
@@ -355,14 +410,16 @@ public sealed class CommandBrain : ICreatureBrain
         {
             case FlightMode.Ground:
                 if (fl.Crouching) { Doing = perch ? (NoPerch ? kNoPerchUp : kUpToPerch) : kUpThenLand; return head; }
-                if (perch && !fl.Perched && !NoPerch)
+                if (perch && !OnPerch && !NoPerch)
                 {
-                    // on the ground, not on a perch: is there one to fly to? (scanned once per command)
-                    if (!perchScanned) { perchScanned = true; NoPerch = ScanPerches(sim, fl) == 0; }
+                    // on the ground, not on a perch: is there one to fly to? (scanned once per command, over a few frames)
+                    if (!scanBegun) { scanBegun = true; BeginScan(sim); }
+                    if (!StepScan(sim, fl)) { sim.Halt = true; Doing = kLooking; return head; }
+                    if (candCount == 0) NoPerch = true;
                     if (!NoPerch) return TakeOff(sim, fl, dt, kUpToPerch);
                 }
                 sim.Halt = true;
-                Doing = fl.Perched ? kPerchedStanding : perch ? (PerchGaveUp ? kGaveUpLanded : kNoPerchLanded) : kLanded;
+                Doing = OnPerch ? kPerchedStanding : perch ? (PerchGaveUp ? kGaveUpLanded : kNoPerchLanded) : kLanded;
                 return head;
             case FlightMode.Launch:
                 Doing = perch ? (NoPerch ? kNoPerchUp : kUpToPerch) : kUpThenLand;
@@ -372,7 +429,7 @@ public sealed class CommandBrain : ICreatureBrain
                 return head;
             default:
                 KeepLanding(sim, fl, dt, perch && !NoPerch ? Landing.Perch : Landing.Open);
-                Doing = perch ? (!NoPerch ? kToPerch : PerchGaveUp ? kGaveUpLanding : kNoPerchLanding) : kLanding;
+                Doing = perch ? (looking ? kLooking : !NoPerch ? kToPerch : PerchGaveUp ? kGaveUpLanding : kNoPerchLanding) : kLanding;
                 return head;
         }
     }
@@ -391,6 +448,7 @@ public sealed class CommandBrain : ICreatureBrain
     void KeepLanding(CreatureSim sim, CreatureFlight fl, float dt, Landing want)
     {
         landingLeft -= dt;
+        looking = false;
         if (fl.Landing)
         {
             if (landing == want && (fl.OnFinal || fl.Mode == FlightMode.Flare))
@@ -406,9 +464,14 @@ public sealed class CommandBrain : ICreatureBrain
             {
                 // this perch took too long: another (kPerchFailsMax tries, then open ground)
                 approachPlanned = false;
-                if (++perchFails >= kPerchFailsMax) { NoPerch = true; PerchGaveUp = true; }
+                if (++perchFails >= perchFailsMax) { NoPerch = true; PerchGaveUp = true; }
             }
-            if (!NoPerch && !approachPlanned && !PlanPerch(sim, fl)) NoPerch = true;
+            if (!NoPerch && !approachPlanned)
+            {
+                if (!scanBegun) { scanBegun = true; BeginScan(sim); }
+                if (!StepScan(sim, fl)) { Loiter(sim, fl); looking = true; return; }   // still looking (a few frames)
+                if (!PlanPerch(sim, fl)) NoPerch = true;
+            }
             if (!NoPerch) { LineUp(sim, fl); return; }
         }
         OpenAhead(sim, fl);
@@ -453,21 +516,29 @@ public sealed class CommandBrain : ICreatureBrain
             landingLeft = kLandingTimeout * T;
             return;
         }
-        // none ahead: for the middle, at the height it has (a little over the approach height at least)
-        float alt = Mathf.Max(m.Altitude, Vector3.Dot(area.center, up) + kApproachH * s);
+        Loiter(sim, fl);   // none ahead: for the middle until there is
+    }
+
+    // Flying on for the middle at the height it has (a little over the approach height at least), the wall turn last.
+    void Loiter(CreatureSim sim, CreatureFlight fl)
+    {
+        FlightModel m = fl.Model;
+        Vector3 up = area.up;
+        float alt = Mathf.Max(m.Altitude, Vector3.Dot(area.center, up) + kApproachH * sim.SizeScale);
         float turn = fl.TurnToward(area.center);
         Vector3? toward = area.center;
         if (fl.WallTurn(out float wall)) { turn = wall; toward = null; }
-        fl.SetGoals(Mathf.Min(alt, Ceiling(sim)), sim.Species.flight.cruiseSpeed * T, turn, toward);
+        fl.SetGoals(Mathf.Min(alt, Ceiling(sim)), sim.Species.flight.cruiseSpeed * sim.TimeScale, turn, toward);
     }
 
-    // The perch: the top of the nearest reachable perch surface (ScanPerches), aimed at its middle - the mean of the
+    // The perch: the top of the nearest reachable perch surface (the scan, BeginScan / StepScan), aimed at its middle - the mean of the
     // scan's points on that surface, when a probe there confirms it (a landing aimed at the edge nearest the flyer
     // overshot or fell short of the top); with avoidance on, one a clear final into exists (FlightBrain's check). False:
     // none.
     bool PlanPerch(CreatureSim sim, CreatureFlight fl)
     {
-        int n = ScanPerches(sim, fl);
+        int n = candCount;
+        for (int i = 0; i < n; i++) candTried[i] = false;
         float s = sim.SizeScale;
         Vector3 at = fl.Model.Position;
         for (int k = 0; k < kApproachTries; k++)
@@ -508,13 +579,14 @@ public sealed class CommandBrain : ICreatureBrain
         float run = sim.Species.flight.flareDistance * s + kFinalRadii * fl.TurnRadius;
         Vector3 to = Vector3.ProjectOnPlane(approachPoint - m.Position, up);
         float dist = to.magnitude;
-        float yaw = dist > 1e-3f ? Mathf.Abs(Vector3.SignedAngle(m.Forward, to / dist, up)) : 180f;
-        if (yaw < kLineUpDeg && dist > run)
+        float yaw = dist > 1e-3f ? Vector3.Angle(m.Forward, to / dist) : 180f;
+        if (yaw < kLineUpDeg && dist > run && !perchUnreachable)
         {
-            fl.Land(approachPoint, approachSource);
-            // the perch is no obstacle on its own final: the avoidance ignores the tube along the line in (as FlightBrain
-            // does for a branch; Land without an axis leaves the rock's top an obstacle and the final was turned off it)
-            fl.Avoidance.SetPerch(approachPoint, to / dist);
+            // (no axis: an axis makes it a planned final, which Vesper's sagging altitude hold never turned in on; the
+            // perch keeps its avoidance tube along this approach heading with FlightSpec.perchTubeOnApproach)
+            Vector3 at = approachPoint;
+            if (perchMissBy > 0f) at = GroundPoint(fl, approachPoint - to / dist * perchMissBy, s);
+            fl.Land(at, approachSource);
             landing = Landing.Perch;
             return;
         }
@@ -557,35 +629,84 @@ public sealed class CommandBrain : ICreatureBrain
 
     // Perch candidates: probes down from the roof over the area - each obstacle's centre, then a grid over the safe disc
     // less a cruise turn radius (the final needs room) - keeping up-facing non-terrain tops with room for the body along
-    // them (Room, FlightBrain's). The count (into cand*).
-    int ScanPerches(CreatureSim sim, CreatureFlight fl)
+    // them (Room, FlightBrain's), into cand* (at most kMaxCandidates). The scan is spread over frames (kScanProbes probes
+    // down a frame at most: on real colliders each is a raycast) and walks the grid's cells in a scrambled order (a
+    // random start, a stride coprime with the count), so a full candidate list is not all from one corner.
+    // BeginScan, then StepScan each frame until it returns true.
+    void BeginScan(CreatureSim sim)
     {
         float s = sim.SizeScale, R = CruiseTurnRadius(sim);
-        float reach = Mathf.Max(0f, area.safeRadius - R);
-        float top = Vector3.Dot(area.center, area.up) + Roof(sim);
+        scanReach = Mathf.Max(0f, area.safeRadius - R);
+        scanTop = Vector3.Dot(area.center, area.up) + Roof(sim);
+        scanStep = Mathf.Max(0.5f * s, scanReach / 12f);
+        scanHalf = Mathf.CeilToInt(scanReach / scanStep);
+        int side = 2 * scanHalf + 1;
+        scanCells = area.ObstacleCount + side * side;
+        scanStart = (int)(Rand() * scanCells);
+        scanStride = 1;
+        for (int k = 0; k < kStrides.Length; k++)
+            if (Gcd(kStrides[k] % scanCells, scanCells) == 1) { scanStride = kStrides[k] % scanCells; break; }
+        scanNext = 0; candCount = 0; scanDone = false;
+    }
+    static readonly int[] kStrides = { 7919, 104729, 1299709, 15485863 };
+    static int Gcd(int a, int b) { while (b != 0) { int t = a % b; a = b; b = t; } return a; }
+
+    bool StepScan(CreatureSim sim, CreatureFlight fl)
+    {
+        if (scanDone) return true;
         Vector3 t0 = Vector3.Cross(area.up, Mathf.Abs(area.up.y) < 0.99f ? Vector3.up : Vector3.right).normalized;
         Vector3 t1 = Vector3.Cross(area.up, t0);
-        int n = 0;
-        for (int o = 0; o < area.ObstacleCount && n < kMaxCandidates; o++)
-            Consider(sim, fl, area.obstacleCenters[o], top, reach, ref n);
-        float step = Mathf.Max(0.5f * s, reach / 12f);
-        int half = Mathf.CeilToInt(reach / step);
-        for (int i = -half; i <= half && n < kMaxCandidates; i++)
-            for (int j = -half; j <= half && n < kMaxCandidates; j++)
-                Consider(sim, fl, area.center + t0 * (i * step) + t1 * (j * step), top, reach, ref n);
-        for (int i = 0; i < n; i++) candTried[i] = false;
-        return n;
+        int side = 2 * scanHalf + 1, budget = kScanProbes;
+        while (budget > 0 && scanNext < scanCells && candCount < kMaxCandidates)
+        {
+            int c = (int)((scanStart + (long)scanNext * scanStride) % scanCells);
+            scanNext++;
+            Vector3 q;
+            if (c < area.ObstacleCount) q = area.obstacleCenters[c];
+            else
+            {
+                int g = c - area.ObstacleCount, i = g / side - scanHalf, j = g % side - scanHalf;
+                q = area.center + t0 * (i * scanStep) + t1 * (j * scanStep);
+            }
+            budget -= Consider(sim, fl, q, scanTop, scanReach, ref candCount);
+        }
+        scanDone = scanNext >= scanCells || candCount >= kMaxCandidates;
+        return scanDone;
     }
 
-    void Consider(CreatureSim sim, CreatureFlight fl, Vector3 q, float top, float reach, ref int n)
+    // One cell: the probes down it cost (0 outside the reach; 1, or 5 with Room's).
+    int Consider(CreatureSim sim, CreatureFlight fl, Vector3 q, float top, float reach, ref int n)
     {
-        if (area.PlanarDistance(q) > reach) return;
+        if (area.PlanarDistance(q) > reach) return 0;
         float s = sim.SizeScale;
         Vector3 from = q + area.up * (top - Vector3.Dot(q, area.up));
-        if (!fl.ProbeDown(from, out Vector3 hp, out Vector3 hn, out int src)) return;
-        if (src == 0 || Vector3.Dot(hn, area.up) < 0.7f) return;
-        if (!Room(fl, hp, s, out _)) return;
-        candPoint[n] = hp; candSource[n] = src; n++;
+        if (!fl.ProbeDown(from, out Vector3 hp, out Vector3 hn, out int src)) return 1;
+        if (src == 0 || Vector3.Dot(hn, area.up) < 0.7f) return 1;
+        if (Room(fl, hp, s, out _)) { candPoint[n] = hp; candSource[n] = src; n++; }
+        return 5;
+    }
+
+    // The longest walking leg (not a wing arm), m at the individual's size (a perch higher than kHopHeight x this is hopped
+    // down from).
+    float HindLegLength(CreatureSim sim)
+    {
+        if (hindLeg >= 0f) return hindLeg;
+        CreatureSpecies sp = sim.Species;
+        float best = 0f;
+        for (int l = 0; l < sp.legs.Length; l++)
+        {
+            bool wing = false;
+            for (int w = 0; w < sp.WingCount && !wing; w++) wing = sp.wings[w].leg == l;
+            if (!wing) best = Mathf.Max(best, sp.legs[l].TotalLength);
+        }
+        return hindLeg = best * sim.SizeScale;
+    }
+
+    // Down on the perch: the first surface under the girdle is the perch's (its source).
+    bool OnPerchSurface(CreatureSim sim, CreatureFlight fl)
+    {
+        Vector3 g = sim.Joints[fl.Girdle];
+        return fl.ProbeDown(g + area.up * (0.5f * sim.SizeScale), out _, out _, out int src) && src == approachSource && src != 0;
     }
 
     // Room for the body on a found perch: along one of two directions the surface continues at about the same height on

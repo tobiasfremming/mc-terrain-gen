@@ -14,7 +14,10 @@ namespace TerrainGen.Tests
     // ground) and the kit's Gait check is clean; from the ground under its own FlightBrain it launches, beats, glides,
     // flares, touches down and wing-walks again within 120 s x sqrt s; in steady flight the girdle bobs >= 6 % of the body
     // length with each beat, the head <= 1/3 of it; folded on the ground, every finger tip stays on its own side of the
-    // spine, the two wings' tips >= the chest's half width apart. The REDs: a supple head; wing arms carried folded and a
+    // spine, the two wings' tips >= the chest's half width apart. No pops (task D): in the air the head's largest step in a
+    // tick <= 3 x the girdle's + 0.02 L (headStabiliseBounded), through a rock perch or a landing neither the girdle nor the
+    // head - nor any joint (drapeOwnHeading) - moves more than 0.05 L in a tick (touchdownFromHover), perched on a rock
+    // it stays on top (perchFrontLevel), each with a RED (flag off). The REDs: a supple head; wing arms carried folded and a
     // wrist planted off its thumb (the walk); folded fingers that cross over the back. The Apex's flat-bob RED covers the
     // bob thresholds (the same), CreatureApexTests the fly-and-land problem.
     public class CreatureVesperTests
@@ -328,6 +331,187 @@ namespace TerrainGen.Tests
         {
             string e = BobProblem(Vesper(), out _);
             Assert.IsNull(e, e);
+        }
+
+        // ------------------------------------------------------------ no pops (task D)
+
+        // In the air under its own FlightBrain (seeds 1 and 2, 120 s x sqrt s each; ticks that start and end in Air): the
+        // head's largest step in one tick <= 3 x the girdle's largest + 0.02 L. The neck swings smoothly with the beat and the
+        // turns (measured 0.48 m against the girdle's 0.13 m); a pop is the neck flipping. RED (FlightSpec.headStabiliseBounded
+        // off): the long head stabiliser trailed the turns by metres (the target 14 m behind the 4.4 m neck) and the
+        // containment's cut of the outward speed swung the trunk up to 62 deg in a tick - the head jumped 7.45 m.
+        const float kHeadJumpGirdles = 3f, kHeadJumpSlack = 0.02f;
+        internal static string HeadJumpProblem(CreatureSpecies sp, int seed, float seconds = 120f)
+        {
+            EnclosureArea area = KitChecks.LabArea(sp);
+            var sim = new CreatureSim(sp, new FlatGroundProbe(), _ => Vector3.up, area.center, Vector3.forward, sp.scale, seed) { Bounds = area };
+            var brain = new FlightBrain(area, seed);
+            float L = All<FlowBody>(sp)[0].BodyLength * sp.scale;
+            int n = Mathf.CeilToInt(seconds * Mathf.Sqrt(sp.scale) / kDt), g = sim.Flight.Girdle, airTicks = 0;
+            float head = 0f, girdle = 0f, headAt = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                Vector3 h0 = sim.Joints[0], g0 = sim.Joints[g];
+                FlightMode m0 = sim.Mode;
+                sim.Tick(kDt, brain.Target(sim, kDt));
+                if (m0 != FlightMode.Air || sim.Mode != FlightMode.Air) continue;
+                airTicks++;
+                float jh = (sim.Joints[0] - h0).magnitude;
+                if (jh > head) { head = jh; headAt = sim.Time; }
+                girdle = Mathf.Max(girdle, (sim.Joints[g] - g0).magnitude);
+            }
+            float bound = kHeadJumpGirdles * girdle + kHeadJumpSlack * L;
+            TestContext.Out.WriteLine($"seed {seed}: {airTicks * kDt:F0} s in the air; largest step in a tick: head {head:F3} m (t = {headAt:F2} s), girdle {girdle:F3} m; bound {bound:F3} m");
+            if (airTicks < 60f * Mathf.Sqrt(sp.scale) * 10f) return $"seed {seed}: only {airTicks * kDt:F1} s in the air";
+            return head > bound ? $"seed {seed}: the head jumped {head:F3} m in one tick at t = {headAt:F2} s (> {kHeadJumpGirdles} x the girdle's {girdle:F3} m + {kHeadJumpSlack} L = {bound:F3} m)" : null;
+        }
+
+        [Test] public void Vesper_Flight_NoHeadJump()
+        {
+            CreatureSpecies sp = Vesper();
+            Assert.IsTrue(sp.flight.headStabiliseBounded, "Vesper.asset: headStabiliseBounded");
+            string e = HeadJumpProblem(sp, 1) ?? HeadJumpProblem(sp, 2);
+            Assert.IsNull(e, e);
+        }
+
+        [Test] public void Red_Vesper_HeadJump()
+        {
+            string e = HeadJumpProblem(Vesper(null, f => f.headStabiliseBounded = false), 1);
+            TestContext.Out.WriteLine(e);
+            Assert.IsNotNull(e);
+        }
+
+        // Touchdowns under the command brain (CreatureCommandBrainTests.Rig; a 4.8 m rock): onto the rock from the air and
+        // from the ground (it perches; air seeds 1 and 3), and onto open ground from the air (seed 3). From the tick it turns
+        // Touchdown until kTouchAfter s x sqrt s after it is walking (standing) again, neither the girdle nor the head - nor
+        // any joint of the chain (task E: the draped tail) - moves more than 0.05 L in one tick (the command brain's snap
+        // rule). RED (FlightSpec.touchdownFromHover off): a touchdown begun on a tick's last sub-step showed the walking
+        // restart's body for one tick (laid along the rock with the girdle on its point; at the stance) and the eased blend
+        // carried it back the next - the girdle jumped 2.93 m (from the air) and 1.61 m (from the ground) onto the rock, the
+        // head 2.45 m. RED (FlightSpec.drapeOwnHeading off): the tail hanging over the rock's edge was laid in the vertical
+        // plane of the one segment before the edge, taken afresh every sub-step; when the edge moved to another joint or that
+        // segment's heading flipped, the whole hanging run swung about the edge (with the body also sinking into the rock,
+        // Vesper_Perched_StaysOnTheRock, the tail tip whipped 5.7-7.3 m in a tick).
+        const float kTouchJump = 0.05f, kTouchAfter = 3f;
+        internal static string TouchdownJumpProblem(CreatureSpecies sp, bool rock, bool fromAir, int seed)
+        {
+            var r = new CreatureCommandBrainTests.Rig(sp, rock ? CreatureCommandBrainTests.Rock(sp.scale) : null, seed);
+            string name = $"{(rock ? "perch" : "land")} from the {(fromAir ? "air" : "ground")} (seed {seed})";
+            r.Run(0.5f);
+            if (fromAir) { string a = r.Airborne(); if (a != null) return $"{name}: {a}"; }
+            r.brain.Command(rock ? CreatureCommand.Perch : CreatureCommand.Land);
+            int g = r.sim.Flight.Girdle, nj = sp.JointCount, n = Mathf.CeilToInt(120f * r.T / kDt), after = -1, touchdowns = 0, worstJoint = -1;
+            var prev = new Vector3[nj];
+            float head = 0f, girdle = 0f, joint = 0f, jointAt = 0f;
+            for (int i = 0; i < n && after != 0; i++)
+            {
+                System.Array.Copy(r.sim.Joints, prev, nj);
+                FlightMode m0 = r.sim.Mode;
+                r.Tick();
+                if (r.sim.Mode == FlightMode.Touchdown && m0 != FlightMode.Touchdown) { touchdowns++; after = -1; }
+                bool watching = r.sim.Mode == FlightMode.Touchdown || after > 0;
+                if (watching)
+                {
+                    head = Mathf.Max(head, (r.sim.Joints[0] - prev[0]).magnitude);
+                    girdle = Mathf.Max(girdle, (r.sim.Joints[g] - prev[g]).magnitude);
+                    for (int j = 0; j < nj; j++)
+                    {
+                        float d = (r.sim.Joints[j] - prev[j]).magnitude;
+                        if (d > joint) { joint = d; worstJoint = j; jointAt = r.sim.Time; }
+                    }
+                }
+                if (m0 == FlightMode.Touchdown && r.sim.Mode == FlightMode.Ground) after = Mathf.CeilToInt(kTouchAfter * r.T / kDt);
+                else if (after > 0 && r.sim.Mode == FlightMode.Ground && !r.sim.Flight.Landing) after--;
+            }
+            float bound = kTouchJump * r.L;
+            TestContext.Out.WriteLine($"{name}: {touchdowns} touchdown(s), perched {r.sim.Flight.Perched}; largest step in a tick: girdle {girdle:F3} m, head {head:F3} m, any joint {joint:F3} m (joint {worstJoint}, t = {jointAt:F2} s); bound {bound:F3} m");
+            if (touchdowns == 0) return $"{name}: never touched down ({r.State})";
+            if (rock && !r.sim.Flight.Perched) return $"{name}: not perched on the rock ({r.State})";
+            if (girdle > bound) return $"{name}: the girdle jumped {girdle:F3} m in one tick of the touchdown (> {kTouchJump} L = {bound:F3} m)";
+            if (head > bound) return $"{name}: the head jumped {head:F3} m in one tick of the touchdown (> {kTouchJump} L = {bound:F3} m)";
+            if (joint > bound) return $"{name}: joint {worstJoint} jumped {joint:F3} m in one tick at t = {jointAt:F2} s (> {kTouchJump} L = {bound:F3} m)";
+            return null;
+        }
+
+        [Test] public void Vesper_Touchdown_NoGirdleJump()
+        {
+            CreatureSpecies sp = Vesper();
+            Assert.IsTrue(sp.flight.touchdownFromHover, "Vesper.asset: touchdownFromHover");
+            Assert.IsTrue(sp.flight.drapeOwnHeading, "Vesper.asset: drapeOwnHeading");
+            string e = TouchdownJumpProblem(sp, true, true, 1) ?? TouchdownJumpProblem(sp, true, false, 1) ?? TouchdownJumpProblem(sp, true, true, 3)
+                ?? TouchdownJumpProblem(sp, false, true, 3);
+            Assert.IsNull(e, e);
+        }
+
+        [Test] public void Red_Vesper_TouchdownJump()
+        {
+            CreatureSpecies sp = Vesper(null, f => f.touchdownFromHover = false);
+            string air = TouchdownJumpProblem(sp, true, true, 1), ground = TouchdownJumpProblem(sp, true, false, 1);
+            TestContext.Out.WriteLine(air); TestContext.Out.WriteLine(ground);
+            Assert.IsNotNull(air);
+            Assert.IsNotNull(ground);
+        }
+
+        [Test] public void Red_Vesper_TailWhip()
+        {
+            string e = TouchdownJumpProblem(Vesper(null, f => f.drapeOwnHeading = false), true, true, 3);
+            TestContext.Out.WriteLine("RED: " + e);
+            Assert.IsNotNull(e);
+            StringAssert.Contains("joint", e);
+        }
+
+        // ------------------------------------------------------------ perched on a rock (task E)
+
+        // Perched on the command brain's rock (1.2 x 0.5 m at scale 1: 2 m high at scale 4; the 12.4 m body's head and tail
+        // reach past its edges), standing kPerchStand s x sqrt s from the end of the touchdown: every tick the girdle stays
+        // at least the rock's top + (1 - kPerchSink) x its clearance high, and no joint of the chain is inside the rock
+        // (inside its footprint and below its top). RED (FlightSpec.perchFrontLevel off): the head held out over the edge
+        // was grounded on the floor below, the neck dragged down after it took the floor too, and within ~1 s the whole
+        // body sank into the rock (the girdle from 4.07 to 1.72 m).
+        const float kPerchStand = 10f, kPerchSink = 0.25f;
+        internal static string PerchedProblem(CreatureSpecies sp, int seed)
+        {
+            WingedTestSurfaces rock = CreatureCommandBrainTests.Rock(sp.scale);
+            WingedTestSurfaces.Box box = rock.Boxes[0];
+            var r = new CreatureCommandBrainTests.Rig(sp, rock, seed);
+            r.Run(0.5f);
+            r.brain.Command(CreatureCommand.Perch);
+            if (r.Until(() => r.sim.Mode == FlightMode.Ground && r.sim.Flight.Perched, 120f) < 0f) return $"seed {seed}: never perched ({r.State})";
+            int g = r.sim.Flight.Girdle, n = Mathf.CeilToInt(kPerchStand * r.T / kDt);
+            float clear = sp.joints[g].clearance * sp.scale, floor = box.max.y + clear * (1f - kPerchSink), lowest = float.MaxValue, deepest = 0f;
+            string first = null;
+            for (int i = 0; i < n; i++)
+            {
+                r.Tick();
+                if (r.sim.Mode != FlightMode.Ground) return $"seed {seed}: left the perch at t = {r.sim.Time:F1} s ({r.State})";
+                float gy = r.sim.Joints[g].y;
+                lowest = Mathf.Min(lowest, gy);
+                if (gy < floor && first == null) first = $"seed {seed}, t = {r.sim.Time:F1} s: the girdle sank to {gy:F2} m (< the rock's top {box.max.y:F2} m + {1f - kPerchSink} x its clearance {clear:F2} m)";
+                for (int j = 0; j < sp.JointCount; j++)
+                {
+                    Vector3 p = r.sim.Joints[j];
+                    if (p.x <= box.min.x || p.x >= box.max.x || p.z <= box.min.z || p.z >= box.max.z || p.y >= box.max.y) continue;
+                    deepest = Mathf.Max(deepest, box.max.y - p.y);
+                    if (first == null) first = $"seed {seed}, t = {r.sim.Time:F1} s: joint {j} is inside the rock ({box.max.y - p.y:F2} m below its top)";
+                }
+            }
+            TestContext.Out.WriteLine($"seed {seed}: perched {kPerchStand} s x sqrt s; lowest girdle {lowest:F2} m (limit {floor:F2} m), deepest joint inside the rock {deepest:F2} m; {r.State}");
+            return first;
+        }
+
+        [Test] public void Vesper_Perched_StaysOnTheRock()
+        {
+            CreatureSpecies sp = Vesper();
+            Assert.IsTrue(sp.flight.perchFrontLevel, "Vesper.asset: perchFrontLevel");
+            string e = PerchedProblem(sp, 1) ?? PerchedProblem(sp, 4);
+            Assert.IsNull(e, e);
+        }
+
+        [Test] public void Red_Vesper_PerchedSinks()
+        {
+            string e = PerchedProblem(Vesper(null, f => f.perchFrontLevel = false), 1);
+            TestContext.Out.WriteLine("RED: " + e);
+            Assert.IsNotNull(e);
         }
     }
 }

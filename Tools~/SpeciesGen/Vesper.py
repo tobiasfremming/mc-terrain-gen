@@ -199,8 +199,28 @@ sp.add_module('Fly', {
         # If the head lags in turns, the cheaper lever is a faster beat (raise strokeRateMin): the low-pass then filters
         # a shorter bob period, and headStabilise can come back down toward 0.6.
         'headStabilise': 1.2,
+        # the stabiliser held near the girdle (FlightSpec.headStabiliseBounded): only the bob is filtered over
+        # headStabilise, the turns over 0.15 s, the trunk's lead direction too. Off, the long filter trailed every turn
+        # by metres (the target 14 m behind a 4.4 m neck) and the containment's cut of the outward speed swung the trunk
+        # up to 62 deg in a tick: the bend-limited neck flipped and the head jumped up to 7.45 m in one tick
+        # (CreatureVesperTests.Vesper_Flight_NoHeadJump).
+        'headStabiliseBounded': 1,
         'airNeckStance': 0.3,
         'launchHeadOnNeck': 1, 'touchdownAtStance': 1, 'launchTailBySegment': 1,
+        # a touchdown's first frame is the hovering body (FlightSpec.touchdownFromHover): begun on a tick's last sub-step
+        # the walking restart's body was shown for a tick - on a rock perch the girdle jumped 1.6-2.9 m there and back,
+        # on open ground the head 2.1 m (CreatureVesperTests.Vesper_Touchdown_NoGirdleJump)
+        'touchdownFromHover': 1,
+        # a rock perch (CommandBrain's Land without an axis) keeps the avoidance's perch tube along its approach heading
+        # (FlightSpec.perchTubeOnApproach); off, the tube was cleared every sub-step and the rock could turn the final away
+        'perchTubeOnApproach': 1,
+        # perched on a rock (task E): the tail hanging over an edge pitches down in each segment's own vertical plane
+        # (FlightSpec.drapeOwnHeading; off, the whole hanging run was laid in the plane of the one segment before the
+        # edge and swung about it when the edge moved: the tail tip whipped 5.7-7.3 m in a tick), and standing, the head
+        # and neck held out past the edge keep the rock's ground (FlightSpec.perchFrontLevel; off, the head was grounded
+        # on the floor, the neck followed and the body sank into the rock: the girdle from 4.07 to 1.72 m)
+        # (CreatureVesperTests.Vesper_Touchdown_NoGirdleJump, Vesper_Perched_StaysOnTheRock)
+        'drapeOwnHeading': 1, 'perchFrontLevel': 1,
         'avoidLookahead': 2.4, 'avoidMargin': 0.35, 'perchGrip': 0, 'perchMinRadius': 0.06, 'pursuitGain': 0,
         'legTuckOut': 0, 'legTuckDown': 0, 'legTuckReach': 0,
         'touchdownTogether': 1,

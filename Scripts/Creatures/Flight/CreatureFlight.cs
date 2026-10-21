@@ -33,6 +33,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     const float kFlareTimeout = 3f;      // s at scale 1: a flare that has not touched down by then goes around
     const float kHangRateDeg = 120f;     // perched drape: deg/s a hanging segment pitches down (at scale 1)
     const float kHangPitchDeg = 80f;     // ... toward this pitch below level (not straight down: see Drape)
+    const float kDrapeMinPlanar = 0.2f;  // FlightSpec.drapeOwnHeading: the segment before's heading weighs as this share of the spacing against a hanging segment's own run across up
     const float kHangDrop = 0.25f;       // m at scale 1: ground this much lower than the support plane leaves a joint hanging
 
     readonly CreatureSim sim;
@@ -234,6 +235,11 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     public void Land(Vector3 point, int source = 0, Vector3 axis = default)
     {
         Landing = true; LandPoint = point; landSource = source; landAxis = axis;
+        if (f.perchTubeOnApproach)
+        {
+            perchApproach = Vector3.ProjectOnPlane(point - Model.Position, Model.Up);
+            perchApproach = perchApproach.sqrMagnitude > 1e-8f ? perchApproach.normalized : Model.Forward;
+        }
         approach = Approach.Entry;
         // a branch perch with an approach heading: hits on the branch are the perch, the final flies along it
         // avoidance on, a planned final (a heading given): flown along it; on a perch (source != 0) along the
@@ -260,6 +266,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     }
 
     Vector3 landAxis;
+    Vector3 perchApproach;   // FlightSpec.perchTubeOnApproach: the planar direction to the perch when the landing was asked for
     // A planned final is a racetrack flown by L1 guidance (L1Turn): out along a lane beside the final line
     // (holdSense side, two approach turn radii over, against the heading) until there is a runway of FinalRun
     // behind the point, then the turn in (round holdCentre) onto the line and the final along it.
@@ -451,7 +458,10 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         bool goingDown = Landing && !Outbound;
         if (Avoidance.Enabled && Landing && landSource != 0)
         {
-            if (goingDown) Avoidance.SetPerch(LandPoint, landAxis); else Avoidance.ClearPerch();
+            // (FlightSpec.perchTubeOnApproach: a perch landed on without an axis - a rock top - keeps the perch tube along
+            // the heading it was approached on; else none was set and the rock turned the final away)
+            if (goingDown) Avoidance.SetPerch(LandPoint, f.perchTubeOnApproach && landAxis.sqrMagnitude < 1e-8f ? perchApproach : landAxis);
+            else Avoidance.ClearPerch();
         }
         if (Avoidance.Enabled) Avoidance.Apply(dt, Model, obstacles, sim.Bounds, goingDown ? LandPoint : (Vector3?)null, Mode == FlightMode.Flare,
                                               Landing ? landToward : goalToward, f.PursuitGain);
@@ -791,6 +801,14 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         sim.LegsInternal.HoldDroop = f.touchdownAtStance && landSource == 0;
         offsetValid = false;
         Mode = FlightMode.Touchdown; ModeTime = 0f;
+        if (f.touchdownFromHover)
+        {
+            // FlightSpec.touchdownFromHover: the walking state restarts from the laid body (Path, above), the displayed
+            // joints stay the hovering body - the touchdown blend's start (BeforeLegs takes its offset in the next
+            // walking sub-step). Begun on a tick's last sub-step, the laid body was shown for one tick instead.
+            Array.Copy(snapshot, sim.Joints, n);
+            sim.RefreshFrames();
+        }
     }
 
     // ------------------------------------------------------------------ hooks from the walking sub-step
@@ -917,6 +935,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         bool[] sup = sim.Supported;
         if (probed == null) return false;
         float drop = kHangDrop * scale, rate = kHangRateDeg / T * dt;
+        bool moved = f.perchFrontLevel && HoldFrontOnPerch(path, pathUp, groundPoint, probed, sup, drop);
         // the first joint (behind the girdle) whose ground falls away: the support's edge
         int a = -1;
         for (int i = Mathf.Max(2, girdle); i < n; i++)
@@ -925,7 +944,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             float support = Vector3.Dot(groundPoint[i - 1], u);
             if (!sup[i] || Vector3.Dot(probed[i], u) < support - drop) { a = i; break; }
         }
-        if (a < 0) return false;
+        if (a < 0) return moved;
         Vector3 upF = pathUp[a];
         Vector3 hb = Vector3.ProjectOnPlane(path[a - 1] - path[a - 2], upF);
         if (hb.sqrMagnitude < 1e-10f) hb = Vector3.ProjectOnPlane(path[a] - path[a - 1], upF);
@@ -935,20 +954,31 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         float pitch0 = Mathf.Asin(Mathf.Clamp(Vector3.Dot((path[a - 1] - path[a - 2]).normalized, down), -1f, 1f)) * Mathf.Rad2Deg;
         // pass 1: where the hanging run reaches the ground below (b), pass 2: lay it, easing back to level there
         int b = n;
+        bool own = f.drapeOwnHeading;
+        float minPlanar = kDrapeMinPlanar * seg;
         for (int pass = 0; pass < 2; pass++)
         {
             float prevPitch = pitch0;
             Vector3 prev = path[a - 1];
+            Vector3 h = hb;
             for (int i = a; i < (pass == 0 ? n : b); i++)
             {
                 Vector3 d = path[i] - path[i - 1];
+                if (own)
+                {
+                    // FlightSpec.drapeOwnHeading: each hanging segment pitches down in its own vertical plane (the walked
+                    // segment's heading, blended with the one before's: a nearly vertical one keeps it), so a change of the edge
+                    // joint or of the reference segment's heading no longer swings the whole hanging run about the edge
+                    Vector3 hp = Vector3.ProjectOnPlane(d, upF) + h * minPlanar;
+                    if (hp.sqrMagnitude > 1e-12f) h = hp.normalized;
+                }
                 float pitch = d.sqrMagnitude > 1e-12f ? Mathf.Asin(Mathf.Clamp(Vector3.Dot(d.normalized, down), -1f, 1f)) * Mathf.Rad2Deg : prevPitch;
                 pitch = Mathf.MoveTowards(pitch, kHangPitchDeg, rate);
                 float lim = sp.joints[i - 1].rigid ? 0f : sp.joints[i - 1].bendLimitDeg;
                 pitch = Mathf.Clamp(pitch, prevPitch - lim, prevPitch + lim);
                 if (pass == 1 && b < n) pitch = Mathf.Min(pitch, lim * (b - i));
                 float pr = pitch * Mathf.Deg2Rad;
-                Vector3 p = prev + (hb * Mathf.Cos(pr) + down * Mathf.Sin(pr)) * seg;
+                Vector3 p = prev + (h * Mathf.Cos(pr) + down * Mathf.Sin(pr)) * seg;
                 float clear = sp.joints[i].clearance * scale;
                 if (pass == 0)
                 {
@@ -964,6 +994,30 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             }
         }
         return true;
+    }
+
+    // FlightSpec.perchFrontLevel: perched and standing (a perch touchdown, or on the ground after one with Halt), the joints
+    // ahead of the girdle whose ground falls away past the support's edge (the head and neck held out over a rock's edge)
+    // keep the support's ground: each is raised to the ground of the joint behind it. Without it the head was grounded on
+    // the floor below, the length restore (from the head) dragged the neck down after it, the neck's probes - their clearance
+    // point now nearer the floor than the rock's top - took the floor, and the whole body sank into the rock's footprint.
+    // True when it moved a joint.
+    bool HoldFrontOnPerch(Vector3[] path, Vector3[] pathUp, Vector3[] groundPoint, Vector3[] probed, bool[] sup, float drop)
+    {
+        if (Mode == FlightMode.Touchdown ? landSource == 0 : !(Perched && sim.Halt)) return false;
+        bool moved = false;
+        for (int i = girdle - 1; i >= 0; i--)
+        {
+            Vector3 u = pathUp[i];
+            float support = Vector3.Dot(groundPoint[i + 1], u), own = Vector3.Dot(groundPoint[i], u);
+            if (sup[i] && Vector3.Dot(probed[i], u) >= support - drop) continue;
+            float lift = support - own;
+            if (lift <= 0f) continue;
+            path[i] += u * lift;
+            groundPoint[i] += u * lift;
+            moved = true;
+        }
+        return moved;
     }
 
     // ------------------------------------------------------------------ bones

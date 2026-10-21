@@ -39,6 +39,8 @@ public sealed class AirChain
     // head stabiliser: a smoothed girdle (position + velocity), no lag in steady flight
     Vector3 smoothPos, smoothVel, smoothAcc;
     public Vector3 HeadTarget { get; private set; }
+    // FlightSpec.headStabiliseBounded: the trunk's lead velocity (the girdle's, low-passed over kHeadingTau)
+    Vector3 leadVel, leadAcc;
 
     // The twisting chain (FlightSpec.twist enabled: the dragon): the body follows the head's path (AirTwist)
     // instead of trailing the girdle. Null otherwise - the pull chain below runs exactly as before.
@@ -83,6 +85,7 @@ public sealed class AirChain
     public void Reset(Vector3 girdlePos, Vector3 girdleVel)
     {
         smoothPos = girdlePos; smoothVel = girdleVel; smoothAcc = Vector3.zero; Time = 0f;
+        leadVel = girdleVel; leadAcc = Vector3.zero;
         HeadTarget = girdlePos;
         Twist?.Reset();
     }
@@ -99,6 +102,17 @@ public sealed class AirChain
         // (Level > 0: the trunk leads along the flight line with its climb or descent taken out by that share - a
         // short-bodied flyer holds its body level in a glide or a flare instead of hanging along a steep path)
         Vector3 gv = Level > 0f ? girdleVel - up * (Vector3.Dot(girdleVel, up) * Level) : girdleVel;
+        if (f.headStabiliseBounded)
+        {
+            // the trunk leads along the girdle's velocity low-passed over kHeadingTau: the containment's cut of the
+            // outward speed turned the velocity up to 90 deg in one sub-step, and the trunk (and the neck laid from
+            // it) with it
+            float tl = Mathf.Max(1e-4f, kHeadingTau * timeScale);
+            float wl = 1f / tl, kl = Mathf.Min(h, 0.5f * tl);
+            leadAcc += (wl * wl * (gv - leadVel) - 2f * wl * leadAcc) * kl;
+            leadVel += leadAcc * kl;
+            gv = leadVel;
+        }
         Vector3 vh = Norm(gv, Norm(joints[girdle] - joints[Mathf.Min(girdle + 1, n - 1)], Vector3.forward));
         Vector3 side = Vector3.Cross(vh, up);
         side = side.sqrMagnitude > 1e-10f ? side.normalized : Vector3.right;
@@ -122,18 +136,24 @@ public sealed class AirChain
             // The girdle velocity through a critically damped 2nd-order low-pass (the bob is a velocity
             // oscillation at the beat frequency), integrated, plus a slow pull back onto the girdle so the
             // target cannot drift: no lag in steady flight or a steady climb, the beat's bob filtered out.
-            float tau = Mathf.Max(1e-4f, f.headStabilise * timeScale);
-            float w0 = 1f / tau, hk = Mathf.Min(h, 0.5f * tau);
-            smoothAcc += (w0 * w0 * (girdleVel - smoothVel) - 2f * w0 * smoothAcc) * hk;
-            smoothVel += smoothAcc * hk;
-            smoothPos += smoothVel * h;
-            smoothPos += (girdlePos - smoothPos) * Mathf.Min(1f, kDriftRate / timeScale * h);
+            if (f.headStabiliseBounded) StabiliseBounded(h, girdlePos, girdleVel, up);
+            else
+            {
+                float tau = Mathf.Max(1e-4f, f.headStabilise * timeScale);
+                float w0 = 1f / tau, hk = Mathf.Min(h, 0.5f * tau);
+                smoothAcc += (w0 * w0 * (girdleVel - smoothVel) - 2f * w0 * smoothAcc) * hk;
+                smoothVel += smoothAcc * hk;
+                smoothPos += smoothVel * h;
+                smoothPos += (girdlePos - smoothPos) * Mathf.Min(1f, kDriftRate / timeScale * h);
+            }
             Vector3 dir = Norm(smoothVel, -leader);
+            Vector3 trunkDir = n > girdle + 1 ? Norm(joints[girdle] - joints[girdle + 1], dir) : dir;
+            // FlightSpec.headStabiliseBounded: the head looks at most kMaxHeadTurnDeg off the trunk's line (in the neck's reach)
+            if (f.headStabiliseBounded) dir = Cone(trunkDir, dir, kMaxHeadTurnCos, kMaxHeadTurnSin);
             Vector3 target = smoothPos + dir * (kNeckSlack * seg * girdle);
             // the neck's sagittal plane: across it the girdle's banked side (airNeckStance turns the neck up in it)
             Vector3 across = restCos != null ? Norm(Vector3.Cross(vh, bankedUp), side) : side;
             HeadTarget = target;
-            Vector3 trunkDir = n > girdle + 1 ? Norm(joints[girdle] - joints[girdle + 1], dir) : dir;
             // Two anchors: the girdle (leaving along the trunk) and the head target (arriving along the
             // stabilised flight line), joined by a quadratic Bezier. Joints are placed from the girdle out,
             // each at the exact segment length toward its sample on the curve, inside its bend cone; a rigid
@@ -157,6 +177,37 @@ public sealed class AirChain
         }
 
         UpdateFrames(joints, bankedUp);
+    }
+
+    // FlightSpec.headStabiliseBounded: the stabiliser split along up. The bob (a vertical oscillation of the girdle's
+    // velocity) goes through the headStabilise low-pass as before; the horizontal velocity - the turns, and the
+    // containment's cut of the outward speed - through a short one (kHeadingTau, at most headStabilise), so the head
+    // target follows a turn instead of trailing it by v x tau. The smoothed girdle stays within kMaxOffset neck lengths
+    // of the real one (the filter state itself is held there: no wind-up). Off, a long headStabilise left the target
+    // many metres behind the flyer in a turn, beyond the bend-limited neck's reach, and the neck flipped to and fro.
+    const float kHeadingTau = 0.15f;  // s at scale 1
+    const float kMaxOffset = 0.25f;   // of the neck's length (girdle x spacing)
+    const float kMaxHeadTurnDeg = 40f; // the head target's direction from the trunk's line, at most
+    static readonly float kMaxHeadTurnCos = Mathf.Cos(kMaxHeadTurnDeg * Mathf.Deg2Rad), kMaxHeadTurnSin = Mathf.Sin(kMaxHeadTurnDeg * Mathf.Deg2Rad);
+    void StabiliseBounded(float h, Vector3 girdlePos, Vector3 girdleVel, Vector3 up)
+    {
+        float tauV = Mathf.Max(1e-4f, f.headStabilise * timeScale);
+        float tauH = Mathf.Max(1e-4f, Mathf.Min(f.headStabilise, kHeadingTau) * timeScale);
+        Vector3 err = girdleVel - smoothVel;
+        Vector3 errV = up * Vector3.Dot(err, up), errH = err - errV;
+        Vector3 accV = up * Vector3.Dot(smoothAcc, up), accH = smoothAcc - accV;
+        float wV = 1f / tauV, kV = Mathf.Min(h, 0.5f * tauV);
+        float wH = 1f / tauH, kH = Mathf.Min(h, 0.5f * tauH);
+        accV += (wV * wV * errV - 2f * wV * accV) * kV;
+        accH += (wH * wH * errH - 2f * wH * accH) * kH;
+        smoothAcc = accV + accH;
+        smoothVel += accV * kV + accH * kH;
+        smoothPos += smoothVel * h;
+        smoothPos += (girdlePos - smoothPos) * Mathf.Min(1f, kDriftRate / timeScale * h);
+        float r = kMaxOffset * seg * girdle;
+        Vector3 e = smoothPos - girdlePos;
+        float m = e.magnitude;
+        if (m > r) smoothPos = girdlePos + e * (r / m);
     }
 
     // The twisting chain: the same head stabiliser (the beat's bob filtered out of the girdle's motion), the head

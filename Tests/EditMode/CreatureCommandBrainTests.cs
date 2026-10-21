@@ -13,18 +13,20 @@ namespace TerrainGen.Tests
     //   Fly        Air within 10 s x sqrt s from the ground; in the air it keeps flying (no landing)
     //   Circle     >= one full turn in the air, its circle's radius >= the flight's turn radius, the altitude held in a band,
     //              the girdle inside the safe disc throughout
-    //   Land       on the ground (a walker already there stays there)
-    //   Perch      with a rock in the aviary: on the ground and Perched (on the rock's top)
-    // A command given mid-transition (Walk during the launch, Fly during the touchdown) still completes; Perch with no
-    // perch anywhere lands on open ground and says so. No run ever snaps the head (a jump > kSnap x the body length in one
-    // tick). The brain allocates nothing per tick. RED: a brain that ignores the transitions (walks while airborne) never
-    // gets a flyer onto the ground for a walk.
+    //   Land       on the ground (a walker already there halts there, saying "landed")
+    //   Perch      with a rock in the aviary: on the ground on the rock's top (CommandBrain.OnPerch: the surface under the
+    //              girdle is the rock's)
+    // A command given mid-transition (Walk during the launch, Fly during the touchdown, Fly during a landing) still
+    // completes; Perch with no perch anywhere lands on open ground and says so; a perch that cannot be reached (hook) or a
+    // touchdown beside the rock (hook) each count as failed attempts, and after kPerchFailsMax it gives up on open ground,
+    // saying so. In no run does the girdle step more than kSnap x the body length in one tick, the touchdown included
+    // (as CreatureVesperTests.Vesper_Touchdown_NoGirdleJump). The brain allocates nothing per tick. RED: a brain that ignores
+    // the transitions (walks while airborne) never gets a flyer onto the ground for a walk.
     public class CreatureCommandBrainTests
     {
         const float kDt = 1f / 60f;
         // body lengths per tick: a girdle jump past this is a snap (12 m/s at scale 4 is 0.016 L; the shipped vault's first
-        // tick is 0.48 m = 0.039 L). The girdle, not the head: Vesper's head whips up to 7 m in a tick in steady flight under
-        // its own FlightBrain (the air chain; reported); the touchdown's walking restart is reported, not judged (the flight's)
+        // tick is 0.48 m = 0.039 L), the touchdown included (Vesper's touchdownFromHover; CreatureVesperTests' kTouchJump)
         const float kSnap = 0.05f;
         const float kStill = 0.02f;         // body lengths per second: standing still
         // time bounds, s x sqrt s (about 2x the worst measured; the report has every run's)
@@ -33,7 +35,7 @@ namespace TerrainGen.Tests
         const float kLandBound = 30f;       // a command that lands first
         const float kCircleBound = 20f;
         const float kPerchBound = 60f;
-        const float kGiveUpBound = 120f;    // kPerchFailsMax (2) perch attempts of 30 s x sqrt s, then an open-ground landing
+        const float kGiveUpBound = 100f;    // kPerchFailsMax (2) perch attempts of 30 s x sqrt s, then an open-ground landing
 
         internal sealed class Rig
         {
@@ -43,7 +45,7 @@ namespace TerrainGen.Tests
             public readonly EnclosureArea area;
             public readonly float s, T, L;
             public float maxJump;      // largest girdle step in one tick outside the touchdown, m
-            public float touchdownJump; // ... in the touchdown (the flight's walking restart: reported, not judged)
+            public float touchdownJump; // ... in the touchdown
 
             public Rig(CreatureSpecies sp, IGroundProbe ground = null, int seed = 1)
             {
@@ -88,9 +90,10 @@ namespace TerrainGen.Tests
                 return sim.Mode == FlightMode.Air ? null : $"left the air ({sim.Mode}, {brain.Doing})";
             }
 
-            public string Snap() => maxJump > kSnap * L ? $"the girdle snapped {maxJump:F2} m in one tick (> {kSnap} x {L:F1} m)" : null;
+            public string Snap() => maxJump > kSnap * L ? $"the girdle snapped {maxJump:F2} m in one tick (> {kSnap} x {L:F1} m)"
+                : touchdownJump > kSnap * L ? $"the girdle snapped {touchdownJump:F2} m in one tick of a touchdown (> {kSnap} x {L:F1} m)" : null;
 
-            public string State => $"t={sim.Time:F1} s {sim.Mode}{(sim.Flight.Landing ? " landing" : "")}{(sim.Flight.Perched ? " perched" : "")}, doing \"{brain.Doing}\"";
+            public string State => $"t={sim.Time:F1} s {sim.Mode}{(sim.Flight.Landing ? " landing" : "")}{(brain.OnPerch ? " on the perch" : "")}, doing \"{brain.Doing}\"";
         }
 
         static CreatureSpecies Vesper() => CreatureVesperTests.Vesper();
@@ -207,23 +210,21 @@ namespace TerrainGen.Tests
             return r.Snap();
         }
 
-        // Perch: on the ground and Perched
+        // Perch: on the ground on the perch (CommandBrain.OnPerch)
         internal static string PerchProblem(Rig r, float bound, out float took)
         {
-            took = r.Until(() => OnGround(r) && r.sim.Flight.Perched, bound);
+            took = r.Until(() => OnGround(r) && r.brain.OnPerch, bound);
             if (took < 0f) return $"Perch: not perched within {bound} s x sqrt s ({r.State})";
             return r.Snap();
         }
 
         // the perch rock (m at scale 1, x the scale): a flat-topped boulder to one side of the middle, 1.2 m square and 0.5 m
-        // high. (Perching a scale-4 Vesper on a rock in its lab aviary rests on the flight's landing autopilot and obstacle
-        // avoidance, which get it onto some rocks quickly and onto others not at all - the report's perch sweep; this one
-        // is of the first kind, HardRock of the second.)
+        // high. (Perching a scale-4 Vesper on a rock in its lab aviary rests on the flight's landing autopilot, which gets
+        // it onto some rocks quickly and onto others not at all - the report's perch sweep; this one is of the first kind.)
         internal static WingedTestSurfaces Rock(float s) =>
             new WingedTestSurfaces().AddRock(new Vector3(2.5f, 0f, 1.25f) * s, new Vector3(1.2f, 0.5f, 1.2f) * s, 11);
 
-        internal static WingedTestSurfaces HardRock(float s) =>
-            new WingedTestSurfaces().AddRock(new Vector3(2.5f, 0f, 1.25f) * s, new Vector3(2.4f, 0.75f, 2.4f) * s, 11);
+
 
         // ------------------------------------------------------------ the commands, from the ground and from the air
 
@@ -307,13 +308,23 @@ namespace TerrainGen.Tests
             Assert.IsNull(e, e);
         }
 
+        // circling, then Fly: it stays in the air, flying (not circling): it leaves the circle's ring
         [Test] public void Command_Fly_FromAir()
         {
             Rig r = Start(true);
-            r.brain.Command(CreatureCommand.Circle); r.Run(4f);
+            r.brain.Command(CreatureCommand.Circle);
+            float ring = 0f;
+            Assert.GreaterOrEqual(r.Until(() => (ring = r.brain.CircleRadius) > 0f && Mathf.Abs(r.area.PlanarDistance(r.sim.Joints[r.sim.Flight.Girdle]) - ring) < 0.1f * ring, kCircleBound), 0f, "on the circle");
+            r.Run(2f);
+            Assert.AreEqual("circling", r.brain.Doing);
             r.brain.Command(CreatureCommand.Fly);
             string e = FlyProblem(r, kFlyBound, out float took); Report("Fly from the air (circling)", r, took);
             Assert.IsNull(e, e);
+            Assert.AreEqual("flying", r.brain.Doing);
+            float off = 0f;
+            float left = r.Until(() => (off = Mathf.Abs(r.area.PlanarDistance(r.sim.Joints[r.sim.Flight.Girdle]) - ring)) > 0.25f * ring, 2f * kFlyBound);
+            TestContext.Out.WriteLine($"left the circle's ring (radius {ring:F1} m) by {off:F1} m after {left:F1} s");
+            Assert.GreaterOrEqual(left, 0f, "Fly leaves the circle");
         }
 
         [Test] public void Command_Circle_FromGround()
@@ -332,12 +343,16 @@ namespace TerrainGen.Tests
             Assert.IsNull(e, e);
         }
 
+        // a walker told to land halts where it is (it is down already): still, Halt, "landed", no take-off
         [Test] public void Command_Land_FromGround()
         {
             Rig r = Start(false);
+            r.brain.Command(CreatureCommand.WalkAround); r.Run(3f);
             r.brain.Command(CreatureCommand.Land);
-            string e = LandProblem(r, kGroundBound, out float took); Report("Land from the ground", r, took);
+            string e = StandProblem(r, kGroundBound, out float took); Report("Land from the ground (walking)", r, took);
             Assert.IsNull(e, e);
+            Assert.IsTrue(r.sim.Halt, "halted");
+            Assert.AreEqual("landed", r.brain.Doing);
             Assert.AreEqual(0, r.sim.Flight.Launches, "a walker told to land does not take off");
         }
 
@@ -356,7 +371,8 @@ namespace TerrainGen.Tests
             string e = PerchProblem(r, kPerchBound, out float took); Report("Perch from the ground", r, took);
             Assert.IsNull(e, e);
             r.Tick();   // (Doing is the brain's view before the tick that perched it)
-            StringAssert.Contains("perched", r.brain.Doing);
+            Assert.AreEqual("perched", r.brain.Doing);
+            Assert.AreEqual(0, r.brain.PerchMisses);
         }
 
         [Test] public void Command_Perch_FromAir()
@@ -387,15 +403,166 @@ namespace TerrainGen.Tests
             Assert.IsNull(e, e);
         }
 
-        // Perch onto a rock the landing autopilot does not get it down on (HardRock): it never stalls - after kPerchFailsMax
-        // timed-out attempts it lands on open ground, saying so (or it perches after all)
-        [Test] public void Perch_Unreachable_NeverStalls()
+        // Perch onto a perch it never lines up on (hook: every attempt times out): it never stalls - after kPerchFailsMax
+        // timed-out attempts it lands on open ground and says it could not reach the perch
+        internal static string GiveUpProblem(Rig r, out float took, float bound = kGiveUpBound)
         {
-            Rig r = Start(false, HardRock(Vesper().scale));
             r.brain.Command(CreatureCommand.Perch);
-            string e = LandProblem(r, kGiveUpBound, out float took); Report($"Perch onto the hard rock (from the ground; perched {r.sim.Flight.Perched}, gave up {r.brain.PerchGaveUp})", r, took);
+            took = r.Until(() => OnGround(r) && r.brain.PerchGaveUp, bound);
+            if (took < 0f) return $"did not give up the perch on the ground within {kGiveUpBound} s x sqrt s ({r.State})";
+            r.Run(2f);
+            if (!OnGround(r)) return $"left the ground again ({r.State})";
+            if (r.Snap() != null) return r.Snap();
+            if (r.brain.OnPerch) return "on the perch after all";
+            if (r.brain.Doing != "could not reach the perch: on open ground") return $"says \"{r.brain.Doing}\"";
+            return null;
+        }
+
+        [Test] public void Perch_Unreachable_GivesUp()
+        {
+            Rig r = Start(true, Rock(Vesper().scale));
+            r.brain.perchUnreachable = true;
+            string e = GiveUpProblem(r, out float took); Report("Perch never lined up (hook; from the air)", r, took);
             Assert.IsNull(e, e);
-            if (!r.sim.Flight.Perched) { StringAssert.Contains("could not reach the perch", r.brain.Doing); Assert.IsTrue(r.brain.PerchGaveUp); }
+            Assert.AreEqual(0, r.brain.PerchMisses);
+        }
+
+        // Perch whose touchdowns land beside the rock (hook: the landing asked for 1.75 m x s short of it on its final): a
+        // touchdown off the perch is a failed attempt (not "perched") - it takes off for another, and after kPerchFailsMax
+        // gives up there and stays down
+        [Test] public void Perch_TouchdownMissesRock_CountsAndEnds()
+        {
+            Rig r = Start(true, Rock(Vesper().scale));
+            r.brain.perchMissBy = 1.75f * r.s;
+            r.brain.perchFailsMax = 4;   // room for a take-off after a miss whatever ends the other attempts
+            int launches0 = r.sim.Flight.Launches;
+            string e = GiveUpProblem(r, out float took, 2f * kGiveUpBound); Report($"Perch touching down beside the rock (hook; misses {r.brain.PerchMisses}, launches {r.sim.Flight.Launches - launches0})", r, took);
+            Assert.IsNull(e, e);
+            // each attempt ends in a miss (a touchdown beside the rock) or a timed-out line-up (the flight's slow case);
+            // after a miss below the limit it takes off for the next
+            Assert.GreaterOrEqual(r.brain.PerchMisses, 2, "touchdowns beside the rock are failed attempts");
+            Assert.GreaterOrEqual(r.sim.Flight.Launches - launches0, r.brain.PerchMisses - 1, "took off again after each miss but the last");
+            int launches = r.sim.Flight.Launches;
+            r.Run(5f);
+            Assert.AreEqual(launches, r.sim.Flight.Launches, "stays down");
+        }
+
+        // Perched, then WalkTo a point off the rock, then Perch again: walking off clears OnPerch (Stand there does not say
+        // "perched"), and the second Perch takes off and perches again (or gives up) - at no tick on open ground does it
+        // say "perched" or report OnPerch. RED (keepStaleOnPerch): the flag stays set, the second Perch reports "perched" on
+        // open ground without taking off.
+        internal static string WalkOffProblem(Rig r, WingedTestSurfaces rock)
+        {
+            r.brain.Command(CreatureCommand.Perch);
+            if (r.Until(() => OnGround(r) && r.brain.OnPerch, kPerchBound) < 0f) return $"never perched ({r.State})";
+            Vector3 off = r.area.center - new Vector3(2.5f, 0f, 1.25f).normalized * (0.3f * r.area.safeRadius);
+            string bad = null;
+            int run = 0;   // consecutive ticks claiming the perch off it (the brain sees the girdle a tick late: 2 = stale)
+            Func<bool> check = () =>
+            {
+                bool off = false;
+                if (OnGround(r) && (r.brain.OnPerch || r.brain.Doing == "perched"))
+                {
+                    Vector3 g = r.sim.Joints[r.sim.Flight.Girdle];
+                    off = !(rock.Probe(g + Vector3.up * r.s, Vector3.up, 30f * r.s, SurfaceHit.NoSource, -1, out SurfaceHit h) && h.source == 11);
+                }
+                run = off ? run + 1 : 0;
+                if (bad == null && run >= 2) bad = $"says \"{r.brain.Doing}\" (OnPerch {r.brain.OnPerch}) on open ground ({r.State})";
+                return false;
+            };
+            r.brain.Command(CreatureCommand.WalkTo, off);
+            if (r.Until(() => { check(); return OnGround(r) && r.brain.Arrived; }, kLandBound) < 0f) return $"WalkTo off the rock never arrived ({r.State})";
+            r.Run(1f); check();
+            if (bad != null) return bad;
+            int launches = r.sim.Flight.Launches;
+            r.brain.Command(CreatureCommand.Perch);
+            r.Until(() => { check(); return OnGround(r) && (r.brain.OnPerch || r.brain.PerchGaveUp) && r.sim.Flight.Launches > launches; }, kGiveUpBound);
+            if (bad != null) return bad;
+            if (r.sim.Flight.Launches == launches) return $"Perch again from open ground never took off ({r.State})";
+            if (!(r.brain.OnPerch || r.brain.PerchGaveUp)) return $"Perch again did not end ({r.State})";
+            return null;
+        }
+
+        // a low perch rock (0.15 m high at scale 1, else as Rock) a walker can step off: Vesper does not walk off the 0.5 m
+        // Rock (its walking body stalls at the edge - the walking system's, reported)
+        internal static WingedTestSurfaces LowRock(float s) =>
+            new WingedTestSurfaces().AddRock(new Vector3(2.5f, 0f, 1.25f) * s, new Vector3(1.2f, 0.15f, 1.2f) * s, 11);
+
+        [Test] public void Perch_WalkOff_PerchAgain()
+        {
+            WingedTestSurfaces rock = LowRock(Vesper().scale);
+            Rig r = Start(true, rock);
+            string e = WalkOffProblem(r, rock); Report($"Perch, walk off, Perch again (on the perch {r.brain.OnPerch}, gave up {r.brain.PerchGaveUp})", r, 0f);
+            Assert.IsNull(e, e);
+        }
+
+        [Test] public void Red_CommandBrain_StaleOnPerch()
+        {
+            WingedTestSurfaces rock = LowRock(Vesper().scale);
+            Rig r = Start(true, rock);
+            r.brain.keepStaleOnPerch = true;
+            string e = WalkOffProblem(r, rock);
+            TestContext.Out.WriteLine("RED: " + e);
+            Assert.IsNotNull(e);
+        }
+
+        // Perched on the 0.5 m Rock (2 m at scale 4: higher than Vesper's hind legs are long), WalkTo a point on the ground:
+        // it hops down (takes off, lands on open ground near the point, "hopping down") and walks there - arriving within
+        // kLandBound, the girdle never below the rock's top while over the rock on the ground, no girdle step > kSnap L.
+        // RED (noHopDown): it tries to walk off the edge - creeps, sinks into the rock, never arrives.
+        internal static string HopDownProblem(Rig r, out float took)
+        {
+            took = -1f;
+            r.brain.Command(CreatureCommand.Perch);
+            if (r.Until(() => OnGround(r) && r.brain.OnPerch, kPerchBound) < 0f) return $"never perched ({r.State})";
+            Vector3 lo = new Vector3(2.5f - 0.6f, 0f, 1.25f - 0.6f) * r.s, hi = new Vector3(2.5f + 0.6f, 0.5f, 1.25f + 0.6f) * r.s;   // Rock's box
+            string sunk = null; bool hopped = false;
+            Vector3 off = r.area.center - new Vector3(2.5f, 0f, 1.25f).normalized * (0.3f * r.area.safeRadius);
+            r.brain.Command(CreatureCommand.WalkTo, off);
+            took = r.Until(() =>
+            {
+                hopped |= r.brain.Doing == "hopping down";
+                Vector3 g = r.sim.Joints[r.sim.Flight.Girdle];
+                if (sunk == null && OnGround(r) && g.x > lo.x && g.x < hi.x && g.z > lo.z && g.z < hi.z && g.y < hi.y)
+                    sunk = $"the girdle sank to {g.y:F2} m, below the rock's top {hi.y:F2} m, at t={r.sim.Time:F1} s";
+                return OnGround(r) && r.brain.Arrived;
+            }, kLandBound);
+            if (sunk != null) return sunk;
+            if (took < 0f) return $"never reached the point off the rock within {kLandBound} s x sqrt s ({r.State})";
+            if (!hopped) return "never said \"hopping down\"";
+            float d = Vector3.ProjectOnPlane(r.sim.Joints[0] - off, Vector3.up).magnitude;
+            if (d > r.L) return $"arrived {d:F1} m from the point";
+            return r.Snap();
+        }
+
+        [Test] public void Perch_High_WalkTo_HopsDown()
+        {
+            Rig r = Start(true, Rock(Vesper().scale));
+            string e = HopDownProblem(r, out float took); Report($"high perch -> WalkTo (hops down; launches {r.sim.Flight.Launches})", r, took);
+            Assert.IsNull(e, e);
+        }
+
+        [Test] public void Red_CommandBrain_NoHopDown()
+        {
+            Rig r = Start(true, Rock(Vesper().scale));
+            r.brain.noHopDown = true;
+            string e = HopDownProblem(r, out _);
+            TestContext.Out.WriteLine("RED: " + e);
+            Assert.IsNotNull(e);
+        }
+
+        // Fly given while a landing is under way (the autopilot's final or flare): the landing is called off, it flies on
+        [Test] public void Command_FlyDuringLanding_CancelsIt()
+        {
+            Rig r = Start(true);
+            r.brain.Command(CreatureCommand.Land);
+            Assert.Greater(r.Until(() => r.sim.Flight.Landing && r.sim.Mode == FlightMode.Air, kLandBound), 0f, $"a landing under way ({r.State})");
+            r.brain.Command(CreatureCommand.Fly);
+            r.Tick();
+            Assert.IsFalse(r.sim.Flight.Landing, "the landing is called off at once");
+            string e = FlyProblem(r, kFlyBound, out float took); Report("Fly given during a landing", r, took);
+            Assert.IsNull(e, e);
+            Assert.AreEqual(0, r.sim.Flight.Landings, "never touched down");
         }
 
         // Perch with no perch anywhere (flat ground): it lands on open ground and says so
@@ -403,8 +570,7 @@ namespace TerrainGen.Tests
         {
             Rig r = Start(true);
             r.brain.Command(CreatureCommand.Perch);
-            r.Tick();
-            StringAssert.Contains("no perch", r.brain.Doing, "says so at once");
+            Assert.GreaterOrEqual(r.Until(() => r.brain.Doing.Contains("no perch"), 1f), 0f, $"says so within a second x sqrt s (the scan's frames; {r.brain.Doing})");
             string e = LandProblem(r, kLandBound, out float took); Report("Perch with no perch (from the air)", r, took);
             Assert.IsNull(e, e);
             Assert.IsFalse(r.sim.Flight.Perched);
