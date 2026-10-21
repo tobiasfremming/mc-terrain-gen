@@ -21,7 +21,10 @@ namespace TerrainGen.Tests
     // touchdown beside the rock (hook) each count as failed attempts, and after kPerchFailsMax it gives up on open ground,
     // saying so. In no run does the girdle step more than kSnap x the body length in one tick, the touchdown included
     // (as CreatureVesperTests.Vesper_Touchdown_NoGirdleJump). The brain allocates nothing per tick. RED: a brain that ignores
-    // the transitions (walks while airborne) never gets a flyer onto the ground for a walk.
+    // the transitions (walks while airborne) never gets a flyer onto the ground for a walk. RED (orbitLoiter): loitering
+    // for the middle from anywhere orbited it, and Land from the air never landed on most seeds. Tests whose outcome rests
+    // on a chaotic flight (Land from the air, Perch, the perch-miss counting, the tests that need a perched start) run
+    // several seeds; a Perch that gives up as documented is accepted where perching is not the property under test.
     public class CreatureCommandBrainTests
     {
         const float kDt = 1f / 60f;
@@ -32,7 +35,9 @@ namespace TerrainGen.Tests
         // time bounds, s x sqrt s (about 2x the worst measured; the report has every run's)
         const float kFlyBound = 10f;        // the brief's
         const float kGroundBound = 10f;     // a ground command from the ground
-        const float kLandBound = 30f;       // a command that lands first
+        // a command that lands first: over 24 seeds offline (task F, after the loiter fix) Land took 12 s x sqrt s on average,
+        // 25 at worst; WalkAround and WalkTo from the air 19-23, at worst 28 and 39 (30 was 2x one seed's)
+        const float kLandBound = 50f;
         const float kCircleBound = 20f;
         const float kPerchBound = 60f;
         const float kGiveUpBound = 100f;    // kPerchFailsMax (2) perch attempts of 30 s x sqrt s, then an open-ground landing
@@ -101,9 +106,9 @@ namespace TerrainGen.Tests
         static void Report(string name, Rig r, float took) =>
             TestContext.Out.WriteLine($"{name}: {(took >= 0f ? $"{took:F1} s ({took / r.T:F1} s x sqrt s)" : "never")}; {r.State}; max girdle step {r.maxJump:F3} m (touchdown {r.touchdownJump:F3} m); head speed {r.sim.Speed:F3} m/s");
 
-        static Rig Start(bool fromAir, IGroundProbe ground = null)
+        static Rig Start(bool fromAir, IGroundProbe ground = null, int seed = 1)
         {
-            var r = new Rig(Vesper(), ground);
+            var r = new Rig(Vesper(), ground, seed);
             r.Run(0.5f);
             if (fromAir) { string e = r.Airborne(); Assert.IsNull(e, e); }
             return r;
@@ -356,31 +361,95 @@ namespace TerrainGen.Tests
             Assert.AreEqual(0, r.sim.Flight.Launches, "a walker told to land does not take off");
         }
 
+        // seeds 1-3 (a landing's trajectory is chaotic: the property is judged on each)
         [Test] public void Command_Land_FromAir()
         {
-            Rig r = Start(true);
-            r.brain.Command(CreatureCommand.Land);
-            string e = LandProblem(r, kLandBound, out float took); Report("Land from the air", r, took);
-            Assert.IsNull(e, e);
+            for (int seed = 1; seed <= 3; seed++)
+            {
+                Rig r = Start(true, null, seed);
+                r.brain.Command(CreatureCommand.Land);
+                string e = LandProblem(r, kLandBound, out float took); Report($"Land from the air (seed {seed})", r, took);
+                Assert.IsNull(e, $"seed {seed}: {e}");
+            }
+        }
+
+        // RED (orbitLoiter: loitering turns for the middle from anywhere, as first written): from near the middle it orbited
+        // the middle at its flown turn radius and no open-ground spot was ever straight ahead inside the inner disc - from
+        // the air it landed on 4 of 24 seeds within 120 s x sqrt s (24 of 24 with the straight run near the middle). Over
+        // seeds 1-8, fewer land within kLandBound than are flown.
+        [Test] public void Red_CommandBrain_OrbitLoiter()
+        {
+            int landed = 0, flown = 0;
+            for (int seed = 1; seed <= 8; seed++)
+            {
+                Rig r = Start(true, null, seed);
+                r.brain.orbitLoiter = true;
+                r.brain.Command(CreatureCommand.Land);
+                flown++;
+                if (r.Until(() => OnGround(r), kLandBound) >= 0f) landed++;
+                else TestContext.Out.WriteLine($"seed {seed}: never landed ({r.State})");
+            }
+            TestContext.Out.WriteLine($"RED: landed {landed} of {flown}");
+            Assert.Less(landed, flown, "landings within the bound (orbitLoiter)");
+        }
+
+        // Perch, seeds 1..kPerchSeeds: perching on a rock rests on the flight's landing autopilot and is about 5/6 reliable
+        // per run for Vesper (task 4's sweep; one or two line-ups time out and it gives up as documented). Each seed must
+        // end perched or have given up cleanly ("could not reach the perch: on open ground", on the ground, not on the
+        // perch) within kGiveUpBound, and at least one must perch within kPerchBound, saying "perched" with no miss.
+        const int kPerchSeeds = 3;
+        internal static string PerchOverSeeds(bool fromAir, out int perched)
+        {
+            perched = 0;
+            for (int seed = 1; seed <= kPerchSeeds; seed++)
+            {
+                Rig r = Start(fromAir, Rock(Vesper().scale), seed);
+                r.brain.Command(CreatureCommand.Perch);
+                float took = r.Until(() => OnGround(r) && (r.brain.OnPerch || r.brain.PerchGaveUp), kGiveUpBound);
+                Report($"Perch from the {(fromAir ? "air" : "ground")} (seed {seed})", r, took);
+                if (took < 0f) return $"seed {seed}: neither perched nor gave up within {kGiveUpBound} s x sqrt s ({r.State})";
+                if (r.Snap() != null) return $"seed {seed}: {r.Snap()}";
+                if (!r.brain.OnPerch)
+                {
+                    r.Tick();
+                    if (r.brain.Doing != "could not reach the perch: on open ground") return $"seed {seed}: gave up saying \"{r.brain.Doing}\"";
+                    continue;
+                }
+                r.Tick();   // (Doing is the brain's view before the tick that perched it)
+                if (r.brain.Doing != "perched") return $"seed {seed}: on the perch saying \"{r.brain.Doing}\"";
+                if (r.brain.PerchMisses != 0) return $"seed {seed}: {r.brain.PerchMisses} misses";
+                if (took / r.T <= kPerchBound) perched++;
+            }
+            return perched == 0 ? $"none of seeds 1-{kPerchSeeds} perched within {kPerchBound} s x sqrt s" : null;
         }
 
         [Test] public void Command_Perch_FromGround()
         {
-            Rig r = Start(false, Rock(Vesper().scale));
-            r.brain.Command(CreatureCommand.Perch);
-            string e = PerchProblem(r, kPerchBound, out float took); Report("Perch from the ground", r, took);
+            string e = PerchOverSeeds(false, out int perched);
+            TestContext.Out.WriteLine($"perched within the bound on {perched} of {kPerchSeeds} seeds");
             Assert.IsNull(e, e);
-            r.Tick();   // (Doing is the brain's view before the tick that perched it)
-            Assert.AreEqual("perched", r.brain.Doing);
-            Assert.AreEqual(0, r.brain.PerchMisses);
         }
 
         [Test] public void Command_Perch_FromAir()
         {
-            Rig r = Start(true, Rock(Vesper().scale));
-            r.brain.Command(CreatureCommand.Perch);
-            string e = PerchProblem(r, kPerchBound, out float took); Report("Perch from the air", r, took);
+            string e = PerchOverSeeds(true, out int perched);
+            TestContext.Out.WriteLine($"perched within the bound on {perched} of {kPerchSeeds} seeds");
             Assert.IsNull(e, e);
+        }
+
+        // A rig on the perch: from the air, seeds 1..kPerchSeeds + 3 until one perches (within kPerchBound); null if none
+        // (perching itself is Command_Perch_*'s property)
+        internal static Rig PerchedRig(WingedTestSurfaces rock, out string why)
+        {
+            why = null;
+            for (int seed = 1; seed <= kPerchSeeds + 3; seed++)
+            {
+                Rig r = Start(true, rock, seed);
+                r.brain.Command(CreatureCommand.Perch);
+                if (r.Until(() => OnGround(r) && r.brain.OnPerch, kPerchBound) >= 0f) { TestContext.Out.WriteLine($"perched on seed {seed} ({r.State})"); return r; }
+                why = $"no seed of 1-{kPerchSeeds + 3} perched ({r.State})";
+            }
+            return null;
         }
 
         // ------------------------------------------------------------ mid-transition, no perch
@@ -428,23 +497,94 @@ namespace TerrainGen.Tests
         }
 
         // Perch whose touchdowns land beside the rock (hook: the landing asked for 1.75 m x s short of it on its final): a
-        // touchdown off the perch is a failed attempt (not "perched") - it takes off for another, and after kPerchFailsMax
-        // gives up there and stays down
-        [Test] public void Perch_TouchdownMissesRock_CountsAndEnds()
+        // touchdown off the perch is a failed attempt (not "perched") - it takes off for another, and after perchFailsMax
+        // failures (misses or timed-out line-ups) gives up there and stays down. The counting is checked over whichever
+        // outcomes a run takes (seeds 1-4; the trajectory is chaotic), not one seed's trajectory: every touchdown beside the
+        // rock the test sees is a counted miss; misses + timeouts = perchFailsMax at the give-up; after a miss below the
+        // limit it takes off again before its next failure; it stays down after. Across the seeds the miss-then-take-off
+        // path is exercised at least once. RED (ignoreMisses): the touchdowns beside the rock are not counted.
+        internal static string MissCountProblem(int seed, bool ignoreMisses, out int misses, out int retakes, out string report) =>
+            MissCountProblem(seed, ignoreMisses, out misses, out retakes, out _, out report);
+
+        internal static string MissCountProblem(int seed, bool ignoreMisses, out int misses, out int retakes, out int seenBeside, out string report)
         {
-            Rig r = Start(true, Rock(Vesper().scale));
+            misses = 0; retakes = 0; seenBeside = 0;
+            var r = new Rig(Vesper(), Rock(Vesper().scale), seed);
+            r.Run(0.5f);
+            string a = r.Airborne();
+            report = $"seed {seed}";
+            if (a != null) return $"seed {seed}: {a}";
             r.brain.perchMissBy = 1.75f * r.s;
-            r.brain.perchFailsMax = 4;   // room for a take-off after a miss whatever ends the other attempts
-            int launches0 = r.sim.Flight.Launches;
-            string e = GiveUpProblem(r, out float took, 2f * kGiveUpBound); Report($"Perch touching down beside the rock (hook; misses {r.brain.PerchMisses}, launches {r.sim.Flight.Launches - launches0})", r, took);
-            Assert.IsNull(e, e);
-            // each attempt ends in a miss (a touchdown beside the rock) or a timed-out line-up (the flight's slow case);
-            // after a miss below the limit it takes off for the next
-            Assert.GreaterOrEqual(r.brain.PerchMisses, 2, "touchdowns beside the rock are failed attempts");
-            Assert.GreaterOrEqual(r.sim.Flight.Launches - launches0, r.brain.PerchMisses - 1, "took off again after each miss but the last");
+            r.brain.perchFailsMax = 4;
+            r.brain.ignoreMisses = ignoreMisses;
+            r.brain.Command(CreatureCommand.Perch);
+            int n = Mathf.CeilToInt(2f * kGiveUpBound * r.T / kDt), seen = 0, check = -1, failures = 0;
+            bool perchTouchdown = false, owed = false;
+            for (int i = 0; i < n && !(OnGround(r) && r.brain.PerchGaveUp); i++)
+            {
+                FlightMode m0 = r.sim.Mode;
+                int f0 = r.brain.PerchMisses + r.brain.PerchTimeouts;
+                r.Tick();
+                if (r.sim.Mode == FlightMode.Touchdown && m0 != FlightMode.Touchdown) perchTouchdown = !r.brain.NoPerch;
+                if (m0 == FlightMode.Touchdown && r.sim.Mode == FlightMode.Ground && perchTouchdown) check = 2;   // the brain sees it next tick
+                if (check > 0 && --check == 0 && !r.brain.OnPerch) seen++;
+                if (m0 == FlightMode.Ground && r.sim.Mode == FlightMode.Launch && owed) { owed = false; retakes++; }
+                int f1 = r.brain.PerchMisses + r.brain.PerchTimeouts;
+                if (f1 > f0)
+                {
+                    if (owed) return $"seed {seed}: failed again ({f1} failures) without taking off after a miss ({r.State})";
+                    failures = f1;
+                    if (r.brain.PerchMisses > misses && !r.brain.PerchGaveUp) owed = true;
+                    misses = r.brain.PerchMisses;
+                }
+            }
+            misses = r.brain.PerchMisses;
+            seenBeside = seen;
+            report = $"seed {seed}: misses {misses} (seen {seen} touchdowns beside the rock), timeouts {r.brain.PerchTimeouts}, take-offs after a miss {retakes}; {r.State}";
+            TestContext.Out.WriteLine(report);
+            if (!(OnGround(r) && r.brain.PerchGaveUp)) return $"seed {seed}: never gave up the perch within {2f * kGiveUpBound} s x sqrt s ({r.State})";
+            if (seen != misses) return $"seed {seed}: {seen} touchdowns beside the rock, {misses} counted as misses";
+            if (misses + r.brain.PerchTimeouts != r.brain.perchFailsMax) return $"seed {seed}: gave up after {misses} misses + {r.brain.PerchTimeouts} timeouts (not {r.brain.perchFailsMax})";
+            r.Run(2f);
+            if (r.brain.OnPerch || r.brain.Doing != "could not reach the perch: on open ground") return $"seed {seed}: says \"{r.brain.Doing}\" (OnPerch {r.brain.OnPerch})";
             int launches = r.sim.Flight.Launches;
             r.Run(5f);
-            Assert.AreEqual(launches, r.sim.Flight.Launches, "stays down");
+            if (r.sim.Flight.Launches != launches || !OnGround(r)) return $"seed {seed}: did not stay down ({r.State})";
+            return null;
+        }
+
+        // (seeds from 1 on, at least kMissSeedsMin, until the misses total kMissesMin and a take-off after a miss is seen -
+        // at most kMissSeedsMax: most attempts time out on the line-up, a miss is about one attempt in four)
+        const int kMissSeedsMin = 4, kMissSeedsMax = 12, kMissesMin = 2;
+        [Test] public void Perch_TouchdownMissesRock_CountsAndEnds()
+        {
+            int misses = 0, retakes = 0, seed = 0;
+            while (seed < kMissSeedsMax && (seed < kMissSeedsMin || misses < kMissesMin || retakes < 1))
+            {
+                seed++;
+                string e = MissCountProblem(seed, false, out int m, out int t, out _);
+                Assert.IsNull(e, e);
+                misses += m; retakes += t;
+            }
+            TestContext.Out.WriteLine($"seeds 1-{seed}: {misses} misses, {retakes} take-offs after a miss");
+            Assert.GreaterOrEqual(misses, kMissesMin, $"touchdowns beside the rock over seeds 1-{seed}");
+            Assert.GreaterOrEqual(retakes, 1, $"took off again after a miss over seeds 1-{seed} (the path exercised)");
+        }
+
+        // RED (ignoreMisses): on a seed with touchdowns beside the rock (seeds from 1 on, up to kMissSeedsMax), fewer are
+        // counted as misses than were seen
+        [Test] public void Red_CommandBrain_MissesUncounted()
+        {
+            int seen = 0, counted = 0;
+            for (int seed = 1; seed <= kMissSeedsMax && seen == 0; seed++)
+            {
+                MissCountProblem(seed, true, out int m, out _, out int beside, out string report);
+                TestContext.Out.WriteLine(report);
+                seen = beside; counted = m;
+            }
+            TestContext.Out.WriteLine($"RED: {seen} touchdowns beside the rock, {counted} counted as misses");
+            Assert.Greater(seen, 0, "a touchdown beside the rock seen (the case exercised)");
+            Assert.Less(counted, seen, "misses counted against touchdowns beside the rock");
         }
 
         // Perched, then WalkTo a point off the rock, then Perch again: walking off clears OnPerch (Stand there does not say
@@ -453,8 +593,6 @@ namespace TerrainGen.Tests
         // open ground without taking off.
         internal static string WalkOffProblem(Rig r, WingedTestSurfaces rock)
         {
-            r.brain.Command(CreatureCommand.Perch);
-            if (r.Until(() => OnGround(r) && r.brain.OnPerch, kPerchBound) < 0f) return $"never perched ({r.State})";
             Vector3 off = r.area.center - new Vector3(2.5f, 0f, 1.25f).normalized * (0.3f * r.area.safeRadius);
             string bad = null;
             int run = 0;   // consecutive ticks claiming the perch off it (the brain sees the girdle a tick late: 2 = stale)
@@ -491,7 +629,8 @@ namespace TerrainGen.Tests
         [Test] public void Perch_WalkOff_PerchAgain()
         {
             WingedTestSurfaces rock = LowRock(Vesper().scale);
-            Rig r = Start(true, rock);
+            Rig r = PerchedRig(rock, out string why);
+            Assert.IsNotNull(r, why);
             string e = WalkOffProblem(r, rock); Report($"Perch, walk off, Perch again (on the perch {r.brain.OnPerch}, gave up {r.brain.PerchGaveUp})", r, 0f);
             Assert.IsNull(e, e);
         }
@@ -499,22 +638,25 @@ namespace TerrainGen.Tests
         [Test] public void Red_CommandBrain_StaleOnPerch()
         {
             WingedTestSurfaces rock = LowRock(Vesper().scale);
-            Rig r = Start(true, rock);
+            Rig r = PerchedRig(rock, out string why);
+            Assert.IsNotNull(r, why);
             r.brain.keepStaleOnPerch = true;
             string e = WalkOffProblem(r, rock);
             TestContext.Out.WriteLine("RED: " + e);
             Assert.IsNotNull(e);
+            StringAssert.Contains("on open ground", e);
         }
 
         // Perched on the 0.5 m Rock (2 m at scale 4: higher than Vesper's hind legs are long), WalkTo a point on the ground:
         // it hops down (takes off, lands on open ground near the point, "hopping down") and walks there - arriving within
         // kLandBound, the girdle never below the rock's top while over the rock on the ground, no girdle step > kSnap L.
         // RED (noHopDown): it tries to walk off the edge - creeps, sinks into the rock, never arrives.
-        internal static string HopDownProblem(Rig r, out float took)
+        internal static string HopDownProblem(Rig r, out float took) => HopDownProblem(r, out took, out _);
+
+        // sunk: the girdle went below the rock's top while over it on the ground (the RED's own clause)
+        internal static string HopDownProblem(Rig r, out float took, out bool sankIn)
         {
-            took = -1f;
-            r.brain.Command(CreatureCommand.Perch);
-            if (r.Until(() => OnGround(r) && r.brain.OnPerch, kPerchBound) < 0f) return $"never perched ({r.State})";
+            took = -1f; sankIn = false;
             Vector3 lo = new Vector3(2.5f - 0.6f, 0f, 1.25f - 0.6f) * r.s, hi = new Vector3(2.5f + 0.6f, 0.5f, 1.25f + 0.6f) * r.s;   // Rock's box
             string sunk = null; bool hopped = false;
             Vector3 off = r.area.center - new Vector3(2.5f, 0f, 1.25f).normalized * (0.3f * r.area.safeRadius);
@@ -527,6 +669,7 @@ namespace TerrainGen.Tests
                     sunk = $"the girdle sank to {g.y:F2} m, below the rock's top {hi.y:F2} m, at t={r.sim.Time:F1} s";
                 return OnGround(r) && r.brain.Arrived;
             }, kLandBound);
+            sankIn = sunk != null;
             if (sunk != null) return sunk;
             if (took < 0f) return $"never reached the point off the rock within {kLandBound} s x sqrt s ({r.State})";
             if (!hopped) return "never said \"hopping down\"";
@@ -537,18 +680,20 @@ namespace TerrainGen.Tests
 
         [Test] public void Perch_High_WalkTo_HopsDown()
         {
-            Rig r = Start(true, Rock(Vesper().scale));
+            Rig r = PerchedRig(Rock(Vesper().scale), out string why);
+            Assert.IsNotNull(r, why);
             string e = HopDownProblem(r, out float took); Report($"high perch -> WalkTo (hops down; launches {r.sim.Flight.Launches})", r, took);
             Assert.IsNull(e, e);
         }
 
         [Test] public void Red_CommandBrain_NoHopDown()
         {
-            Rig r = Start(true, Rock(Vesper().scale));
+            Rig r = PerchedRig(Rock(Vesper().scale), out string why);
+            Assert.IsNotNull(r, why);
             r.brain.noHopDown = true;
-            string e = HopDownProblem(r, out _);
+            string e = HopDownProblem(r, out _, out bool sank);
             TestContext.Out.WriteLine("RED: " + e);
-            Assert.IsNotNull(e);
+            Assert.IsTrue(sank || (e != null && e.Contains("never reached")), "walked off the edge: sank into the rock or never arrived");
         }
 
         // Fly given while a landing is under way (the autopilot's final or flare): the landing is called off, it flies on

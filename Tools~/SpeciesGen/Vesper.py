@@ -204,16 +204,19 @@ sp.add_module('Fly', {
         # by metres (the target 14 m behind a 4.4 m neck) and the containment's cut of the outward speed swung the trunk
         # up to 62 deg in a tick: the bend-limited neck flipped and the head jumped up to 7.45 m in one tick
         # (CreatureVesperTests.Vesper_Flight_NoHeadJump).
+        # (task F: it also keeps each neck joint's aim half a segment ahead - a head target swept past the head made
+        # the neck's front flip side to side, 0.5-0.7 m a tick)
         'headStabiliseBounded': 1,
-        # the trunk (and the head target's direction) turn at most 2 rad/s / sqrt s (FlightSpec.trunkTurnBounded): at the
-        # aviary's wall the outward speed is cut and the turn reverses what is left in a few tenths of a second; the trunk
-        # followed that reversal in a few ticks and the head swung 1.8-3 m in one tick (task E)
+        # the trunk turning at most 1.5 x the fastest coordinated turn (FlightSpec.trunkTurnBounded): only the impossible
+        # reversal at the wall is slowed - the head's swing there 3 m -> 0.5 m in a tick (Vesper_Aviary_NoHeadPop)
         'trunkTurnBounded': 1,
         'airNeckStance': 0.3,
         'launchHeadOnNeck': 1, 'touchdownAtStance': 1, 'launchTailBySegment': 1,
         # a touchdown's first frame is the hovering body (FlightSpec.touchdownFromHover): begun on a tick's last sub-step
         # the walking restart's body was shown for a tick - on a rock perch the girdle jumped 1.6-2.9 m there and back,
         # on open ground the head 2.1 m (CreatureVesperTests.Vesper_Touchdown_NoGirdleJump)
+        # (task F: with it the touchdown's shown body and, with drapeOwnHeading, the draped run move at most 3 body
+        # lengths per second x sqrt s - the tail swung down over a rock's edge 0.5-1.2 m a tick)
         'touchdownFromHover': 1,
         # a rock perch (CommandBrain's Land without an axis) keeps the avoidance's perch tube along its approach heading
         # (FlightSpec.perchTubeOnApproach); off, the tube was cleared every sub-step and the rock could turn the final away
@@ -229,6 +232,12 @@ sp.add_module('Fly', {
         # (FlightSpec.floorLiftEased); off, it snapped up by the rock's height in one sub-step: 1.4-1.5 m in a tick
         # (CreatureVesperTests.Vesper_LowOverRock_NoGirdleJump)
         'floorLiftEased': 1,
+        # the containment turning the flight along the wall instead of cutting its outward speed (FlightSpec.containTurns)
+        # is the cure for the wall's sideways flight and head swing (Vesper_Aviary_ContainTurns), but NOT ON YET: the
+        # command brain's perch line-up and open-ground landing lean on the cut's instant reversal (perched 43 -> 34 of 48
+        # in VesperLab's aviary; 4-10 CommandBrain tests fail with it on) - a CommandBrain perch line-up rework first
+        # (follow-up). Meanwhile trunkTurnBounded mitigates the head swing
+        'containTurns': 0,
         'avoidLookahead': 2.4, 'avoidMargin': 0.35, 'perchGrip': 0, 'perchMinRadius': 0.06, 'pursuitGain': 0,
         'legTuckOut': 0, 'legTuckDown': 0, 'legTuckReach': 0,
         'touchdownTogether': 1,

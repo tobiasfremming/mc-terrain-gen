@@ -18,13 +18,20 @@ namespace TerrainGen.Tests
     //                                   Vesper starts off every rock's keep-out and, ticked 3 s x sqrt s, stands on the flat
     //                                   ground (planted feet on y = 0) with every joint inside the aviary; the player's spot
     //                                   is inside the aviary, off the rocks.
+    //   Lab_Rock_IsTheTestedBox         VesperLab's rock mesh (VesperLabLayout.RockGeometry, which CreatureSurfaceMesh turns
+    //                                   into the perch surface) is exactly the CommandBrain tests' box: its bounds are the
+    //                                   box's, its top flat at the box's height, every face outward (Unity winding); rock 0's
+    //                                   box is CreatureCommandBrainTests.Rock's; the obstacle disc holds the footprint. RED:
+    //                                   reversed triangles fail the outward check.
+    //   Menu_Texts_Cached               the IMGUI texts (title, buttons, the closed box) are the same strings frame after frame
+    //                                   until the command or Doing changes (OnGUI builds none)
     //   Lab_Perch_NeverStalls           Perch in the lab's layout (three rocks, as obstacles) ends perched on a rock or, after
     //                                   the brain's attempts, on open ground saying so - never stuck in between.
     public class CreatureVesperLabTests
     {
         const float kDt = 1f / 60f;
         const float kFlyBound = 10f;      // s x sqrt s (CreatureCommandBrainTests.kFlyBound)
-        const float kWalkToBound = 30f;   // ... kLandBound
+        const float kWalkToBound = 30f;   // a walk from the ground (CreatureCommandBrainTests: WalkTo from the ground 8 s x sqrt s on every seed)
         const float kPerchBound = 160f;   // two perch attempts of 30 s x sqrt s each, the flights between, an open-ground landing
 
         static CreatureSpecies Vesper() => CreatureVesperTests.Vesper();
@@ -43,8 +50,12 @@ namespace TerrainGen.Tests
                 this.sp = sp; s = sp.scale; T = Mathf.Sqrt(s);
                 area = VesperLabLayout.Area(sp, s, Vector3.zero, rocks);
                 ground = new WingedTestSurfaces();
+                // VesperLab's rocks: VesperLabLayout.RockBox (the box its RockGeometry mesh fills)
                 for (int i = 0; i < rocks; i++)
-                    ground.AddRock(VesperLabLayout.RockAt(area.center, area.up, i, rocks, s), VesperLabLayout.RockSizeAt(s), 11 + i);
+                {
+                    Bounds b = VesperLabLayout.RockBox(area.center, i, rocks, s);
+                    ground.AddRock(b.center - Vector3.up * b.extents.y, b.size, 11 + i);
+                }
             }
 
             // VesperLab's spawn: a new individual at the start spot with a CommandBrain, handed to the menu
@@ -198,6 +209,75 @@ namespace TerrainGen.Tests
             TestContext.Out.WriteLine($"{planted} planted feet, worst |y| {worst:F4} m; joints within {maxR:F1} m, lowest {lowJoint:F2} m; {lab.State}");
             Assert.Greater(planted, 0, "feet planted");
             Assert.Less(worst, 0.01f * s, "planted feet on the flat ground (y = 0)");
+        }
+
+        // null = every triangle of the mesh faces out of its box (Cross(b - a, c - a) away from the box's centre)
+        static string OutwardProblem(System.Collections.Generic.List<Vector3> v, System.Collections.Generic.List<int> tris, Vector3 centre)
+        {
+            for (int k = 0; k < tris.Count; k += 3)
+            {
+                Vector3 a = v[tris[k]], b = v[tris[k + 1]], c = v[tris[k + 2]];
+                Vector3 n = Vector3.Cross(b - a, c - a);
+                if (Vector3.Dot(n, (a + b + c) / 3f - centre) <= 0f) return $"triangle {k / 3} faces into the rock";
+            }
+            return null;
+        }
+
+        [Test] public void Lab_Rock_IsTheTestedBox()
+        {
+            float s = Vesper().scale;
+            var v = new System.Collections.Generic.List<Vector3>(); var tris = new System.Collections.Generic.List<int>();
+            Vector3 size = VesperLabLayout.RockSizeAt(s);
+            VesperLabLayout.RockGeometry(size, v, tris);
+            Assert.AreEqual(24, v.Count); Assert.AreEqual(36, tris.Count);
+            Vector3 min = v[0], max = v[0];
+            foreach (Vector3 p in v) { min = Vector3.Min(min, p); max = Vector3.Max(max, p); }
+            Vector3 lo = new Vector3(-0.6f, 0f, -0.6f) * s, hi = new Vector3(0.6f, 0.5f, 0.6f) * s;
+            Assert.Less((min - lo).magnitude, 1e-5f, $"base corner {min} (pivot at the base centre)");
+            Assert.Less((max - hi).magnitude, 1e-5f, $"top corner {max}");
+            int top = 0; foreach (Vector3 p in v) if (Mathf.Abs(p.y - hi.y) < 1e-5f) top++;
+            Assert.AreEqual(12, top, "a flat top at the box's height: the top face's 4 vertices and each side face's upper 2");
+            string e = OutwardProblem(v, tris, new Vector3(0f, 0.5f * size.y, 0f));
+            Assert.IsNull(e, e);
+
+            // rock 0's box is the CommandBrain tests' Rock
+            Bounds b = VesperLabLayout.RockBox(Vector3.zero, 0, 3, s);
+            var tested = CreatureCommandBrainTests.Rock(s).Boxes[0];
+            Assert.Less((b.min - tested.min).magnitude, 1e-4f, $"min {b.min} vs the tests' {tested.min}");
+            Assert.Less((b.max - tested.max).magnitude, 1e-4f, $"max {b.max} vs the tests' {tested.max}");
+            // the obstacle disc holds the whole footprint
+            Assert.GreaterOrEqual(VesperLabLayout.RockRadius(s) + 1e-4f, 0.5f * new Vector2(size.x, size.z).magnitude);
+        }
+
+        [Test] public void Red_Rock_InsideOut()
+        {
+            float s = Vesper().scale;
+            var v = new System.Collections.Generic.List<Vector3>(); var tris = new System.Collections.Generic.List<int>();
+            VesperLabLayout.RockGeometry(VesperLabLayout.RockSizeAt(s), v, tris);
+            for (int k = 0; k < tris.Count; k += 3) { int x = tris[k + 1]; tris[k + 1] = tris[k + 2]; tris[k + 2] = x; }
+            string e = OutwardProblem(v, tris, new Vector3(0f, 0.25f * s, 0f));
+            TestContext.Out.WriteLine("RED: " + e);
+            Assert.IsNotNull(e);
+        }
+
+        [Test] public void Menu_Texts_Cached()
+        {
+            var lab = new Lab(Vesper(), 3);
+            var m = new VesperLabMenu();
+            lab.Spawn(m);
+            string title = m.Title, b0 = m.ButtonLabel(0), closed = m.ClosedText;
+            StringAssert.Contains("Doing: ", closed);
+            StringAssert.Contains("<", b0, "Stand is the picked one");
+            for (int i = 0; i < 3; i++)
+            {
+                Assert.AreSame(title, m.Title); Assert.AreSame(b0, m.ButtonLabel(0)); Assert.AreSame(closed, m.ClosedText);
+            }
+            m.Pick(CreatureCommand.Fly);
+            Assert.AreNotSame(title, m.Title, "a new command relabels");
+            StringAssert.Contains("<", m.ButtonLabel(3)); StringAssert.DoesNotContain("<", m.ButtonLabel(0));
+            lab.Run(1f);   // Doing changes (taking off)
+            Assert.AreNotEqual(closed, m.ClosedText, "a new Doing rebuilds the closed box");
+            StringAssert.Contains(lab.brain.Doing, m.ClosedText);
         }
 
         [Test] public void Lab_Perch_NeverStalls()

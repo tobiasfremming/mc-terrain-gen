@@ -374,6 +374,7 @@ MonoBehaviour:
           drapeOwnHeading: 1
           perchFrontLevel: 1
           floorLiftEased: 1
+          containTurns: 0
           avoidLookahead: 2.4
           avoidMargin: 0.35
           perchGrip: 0

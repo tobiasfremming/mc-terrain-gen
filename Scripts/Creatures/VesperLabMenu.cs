@@ -58,7 +58,7 @@ public sealed class VesperLabMenu
         if (brain != null && !forgetOnAttach) brain.Command(Selected, Point);
     }
 
-    string lastDoing, status = "Doing: -";
+    string lastDoing, status = "Doing: -", closedText = ClosedHint;
 
     // "Doing: ..." (the brain's Doing is one of a set of constant strings: the line is rebuilt only when it changes)
     public string Status
@@ -66,8 +66,29 @@ public sealed class VesperLabMenu
         get
         {
             string d = Brain != null ? Brain.Doing : "no Vesper";
-            if (!ReferenceEquals(d, lastDoing)) { lastDoing = d; status = "Doing: " + d; }
+            if (!ReferenceEquals(d, lastDoing)) { lastDoing = d; status = "Doing: " + d; closedText = ClosedHint + "\n" + status; }
             return status;
         }
+    }
+
+    // the closed menu's box: the hint and "Doing: ..." (rebuilt with Status)
+    public string ClosedText { get { _ = Status; return closedText; } }
+
+    // the open menu's title and button labels ("3  Walk to me", the picked one marked): rebuilt only when the
+    // picked command changes
+    readonly string[] labels = new string[Commands.Length];
+    string title;
+    CreatureCommand labelled = (CreatureCommand)(-1);
+
+    public string Title { get { Relabel(); return title; } }
+    public string ButtonLabel(int i) { Relabel(); return labels[i]; }
+
+    void Relabel()
+    {
+        if (labelled == Selected) return;
+        labelled = Selected;
+        title = "Vesper  -  " + Label(Selected);
+        for (int i = 0; i < Commands.Length; i++)
+            labels[i] = (i + 1) + "  " + Label(Commands[i]) + (Commands[i] == Selected ? "  <" : "");
     }
 }

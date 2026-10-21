@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 // VesperLab's layout, pure geometry (also run offline): the aviary, the perch rocks and where Vesper and the player
@@ -31,6 +32,40 @@ public static class VesperLabLayout
         => center + Quaternion.AngleAxis(360f * i / Mathf.Max(1, count), up) * (RockOffset * scale);
     public static Vector3 RockSizeAt(float scale) => RockSize * scale;
 
+    // Rock i's box, axis-aligned (no rotation, no sink): exactly the CommandBrain tests' WingedTestSurfaces.AddRock box.
+    public static Bounds RockBox(Vector3 center, int i, int count, float scale)
+    {
+        Vector3 at = RockAt(center, Vector3.up, i, count, scale), size = RockSizeAt(scale);
+        return new Bounds(at + Vector3.up * (0.5f * size.y), size);
+    }
+
+    // The obstacle radius of a rock's footprint: the box's half diagonal (its whole footprint is inside the disc).
+    public static float RockRadius(float scale) { Vector3 s = RockSizeAt(scale); return 0.5f * Mathf.Sqrt(s.x * s.x + s.z * s.z); }
+
+    // The rock's render (and perch surface: CreatureSurfaceMesh builds its proxy collider from it) mesh: a box of `size`,
+    // pivot at the base centre, 4 vertices per face (flat normals); front faces outward, Unity's winding:
+    // Cross(b - a, c - a) points out of the box (as AviaryRock's).
+    static readonly Vector3[] kFaceN = { Vector3.right, Vector3.left, Vector3.up, Vector3.down, Vector3.forward, Vector3.back };
+    static readonly Vector3[] kFaceU = { Vector3.up, Vector3.up, Vector3.forward, Vector3.forward, Vector3.right, Vector3.right };
+    public static void RockGeometry(Vector3 size, List<Vector3> verts, List<int> tris)
+    {
+        verts.Clear(); tris.Clear();
+        Vector3 h = 0.5f * size;
+        for (int f = 0; f < 6; f++)
+        {
+            Vector3 n = kFaceN[f], u = kFaceU[f];
+            Vector3 v = Vector3.Cross(n, u);       // then Cross(u, v) = n
+            int b = verts.Count;
+            Vector3 c = Vector3.Scale(n, h);
+            Vector3 du = Vector3.Scale(u, h), dv = Vector3.Scale(v, h);
+            verts.Add(c - du - dv); verts.Add(c + du - dv); verts.Add(c + du + dv); verts.Add(c - du + dv);
+            // (0, 1, 2): Cross(2 du, 2 du + 2 dv) points along Cross(u, v) = n, out of the box
+            tris.Add(b); tris.Add(b + 1); tris.Add(b + 2);
+            tris.Add(b); tris.Add(b + 2); tris.Add(b + 3);
+        }
+        for (int i = 0; i < verts.Count; i++) verts[i] += Vector3.up * h.y;   // pivot at the base centre
+    }
+
     // The rocks' keep-out (the clearance the walking head's path keeps from them), body lengths. Not the lab's
     // EnclosureArea.KeepOutFor (11.5 m for Vesper: its folded wings' lateral reach + 0.25 L), whose discs would cover the
     // centre and most of the disc between three rocks. Measured offline, WalkAround 480 s, seeds 1-3: 0.25 L walks
@@ -47,11 +82,10 @@ public static class VesperLabLayout
         if (rocks > 0)
         {
             a.obstacleCenters = new Vector3[rocks]; a.obstacleRadii = new float[rocks];
-            Vector3 size = RockSizeAt(scale);
             for (int i = 0; i < rocks; i++)
             {
                 a.obstacleCenters[i] = RockAt(center, Vector3.up, i, rocks, scale);
-                a.obstacleRadii[i] = 0.5f * Mathf.Max(size.x, size.z);
+                a.obstacleRadii[i] = RockRadius(scale);
             }
             a.keepOut = KeepOutLengths * sp.BodyLength * big;
         }

@@ -69,6 +69,7 @@ public sealed class CommandBrain : ICreatureBrain
     const float kApproachH = 2f;       // m at scale 1: the approach height over the spot (the autopilot's and FlightBrain's)
     const float kLaneLow = 1.2f;
     const int kChords = 12;
+    const float kLoiterStraight = 2f;  // cruise turn radii: loitering inside this of the middle it flies straight on
 
     readonly EnclosureArea area;
     readonly WanderBrain wander;
@@ -106,7 +107,10 @@ public sealed class CommandBrain : ICreatureBrain
     internal float perchMissBy;
     internal bool perchUnreachable;
     internal int perchFailsMax = kPerchFailsMax;
+    internal bool ignoreMisses;   // RED hook: a touchdown beside the perch is not counted as a failed attempt
+    internal int PerchTimeouts { get; private set; }   // (tests) perch attempts that timed out on the line-up
     internal bool keepStaleOnPerch;
+    internal bool orbitLoiter;   // RED hook: loitering turns for the middle from anywhere (it orbited it, never landing)
     internal bool noHopDown;   // RED hook: a walk command on a high perch walks off the edge   // RED hook: OnPerch not re-checked on the ground (stale after walking off)   // (tests: more attempts)
 
     Landing landing;         // what this brain's own landing in progress is for
@@ -142,7 +146,7 @@ public sealed class CommandBrain : ICreatureBrain
     {
         Current = c; Point = point;
         hopping = false;
-        perchFails = 0; PerchMisses = 0; scanBegun = false; scanDone = false; candCount = 0; NoPerch = false; PerchGaveUp = false; arrived = false;
+        perchFails = 0; PerchMisses = 0; PerchTimeouts = 0; scanBegun = false; scanDone = false; candCount = 0; NoPerch = false; PerchGaveUp = false; arrived = false;
         faceLeft = -1f; circlePlanned = false; waypointLeft = 0f; approachPlanned = false;
     }
 
@@ -181,7 +185,7 @@ public sealed class CommandBrain : ICreatureBrain
             // walked off the perch (a walk command, the Wander, a WalkTo): no longer on it - one probe a tick while it is
             else if (OnPerch && !keepStaleOnPerch) OnPerch = OnPerchSurface(sim, fl);
             hopping = false;   // (a hop down ends on the ground)
-            if (landing == Landing.Perch && !OnPerch)
+            if (landing == Landing.Perch && !OnPerch && !ignoreMisses)
             {
                 PerchMisses++;
                 if (++perchFails >= perchFailsMax) { NoPerch = true; PerchGaveUp = true; }
@@ -464,6 +468,7 @@ public sealed class CommandBrain : ICreatureBrain
             {
                 // this perch took too long: another (kPerchFailsMax tries, then open ground)
                 approachPlanned = false;
+                PerchTimeouts++;
                 if (++perchFails >= perchFailsMax) { NoPerch = true; PerchGaveUp = true; }
             }
             if (!NoPerch && !approachPlanned)
@@ -519,7 +524,8 @@ public sealed class CommandBrain : ICreatureBrain
         Loiter(sim, fl);   // none ahead: for the middle until there is
     }
 
-    // Flying on for the middle at the height it has (a little over the approach height at least), the wall turn last.
+    // Flying on for the middle at the height it has (a little over the approach height at least; within kLoiterStraight
+    // cruise turn radii of the middle straight on), the wall turn last.
     void Loiter(CreatureSim sim, CreatureFlight fl)
     {
         FlightModel m = fl.Model;
@@ -527,6 +533,10 @@ public sealed class CommandBrain : ICreatureBrain
         float alt = Mathf.Max(m.Altitude, Vector3.Dot(area.center, up) + kApproachH * sim.SizeScale);
         float turn = fl.TurnToward(area.center);
         Vector3? toward = area.center;
+        // (near the middle it flies straight on: turning for the middle from there at its flown turn radius (~1.6 cruise
+        // radii) it orbited the middle, and no open-ground spot was ever straight ahead inside the inner disc - from the
+        // air, Land never landed on 20 of 24 seeds; on a straight chord through the middle one comes up)
+        if (!orbitLoiter && area.PlanarDistance(m.Position) < kLoiterStraight * CruiseTurnRadius(sim)) { turn = 0f; toward = null; }
         if (fl.WallTurn(out float wall)) { turn = wall; toward = null; }
         fl.SetGoals(Mathf.Min(alt, Ceiling(sim)), sim.Species.flight.cruiseSpeed * sim.TimeScale, turn, toward);
     }

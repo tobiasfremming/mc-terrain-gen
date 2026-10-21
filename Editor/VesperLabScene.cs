@@ -22,7 +22,9 @@ public static class VesperLabScene
     [MenuItem("Marching Cubes/Build Vesper Lab")]
     public static void BuildFromMenu()
     {
-        Debug.Log(Build());
+        string result = Build();
+        if (result.StartsWith("Built ")) Debug.Log(result);
+        else Debug.LogError("[Build Vesper Lab] " + result);   // a precondition (SampleScene not active, a missing asset)
     }
 
     public static string Build()

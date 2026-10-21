@@ -75,11 +75,22 @@ namespace TerrainGen.Tests
             Assert.AreEqual(120, r.SubmittedForTest);
         }
 
-        // Every shipped species is off; DesertMonitor's drawn mesh is byte-identical to its golden mesh.
+        // A species that lists the SkeletonOnly module (Vesper, step 1 of a skeleton-first build) may be skeleton-only;
+        // every other shipped species is off. DesertMonitor's drawn mesh is byte-identical to its golden mesh.
+        static bool ListsSkeletonOnly(CreatureSpecies sp)
+        {
+            foreach (CreatureModule m in CreatureKit.KitView.Modules(sp)) if (m is SkeletonOnly) return true;
+            return false;
+        }
+
         [Test] public void SkeletonOnly_Off_ShippedUnchanged()
         {
             foreach (string n in CreatureKitAssets.Species())
-                Assert.IsFalse(CreatureKitAssets.Load(n).skeletonOnly, n + " is skeleton-only");
+            {
+                CreatureSpecies shipped = CreatureKitAssets.Load(n);
+                if (!ListsSkeletonOnly(shipped)) Assert.IsFalse(shipped.skeletonOnly, n + " is skeleton-only");
+            }
+            Assert.IsTrue(CreatureKitAssets.Load("Vesper").skeletonOnly, "Vesper is the deliberately skeleton-only species");
             CreatureSpecies sp = CreatureKitAssets.Load("DesertMonitor");
             CreatureRenderer r = RunDrawn(sp, out _);
             Assert.IsNotNull(r.Mesh);

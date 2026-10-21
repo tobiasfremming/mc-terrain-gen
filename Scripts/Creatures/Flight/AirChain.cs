@@ -41,9 +41,12 @@ public sealed class AirChain
     public Vector3 HeadTarget { get; private set; }
     // FlightSpec.headStabiliseBounded: the trunk's lead velocity (the girdle's, low-passed over kHeadingTau)
     Vector3 leadVel, leadAcc;
-    // FlightSpec.trunkTurnBounded: the trunk's lead direction, turned toward the lead velocity at most kTrunkTurnRate
+    // FlightSpec.trunkTurnBounded: the trunk's lead direction, turned toward the lead velocity at most TrunkTurnRate
     Vector3 leadDir, headDir;
-    const float kTrunkTurnRate = 2f;   // rad/s at scale 1 (/ sqrt s)
+    const float kTrunkTurnShare = 1.5f; // x the flyer's fastest coordinated turn (g tan maxBankDeg / minSpeed)
+    const float kAimAhead = 0.5f;       // FlightSpec.headStabiliseBounded: a neck joint's aim at least this many segments ahead
+    // Test-only (RED of the aim kept ahead, FlightSpec.headStabiliseBounded): the neck aims as the shipped chain does
+    internal static bool NoAimAheadForTest;
 
     // The twisting chain (FlightSpec.twist enabled: the dragon): the body follows the head's path (AirTwist)
     // instead of trailing the girdle. Null otherwise - the pull chain below runs exactly as before.
@@ -80,6 +83,10 @@ public sealed class AirChain
         }
         if (flight.twist.Enabled) Twist = new AirTwist(flight.twist, n, seg, scale, cosLimit, sinLimit, girdle);
     }
+
+    // FlightSpec.trunkTurnBounded: the trunk's fastest turn, rad/s: kTrunkTurnShare x the coordinated turn at minSpeed - above
+    // any turn the flight model flies, so only an impossible reversal (the containment's cut) is slowed
+    float TrunkTurnRate => kTrunkTurnShare * FlightModel.G * Mathf.Tan(f.maxBankDeg * Mathf.Deg2Rad) / Mathf.Max(1e-3f, f.minSpeed * timeScale);
 
     public float SegmentLength => seg;
     public int Girdle => girdle;
@@ -119,12 +126,12 @@ public sealed class AirChain
         Vector3 vh = Norm(gv, Norm(joints[girdle] - joints[Mathf.Min(girdle + 1, n - 1)], Vector3.forward));
         if (f.trunkTurnBounded)
         {
-            // FlightSpec.trunkTurnBounded: the trunk's lead direction turns at most kTrunkTurnRate toward the (lead)
-            // velocity's. At the containment wall the outward speed is cut and the turn then reverses what is left
+            // FlightSpec.trunkTurnBounded: the trunk's lead direction turns at most TrunkTurnRate toward the (lead)
+            // velocity's (TrunkTurnRate). At the containment wall the outward speed is cut and the turn then reverses what is left
             // within a few tenths of a second: the lead velocity passed through nothing and its direction (the trunk,
             // and the neck laid from it) swung up to 150 deg in a few ticks - the head 3 m and more in one tick.
             if (leadDir.sqrMagnitude < 0.5f) leadDir = vh;
-            else leadDir = Norm(Vector3.RotateTowards(leadDir, vh, kTrunkTurnRate / timeScale * h, 0f), vh);
+            else leadDir = Norm(Vector3.RotateTowards(leadDir, vh, TrunkTurnRate * h, 0f), vh);
             vh = leadDir;
         }
         Vector3 side = Vector3.Cross(vh, up);
@@ -165,11 +172,15 @@ public sealed class AirChain
             if (f.headStabiliseBounded) dir = Cone(trunkDir, dir, kMaxHeadTurnCos, kMaxHeadTurnSin);
             if (f.trunkTurnBounded)
             {
-                // (and the head target's direction turns at most twice that: the cone round the trunk's line flipped
-                // side when the smoothed velocity pointed nearly opposite the trunk, mid-reversal)
+                // (and the head target's direction turns at most that rate too: the cone round the trunk's line flipped
+                // side when the smoothed velocity pointed nearly opposite the trunk, mid-reversal. At twice the rate - as
+                // first written - the neck's front swept 0.45-0.58 m a tick after every reversal, against a bound of
+                // 0.65 m (Vesper_Flight_NoHeadJump); at the trunk's own rate 0.3-0.4 m)
                 if (headDir.sqrMagnitude < 0.5f) headDir = dir;
-                else headDir = Norm(Vector3.RotateTowards(headDir, dir, 2f * kTrunkTurnRate / timeScale * h, 0f), dir);
+                else headDir = Norm(Vector3.RotateTowards(headDir, dir, TrunkTurnRate * h, 0f), dir);
                 dir = headDir;
+                // (still inside the head's cone round the trunk's line)
+                if (f.headStabiliseBounded) dir = Cone(trunkDir, dir, kMaxHeadTurnCos, kMaxHeadTurnSin);
             }
             Vector3 target = smoothPos + dir * (kNeckSlack * seg * girdle);
             // the neck's sagittal plane: across it the girdle's banked side (airNeckStance turns the neck up in it)
@@ -186,7 +197,22 @@ public sealed class AirChain
             {
                 float t = (girdle - i) / (float)girdle, it = 1f - t;
                 Vector3 aim = it * it * girdlePos + 2f * it * t * ctrl + t * t * target;
-                Vector3 d = Norm(aim - joints[i + 1], pd);
+                Vector3 to = aim - joints[i + 1];
+                if (f.headStabiliseBounded && !NoAimAheadForTest)
+                {
+                    // FlightSpec.headStabiliseBounded: the aim kept ahead of the joint (at least kAimAhead segments along
+                    // the segment before), its sideways part faded out as it falls behind. A head target the neck had
+                    // swept past (behind the head, inside the neck's reach) left the cone below to pick a side from a
+                    // near-backward aim: the front of the neck flipped from side to side tick by tick (Vesper's head
+                    // 0.5-0.7 m a tick back and forth as a turn's target swept past it)
+                    float along = Vector3.Dot(to, pd);
+                    if (along < kAimAhead * seg)
+                    {
+                        float w = Mathf.Clamp01((along + seg) / ((1f + kAimAhead) * seg));
+                        to = pd * (kAimAhead * seg) + (to - pd * along) * w;
+                    }
+                }
+                Vector3 d = Norm(to, pd);
                 // the cone's centre: straight on, or (airNeckStance) the stance's share of the bend at joint i + 1
                 Vector3 axis = pd;
                 if (restCos != null && restSin[i + 1] != 0f)

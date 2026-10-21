@@ -47,6 +47,9 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     readonly bool[] wingLeg;             // per leg: driven by a wing
     readonly Vector3[] air;              // the air chain's joints
     readonly Vector3[] snapshot;         // touchdown: the body when it touched down
+    readonly Vector3[] shown;            // FlightSpec.touchdownFromHover: the touchdown body as last shown
+    readonly Vector3[] hangAt;           // FlightSpec.drapeOwnHeading: where each hanging joint hung last sub-step
+    readonly bool[] hung;
     readonly Vector3[] offset;           // touchdown: hovering pose - grounded pose, eased out
     readonly float[] tuck;               // per leg: 0 walked .. 1 tucked
     readonly float[] wristLift;          // per wing: the wing-walk's wrist lift (groundWristLift), held for the blends
@@ -88,7 +91,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         girdle = sp.legs[sp.wings[0].leg].attachJoint;
         wingLeg = new bool[sp.legs.Length];
         for (int w = 0; w < sp.WingCount; w++) wingLeg[sp.wings[w].leg] = true;
-        air = new Vector3[n]; snapshot = new Vector3[n]; offset = new Vector3[n];
+        air = new Vector3[n]; snapshot = new Vector3[n]; offset = new Vector3[n]; shown = new Vector3[n]; hangAt = new Vector3[n]; hung = new bool[n];
         tuck = new float[sp.legs.Length];
         wristLift = new float[sp.WingCount];
         AirWeight = new float[n];
@@ -131,6 +134,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         heading = heading.sqrMagnitude > 1e-8f ? heading.normalized : Vector3.forward;
         float v = Mathf.Max(sim.Speed, f.launchSpeed * T);
         Model.Reset(sim.Joints[girdle], heading * v + up * ((f.vaultSpeed > 0f ? f.vaultSpeed : kVault) * T), heading, up);
+        floorValid = false; floorOwed = 0f;   // FlightSpec.floorLiftEased: a new flight owes nothing
         DiveFold = 0f; Model.DemandCap = float.MaxValue; sim.Crouch = 0f;
         Model.AltitudeGoal = altitudeGoal;
         Model.SpeedGoal = f.cruiseSpeed * T;
@@ -478,6 +482,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
                 st.area *= 1f - 0.8f * ff; // a folded wing barely grips the air
             }
         Model.Integrate(dt, Wings);
+        if (f.containTurns && !(Landing && (OnFinal || Mode == FlightMode.Flare))) ContainTurn(dt);
         Contain();
         ProbeGround(dt);
         if (Chain.Twist != null)
@@ -491,6 +496,41 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         }
         Chain.Step(dt, air, Model.Position, Model.Velocity, Model.BankedUp, Model.Up);
     }
+
+    // FlightSpec.containTurns: near the safe radius an outward flight is turned along the wall at the coordinated turn
+    // rate (g tan maxBank / v), begun when the radial room left is what that turn needs to come round to the tangent
+    // (R (1 - cos theta), theta the heading's angle out from the tangent, plus kContainLead x s): the speed is kept and only
+    // its direction turns (not on a landing's final or flare: they end inside the disc, and a perch near the wall lies in the
+    // turn's band). Contain() then rarely has an outward speed left to cut; it cut up to 90 deg in one sub-step
+    // and the wall turn reversed the rest within ~0.3 s - far tighter than the flyer can turn - and the body, following
+    // its velocity, flew sideways or tail first for seconds.
+    void ContainTurn(float dt)
+    {
+        if (!sim.Bounds.HasValue) return;
+        EnclosureArea a = sim.Bounds.Value;
+        Vector3 up = a.up;
+        Vector3 d = Model.Position - a.center;
+        Vector3 planar = d - up * Vector3.Dot(d, up);
+        float m = planar.magnitude;
+        if (m < 1e-6f) return;
+        Vector3 radial = planar / m;
+        Vector3 v = Model.Velocity;
+        float vu = Vector3.Dot(v, up);
+        Vector3 vh = v - up * vu;
+        float speed = vh.magnitude;
+        if (speed < 1e-3f) return;
+        float vr = Vector3.Dot(vh, radial);
+        if (vr <= 0f) return;
+        Vector3 tangent = Vector3.Cross(up, radial);
+        float vt = Vector3.Dot(vh, tangent);
+        if (vt < 0f || (vt == 0f && Model.Bank < 0f)) tangent = -tangent;
+        float sinT = Mathf.Min(1f, vr / speed), cosT = Mathf.Sqrt(Mathf.Max(0f, 1f - sinT * sinT));
+        float w = FlightModel.G * Mathf.Tan(f.maxBankDeg * Mathf.Deg2Rad) / Mathf.Max(speed, f.minSpeed * T);
+        float need = speed / w * (1f - cosT) + kContainLead * scale;
+        if (a.safeRadius - m > need) return;
+        Model.Velocity = Vector3.RotateTowards(vh, tangent * speed, w * dt, 0f) + up * vu;
+    }
+    const float kContainLead = 0.5f;   // m at scale 1: FlightSpec.containTurns begins its turn this much early
 
     void Contain()
     {
@@ -824,6 +864,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             // joints stay the hovering body - the touchdown blend's start (BeforeLegs takes its offset in the next
             // walking sub-step). Begun on a tick's last sub-step, the laid body was shown for one tick instead.
             Array.Copy(snapshot, sim.Joints, n);
+            Array.Copy(snapshot, shown, n);
             sim.RefreshFrames();
         }
     }
@@ -901,9 +942,34 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             armBlend = 1f - Smooth01(t / kArmHandover);
             foldFloor = Smooth01(t);
             if (!f.touchdownTogether) Relength(J);
+            if (f.touchdownFromHover && !NoStepCapsForTest) LimitTouchdownStep(J, dt);
             sim.RefreshFrames();
         }
     }
+
+    // FlightSpec.touchdownFromHover: the touchdown's shown body moves at most kStepCap body lengths per second x sqrt s
+    // (joint by joint, the girdle free; lengths restored from the girdle). The together blend turns every segment from the
+    // hovering body's direction to the walking body's within 0.6 of the touchdown: a tail held up behind a descending
+    // flyer and hanging down over a rock's edge after swung through 120-180 deg, its tip 0.5-0.6 m a tick (Vesper,
+    // 0.05 L = 0.62 m), more where the walking body itself jumped (a drape's edge moving: 1.0-1.1 m).
+    void LimitTouchdownStep(Vector3[] J, float dt)
+    {
+        float cap = StepCap(dt);
+        for (int i = 0; i < n; i++)
+        {
+            if (i == girdle) continue;
+            Vector3 d = J[i] - shown[i];
+            float m = d.magnitude;
+            if (m > cap) J[i] = shown[i] + d * (cap / m);
+        }
+        Relength(J);
+        Array.Copy(J, shown, n);
+    }
+
+    const float kStepCap = 3f;   // body lengths per second x sqrt s: touchdownFromHover's / drapeOwnHeading's step cap (0.024 L a tick for Vesper)
+    float StepCap(float dt) => kStepCap * sp.BodyLength * scale / T * dt;
+    // Test-only (RED of the step caps of FlightSpec.touchdownFromHover and drapeOwnHeading): no cap
+    internal static bool NoStepCapsForTest;
 
     // Test-only (REDs of FlightSpec.launchTailBySegment): the segment blend without its bend cones / the tail's walking frames.
     internal static bool NoLaunchTailConeForTest, WalkingLaunchTailFramesForTest;
@@ -947,10 +1013,10 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     // limits and the rest lies on the ground. True when it moved a joint.
     internal bool Drape(float dt, Vector3[] path, Vector3[] pathUp, Vector3[] groundPoint, float seg)
     {
-        if (Mode != FlightMode.Ground && Mode != FlightMode.Touchdown) return false;
+        if (Mode != FlightMode.Ground && Mode != FlightMode.Touchdown) { Array.Clear(hung, 0, n); return false; }
         Vector3[] probed = sim.ProbedGround;
         bool[] sup = sim.Supported;
-        if (probed == null) return false;
+        if (probed == null) { Array.Clear(hung, 0, n); return false; }
         float drop = kHangDrop * scale, rate = kHangRateDeg / T * dt;
         bool moved = f.perchFrontLevel && HoldFrontOnPerch(path, pathUp, groundPoint, probed, sup, drop);
         // the first joint (behind the girdle) whose ground falls away: the support's edge
@@ -961,11 +1027,11 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             float support = Vector3.Dot(groundPoint[i - 1], u);
             if (!sup[i] || Vector3.Dot(probed[i], u) < support - drop) { a = i; break; }
         }
-        if (a < 0) return moved;
+        if (a < 0) return (f.drapeOwnHeading && !NoStepCapsForTest && CapSettling(path, pathUp, groundPoint, n, n, dt)) || moved;
         Vector3 upF = pathUp[a];
         Vector3 hb = Vector3.ProjectOnPlane(path[a - 1] - path[a - 2], upF);
         if (hb.sqrMagnitude < 1e-10f) hb = Vector3.ProjectOnPlane(path[a] - path[a - 1], upF);
-        if (hb.sqrMagnitude < 1e-10f) return false;
+        if (hb.sqrMagnitude < 1e-10f) return (f.drapeOwnHeading && !NoStepCapsForTest && CapSettling(path, pathUp, groundPoint, n, n, dt)) || moved;
         hb.Normalize();
         Vector3 down = -upF;
         float pitch0 = Mathf.Asin(Mathf.Clamp(Vector3.Dot((path[a - 1] - path[a - 2]).normalized, down), -1f, 1f)) * Mathf.Rad2Deg;
@@ -1004,13 +1070,53 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
                 }
                 else
                 {
+                    if (own && !NoStepCapsForTest)
+                    {
+                        // FlightSpec.drapeOwnHeading: a hanging joint moves at most StepCap a sub-step from where it hung
+                        Vector3 from = hung[i] ? hangAt[i] : path[i];
+                        Vector3 dd = p - from;
+                        float dm = dd.magnitude, capS = StepCap(dt);
+                        if (dm > capS) p = from + dd * (capS / dm);
+                    }
                     path[i] = p;
                     groundPoint[i] = p - pathUp[i] * clear;
+                    hangAt[i] = p;
                 }
                 prev = p; prevPitch = pitch;
             }
         }
+        if (own && !NoStepCapsForTest) CapSettling(path, pathUp, groundPoint, a, b, dt);
         return true;
+    }
+
+    // FlightSpec.drapeOwnHeading (the step cap): the joints past the support's edge that lie on the ground again (from b),
+    // and joints that were hanging and are supported again, move at most StepCap a sub-step from where they were until
+    // they are back - the edge or the run's end moving to another joint relaid the run behind it at once (over a rock's
+    // corner the tail 0.5-1.4 m in a tick). a, b: the hanging run [a, b) just laid (a = b = n: none). True when it moved one.
+    bool CapSettling(Vector3[] path, Vector3[] pathUp, Vector3[] groundPoint, int a, int b, float dt)
+    {
+        float capS = StepCap(dt);
+        bool moved = false;
+        for (int i = girdle + 1; i < n; i++)
+        {
+            if (i >= a && i < b) { hung[i] = true; continue; }   // (laid and capped in Drape)
+            bool was = hung[i];
+            hung[i] = i >= a;
+            if (was)
+            {
+                Vector3 dd = path[i] - hangAt[i];
+                float dm = dd.magnitude;
+                if (dm > capS)
+                {
+                    path[i] = hangAt[i] + dd * (capS / dm);
+                    groundPoint[i] = path[i] - pathUp[i] * (sp.joints[i].clearance * scale);
+                    hung[i] = true;   // (still on its way)
+                    moved = true;
+                }
+            }
+            if (hung[i]) hangAt[i] = path[i];
+        }
+        return moved;
     }
 
     // FlightSpec.perchFrontLevel: perched and standing (a perch touchdown, or on the ground after one with Halt), the joints

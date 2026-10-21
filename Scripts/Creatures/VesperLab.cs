@@ -2,8 +2,9 @@ using System.Collections.Generic;
 using UnityEngine;
 
 // The Vesper lab (Vesper step 1): one Vesper on flat ground (y = 0 under this object) in an aviary of
-// VesperLabLayout.AviaryFactor x the Creature Lab's radius, with perchCount rock perches (the CommandBrain tests' rock,
-// registered as perchable surfaces like the Creature Lab's aviary rocks: AviaryDressing.Rock + CreatureSurfaceMesh) and
+// VesperLabLayout.AviaryFactor x the Creature Lab's radius, with perchCount rock perches - exactly the CommandBrain tests'
+// box (VesperLabLayout.RockGeometry: no rotation, no sink), registered as perchable surfaces like the Creature Lab's
+// aviary rocks (CreatureSurfaceMesh: in play mode a proxy collider of this very mesh) - and
 // posts marking the edge. Vesper is driven by a CommandBrain that the "M" menu commands (IMGUI; VesperLabMenu holds the
 // state). The F3 skeleton view (CreatureDebugView) is on from the start.
 // Changing the species asset, scale, seed or perchCount in play mode respawns Vesper (and rebuilds the rocks for the
@@ -31,6 +32,10 @@ public sealed class VesperLab : MonoBehaviour
     EnclosureArea area;
     bool started, dirty;
     SimplePlayerController player;
+    CursorLockMode cursorBefore;
+    bool cursorVisibleBefore;
+    static readonly List<Vector3> rockVerts = new List<Vector3>();
+    static readonly List<int> rockTris = new List<int>();
 
     static readonly IGroundProbe Flat = new FlatGroundProbe(0f);
 
@@ -48,7 +53,7 @@ public sealed class VesperLab : MonoBehaviour
 
     void OnEnable() => CreatureSpecies.Changed += OnSpeciesChanged;
     void OnDisable() => CreatureSpecies.Changed -= OnSpeciesChanged;
-    void OnSpeciesChanged(CreatureSpecies sp) => dirty = true;
+    void OnSpeciesChanged(CreatureSpecies sp) { if (sp != null && sp == species) dirty = true; }
     void OnValidate() => dirty = true;
 
     void Start()
@@ -83,13 +88,20 @@ public sealed class VesperLab : MonoBehaviour
         }
     }
 
-    // Opening the menu frees the cursor and stops the player's look and walk (its click would re-lock the cursor).
+    // Opening the menu frees the cursor and stops the player's look and walk (its click would re-lock the cursor);
+    // closing it gives both back as they were. Without a player the cursor is left alone.
     void SetMenu(bool open)
     {
-        if (open != menu.Open) menu.Toggle();
-        if (player != null) player.enabled = !open;
-        Cursor.lockState = open ? CursorLockMode.None : CursorLockMode.Locked;
-        Cursor.visible = open;
+        if (open == menu.Open) return;
+        menu.Toggle();
+        if (player == null) return;
+        player.enabled = !open;
+        if (open)
+        {
+            cursorBefore = Cursor.lockState; cursorVisibleBefore = Cursor.visible;
+            Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
+        }
+        else { Cursor.lockState = cursorBefore; Cursor.visible = cursorVisibleBefore; }
     }
 
     void Pick(CreatureCommand c)
@@ -122,13 +134,17 @@ public sealed class VesperLab : MonoBehaviour
         _ = world.Surfaces;
         dressing = new GameObject("Aviary").transform;
         dressing.SetParent(transform, false);
-        Vector3 size = VesperLabLayout.RockSizeAt(s);
+        Mesh box = RockMesh(VesperLabLayout.RockSizeAt(s));
+        meshes.Add(box);
         for (int i = 0; i < rocks; i++)
         {
-            Vector3 at = VesperLabLayout.RockAt(center, Vector3.up, i, rocks, s);
-            GameObject rock = AviaryDressing.Rock(dressing, at, Vector3.up, size, seed + i, rockMaterial, out Mesh mesh);
-            rock.name = "Rock perch " + i;
-            meshes.Add(mesh);
+            // pivot at the base centre, on the ground, unrotated: VesperLabLayout.RockBox(center, i, rocks, s)
+            var rock = new GameObject("Rock perch " + i);
+            rock.transform.SetParent(dressing, false);
+            rock.transform.SetPositionAndRotation(VesperLabLayout.RockAt(center, Vector3.up, i, rocks, s), Quaternion.identity);
+            rock.AddComponent<MeshFilter>().sharedMesh = box;
+            rock.AddComponent<MeshRenderer>().sharedMaterial = rockMaterial;
+            rock.AddComponent<CreatureSurfaceMesh>();
         }
         AviaryDressing.Posts(dressing, center, Vector3.up, area.radius, area.maxHeight, 16, rockMaterial, Flat);
 
@@ -137,6 +153,17 @@ public sealed class VesperLab : MonoBehaviour
         sim = world.Spawn(species, start, fwd, brain, area, seed, s);
         menu.Attach(brain);
         Debug.Log($"[VesperLab] {species.name} at scale {s:F2}: aviary r {area.radius:F1} m (safe {area.safeRadius:F1} m, roof {area.maxHeight:F1} m), {rocks} rock perches; M: menu, F3: skeleton");
+    }
+
+    static Mesh RockMesh(Vector3 size)
+    {
+        VesperLabLayout.RockGeometry(size, rockVerts, rockTris);
+        var m = new Mesh { name = "Vesper lab rock" };
+        m.SetVertices(rockVerts);
+        m.SetTriangles(rockTris, 0);
+        m.RecalculateNormals();
+        m.RecalculateBounds();
+        return m;
     }
 
     void Teardown()
@@ -162,24 +189,17 @@ public sealed class VesperLab : MonoBehaviour
         meshes.Clear();
     }
 
+    static readonly Rect kClosedRect = new Rect(10f, 10f, 280f, 46f);
+    static readonly Rect kOpenRect = new Rect(10f, 10f, 280f, 92f + 26f * VesperLabMenu.Commands.Length);
+
+    // no strings built per event: the menu caches its texts (rebuilt when the command or Doing changes)
     void OnGUI()
     {
-        const float w = 280f;
-        if (!menu.Open)
-        {
-            GUI.Box(new Rect(10f, 10f, w, 46f), VesperLabMenu.ClosedHint + "\n" + menu.Status);
-            return;
-        }
-        int n = VesperLabMenu.Commands.Length;
-        float h = 92f + 26f * n;
-        GUILayout.BeginArea(new Rect(10f, 10f, w, h), GUI.skin.box);
-        GUILayout.Label("Vesper  -  " + VesperLabMenu.Label(menu.Selected));
-        for (int i = 0; i < n; i++)
-        {
-            CreatureCommand c = VesperLabMenu.Commands[i];
-            string label = (i + 1) + "  " + VesperLabMenu.Label(c) + (c == menu.Selected ? "  <" : "");
-            if (GUILayout.Button(label)) Pick(c);
-        }
+        if (!menu.Open) { GUI.Box(kClosedRect, menu.ClosedText); return; }
+        GUILayout.BeginArea(kOpenRect, GUI.skin.box);
+        GUILayout.Label(menu.Title);
+        for (int i = 0; i < VesperLabMenu.Commands.Length; i++)
+            if (GUILayout.Button(menu.ButtonLabel(i))) Pick(VesperLabMenu.Commands[i]);
         GUILayout.Label(menu.Status);
         GUILayout.Label(VesperLabMenu.Hint);
         GUILayout.EndArea();
