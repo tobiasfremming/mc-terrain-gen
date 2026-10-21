@@ -283,7 +283,8 @@ public class CreatureSpecies : ScriptableObject
     public int eyeJoint = 1;
     public Vector3 eyeOffset;             // x mirrored
     public float eyeRadius;
-    public int ringSegments = 16, ringsPerSegment = 3;
+    public int ringSegments = DefaultRingSegments, ringsPerSegment = DefaultRingsPerSegment;
+    internal const int DefaultRingSegments = 16, DefaultRingsPerSegment = 3;   // a kit chain body that draws its own mesh writes these back
     public CreatureLook look;
     public CreatureBodyPlan bodyPlan = CreatureBodyPlan.Spine;
     public CephalopodSpec cephalopod;

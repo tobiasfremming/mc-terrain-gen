@@ -46,6 +46,29 @@ namespace TerrainGen.Tests.Perf
             Assert.Less(best, kMeshBudgetMs, name + ": mesh build time");
         }
 
+        // 4b. The first (uncached) build: the surface parts' rest meshes (RestMeshCache), the head's built geometry
+        // (CrestBeakHead) and its SDF polygonisations (SculptMesher) all cleared, one build timed. It runs once per
+        // species per session (the lab prewarms it, a frame per species, before it places the enclosures), never per
+        // frame, so the bound is a generous regression tripwire (~10x the Apex's first build in a process, JIT included: ~0.3 s offline), not a budget:
+        // a tight bound would mostly measure the machine's load.
+        const float kColdBuildLimitMs = 3000f;
+
+        [Test] public void MeshTimeCold()
+        {
+            Applies(CreatureKitAssets.MeshTime);
+            var first = Stopwatch.StartNew();
+            Object.DestroyImmediate(CreatureKitAssets.BuildMesh(sp));   // JIT and first-use statics out of the timing
+            double warmup = first.Elapsed.TotalMilliseconds;
+            CreatureKit.RestMeshCache.ClearForTest(); CreatureKit.SculptMesher.ClearCache(); CreatureKit.CrestBeakHead.ClearBuiltForTest();
+            var sw = Stopwatch.StartNew();
+            Mesh m = CreatureKitAssets.BuildMesh(sp);
+            double cold = sw.Elapsed.TotalMilliseconds;
+            int verts = m.vertexCount;
+            Object.DestroyImmediate(m);
+            TestContext.Out.WriteLine($"{name}: cold mesh build {cold:F1} ms ({verts} vertices, caches cleared; the build before it {warmup:F1} ms)");
+            Assert.Less(cold, kColdBuildLimitMs, name + ": cold mesh build time");
+        }
+
         // 11. One individual's tick + bone write within the species' budget (flat ground; run on a quiet machine).
         [Test] public void Perf()
         {

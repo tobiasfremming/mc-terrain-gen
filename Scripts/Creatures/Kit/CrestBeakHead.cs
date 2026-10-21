@@ -127,6 +127,7 @@ namespace CreatureKit
         // IMaterialKinds: the teeth's kind (data), besides the crest and mouth kinds of [Part].
         public void Kinds(List<string> into) { if (!string.IsNullOrEmpty(toothKind)) into.Add(toothKind); }
         public override int MeshOrder => 100;
+        internal const float SkullBackAt = -0.5f, MinRamp = 0.1f;   // the skull's back (x skullLength) and the least skull-back ramp
         protected override void CopyArrays() { crests = (CrestDef[])crests?.Clone(); }
 
         public override string Validate(in SpeciesCtx c)
@@ -143,6 +144,10 @@ namespace CreatureKit
             if (pitchDeg < -45f || pitchDeg > 45f) return $"{id}: pitchDeg must be -45..45";
             if (gapeDeg < 0f || gapeDeg > 80f) return $"{id}: gapeDeg must be 0..80";
             if (restGapeDeg < 0f || restGapeDeg > 30f || restGapeDeg > gapeDeg) return $"{id}: restGapeDeg must be 0..30 and <= gapeDeg";
+            // the skull's back skin ramps from the head joint's bone (at the skull's back, SkullBackAt x skullLength) to the
+            // upper head's (at the hinge, mouthCornerAt x skullLength): the hinge must stay MinRamp x skullLength ahead
+            // of the back, or the ramp is degenerate (ramp1 <= ramp0: the back skin snaps between the bones on a call)
+            if (!(mouthCornerAt - SkullBackAt >= MinRamp - 1e-6f)) return $"{id}: mouthCornerAt {mouthCornerAt} leaves the skull-back ramp degenerate (the hinge must be >= {MinRamp} x skullLength ahead of the skull's back at {SkullBackAt})";
             if (mouthCornerAt < -0.4f || mouthCornerAt > 0.3f) return $"{id}: mouthCornerAt must be -0.4..0.3";
             if (hingeBehind < 0f || hingeBehind > 1.5f) return $"{id}: hingeBehind must be 0..1.5";
             if (teeth < 0 || teeth > MaxTeeth) return $"{id}: teeth must be 0..{MaxTeeth}";
@@ -263,7 +268,13 @@ namespace CreatureKit
             public Vector3 skullPivot;
         }
 
+        // Built geometry per data key (build-time only). Bounded like RestMeshCache: every Inspector slider step is a new
+        // key, so the cache is cleared when full instead of growing until a domain reload.
+        internal const int kMaxBuilt = 16;
         static readonly Dictionary<ulong, Built> built = new Dictionary<ulong, Built>();
+        internal static int BuiltCountForTest => built.Count;
+        internal static bool UnboundedForTest;   // RED (CreatureCrestBeakHeadTests): the cache never cleared
+        internal static void ClearBuiltForTest() => built.Clear();
 
         static ulong Mix(ulong h, float f) { h ^= (uint)BitConverter.SingleToInt32Bits(f); return h * 1099511628211UL; }
 
@@ -290,6 +301,7 @@ namespace CreatureKit
             ulong key = Key();
             if (built.TryGetValue(key, out Built g)) return g;
             g = Build();
+            if (built.Count >= kMaxBuilt && !UnboundedForTest) built.Clear();
             built[key] = g;
             return g;
         }

@@ -40,14 +40,14 @@ namespace TerrainGen.Tests
         internal static CreatureSpecies Species(FlowBody body) =>
             FlowKit.Build("FlowBodyFixture", 1f, new List<CreaturePart> { body, HindLeg(), CreatureKitComposeTests.TwoEyes() }, new CreatureModule[] { new Walk { speed = 0.8f, turnRateDeg = 160f, accel = 2f, turnSlowdown = 0.5f } });
 
-        static FlowBody Part(CreatureSpecies sp)
+        internal static FlowBody Part(CreatureSpecies sp)
         {
             foreach (CreaturePart p in KitView.Parts(sp)) if (p is FlowBody f) return f;
             return null;
         }
 
         // the body fraction of joint k (0 head joint .. n-1 last joint)
-        static float UAtJoint(FlowBody b, float k) => (b.headCapLength + b.spacing * k) / (b.headCapLength + b.spacing * (b.jointCount - 1) + b.tailTipLength);
+        internal static float UAtJoint(FlowBody b, float k) => (b.headCapLength + b.spacing * k) / (b.headCapLength + b.spacing * (b.jointCount - 1) + b.tailTipLength);
 
         // ------------------------------------------------------------ compose
 
@@ -66,25 +66,36 @@ namespace TerrainGen.Tests
 
         // ------------------------------------------------------------ hump
 
-        // Half-angle of the hump term (deg from the top) at the chest: where the section's top rise over the same body
-        // without a hump drops to half the hump.
-        static float HumpHalfAngle(FlowBody body)
+        // Half-angle of the hump term (deg from the top) at the chest (joint `chest`, fractional): where the section's top
+        // rise over the same body without a hump drops to half the hump (`hump`, the chest key's).
+        static float HumpHalfAngle(FlowBody body, float chest, float hump)
         {
             FlowBody flat = (FlowBody)body.Clone();
             for (int i = 0; i < flat.profile.Length; i++) flat.profile[i].hump = 0f;
-            float u = UAtJoint(body, kChestT * (kJoints - 1));
+            float u = UAtJoint(body, chest);
             for (int d = 0; d <= 900; d++)
             {
                 float phi = 0.5f * Mathf.PI - d * 0.1f * Mathf.Deg2Rad;
                 body.Section(u, phi, out Vector2 a); flat.Section(u, phi, out Vector2 b);
-                if (a.y - b.y < 0.5f * kHump) return d * 0.1f;
+                if (a.y - b.y < 0.5f * hump) return d * 0.1f;
             }
             return 90f;
         }
 
-        static string HumpProblem(FlowBody body)
+        static string HumpProblem(FlowBody body) => HumpProblem(body, kChestT * (kJoints - 1), kHump);
+
+        // The profile key with the largest hump (the Apex's own part data): its joint (fractional) and its hump.
+        internal static float HumpKey(FlowBody body, out float hump)
         {
-            float u = UAtJoint(body, kChestT * (kJoints - 1));
+            int best = 0;
+            for (int i = 1; i < body.profile.Length; i++) if (body.profile[i].hump > body.profile[best].hump) best = i;
+            hump = body.profile[best].hump;
+            return body.profile[best].t * (body.jointCount - 1);
+        }
+
+        internal static string HumpProblem(FlowBody body, float chest, float hump)
+        {
+            float u = UAtJoint(body, chest);
             body.Section(u, 0.5f * Mathf.PI, out Vector2 top);
             for (int k = 0; k < 3600; k++)
             {
@@ -92,7 +103,7 @@ namespace TerrainGen.Tests
                 body.Section(u, phi, out Vector2 o);
                 if (o.y > top.y + 1e-6f) return $"the point at {phi * Mathf.Rad2Deg:F1} deg ({o.y:F4}) is above the top ({top.y:F4})";
             }
-            float half = HumpHalfAngle(body);
+            float half = HumpHalfAngle(body, chest, hump);
             TestContext.Out.WriteLine($"hump top {top.y:F4} m, half-angle {half:F1} deg");
             return half < 25f ? null : $"the hump is broad: its term halves {half:F1} deg from the top (>= 25)";
         }
@@ -109,17 +120,28 @@ namespace TerrainGen.Tests
 
         // ------------------------------------------------------------ keel
 
-        static string KeelProblem(FlowBody body)
+        static string KeelProblem(FlowBody body) => KeelProblem(body, kChestT * (kJoints - 1), kChestHH, kKeel);
+
+        // The profile key with the deepest keel: its joint (fractional), its half height and its keel.
+        internal static float KeelKey(FlowBody body, out float halfHeight, out float keel)
         {
-            float u = UAtJoint(body, kChestT * (kJoints - 1));
+            int best = 0;
+            for (int i = 1; i < body.profile.Length; i++) if (body.profile[i].keel > body.profile[best].keel) best = i;
+            halfHeight = body.profile[best].halfHeight; keel = body.profile[best].keel;
+            return body.profile[best].t * (body.jointCount - 1);
+        }
+
+        internal static string KeelProblem(FlowBody body, float chest, float chestHH, float keelDepth)
+        {
+            float u = UAtJoint(body, chest);
             float low = 0f;
             for (int k = 0; k < 3600; k++)
             {
                 body.Section(u, -0.5f * Mathf.PI + 2f * Mathf.PI * k / 3600f, out Vector2 o);
                 low = Mathf.Min(low, o.y);
             }
-            TestContext.Out.WriteLine($"chest lowest point {low:F4} m below the joint (oval {kChestHH}, keel {kKeel})");
-            return low <= -(kChestHH + 0.9f * kKeel) ? null : $"no keel: the chest's lowest point is {-low:F4} m below the joint (< {kChestHH + 0.9f * kKeel:F4})";
+            TestContext.Out.WriteLine($"chest lowest point {low:F4} m below the joint (oval {chestHH}, keel {keelDepth})");
+            return low <= -(chestHH + 0.9f * keelDepth) ? null : $"no keel: the chest's lowest point is {-low:F4} m below the joint (< {chestHH + 0.9f * keelDepth:F4})";
         }
 
         [Test] public void FlowBody_Keel_JutsBelowTheOval()
@@ -136,11 +158,22 @@ namespace TerrainGen.Tests
 
         // ------------------------------------------------------------ tail ribbon
 
-        // The rest mesh's ring through the tail's middle joint: height / width, and the smallest vertex angle of the loop.
-        static string RibbonProblem(CreatureSpecies sp)
+        // The rest mesh's ring through the tail's middle joint (the tail from profile place tailFrom to the last joint):
+        // height / width, and the smallest vertex angle of the loop.
+        static string RibbonProblem(CreatureSpecies sp) => RibbonProblem(sp, 0.55f);
+
+        // The first profile key that is the full ribbon (blade >= 1): the Apex's own tail start.
+        internal static float RibbonFrom(FlowBody body)
+        {
+            foreach (FlowKey k in body.profile) if (k.blade >= 1f) return k.t;
+            return 1f;
+        }
+
+        internal static string RibbonProblem(CreatureSpecies sp, float tailFrom)
         {
             FlowBody body = Part(sp);
-            int first = Mathf.CeilToInt(0.55f * (kJoints - 1)), mid = (first + kJoints - 1) / 2;
+            int n = body.jointCount;
+            int first = Mathf.CeilToInt(tailFrom * (n - 1)), mid = (first + n - 1) / 2;
             float s = body.headCapLength + body.spacing * mid;
             List<Vector3> ring = Ring(sp, s);
             if (ring.Count < 8) return $"no ring at the tail's middle joint {mid} (s {s:F3}): {ring.Count} vertices";
@@ -182,11 +215,12 @@ namespace TerrainGen.Tests
             return o;
         }
 
-        static bool IsBody(CreatureSpecies sp, Vector2 uv1)
+        internal static bool IsBody(CreatureSpecies sp, Vector2 uv1)
         {
             int part = Mathf.RoundToInt(uv1.x);
             MaterialSlots slots = MaterialSlots.For(sp);
-            return part == 0 || part == slots.SlotOf("tailfan") || part == slots.SlotOf("dorsalstripe");
+            FlowBody b = Part(sp);   // the body's own kinds (the Apex draws its tail and stripe in the wing's wingfan)
+            return part == 0 || part == slots.SlotOf(b.tailKind) || part == slots.SlotOf(b.dorsalStripeKind);
         }
 
         [Test] public void FlowBody_Tail_IsARibbon()
@@ -265,6 +299,28 @@ namespace TerrainGen.Tests
             for (int i = 1; i < sp.JointCount; i++) Assert.Greater(sim.Joints[0].y, sim.Joints[i].y, $"joint {i} above the head");
             Assert.GreaterOrEqual(facing, 0.5f, "standing: every body triangle faces its bind way, with margin");
             Assert.IsNull(KitChecks.MaxBendProblem(sp));
+        }
+
+        // The runtime view is reused on every recompile (CreatureSpecies.CompileKit): switching the body FlowBody ->
+        // SpineBody in the Inspector must clear restAtSpacing and restore the SpineBody's rings, not keep the FlowBody's.
+        [Test] public void FlowBody_SwitchToSpineBody_Recompile_ClearsRestAtSpacing()
+        {
+            var sp = ScriptableObject.CreateInstance<CreatureSpecies>();
+            sp.name = "FlowSwitch"; sp.scale = 1f; sp.kitVersion = 1;
+            sp.parts = new List<CreaturePart> { SteepNeck(), HindLeg(), CreatureKitComposeTests.TwoEyes() };
+            sp.modules = new List<CreatureModule> { new Walk { speed = 0.8f, turnRateDeg = 160f, accel = 2f, turnSlowdown = 0.5f } };
+            CreatureSpecies flow = sp.Compiled.Runtime;
+            Assert.IsTrue(flow.restAtSpacing, "FlowBody restAtStance on binds at spacing");
+            Assert.AreEqual(0, flow.ringSegments);
+            CreatureKit.SpineBody spine = CreatureKitComposeTests.Body(kJoints);
+            sp.parts[0] = spine;
+            sp.InvalidateCompiled();   // what OnValidate does
+            CreatureSpecies view = sp.Compiled.Runtime;
+            Assert.AreSame(flow, view, "the runtime view is reused");
+            Assert.IsFalse(view.restAtSpacing, "a SpineBody never binds at spacing");
+            Assert.AreEqual(spine.ringSegments, view.ringSegments);
+            Assert.AreEqual(spine.ringsPerSegment, view.ringsPerSegment);
+            Object.DestroyImmediate(sp);
         }
 
         // RED: the same steep neck bound one spacing apart along the ground (restAtStance off) folds the back - the
@@ -437,6 +493,50 @@ namespace TerrainGen.Tests
             FlowBody body = Body();
             body.tailColourFrom = 0.6f; body.dorsalStripeTo = 0.2f;
             Assert.AreEqual(2, NamedSlots(Species(body)));
+        }
+
+        // restAtStance: a stance segment so steep the rest run's floor stretches it by more than 1 % (~78 deg; the floor
+        // starts at 75.5) is a Validate message; the fixtures' steep neck (76 deg, 0.03 %) is not; restAtStance off binds
+        // along the ground (no message).
+        [Test] public void FlowBody_Validate_StanceSegmentTooSteep()
+        {
+            var ctx = new SpeciesCtx(new CreaturePart[0], new CreatureModule[0], kJoints, false);
+            Assert.IsNull(SteepNeck().Validate(ctx), "the steep neck fixture");
+            TestContext.Out.WriteLine($"max stance segment {FlowBody.MaxStanceSegmentDeg:F1} deg");
+            Assert.AreEqual(78.1f, FlowBody.MaxStanceSegmentDeg, 0.1f);
+            FlowBody cliff = Cliff();
+            string e = cliff.Validate(ctx);
+            StringAssert.Contains("restAtStance", e);
+            cliff.restAtStance = false;
+            Assert.IsNull(cliff.Validate(ctx), "off: the rest is laid along the ground");
+        }
+
+        // A head joint 0.2 m above joint 1 (0.1 m segments): the first segment would have to stand past vertical.
+        static FlowBody Cliff()
+        {
+            FlowBody b = SteepNeck();
+            var keys = new List<FlowKey>(b.profile);
+            FlowKey k = keys[0]; k.t = 1f / (kJoints - 1); k.clearance = 0.75f; keys.Insert(1, k);
+            b.profile = keys.ToArray();
+            return b;
+        }
+
+        // RED: what the message guards against - a rise past the limit really is stretched by RestRun's floor (the bound
+        // segment longer than spacing), one just inside it is not.
+        [Test] public void Red_StanceSegmentTooSteep_Stretches()
+        {
+            CreatureSpecies sp = Species(SteepNeck());
+            float c1 = sp.joints[1].clearance;
+            float Segment(float rise)
+            {
+                sp.joints[0].clearance = c1 + rise;
+                float run = CreatureSim.RestRun(sp, 1, 0.1f, 1f);
+                return Mathf.Sqrt(run * run + rise * rise);
+            }
+            float inside = Segment(0.096f), past = Segment(0.2f);
+            TestContext.Out.WriteLine($"bound segment 0-1: rise 0.096 -> {inside:F4} m, rise 0.2 -> {past:F4} m (spacing 0.1)");
+            Assert.AreEqual(0.1f, inside, 1e-5f, "inside the limit: spacing long");
+            Assert.Greater(past, 0.1f * 1.01f, "past it the floor stretches the segment");
         }
 
         [Test] public void FlowBody_Validate_ColourKindNamed()

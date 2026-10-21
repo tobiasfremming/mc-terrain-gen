@@ -140,8 +140,27 @@ namespace CreatureKit
             if (ovalMaxAspect < 1f || ovalMaxAspect > 8f) return $"{id}: ovalMaxAspect must be 1..8";
             if (tailColourFrom < 1f && string.IsNullOrEmpty(tailKind)) return $"{id}: tailKind is empty (tailColourFrom < 1 draws the tail in it)";
             if (dorsalStripeTo > 0f && string.IsNullOrEmpty(dorsalStripeKind)) return $"{id}: dorsalStripeKind is empty (dorsalStripeTo > 0 draws the stripe in it)";
+            if (restAtStance)
+            {
+                // CreatureSim.RestRun lays each rest segment `spacing` long between the clearances, its run never shorter
+                // than RestRunFloor x spacing: a segment rising steeper than asin(sqrt(1 - floor^2)) (75.5 deg) is
+                // stretched in the bind and pops to its length on the first walking tick. Reported once the stretch passes
+                // MaxRestStretch (1 %: ~78.1 deg) - the fixtures' steep neck stands at 76 deg, stretched 0.03 %
+                SpineJoint[] js = BuildJoints();
+                float limit = Mathf.Sqrt(MaxRestStretch * MaxRestStretch - RestRunFloor * RestRunFloor) * spacing;
+                for (int i = 1; i < js.Length; i++)
+                {
+                    float rise = Mathf.Abs(js[i].clearance - js[i - 1].clearance);
+                    if (rise > limit) return $"{id}: restAtStance: stance segment {i - 1}-{i} rises {Mathf.Asin(Mathf.Min(1f, rise / spacing)) * Mathf.Rad2Deg:F0} deg ({rise:F3} m over a {spacing:F3} m segment; > {MaxStanceSegmentDeg:F1} deg the rest run's floor stretches it > 1 %)";
+                }
+            }
             return null;
         }
+
+        // CreatureSim.RestRun's floor (the least rest run, x spacing), the stretch Validate allows, and the steepest stance
+        // segment bound within it.
+        internal const float RestRunFloor = 0.25f, MaxRestStretch = 1.01f;
+        internal static float MaxStanceSegmentDeg => Mathf.Asin(Mathf.Min(1f, Mathf.Sqrt(MaxRestStretch * MaxRestStretch - RestRunFloor * RestRunFloor))) * Mathf.Rad2Deg;
 
         // ------------------------------------------------------------ the chain
 

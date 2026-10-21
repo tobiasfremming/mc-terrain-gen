@@ -327,6 +327,9 @@ namespace CreatureKit
                 look.shimmerWavelength = sh.wavelength; look.shimmerPeriod = sh.period; look.shimmerGlow = sh.glow;
             }
             dst.look = look;
+            // written on every compile (the runtime view is reused: CreatureSpecies.CompileKit), so a body switched in
+            // the Inspector never keeps the previous body's rest or rings
+            dst.restAtSpacing = Body is FlowBody restFlow && restFlow.restAtStance;   // bind the raised neck as it stands (CreatureSim, opt-in)
             if (Soft)
             {
                 dst.bodyPlan = CreatureBodyPlan.Cephalopod;
@@ -351,13 +354,11 @@ namespace CreatureKit
                 var chain = (ISpineChainBody)Body;
                 dst.spacing = chain.Spacing; dst.joints = chain.BuildJoints(); dst.headCapLength = chain.HeadCapLength; dst.tailTipLength = chain.TailTipLength;
                 dst.rigidHeadJoints = chain.RigidHeadJoints;
-                if (Body is FlowBody flow)
-                {
-                    // a marker only: nothing draws SpineBody rings here (there is no SpineBody part); readers of the
-                    // legacy ring layout (ringSegments + 1 per ring) see none instead of the default 16. RayBody unchanged.
-                    dst.ringSegments = 0;
-                    dst.restAtSpacing = flow.restAtStance;   // bind the raised neck as it stands (CreatureSim, opt-in)
-                }
+                // FlowBody: a marker only - nothing draws SpineBody rings here (there is no SpineBody part); readers of
+                // the legacy ring layout (ringSegments + 1 per ring) see none instead of the default 16. RayBody keeps
+                // the field defaults (what a fresh runtime view holds).
+                dst.ringSegments = Body is FlowBody ? 0 : CreatureSpecies.DefaultRingSegments;
+                dst.ringsPerSegment = CreatureSpecies.DefaultRingsPerSegment;
             }
             dst.legs = new LegSpec[Limbs.Count];
             for (int i = 0; i < Limbs.Count; i++) dst.legs[i] = Limbs[i].ToLegSpec();

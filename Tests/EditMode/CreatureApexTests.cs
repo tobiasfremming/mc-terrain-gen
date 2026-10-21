@@ -184,6 +184,200 @@ namespace TerrainGen.Tests
             Assert.IsNull(g, g);
         }
 
+        // ------------------------------------------------------------ the spec's shape checks (§8) on the Apex itself
+
+        // The part tests' shape helpers, fed the Apex's own part data (its hump / keel keys, its ribbon's first key, its
+        // head and sail) instead of their fixtures' constants.
+
+        // The bound stance's body surface (the rest mesh; restAtStance binds it as it stands): the FlowBody's vertices -
+        // a body kind, skinned to spine joints only (a leg's haunch in the body skin is skinned to its leg bones) - with
+        // their arc (uv0.x, metres from the front tip), in the rest sim's frame (CreatureRestPose.BindSim).
+        static List<Vector3> BodySurface(CreatureSpecies sp, List<float> arcs)
+        {
+            Mesh mesh = FlowKit.Mesh(sp);
+            Vector3[] v = mesh.vertices;
+            var uv0 = new List<Vector2>(); var uv1 = new List<Vector2>(); var uv2 = new List<Vector4>();
+            mesh.GetUVs(0, uv0); mesh.GetUVs(1, uv1); mesh.GetUVs(2, uv2);
+            Object.DestroyImmediate(mesh);
+            var o = new List<Vector3>();
+            for (int i = 0; i < v.Length; i++)
+                if (CreatureFlowBodyTests.IsBody(sp, uv1[i]) && uv2[i].x < sp.JointCount && uv2[i].y < sp.JointCount) { o.Add(v[i]); arcs.Add(uv0[i].x); }
+            return o;
+        }
+
+        static float ArcOf(FlowBody b, float joint) => b.headCapLength + b.spacing * joint;
+
+        // Over the trunk (the shoulder joint to the hips joint) the highest point of the bound body surface is the hump's
+        // top: within half a segment of the hump key along the body. humpJoint < 0: the body's own hump key.
+        internal static string TrunkTopProblem(CreatureSpecies sp, out float topArc, out float humpArc)
+        {
+            FlowBody b = Find<FlowBody>(sp);
+            humpArc = ArcOf(b, CreatureFlowBodyTests.HumpKey(b, out _));
+            var arcs = new List<float>();
+            List<Vector3> v = BodySurface(sp, arcs);
+            float a0 = ArcOf(b, kShoulder), a1 = ArcOf(b, kHips), top = float.MinValue; topArc = -1f;
+            for (int i = 0; i < v.Count; i++)
+                if (arcs[i] >= a0 - 1e-4f && arcs[i] <= a1 + 1e-4f && v[i].y > top) { top = v[i].y; topArc = arcs[i]; }
+            TestContext.Out.WriteLine($"trunk (arc {a0:F2}..{a1:F2} m): highest point {top:F3} m at arc {topArc:F3} (the hump key at {humpArc:F3})");
+            if (Mathf.Abs(topArc - humpArc) > 0.5f * b.spacing) return $"the trunk's highest point is at arc {topArc:F3} m, {Mathf.Abs(topArc - humpArc):F3} m from the hump (> half a segment, {0.5f * b.spacing:F3})";
+            return null;
+        }
+
+        // The keel below and ahead of the chest: the section at the keel key reaches below the oval (FlowBody's keel
+        // test), and in the bound stance the trunk's lowest point (the neck's root to the hips) is not behind the chest
+        // (the shoulder joint, the girdle) along the trunk's levelled forward (the sternum juts forward and down; slack:
+        // a quarter segment).
+        internal static string KeelAheadProblem(CreatureSpecies sp, out float ahead)
+        {
+            ahead = 0f;
+            FlowBody b = Find<FlowBody>(sp);
+            float chest = CreatureFlowBodyTests.KeelKey(b, out float hh, out float keel);
+            string sec = CreatureFlowBodyTests.KeelProblem(b, chest, hh, keel);
+            if (sec != null) return sec;
+            CreatureSim rest = CreatureRestPose.BindSim(sp, sp.wings);
+            int cj = kShoulder;
+            Vector3 fwd = Vector3.ProjectOnPlane(rest.Joints[cj - 1] - rest.Joints[kHips], Vector3.up).normalized;
+            var arcs = new List<float>();
+            List<Vector3> v = BodySurface(sp, arcs);
+            float a0 = ArcOf(b, cj - 2), a1 = ArcOf(b, kHips), low = float.MaxValue; Vector3 at = default;
+            for (int i = 0; i < v.Count; i++)
+                if (arcs[i] >= a0 && arcs[i] <= a1 && v[i].y < low) { low = v[i].y; at = v[i]; }
+            ahead = Vector3.Dot(at - rest.Joints[cj], fwd);
+            TestContext.Out.WriteLine($"trunk's lowest point {low:F3} m, {ahead:F3} m ahead of the chest joint {cj} ({rest.Joints[cj].y:F3} m high)");
+            if (!(low < rest.Joints[cj].y)) return "the trunk's lowest point is not below the chest joint";
+            if (ahead < -0.25f * b.spacing) return $"the keel's lowest point is {-ahead:F3} m behind the chest joint (> a quarter segment)";
+            return null;
+        }
+
+        [Test] public void Apex_Hump_SharpAndTheTrunksHighest()
+        {
+            CreatureSpecies sp = Apex();
+            FlowBody b = Find<FlowBody>(sp);
+            float joint = CreatureFlowBodyTests.HumpKey(b, out float hump);
+            Assert.Greater(hump, 0f, "the Apex has a hump");
+            Assert.IsNull(CreatureFlowBodyTests.HumpProblem(b, joint, hump));
+            string e = TrunkTopProblem(sp, out _, out _);
+            Assert.IsNull(e, e);
+        }
+
+        // RED: the hips raised (the trunk tipping forward) - the trunk's highest point is the hips, not the hump.
+        [Test] public void Red_Apex_HipsHighest()
+        {
+            CreatureSpecies sp = Apex(ps => { var b = (FlowBody)ps.Find(p => p is FlowBody); for (int i = 0; i < b.profile.Length; i++) if (Mathf.Abs(b.profile[i].t * (b.jointCount - 1) - 10.5f) < 0.01f) b.profile[i].clearance = 0.75f; });
+            Assert.IsNotNull(TrunkTopProblem(sp, out _, out _), "raised hips must be the trunk's highest point");
+        }
+
+        [Test] public void Apex_Keel_BelowAndAheadOfTheChest()
+        {
+            string e = KeelAheadProblem(Apex(), out _);
+            Assert.IsNull(e, e);
+        }
+
+        // RED: the keel moved back to the belly (the key behind the shoulder, 10.5) - its lowest point well behind the chest.
+        [Test] public void Red_Apex_KeelBehind()
+        {
+            CreatureSpecies sp = Apex(ps =>
+            {
+                var b = (FlowBody)ps.Find(p => p is FlowBody);
+                for (int i = 0; i < b.profile.Length; i++)
+                {
+                    float j = b.profile[i].t * (b.jointCount - 1);
+                    if (Mathf.Abs(j - kShoulder) < 0.01f) b.profile[i].keel = 0.01f;
+                    if (Mathf.Abs(j - 10.5f) < 0.01f) b.profile[i].keel = 0.08f;
+                }
+            });
+            string e = KeelAheadProblem(sp, out float ahead);
+            Assert.IsNotNull(e, $"a belly keel is behind the chest ({ahead:F3})");
+            StringAssert.Contains("behind", e);
+        }
+
+        [Test] public void Apex_Tail_IsARibbon()
+        {
+            CreatureSpecies sp = Apex();
+            string e = CreatureFlowBodyTests.RibbonProblem(sp, CreatureFlowBodyTests.RibbonFrom(Find<FlowBody>(sp)));
+            Assert.IsNull(e, e);
+        }
+
+        [Test] public void Apex_Crests_AMirroredEqualPair_FormingAV()
+        {
+            CrestBeakHead h = Find<CrestBeakHead>(Apex());
+            string p = CreatureCrestBeakHeadTests.PairProblem(h, out _, out _);
+            Assert.IsNull(p, p);
+            string v = CreatureCrestBeakHeadTests.VProblem(h);
+            Assert.IsNull(v, v);
+        }
+
+        // The sail's vertex range: the Apex's mesh with the parts from the Dewlap on left out, and with the Dewlap kept
+        // (the emitter draws same-order parts in list order: the sail follows the body, wings and head).
+        [Test] public void Apex_Dewlap_BelowTheNeck_NeverInside()
+        {
+            CreatureSpecies sp = Apex();
+            int VertsWithout(System.Predicate<CreaturePart> drop)
+            {
+                Mesh mesh = FlowKit.Mesh(Apex(ps => ps.RemoveAll(drop)));
+                int n = mesh.vertexCount;
+                Object.DestroyImmediate(mesh);
+                return n;
+            }
+            int first = VertsWithout(p => p is Dewlap || p is PitRow || p is TailFlourish), last = VertsWithout(p => p is PitRow || p is TailFlourish);
+            var m = new CreaturePteroWingTests.Skinned(sp);
+            Assert.AreEqual(MaterialSlots.For(sp).SlotOf("dewlap"), m.Part(first), "the range starts at the sail");
+            Assert.AreEqual(MaterialSlots.For(sp).SlotOf("dewlap"), m.Part(last - 1), "... and ends with it");
+            string e = CreatureDewlapTests.BelowProblem(sp, first, first, last, sp.scale, true);
+            Assert.IsNull(e, e);
+        }
+
+        [Test] public void Apex_Head_FlowsIntoTheNeck()
+        {
+            CreatureSpecies sp = Apex();
+            CrestBeakHead h = Find<CrestBeakHead>(sp);
+            string e = CreatureCrestBeakHeadTests.StepProblem(sp, 0.15f * h.skullDepth, out float worst, -1f, new[] { "dewlap", "pit" });
+            Assert.IsNull(e, e);
+        }
+
+        // ------------------------------------------------------------ zero GC through launch, air and touchdown
+
+        // One flight cycle as the Apex's opt-in flight flags see it: a short walk, a launch from it (launchTailBySegment,
+        // launchHeadOnNeck), 4 s x sqrt s of beating climb (airNeckStance), a ground landing (touchdownAtStance, the
+        // legs' HoldDroop while the body eases down) and a short walk again; the bones written every tick. Returns false
+        // if it never landed; heldDroop: HoldDroop was seen on.
+        static bool FlightCycle(CreatureSim sim, CreatureSpecies sp, Matrix4x4[] bones, ref bool heldDroop, ref bool launched)
+        {
+            float s = sp.scale, T = Mathf.Sqrt(s);
+            Vector3 Ahead() => sim.Joints[0] + sim.Rotations[0] * Vector3.forward * (2f * s);
+            for (int t = 0; t < 60; t++) { sim.Tick(kDt, Ahead()); sim.WriteBoneWorld(bones, 0); }
+            launched |= sim.Flight.Launch(6f * s);
+            for (int t = 0; t < Mathf.RoundToInt(4f * T / kDt); t++) { sim.Flight.SetGoals(6f * s, sp.flight.cruiseSpeed * T, 0f); sim.Tick(kDt, sim.Joints[0]); sim.WriteBoneWorld(bones, 0); }
+            sim.Flight.Land(sim.Flight.Model.Position + sim.Flight.Model.Forward * (8f * s) - Vector3.up * sim.Flight.Model.Altitude);
+            for (int t = 0; t < 7200 && sim.Mode != FlightMode.Ground; t++)
+            {
+                sim.Tick(kDt, sim.Joints[0]); sim.WriteBoneWorld(bones, 0);
+                heldDroop |= sim.LegsInternal.HoldDroop;
+            }
+            if (sim.Mode != FlightMode.Ground) return false;
+            for (int t = 0; t < 60; t++) { sim.Tick(kDt, Ahead()); sim.WriteBoneWorld(bones, 0); heldDroop |= sim.LegsInternal.HoldDroop; }
+            return true;
+        }
+
+        [Test] public void Apex_LaunchAirTouchdown_NoGC()
+        {
+            CreatureSpecies sp = Apex();
+            FlightSpec f = sp.flight;
+            Assert.IsTrue(f.launchTailBySegment && f.launchHeadOnNeck && f.touchdownAtStance, "the Apex's opt-in flight flags are on");
+            var sim = FlowKit.Sim(sp, sp.scale);
+            var bones = new Matrix4x4[sp.BoneCount];
+            bool held = false, launched = false;
+            Assert.IsTrue(FlightCycle(sim, sp, bones, ref held, ref launched), "warm-up cycle: it lands");
+            held = false; launched = false;
+            GcAllocs.AssertCounterWorks();   // positive control first
+            bool landed = false;
+            int allocs = GcAllocs.Count(() => { landed = FlightCycle(sim, sp, bones, ref held, ref launched); });
+            Assert.IsTrue(launched, "the counted cycle launched");
+            Assert.IsTrue(landed, "the counted cycle landed");
+            Assert.IsTrue(held, "the counted cycle's touchdown held the droop (touchdownAtStance)");
+            Assert.AreEqual(0, allocs, "launch -> air -> touchdown -> walk (tick + bones) allocated");
+        }
+
         // ------------------------------------------------------------ the bob
 
         internal const float kBob = 0.06f, kTailLag = 0.15f, kHeadShare = 1f / 3f, kMaxStepLag = 0.45f;

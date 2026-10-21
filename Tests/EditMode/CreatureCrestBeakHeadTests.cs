@@ -194,7 +194,7 @@ namespace TerrainGen.Tests
         // midplane (x -> -x; every vertex of one within 2.5 mm - about the blades' polygoniser cell, 0.3 x thickness: the
         // grid is not symmetric - of a mirrored vertex of the other, both ways) and stand
         // equally high above the beak (within 1 mm).
-        static string PairProblem(CrestBeakHead h, out float worst, out float dTop)
+        internal static string PairProblem(CrestBeakHead h, out float worst, out float dTop)
         {
             worst = 0f; dTop = 0f;
             if (h.BladeCount != 2) return $"{h.BladeCount} blades, not a pair";
@@ -239,7 +239,7 @@ namespace TerrainGen.Tests
         // sin(max(splayDeg, 25 deg) / 2) x height, the tips on opposite sides, and the roots close together (within 2 x thickness).
         const float kMinSplayDeg = 25f;   // the reference's V: each blade at least this far from upright
 
-        static string VProblem(CrestBeakHead h)
+        internal static string VProblem(CrestBeakHead h)
         {
             if (h.BladeCount != 2) return $"{h.BladeCount} blades, not a pair";
             CrestDef d = h.BladeDef(0);
@@ -449,7 +449,9 @@ namespace TerrainGen.Tests
         // change of the top or bottom outline between neighbouring stations.
         // gape >= 0: the posed mesh of an unticked sim held at that gape (the rest pose otherwise), and only the top
         // outline (the open jaw changes the bottom one by design).
-        internal static string StepProblem(CreatureSpecies sp, float limit, out float worst, float gape = -1f)
+        // skipKinds: material kinds left out of the outline (the Apex's throat sail and breathing pits hang off the neck
+        // there: they are not the neck-to-head surface).
+        internal static string StepProblem(CreatureSpecies sp, float limit, out float worst, float gape = -1f, string[] skipKinds = null)
         {
             CrestBeakHead h = Part(sp);
             Matrix4x4 toHead = SkullFrame(sp).inverse;
@@ -471,6 +473,8 @@ namespace TerrainGen.Tests
             bool topOnly = gape >= 0f;
             MaterialSlots slots = MaterialSlots.For(sp);
             int crest = slots.SlotOf("crest"), teethSlot = slots.SlotOf(h.toothKind), mouthSlot = slots.SlotOf("mouth");
+            var skip = new HashSet<int>();
+            if (skipKinds != null) foreach (string k in skipKinds) if (slots.SlotOf(k) >= 0) skip.Add(slots.SlotOf(k));
             var hv = new Vector3[v.Length];
             var use = new bool[v.Length];
             for (int i = 0; i < v.Length; i++)
@@ -478,7 +482,7 @@ namespace TerrainGen.Tests
                 hv[i] = toHead.MultiplyPoint3x4(v[i]);
                 int part = Mathf.RoundToInt(uv1[i].x);
                 use[i] = part != crest && part != teethSlot && part != mouthSlot && part != PartMeshEmitter.PartEye && part != PartMeshEmitter.PartLeg && part != PartMeshEmitter.PartFoot
-                         && Mathf.Abs(hv[i].x) < 0.3f && Mathf.Abs(hv[i].y) < 0.3f;
+                         && !skip.Contains(part) && Mathf.Abs(hv[i].x) < 0.3f && Mathf.Abs(hv[i].y) < 0.3f;
             }
             const int kStations = 20;
             float z0 = -0.5f * h.skullLength - 0.05f, z1 = -0.5f * h.skullLength + 0.15f;
@@ -1205,6 +1209,33 @@ namespace TerrainGen.Tests
             Assert.IsNull(StepProblem(Species(), 0.15f * Head().skullDepth, out _, Head().gapeDeg));
         }
 
+        // The skull-back ramp (its back skin blends from the head joint's bone at the skull's back to the upper head's at the
+        // hinge): every mouthCornerAt Validate accepts leaves the hinge >= MinRamp x skullLength ahead of the back; one
+        // farther back is rejected, naming the ramp.
+        [Test] public void Validate_MouthCorner_RampNotDegenerate()
+        {
+            var parts = new List<CreaturePart> { Head() };
+            var ctx = new SpeciesCtx(parts, new CreatureModule[0], 24, false);
+            CrestBeakHead h = Head(); h.mouthCornerAt = -0.4f;
+            Assert.IsNull(h.Validate(ctx), "the farthest-back corner allowed");
+            float L = h.skullLength;
+            TestContext.Out.WriteLine($"mouthCornerAt -0.4: hinge z {h.Hinge.z:F4}, skull back {h.SkullPivot.z:F4} (ramp {(h.Hinge.z - h.SkullPivot.z) / L:F3} x skullLength)");
+            Assert.GreaterOrEqual(h.Hinge.z - h.SkullPivot.z, (CrestBeakHead.MinRamp - 1e-4f) * L, "the ramp at the limit");
+            foreach (float bad in new[] { -0.45f, -0.5f, -0.6f })
+            {
+                h.mouthCornerAt = bad;
+                Assert.IsNotNull(h.Validate(ctx), $"mouthCornerAt {bad} rejected");
+            }
+        }
+
+        // RED: past the guard (Validate bypassed) the hinge sits at or behind the skull's back - the ramp the guard prevents.
+        [Test] public void Red_MouthCorner_DegenerateRamp()
+        {
+            CrestBeakHead h = Head(); h.mouthCornerAt = -0.55f;
+            Assert.LessOrEqual(h.Hinge.z, h.SkullPivot.z, "a corner behind the skull's back: ramp1 <= ramp0");
+            StringAssert.Contains("ramp", h.Validate(new SpeciesCtx(new List<CreaturePart> { h }, new CreatureModule[0], 24, false)));
+        }
+
         // toothKind must be a kind the species can draw: a registry / kit kind, or one a Layers row names.
         [Test] public void Validate_ToothKind()
         {
@@ -1237,6 +1268,37 @@ namespace TerrainGen.Tests
             TestContext.Out.WriteLine($"species mesh {best:F2} ms (best of 3), polygonisations in builds 2-3: {SculptMesher.Builds - builds}");
             Assert.AreEqual(builds, SculptMesher.Builds, "builds 2 and 3 reuse the cached pieces");
             Assert.Less(best, 5.0, "the species mesh builds within 5 ms once the head's pieces are cached");
+        }
+
+        // ------------------------------------------------------------ the built-geometry cache stays bounded
+
+        // Every Inspector slider step is a new data key: 3 x kMaxBuilt distinct heads never grow the cache past its cap.
+        static int MaxBuiltOver(int heads)
+        {
+            CrestBeakHead.ClearBuiltForTest();
+            int most = 0;
+            for (int i = 0; i < heads; i++)
+            {
+                CrestBeakHead h = Head(); h.skullLength *= 1f + 0.002f * (i + 1);
+                Assert.Greater(h.HeadSolid().Count, 0);
+                most = Mathf.Max(most, CrestBeakHead.BuiltCountForTest);
+            }
+            CrestBeakHead.ClearBuiltForTest();
+            return most;
+        }
+
+        [Test] public void Head_BuiltCache_Bounded()
+        {
+            int most = MaxBuiltOver(3 * CrestBeakHead.kMaxBuilt);
+            TestContext.Out.WriteLine($"{3 * CrestBeakHead.kMaxBuilt} distinct heads: at most {most} cached (cap {CrestBeakHead.kMaxBuilt})");
+            Assert.LessOrEqual(most, CrestBeakHead.kMaxBuilt);
+        }
+
+        [Test] public void Red_BuiltCache_Unbounded()
+        {
+            CrestBeakHead.UnboundedForTest = true;
+            try { Assert.Greater(MaxBuiltOver(3 * CrestBeakHead.kMaxBuilt), CrestBeakHead.kMaxBuilt, "an uncapped cache grows with every new key"); }
+            finally { CrestBeakHead.UnboundedForTest = false; CrestBeakHead.ClearBuiltForTest(); }
         }
 
         // ------------------------------------------------------------ look

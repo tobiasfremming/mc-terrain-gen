@@ -50,7 +50,7 @@ namespace CreatureKit
         [Param(ParamUnit.Count, "stations along the sail (each a chain of links)", Min = 2, Max = 16, Default = "5")] public int stations = 5;
         [Param(ParamUnit.Count, "links per station, root to edge (under a heavy flight bob - the Apex's, ~13 % of the body - 3 or fewer: 4 folded the swept rear)", Min = 1, Max = 6, Default = "3")] public int links = 3;
         [Param(ParamUnit.Metres, "the sail's depth below the throat at each station (one per station, jaw end first)", Example = "apex fixture 0.12 0.2 0.24 0.22 0.16")] public float[] depthAt = { 0.12f, 0.2f, 0.24f, 0.22f, 0.16f };
-        [Param(ParamUnit.Fraction, "0 = the edge follows depthAt (a curved belly) .. 1 = a straight lower edge from the first station's edge to the last's", Min = 0, Max = 1, Default = "0.8")] public float edgeStraightness = 0.8f;
+        [Param(ParamUnit.Fraction, "0 = the edge follows depthAt (a curved belly) .. 1 = a straight lower edge from the first station's edge to the last's. A straight edge under a strongly curved neck (or a shallow station between deep ones) tilts a station's rest hang toward its lateral plane: within PlaneMarginDeg (20 deg) of it the plane stop holds that station still - the bind warns (Dewlap.RestPlaneProblem)", Min = 0, Max = 1, Default = "0.8")] public float edgeStraightness = 0.8f;
         [Param(ParamUnit.Metres, "radius of the soft round rim along the lower edge (>= thickness / 2)", Default = "0.012")] public float rim = 0.012f;
         [Param(ParamUnit.Metres, "the sheet's thickness", Default = "0.008")] public float thickness = 0.008f;
         [Param(ParamUnit.Hz, "natural frequency of a link following the one above it (x 1/sqrt size)", Default = "1.6")] public float swingHz = 1.6f;
@@ -267,7 +267,23 @@ namespace CreatureKit
                 g.len[k] = d.magnitude * LinkScale(k) / links;
             }
             geo = g; geoFor = sp; geoKey = key;
+            string flat = RestPlaneProblem(g);
+            if (flat != null) Debug.LogWarning($"{id}: {flat}");
             return g;
+        }
+
+        // A station whose rest hang is within PlaneMarginDeg of its lateral plane (or above it): the runtime's plane
+        // stop turns any link that close back down, so that station would be held still - null if none. Its rest
+        // direction comes from the bind (the neck's rest curve, edgeStraightness), so it is checked when the rest
+        // geometry is built, not in Validate.
+        internal static string RestPlaneProblem(RestGeo g)
+        {
+            for (int k = 0; k < g.dir.Length; k++)
+            {
+                float below = Mathf.Asin(Mathf.Clamp(-g.dir[k].y, -1f, 1f)) * Mathf.Rad2Deg;
+                if (!(below > PlaneMarginDeg)) return $"station {k}'s rest hang is only {below:F1} deg below its lateral plane (<= PlaneMarginDeg {PlaneMarginDeg}): the plane stop holds it still - a less straight edge (edgeStraightness) or deeper stations";
+            }
+            return null;
         }
 
         public override IPartRuntime CreateRuntime(in PartCtx c)

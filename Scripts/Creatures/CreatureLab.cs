@@ -187,6 +187,17 @@ public sealed class CreatureLab : MonoBehaviour
     {
         CreatureWorld world = GetComponent<CreatureWorld>();
         if (GetComponent<CreatureDebugView>() == null) gameObject.AddComponent<CreatureDebugView>(); // F3 overlay
+        // Prewarm: build each species' render mesh once, a frame per species, so its parts' rest-mesh / sculpt caches
+        // are filled before Place spawns every enclosure in one frame (a cold Apex build is ~0.06-0.3 s; a replay is
+        // ~2 ms). The renderer's own build then replays bit for bit; the mesh built here is thrown away.
+        if (species != null)
+            for (int k = 0; k < species.Length; k++)
+            {
+                CreatureSpecies sp = RuntimeOf(k);
+                if (sp == null || CreatureKit.LabHabitat.For(sp) == CreatureKit.Habitat.Grove) continue;
+                Destroy(CreatureKit.KitRender.For(sp).Mesh);
+                yield return null;
+            }
         Transform player = null;
         Vector3 groundAtPlayer = default;
         float waited = 0f;

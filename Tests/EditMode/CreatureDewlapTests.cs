@@ -105,27 +105,40 @@ namespace TerrainGen.Tests
         static string BelowProblem(Dewlap d)
         {
             CreatureSpecies sp = Species(d);
-            Dewlap part = Part(sp);
             int bodyEnd = VertexCount(Parts(false, null));   // legs, eyes and the FlowBody: the head and the sail come after
             int first = VertexCount(Parts(true, null));
+            return BelowProblem(sp, bodyEnd, first, -1, 1f, false);
+        }
+
+        // The same on any species: the sail's vertices [first, last) (last < 0: to the end), the body's triangles among
+        // the vertices before bodyEnd (spineOnly: only those skinned to spine joints alone - a species with more closed
+        // pieces ahead of the sail, the Apex), the sim at size s (the walk and the circle scaled with it).
+        internal static string BelowProblem(CreatureSpecies sp, int bodyEnd, int first, int last, float s, bool spineOnly)
+        {
+            Dewlap part = Part(sp);
             var m = new CreaturePteroWingTests.Skinned(sp);
-            Assert.Greater(m.V.Length - first, 200, "the sail has vertices");
+            if (last < 0) last = m.V.Length;
+            Assert.Greater(last - first, 200, "the sail has vertices");
+            bool Spine(int i) => !spineOnly || (m.Uv2[i].x < sp.JointCount && m.Uv2[i].y < sp.JointCount);
             var bodyTris = new List<int>();
             for (int k = 0; k < m.T.Length; k += 3)
             {
                 int i0 = m.T[k], i1 = m.T[k + 1], i2 = m.T[k + 2];
                 if (i0 >= bodyEnd || i1 >= bodyEnd || i2 >= bodyEnd) continue;
                 if (m.Part(i0) != PartMeshEmitter.PartBody || m.Part(i1) != PartMeshEmitter.PartBody || m.Part(i2) != PartMeshEmitter.PartBody) continue;
+                if (!Spine(i0) || !Spine(i1) || !Spine(i2)) continue;
                 bodyTris.Add(i0); bodyTris.Add(i1); bodyTris.Add(i2);
             }
             Assert.Greater(bodyTris.Count, 3000, "the body's triangles");
-            int start = sp.Layout.Start(KitView.Parts(sp).Count - 1);
+            int start = -1;
+            for (int k = 0; k < KitView.Parts(sp).Count; k++) if (KitView.Parts(sp)[k] == (CreaturePart)part) start = sp.Layout.Start(k);
+            Assert.GreaterOrEqual(start, 0, "the dewlap's bones");
 
-            CreatureSim sim = FlowKit.Sim(sp, 1f);
+            CreatureSim sim = FlowKit.Sim(sp, s);
             string Check(string when)
             {
                 m.Pose(sim);
-                for (int i = first; i < m.P.Length; i++)
+                for (int i = first; i < last; i++)
                 {
                     Vector3 p = m.P[i];
                     int best = part.fromJoint; float bd = float.MaxValue;
@@ -157,15 +170,15 @@ namespace TerrainGen.Tests
             if (e != null) return e;
             for (int t = 1; t <= 20; t++)
             {
-                FlowKit.Run(sim, 0.5f, new Vector3(0f, 0f, 30f));
+                FlowKit.Run(sim, 0.5f * Mathf.Sqrt(s), new Vector3(0f, 0f, 30f * s));
                 if ((e = Check($"walking t={t * 0.5f:F1} s")) != null) return e;
             }
-            sim = FlowKit.Sim(sp, 1f);
-            Vector3 centre = new Vector3(0f, 0f, 0.25f);
+            sim = FlowKit.Sim(sp, s);
+            Vector3 centre = new Vector3(0f, 0f, 0.25f * s);
             for (int t = 0; t < 600; t++)
             {
                 float a = t / 60f * 3f;
-                sim.Tick(FlowKit.kDt, centre + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * 0.12f);
+                sim.Tick(FlowKit.kDt * Mathf.Sqrt(s), centre + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * (0.12f * s));
                 if (t % 30 == 29 && (e = Check($"circle t={(t + 1) / 60f:F1} s")) != null) return e;
             }
             return null;
@@ -917,6 +930,35 @@ namespace TerrainGen.Tests
             }
             Assert.Greater(tris, 300);
             Assert.AreEqual(0, bad, $"{bad} of {tris} sail triangles wind against their normals");
+        }
+
+        // Each station's rest hang stands more than PlaneMarginDeg below its lateral plane (else the runtime's plane stop
+        // holds it still; Dewlap.RestPlaneProblem, warned when the rest geometry is built): the fixture and the Apex.
+        static string RestPlaneOf(CreatureSpecies sp)
+        {
+            Dewlap d = Part(sp);
+            Dewlap.RestGeo g = d.Geometry(sp);
+            var below = new List<string>();
+            foreach (Vector3 dir in g.dir) below.Add((Mathf.Asin(Mathf.Clamp(-dir.y, -1f, 1f)) * Mathf.Rad2Deg).ToString("F1"));
+            TestContext.Out.WriteLine($"{sp.name}: stations' rest hang below their lateral planes (deg): {string.Join(", ", below)}");
+            return Dewlap.RestPlaneProblem(g);
+        }
+
+        [Test] public void Dewlap_RestHang_ClearOfThePlaneStop()
+        {
+            Assert.IsNull(RestPlaneOf(Species(Flap())));
+            Assert.IsNull(RestPlaneOf(CreatureApexTests.Apex()));
+        }
+
+        // RED: a station hanging 15 deg below its plane (and one above it) is reported.
+        [Test] public void Red_RestHang_NearThePlane()
+        {
+            Dewlap.RestGeo g = new Dewlap.RestGeo { dir = new[] { Vector3.down, Quaternion.AngleAxis(75f, Vector3.forward) * Vector3.down } };
+            StringAssert.Contains("station 1", Dewlap.RestPlaneProblem(g));
+            g.dir[1] = new Vector3(0f, 0.1f, 1f).normalized;
+            StringAssert.Contains("station 1", Dewlap.RestPlaneProblem(g));
+            g.dir[1] = Quaternion.AngleAxis(65f, Vector3.forward) * Vector3.down;   // 25 deg below: clear
+            Assert.IsNull(Dewlap.RestPlaneProblem(g));
         }
 
         [Test] public void Validate_Messages()

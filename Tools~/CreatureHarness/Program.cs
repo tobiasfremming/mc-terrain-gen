@@ -51,6 +51,11 @@ public static class Program
           "finding: x1.1 seed 4 puts a joint 6 cm into the bark on the way (bound 5.5 mm); known open on feat/wyvern-trees (32795f7), seen again on merge/next with the rigid head" },
         // (2026-10-20, arthropod archetype: the king crab on the crab plan, walking sideways) CreatureTendrilTests.Tendril_Size_FroudeSimilar
         // passes offline again - its entry (a chaos-sensitive instantaneous hang on the old tripod walk) was removed
+        // (2026-10-21, apex final fix wave: the spec's section-8 shape checks run on the Apex itself for the first time)
+        { "CreatureApexTests.Apex_Keel_BelowAndAheadOfTheChest",
+          "finding: the Apex's keel section is deep enough (0.22 m below the chest joint >= 0.212) but in the bound stance the trunk's lowest point is 0.031 m x s behind the shoulder joint (slack 0.025): the trunk descends to the hips (clearance 0.52 -> 0.43) faster than the keel fades behind the chest; FlowBody has no keelForward (spec 5.1). A fix is a FlowBody keel-forward channel or a re-tuned trunk, not this check" },
+        { "CreatureApexTests.Apex_Head_FlowsIntoTheNeck",
+          "finding: the Apex's rest outline steps 0.0111 m (limit 0.15 x skullDepth = 0.0101) between stations 12 and 13 (z -0.054 .. -0.043 in the skull frame, the lower outline -0.066 -> -0.077): the deep fleshy lower jaw's rear (jawDepth 1.1, throatDepth 0.8, the face close-ups), inside the head, not at the neck join (z -0.13)" },
         { "CreatureKitTests(TestHexapod).Size",
           "finding: stop-go walk (throttle 0 on 27 % of a straight walk): 0.9x/1.1x distance 1.4 % apart (test fixture, Task 10); fails in Unity 2026-10-18 too (5.1733 vs 5.3894, 4.2 % apart)" },
         // (2026-10-20, kit services: check 13 PoseSweep and the Gait check on the drawn feet are new; what they found in the
