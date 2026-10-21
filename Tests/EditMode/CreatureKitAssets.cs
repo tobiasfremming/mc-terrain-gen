@@ -85,6 +85,9 @@ namespace TerrainGen.Tests
             MaxBend = "MaxBend", Bounds = "Bounds", Wander = "Wander", Gait = "Gait", Size = "Size", Gc = "Gc", Perf = "Perf", Lab = "Lab",
             PoseSweep = "PoseSweep", Group = "Group";
 
+        // A species with the SkeletonOnly module draws no mesh (Vesper step 1): the mesh-based checks wait for its skin.
+        public const string SkeletonOnlySkip = "skeleton only: no skin until step 3";
+
         // Why a check does not apply to a species (null = it runs). Reasons are about the species, never "it
         // fails": a failing check is a finding, fixed in the species or the code, not skipped here.
         public static string SkipReason(CreatureSpecies sp, string check)
@@ -95,6 +98,11 @@ namespace TerrainGen.Tests
                     case MaxBend: case Bounds: case Wander: case Gait: case Size: case Gc: case Perf: case PoseSweep: case Group:
                         return "cephalopod: OctopusCreature (body + controller + brain) is not a CreatureSim; its arm, " +
                                "soft-body, cloak and containment tests are Octopus*Tests until the octopus joins the kit (T1.2/T3.3)";
+                }
+            if (sp.skeletonOnly)
+                switch (check)
+                {
+                    case MeshTime: case MaxBend: case Bounds: case PoseSweep: case Group: return SkeletonOnlySkip;
                 }
             if (check == Gait && (sp.legs == null || sp.legs.Length == 0)) return "legless: no feet to plant or gait groups to keep";
             return null;

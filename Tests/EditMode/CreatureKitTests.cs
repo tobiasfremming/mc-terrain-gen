@@ -290,16 +290,22 @@ namespace TerrainGen.Tests
 
         internal static string LayoutProblem(CreatureSpecies sp)
         {
-            int bones = CreatureKitAssets.RendererBones(sp);
-            Mesh mesh = CreatureKitAssets.BuildMesh(sp);
+            // a skeleton-only species (SkeletonOnly: no skin until step 3) has no mesh: the bone layout alone is checked
+            bool skinned = !sp.skeletonOnly;
+            int bones = 0;
             var uv2 = new List<Vector4>(); var uv3 = new List<Vector4>();
-            mesh.GetUVs(2, uv2);
-            if (sp.bodyPlan == CreatureBodyPlan.Cephalopod) mesh.GetUVs(3, uv3);
-            int verts = mesh.vertexCount;
-            Object.DestroyImmediate(mesh);
-            if (uv2.Count != verts) return $"uv2 (skin) has {uv2.Count} entries for {verts} vertices";
-            string skin = SkinIndexProblem(sp, uv2, sp.bodyPlan == CreatureBodyPlan.Cephalopod ? uv3 : null, bones);
-            if (skin != null) return skin;
+            if (skinned)
+            {
+                bones = CreatureKitAssets.RendererBones(sp);
+                Mesh mesh = CreatureKitAssets.BuildMesh(sp);
+                mesh.GetUVs(2, uv2);
+                if (sp.bodyPlan == CreatureBodyPlan.Cephalopod) mesh.GetUVs(3, uv3);
+                int verts = mesh.vertexCount;
+                Object.DestroyImmediate(mesh);
+                if (uv2.Count != verts) return $"uv2 (skin) has {uv2.Count} entries for {verts} vertices";
+                string skin = SkinIndexProblem(sp, uv2, sp.bodyPlan == CreatureBodyPlan.Cephalopod ? uv3 : null, bones);
+                if (skin != null) return skin;
+            }
             if (sp.bodyPlan == CreatureBodyPlan.Cephalopod) return null;   // own layout (OctopusBody); registry in T1.2
 
             int n = sp.JointCount, next = n;
@@ -331,6 +337,7 @@ namespace TerrainGen.Tests
             if (sp.BoneCount != next) return $"BoneCount {sp.BoneCount} != spine + legs + wings + eyes + antennae + kit parts = {next}";
             int bind = CreatureRestPose.BindPoses(sp).Length;
             if (bind != sp.BoneCount) return $"{bind} bind poses for {sp.BoneCount} bones";
+            if (!skinned) return null;
 
             // which bones carry skin: every spine joint, every leg bone, every wing bone, the eyes when they exist
             var used = new bool[bones];

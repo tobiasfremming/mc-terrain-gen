@@ -258,6 +258,16 @@ namespace CreatureKit
             Needs = "SoftBody (spine bodies: Phase 4)")]
     public sealed class Cloak : CreatureModule { }
 
+    // Vesper step 1 (skeleton-first): no skin yet. The runtime is simulated and the F3 view draws its bones, but the
+    // renderer builds no mesh and submits nothing (CreatureSpecies.skeletonOnly). The kit's mesh checks are skipped.
+    [Serializable]
+    [Module("SkeletonOnly", CreatureModule.Look, Summary = "Draw nothing: the species is simulated and F3 shows its skeleton, but the renderer builds no mesh and submits no draw (CreatureSpecies.skeletonOnly). For a species built skeleton-first, before its skin.",
+            KitOnly = true)]
+    public sealed class SkeletonOnly : CreatureModule
+    {
+        public override void Configure(CreatureSpecies runtime) => runtime.skeletonOnly = true;
+    }
+
     [Serializable]
     [Module("Chromatophore", CreatureModule.Look, Summary = "Dynamic colour cells, flash and passing-cloud phase (octopus shader). Makes the look dynamic.", Needs = "SoftBody")]
     public sealed class Chromatophore : CreatureModule { }

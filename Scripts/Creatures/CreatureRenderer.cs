@@ -83,6 +83,14 @@ public sealed class CreatureRenderer : IDisposable
     internal MaterialPropertyBlock PropsForTest => props;
     internal Vector4[] PartLayersForTest => partLayers;
     internal Vector3[] FurCentresForTest => furCentres;
+    // Frames this renderer posed its individuals for a draw (the step before the GPU submit; counted without a
+    // device too). A skeleton-only species never gets there. The hook forces a skeleton-only species down the
+    // drawing path (CreatureSkeletonOnlyTests' RED proof).
+    internal int SubmittedForTest { get; private set; }
+    // Frames a skeleton-only renderer posed its individuals without drawing (CreatureSkeletonOnlyTests).
+    internal int SkeletonPosedForTest { get; private set; }
+    readonly bool skeletonOnly;
+    internal static bool IgnoreSkeletonOnlyForTest;
     // The fur system (CreatureWorld attaches it for a species with the Fur module); the renderer disposes it.
     public CreatureKit.ICreatureFurDraw Fur { get => fur; set => fur = value; }
     public Matrix4x4[] BindPoses => bindPoses;
@@ -94,6 +102,17 @@ public sealed class CreatureRenderer : IDisposable
     {
         sp = sp.Compiled.Runtime;   // creature kit: the runtime view (a legacy asset is its own)
         this.sp = sp; this.material = material;
+        if (sp.skeletonOnly && !IgnoreSkeletonOnlyForTest)
+        {
+            // skeleton only (the SkeletonOnly module): no mesh, bind poses or GPU buffers. Add/Remove keep the
+            // individuals; Render still poses every individual's bones each frame (the wing's arm and the part
+            // runtimes - finger chains - are built in WriteBoneWorld: F3 draws them) and submits nothing.
+            skeletonOnly = true;
+            bindPoses = Array.Empty<Matrix4x4>();
+            boneScratch = new Matrix4x4[sp.BoneCount];
+            Grow(kInitialCapacity);
+            return;
+        }
         // creature kit: mesh, bind poses, bones, reach and body params from the species' body plan (KitRender)
         CreatureKit.KitRender rd = CreatureKit.KitRender.For(sp);
         cephalopod = rd.AffineSkin;
@@ -187,6 +206,13 @@ public sealed class CreatureRenderer : IDisposable
     public void Render()
     {
         int n = bodies.Count;
+        if (skeletonOnly)
+        {
+            // skeleton only: pose (no draw) - the bones the renderer would skin with, written and dropped
+            for (int s = 0; s < n; s++) bodies[s].WriteBoneWorld(boneScratch, 0);
+            if (n > 0) SkeletonPosedForTest++;
+            return;
+        }
         if (n == 0 || Mesh == null) return;
 
         Vector3 lo = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue), hi = -lo;
@@ -208,6 +234,7 @@ public sealed class CreatureRenderer : IDisposable
         bounds.SetMinMax(lo, hi);
         bounds.Expand(2f * reach * maxScale);
         LastBounds = bounds;
+        SubmittedForTest++;
 
         if (!gpu || material == null) return;
 

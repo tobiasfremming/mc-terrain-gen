@@ -286,6 +286,10 @@ public class CreatureSpecies : ScriptableObject
     public int ringSegments = DefaultRingSegments, ringsPerSegment = DefaultRingsPerSegment;
     internal const int DefaultRingSegments = 16, DefaultRingsPerSegment = 3;   // a kit chain body that draws its own mesh writes these back
     public CreatureLook look;
+    // Skeleton only (the kit's SkeletonOnly look module; Vesper step 1): simulated, ticked and shown by F3 like any
+    // species, but its renderer builds no mesh and draws nothing. Written at compose (never serialized; false for
+    // every legacy asset and every species without the module: the renderer path is unchanged).
+    [NonSerialized] public bool skeletonOnly;
     public CreatureBodyPlan bodyPlan = CreatureBodyPlan.Spine;
     public CephalopodSpec cephalopod;
     public ClimbSpec climb;

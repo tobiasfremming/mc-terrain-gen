@@ -389,6 +389,9 @@ namespace CreatureKit
         public int FlightBones => WingBoneLayout.Bones(spec);
         public override int BoneCount(in SpeciesCtx c) => FlightBones;
         public override void CollectReferences(List<string> into) => into.Add(arm);
+        // A subtype's own fields that drive the flight's runtime spec (the copy CompiledSpecies hands the sim; the
+        // part's spec is untouched). Default: nothing - every shipped wing unchanged.
+        protected internal virtual void ConfigureRuntimeSpec(WingSpec runtime) { }
         protected override void CopyArrays()
         {
             if (spec == null) return;

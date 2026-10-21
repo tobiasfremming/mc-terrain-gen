@@ -388,6 +388,7 @@ namespace CreatureKit
                 WingSpec s = KitTypes.Memberwise(Wings[w].spec);
                 s.fingerLengths = (float[])s.fingerLengths?.Clone(); s.fingerSpreadDeg = (float[])s.fingerSpreadDeg?.Clone(); s.fingerFoldDeg = (float[])s.fingerFoldDeg?.Clone();
                 s.leg = Limbs.IndexOf((LimbPart)Find(Wings[w].arm));
+                Wings[w].ConfigureRuntimeSpec(s);
                 dst.wings[w] = s;
             }
             dst.flight = Module<Fly>() is Fly fly ? KitTypes.Memberwise(fly.spec) : null;
@@ -401,6 +402,7 @@ namespace CreatureKit
             var ant = new List<AntennaSpec>();
             foreach (CreaturePart p in Parts) if (p is Antenna an) ant.Add(an.ToRuntime());
             dst.antennae = ant.ToArray();
+            dst.skeletonOnly = false;   // the runtime view is reused: only a SkeletonOnly module sets it
             foreach (CreatureModule m in Modules) m.Configure(dst);   // modules with runtime settings of their own (QuadLaunch, SkyHunt)
             dst.InvalidateLayout();
         }

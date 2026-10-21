@@ -64,6 +64,17 @@ namespace TerrainGen.Tests
         internal static ulong MeshHash(CreatureSpecies sp)
         {
             Mesh mesh = CreatureMeshBuilder.Build(sp);
+            ulong h = MeshHashOf(mesh);
+            UnityEngine.Object.DestroyImmediate(mesh);
+            return h;
+        }
+
+        // The golden mesh hash of a species for this runtime (CreatureSkeletonOnlyTests: the off path is unchanged).
+        internal static ulong GoldenMesh(string name) => Golden[name].mesh;
+
+        // The same FNV-1a over a mesh someone else built (the renderer's); the mesh is left alone.
+        internal static ulong MeshHashOf(Mesh mesh)
+        {
             ulong h = kBasis;
             foreach (var v in mesh.vertices) { h = F(h, v.x); h = F(h, v.y); h = F(h, v.z); }
             foreach (var v in mesh.normals) { h = F(h, v.x); h = F(h, v.y); h = F(h, v.z); }
@@ -72,7 +83,6 @@ namespace TerrainGen.Tests
             mesh.GetUVs(2, u4);
             foreach (var v in u4) { h = F(h, v.x); h = F(h, v.y); h = F(h, v.z); h = F(h, v.w); }
             foreach (int i in mesh.triangles) h = (h ^ (uint)i) * kPrime;
-            UnityEngine.Object.DestroyImmediate(mesh);
             return h;
         }
 

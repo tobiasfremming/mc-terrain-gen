@@ -13,7 +13,8 @@
       "useWhen": "a body whose neck, trunk and tail flow into each other with a section an ellipse cannot draw: humped backs, keeled chests, ribbon or paddle tails",
       "summary": "One chain from the head to the tail tip (the sim runs it like a SpineBody's) drawn as one flowing surface with a shaped section: superellipse from oval to tall ribbon (blade), a sharp dorsal hump, a keel, flank masses. The neck and the tail are the same chain as the trunk; a head part sits on joint 0.",
       "usedBy": [
-        "Apex"
+        "Apex",
+        "Vesper"
       ],
       "params": [
         {
@@ -2222,7 +2223,8 @@
       "useWhen": "dragons, wyverns, raptors, birds: any digitigrade hind leg standing on toes with talons",
       "summary": "Slim dragon hind leg: walks as a Leg2Bone (TwoBoneIK, pole, limits, a raised hock as the ankle), drawn with a muscular haunch blended into the trunk (into a FlowBody's drawn section), a lean thigh, a ball knee, a slim shin, a knobbly raised hock, a long metatarsus, knuckled toes on the ground with dark curved talons touching down at the foot point, an optional hallux.",
       "usedBy": [
-        "Apex"
+        "Apex",
+        "Vesper"
       ],
       "params": [
         {
@@ -2527,6 +2529,7 @@
         "ShaggyMonitor",
         "SkyDragon",
         "TestHexapod",
+        "Vesper",
         "WingedSerpent"
       ],
       "params": [
@@ -3322,6 +3325,201 @@
           "meaning": "webbing between the digits, share of their length (0 = none)",
           "range": "0..1",
           "example": ""
+        }
+      ]
+    },
+    {
+      "name": "DigitWing",
+      "kind": "Wing",
+      "status": "exists",
+      "bones": "as Wing + fingers x fingerSegments + thumbSegments",
+      "materialLayers": [],
+      "system": "CreatureFlight + CreatureWings (beat, fold, wing-walk) + DigitWingRuntime (finger chains, thumb; stage Late)",
+      "useWhen": "skeleton-first winged creatures (Vesper): long bony fingers that will carry a membrane between them later; the arm's proportions as FleshWing's (a short humerus, a long forearm)",
+      "summary": "A wing that is its fingers: on an arm limb (a Leg2Bone it names), flown, folded and walked on like a Wing (CreatureFlight + CreatureWings), with one jointed 3D chain per finger rooted at the wrist and aimed by the flight's finger directions - the fingers flex and lag with the beat and billow gliding in the air, droop under gravity (above the ground) when folded on the ground, bend-limited - and a small forward thumb claw curling down. Skeleton only for now (no mesh: needs SkeletonOnly until the skin comes in Vesper step 3); joint radii authored, drawn by F3.",
+      "usedBy": [
+        "Vesper"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "arm",
+          "type": "string",
+          "unit": "PartRef",
+          "size": "-",
+          "meaning": "the Leg2Bone this wing rides on (its role becomes WingArm); a mirrored wing names the unmirrored id and gets .L / .R",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "spec",
+          "type": "WingSpec",
+          "unit": "Spec",
+          "size": "-",
+          "meaning": "the wing (WingSpec: rest tip, comfort band, stroke, fingers, membrane joints); its `leg` is set from `arm` - fields: leg, restTip, comfortUp, comfortDown, strokePlaneDeg, pronationDeg, overshootUp, upstrokeDuration, upstrokeFold, foldReach, beatGroup, fingerLengths, fingerSpreadDeg, fingerFoldDeg, fingerMinGapDeg, fingerFoldGapDeg, groundLiftDeg, groundTallStance, flankPatches, groundWristLift, thumbPlant, fanRearRollsWithFan, groundFlankRise, fingerRadius, thumbLength, membraneRearJoint, membraneFrontJoint, trailingRib, membraneInset, area, scallop, scallopByChord, membraneBillow, membraneDetail, fingerKnuckles, wristKnuckle, armMuscle, forearmTwin, thumbRadius",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "fingerSegments",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "segments (bones) per finger chain",
+          "range": "1..8",
+          "example": "default 4"
+        },
+        {
+          "name": "fingerRadius",
+          "type": "float[]",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "each finger's joint radius at its root (one per finger, leading first; the skin later)",
+          "range": "",
+          "example": "vesper 0.018 0.016 0.014 0.012"
+        },
+        {
+          "name": "fingerTaper",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the finger tip's radius as a fraction of its root's (linear along the chain)",
+          "range": "0.05..1",
+          "example": "default 0.4"
+        },
+        {
+          "name": "flexDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "air: the most the beat bends a joint over the segment before it (0 = stiff fingers)",
+          "range": "0..45",
+          "example": "default 10"
+        },
+        {
+          "name": "flexHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "air flex and ground droop: natural frequency of a segment following the one before (the leading finger's; a shorter finger is stiffer)",
+          "range": "",
+          "example": "vesper 2"
+        },
+        {
+          "name": "flexDamping",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "air flex and ground droop: damping ratio (< 0.7: the tips overshoot - a whip)",
+          "range": "0.05..2",
+          "example": "default 0.5"
+        },
+        {
+          "name": "droopDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "ground: the most gravity droops a joint toward world down (a segment lying level; less as it hangs)",
+          "range": "0..45",
+          "example": "default 8"
+        },
+        {
+          "name": "maxBendDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the most any joint bends over the segment before it (air and ground)",
+          "range": "1..90",
+          "example": "default 25"
+        },
+        {
+          "name": "thumbLength",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the thumb claw's length along its curve",
+          "range": "",
+          "example": "vesper 0.08"
+        },
+        {
+          "name": "thumbCurlDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the thumb claw's curl down from its root to its tip",
+          "range": "0..120",
+          "example": "default 40"
+        },
+        {
+          "name": "thumbSegments",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "segments (bones) of the thumb claw",
+          "range": "1..4",
+          "example": "default 2"
         }
       ]
     },
@@ -4132,6 +4330,7 @@
         "TestSnake",
         "TreeOctopus",
         "TreeSpider",
+        "Vesper",
         "WingedSerpent"
       ],
       "params": [
@@ -4423,6 +4622,217 @@
           "meaning": "probing sweeps per second",
           "range": "",
           "example": "scolopendra 1.3"
+        }
+      ]
+    },
+    {
+      "name": "AttachedChain",
+      "kind": "Chain",
+      "status": "exists",
+      "bones": "= segments + 1",
+      "materialLayers": [],
+      "system": "AttachedChainRuntime (part runtime, stage Late: its own PBD sub-steps)",
+      "useWhen": "extra feature chains on a spine body that must follow it: skin pouches and flaps hung from jaw/neck joints to the chest (two-ended), wattles, streamers, lappets and free flaps (one-ended); the skeleton the skin is lofted on later",
+      "summary": "A secondary chain attached directly onto the mother (spine) chain's joints: at one end (start socket; a free end that lags, swings and droops) or at both ends (start socket + endJoint/endOffset: a strand that hangs between two mother joints, its length the bind's chord x (1 + slack)). Each attached end follows its mother joint exactly; the rest shape (built once per species from the bind) is carried by the mother joints and pulled toward by a spring (stiffnessHz), damped relative to the mother's motion, gravity, exact lengths, a bend cone, optional keep-out from the mother body's drawn surface (collideRadius; a FlowBody's section). One bone per chain joint, frames transported from the mother joint's up; per-joint radii (the skin later), drawn by F3. Skeleton only for now (no mesh).",
+      "usedBy": [],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "endJoint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "the mother joint the far end is attached to; -1 = a free end (one-ended). May be before or after the start joint",
+          "range": "-1..127",
+          "example": "default -1"
+        },
+        {
+          "name": "endOffset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the far end's attachment in endJoint's frame (x mirrored by side)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "segments",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "segments along the chain; bones = segments + 1 (one per chain joint)",
+          "range": "2..24",
+          "example": "default 8"
+        },
+        {
+          "name": "length",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "one-ended: the rest length along the chain (> 0). Two-ended: must be 0 - the length is the bind's chord x (1 + slack)",
+          "range": "0..",
+          "example": "default 0; wattle 0.2; pouch 0"
+        },
+        {
+          "name": "slack",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "two-ended: extra length over the bind's distance between the ends, so it hangs (>= 0.1: a spine bending or straightening must never pull it taut)",
+          "range": "0.1..2",
+          "example": "default 0.25"
+        },
+        {
+          "name": "rootRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "joint radius at the start (the skin later)",
+          "range": "",
+          "example": "default 0.02"
+        },
+        {
+          "name": "tipRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "joint radius at the end",
+          "range": "",
+          "example": "default 0.01"
+        },
+        {
+          "name": "radii",
+          "type": "float[]",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "per-joint radii, start first (segments + 1 values); empty = rootRadius .. tipRadius linearly",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "direction",
+          "type": "Vector3",
+          "unit": "Direction",
+          "size": "-",
+          "meaning": "rest: the direction it leaves the start joint (one-ended) or bulges toward (two-ended), start joint frame, x mirrored by side",
+          "range": "",
+          "example": "default (0, -1, 0)"
+        },
+        {
+          "name": "curlDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "one-ended rest curl, spread over the interior joints, toward the direction frame's -Y (+Y = the joint's up made square to the direction; a vertical direction: the joint's back)",
+          "range": "-180..180",
+          "example": "default 0"
+        },
+        {
+          "name": "stiffnessHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "stiffness: natural frequency of the pull toward the rest shape carried by the mother joints (0 = limp: it only hangs)",
+          "range": "0..10",
+          "example": "default 1.5"
+        },
+        {
+          "name": "damping",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "damping rate (1/s) of its velocity relative to the rest shape's own motion",
+          "range": "0..40",
+          "example": "default 3"
+        },
+        {
+          "name": "gravity",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "share of gravity it feels (1 = hangs fully, 0 = weightless)",
+          "range": "0..1",
+          "example": "default 1"
+        },
+        {
+          "name": "maxBendDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "bend cone per interior chain joint (two-ended: raised to the rest arc's bend if that is sharper)",
+          "range": "5..90",
+          "example": "default 35"
+        },
+        {
+          "name": "collideRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "keep the free joints this far outside the mother body's surface (a FlowBody's drawn section, else the joints' halfWidth x halfHeight ellipses; swept between joints); 0 = off. Attach the ends on or just under that surface",
+          "range": "0..",
+          "example": "default 0"
         }
       ]
     },
@@ -13984,6 +14394,7 @@
         "Hexadrake",
         "Pterodactyl",
         "SkyDragon",
+        "Vesper",
         "WingedSerpent"
       ],
       "params": []
@@ -14385,6 +14796,7 @@
         "TestHexapod",
         "TestSnake",
         "TreeSpider",
+        "Vesper",
         "WingedSerpent"
       ],
       "params": [
@@ -14551,6 +14963,7 @@
         "Hexadrake",
         "Pterodactyl",
         "SkyDragon",
+        "Vesper",
         "WingedSerpent"
       ],
       "params": [
@@ -14771,7 +15184,8 @@
       "summary": "A quadrupedal launch: a crouch on the four limbs (the body lowered by crouchDepth over crouchSeconds), then a vault at vaultSpeed off the folded wing arms; the wings open at the top (CreatureFlight.Launch). Without it a flyer hops off at the shipped 2.4 m/s.",
       "usedBy": [
         "Apex",
-        "Pterodactyl"
+        "Pterodactyl",
+        "Vesper"
       ],
       "params": [
         {
@@ -15122,6 +15536,7 @@
         "TestHexapod",
         "TestSnake",
         "TreeSpider",
+        "Vesper",
         "WingedSerpent"
       ],
       "params": [
@@ -16001,6 +16416,17 @@
           "example": ""
         }
       ]
+    },
+    {
+      "name": "SkeletonOnly",
+      "category": "Look",
+      "status": "exists",
+      "needs": "",
+      "summary": "Draw nothing: the species is simulated and F3 shows its skeleton, but the renderer builds no mesh and submits no draw (CreatureSpecies.skeletonOnly). For a species built skeleton-first, before its skin.",
+      "usedBy": [
+        "Vesper"
+      ],
+      "params": []
     },
     {
       "name": "Skin",
@@ -17035,6 +17461,30 @@
         "ClimbExcursion",
         "Skin",
         "Chitin"
+      ]
+    },
+    {
+      "name": "Vesper",
+      "kitVersion": 1,
+      "plan": "Spine",
+      "bones": 108,
+      "parts": [
+        "FlowBody:body",
+        "Leg2Bone:arm.L",
+        "Leg2Bone:arm.R",
+        "DrakeLeg:hind.L",
+        "DrakeLeg:hind.R",
+        "DigitWing:wing.L",
+        "DigitWing:wing.R",
+        "Eyes:eyes"
+      ],
+      "modules": [
+        "Walk",
+        "Fly",
+        "QuadLaunch",
+        "Wander",
+        "FlightExcursion",
+        "SkeletonOnly"
       ]
     },
     {
