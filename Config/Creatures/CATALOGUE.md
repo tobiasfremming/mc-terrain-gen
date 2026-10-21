@@ -27,7 +27,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | **DrakeLeg** | Limb | exists | 3 | 1, 2 | dragons, wyverns, raptors, birds: any digitigrade hind leg standing on toes with talons | Apex |
 | **Leg2Bone** | Limb | exists | 3 | 1, 2 | lizards, mammals, birds' legs, wing arms | Apex, DesertMonitor, Hexadrake, KitMonitor, Pterodactyl, ShaggyMonitor, SkyDragon, TestHexapod, WingedSerpent |
 | **SprawlLeg** | Limb | exists | 3 | 1, 2 | crocodilians, monitors, tegus, salamanders, any heavy-bodied sprawling or semi-erect walker | Crocodile, KomodoDragon |
-| **FleshWing** | Wing | exists | as Wing + fingers x (spanSegments - 1) + 1 (the fan sector) | 0 | meaty manta-like wings that fold into tall soft blades and are walked on (the Apex); not a membrane between bony fingers. The steep folded blades come from the arm's proportions: a short humerus and a long forearm (upper << lower, e.g. 0.2 / 0.5 on a 0.5 m chest), the wrist's restOffset behind the shoulder (z ~ -0.22) and close in (x ~ 0.06), pole (0.2, 1, -0.4): the forearm stands near vertical and the folded fingers run up along it, side by side over the back | Apex |
+| **FleshWing** | Wing | exists | as Wing + fingers x (spanSegments - 1) + 1 (the fan sector) + 3 (the arm's flesh: humerus, elbow, forearm) | 0 | meaty manta-like wings that fold into tall soft blades and are walked on (the Apex); not a membrane between bony fingers. The steep folded blades come from the arm's proportions: a short humerus and a long forearm (upper << lower, e.g. 0.2 / 0.5 on a 0.5 m chest), the wrist's restOffset behind the shoulder (z ~ -0.22) and close in (x ~ 0.06), pole (0.2, 1, -0.4): the forearm stands near vertical and the folded fingers run up along it, side by side over the back | Apex |
 | **PteroWing** | Wing | exists | as Wing + 6 (wing-finger phalanges 2-4, the pteroid, 2 propatagium patches) | 8, 1, 2 | pterosaurs (azhdarchids, pteranodons): a long single wing finger, a pteroid and propatagium, walking on the folded wings' knuckles | Pterodactyl |
 | **Wing** | Wing | exists | 6 + max(1, spec.flankPatches), +1 with spec.groundTallStance | 8, 1, 2 | bats, pterosaurs, dragons; the Fly module makes it fly | Hexadrake, SkyDragon, WingedSerpent |
 | **Eyes** | Sense | exists | 2 | 3 | always (every shipped species has two eye bones) | Apex, Crocodile, DaddyLongLegs, Delver, DesertBeetle, DesertMonitor, DesertSnake, FinnedSandEel, GiantCentipede, GolfballStrider, Hexadrake, KitMonitor, KomodoDragon, Pterodactyl, RockCrab, Scolopendra, ShaggyMonitor, SkyDragon, SkyManta, StriderMatriarch, Swinger, Tarantula, TentacleCrab, TestHexapod, TestSnake, TreeOctopus, TreeSpider, WingedSerpent |
@@ -107,7 +107,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 
 | species | format | plan | parts | modules | bones |
 |---|---|---|---|---|---|
-| Apex | kit | Spine | FlowBody, 2x Leg2Bone, 2x DrakeLeg, 2x FleshWing, Eyes, CrestBeakHead, Dewlap, 2x PitRow, TailFlourish | Walk (Diagonal), Fly, QuadLaunch, Wander, FlightExcursion, Skin, Membrane, Layers | 109 |
+| Apex | kit | Spine | FlowBody, 2x Leg2Bone, 2x DrakeLeg, 2x FleshWing, Eyes, CrestBeakHead, Dewlap, 2x PitRow, TailFlourish | Walk (Diagonal), Fly, QuadLaunch, Wander, FlightExcursion, Skin, Membrane, Layers | 115 |
 | Crocodile | kit | Spine | SpineBody, 4x SprawlLeg, Eyes, Jaw, 2x Sculpt, 21x ScuteRow | Walk (Diagonal), Slither, Wander, Skin, Layers | 51 |
 | DaddyLongLegs | legacy | Spine | SpineBody, 10x ArthropodLeg, Eyes | Walk (Tetrapod), Wander, Skin, Chitin | 71 |
 | Delver | kit | Spine | SpineBody, 4x DigLeg, Eyes, BandShell, SerratedRings, Maw, Shag, Burrow | Walk (Diagonal), Wander, Skin, Tunnel, Forage, Bask, Follow, Layers | 67 |
@@ -554,7 +554,7 @@ Heavy sprawling vertebrate limb: walks as a Leg2Bone (TwoBoneIK, pole, limits, a
 
 ### FleshWing
 
-A soft, thick, folding wing on an arm limb (a Leg2Bone it names), flown, folded and walked on like a Wing (CreatureFlight + CreatureWings): two skins offset by a thickness law (thick root and arm, thin tip and trailing edge) joined by a rounded rim, a fleshy arm inside the leading edge, a blunt soft pad at the wrist that it walks on, lengthwise stripes along the rays; span chains along the fingers and a chord chain across the rays (the outer wing lags and whips, the trailing edge feathers and billows). System: CreatureFlight + CreatureWings (beat, fold, wing-walk) + FleshWingRuntime (span and chord chains; stage Late) + FleshWingMesh.
+A soft, thick, folding wing on an arm limb (a Leg2Bone it names), flown, folded and walked on like a Wing (CreatureFlight + CreatureWings): two skins offset by a thickness law (thick root and arm, thin tip and trailing edge) joined by a rounded rim, the arm buried in the leading edge's flesh (one soft loft bending at the elbow, a leaf running on into the sheet: folded, the sheet rolled round the forearm), a blunt soft pad at the wrist that it walks on, lengthwise stripes along the rays; span chains along the fingers and a chord chain across the rays (the outer wing lags and whips, the trailing edge feathers and billows). System: CreatureFlight + CreatureWings (beat, fold, wing-walk) + FleshWingRuntime (span and chord chains; stage Late) + FleshWingMesh.
 
 | field | type | unit | size | meaning | range | example |
 |---|---|---|---|---|---|---|
@@ -571,6 +571,8 @@ A soft, thick, folding wing on an arm limb (a Leg2Bone it names), flown, folded 
 | `tipThickness` | float | Metres | x s | thickness toward the tip (the law never goes below half of it) |  | apex 0.012 |
 | `edgeRound` | float | Fraction | - | the rim's roundness: the free edge rolls into a bead at least this x tipThickness in radius | 0.4..2 |  |
 | `armBulk` | float | Metres | x s | the fleshy arm's radius at the shoulder (it tapers to the wrist) |  | apex 0.06 |
+| `armChord` | float | Fraction | - | the leading edge's flesh round the forearm runs on into the sheet as a leaf: its section reaches this x its radius from the bone toward the sail (1 = a round tube; folded, the blade's lower half is this broad down to the club) | 1..4 | apex 3 |
+| `armRollDeg` | float | Degrees | - | the leaf's rest roll about the forearm, from the elbow's hinge axis toward the sail (the elbow and the leaf's upper part keep it; down the forearm the leaf turns on to face the sail, at most a radian either way): between the spread wing's sail side and the folded blade's | -180..180 | apex -55 |
 | `leadFlesh` | float | Fraction | - | the leading edge's flesh, part of the sail's thickness: the arm's flesh runs on along the leading finger, this x armBulk extra half thickness at the root's leading edge, tapering with the span (0 = the plain thickness law) | 0..1.5 |  |
 | `rootSwell` | float | Metres | x s | extra thickness swelling the root next to the body (the wing muscles), fading out by a quarter of the span |  | apex 0.03 |
 | `stripes` | int | Count | - | dark stripes across the sail, running along the rays (0 = none) | 0..24 |  |
@@ -696,7 +698,7 @@ Spring chain rooted on a spine joint: whiskers, barbels, feelers, cerci, streame
 
 ### Dewlap
 
-A broad pale throat sail hanging from a FlowBody's neck joints (fromJoint..toJoint, jaw end first) on its own little chain: `stations` stations of `links` links, a nearly straight lower edge (edgeStraightness), a thin double-sided sheet with faint lengthwise creases and a soft round rim along the edge. It swings behind the neck's motion (each station's acceleration drives two damped AngleChains, gravity pulls toward hanging) and never rises above the neck. System: DewlapRuntime (part runtime, stage AfterLimbs: two AngleChains per station) + Dewlap.EmitMesh.
+A broad pale throat sail or pouch hanging from a FlowBody's neck joints (fromJoint..toJoint, jaw end first, the last may be the chest) on its own little chain: `stations` stations of `links` links, a lower edge from curved to straight (edgeStraightness), a soft sheet thick at the root and bellied (rootThickness, billow) with faint lengthwise creases and a round rim, its rear sweeping up into the chest (rearSweep). It swings behind the neck's motion (each station's acceleration drives two damped AngleChains, gravity pulls toward hanging), the stations coupled so even a heavy flight bob never turns the rim over (coupling, maxTwistDeg); it never rises above the neck. System: DewlapRuntime (part runtime, stage AfterLimbs: two AngleChains per station) + Dewlap.EmitMesh.
 
 | field | type | unit | size | meaning | range | example |
 |---|---|---|---|---|---|---|
@@ -710,7 +712,7 @@ A broad pale throat sail hanging from a FlowBody's neck joints (fromJoint..toJoi
 | `fromJoint` | int | Count | - | the body joint the sail's front (jaw) end hangs from | 0..127 | apex fixture 1 |
 | `toJoint` | int | Count | - | the body joint its back (chest) end hangs from (> fromJoint) | 1..127 | apex fixture 7 |
 | `stations` | int | Count | - | stations along the sail (each a chain of links) | 2..16 | default 5 |
-| `links` | int | Count | - | links per station, root to edge | 1..6 | default 3 |
+| `links` | int | Count | - | links per station, root to edge (under a heavy flight bob - the Apex's, ~13 % of the body - 3 or fewer: 4 folded the swept rear) | 1..6 | default 3 |
 | `depthAt` | float[] | Metres | x s | the sail's depth below the throat at each station (one per station, jaw end first) |  | apex fixture 0.12 0.2 0.24 0.22 0.16 |
 | `edgeStraightness` | float | Fraction | - | 0 = the edge follows depthAt (a curved belly) .. 1 = a straight lower edge from the first station's edge to the last's | 0..1 | default 0.8 |
 | `rim` | float | Metres | x s | radius of the soft round rim along the lower edge (>= thickness / 2) |  | default 0.012 |
@@ -719,6 +721,11 @@ A broad pale throat sail hanging from a FlowBody's neck joints (fromJoint..toJoi
 | `swingDamping` | float | Fraction | - | the links' damping ratio (< 0.7: the edge overshoots a little) | 0.05..2 | default 0.35 |
 | `maxSwingDeg` | float | Degrees | - | the most the drive leans a station and a link bends over the one above it, either way (0 = a stiff sail) | 0..60 | default 25 |
 | `gravityDeg` | float | Degrees | - | gravity: each link bends this much x sin(its angle to the down direction) toward hanging | -90..90 | default 6 |
+| `rootThickness` | float | Metres | x s | the sheet's thickness where it leaves the throat (>= thickness): it thins toward the rim. Keep it under ~0.02: a wider root sits inside the body's facets, which its two-bone skin follows only to first order, and the root row leaves the bending throat by more than 2.5 mm |  | default 0.012 |
+| `billow` | float | Fraction | - | the pouch's belly: each face bulges outward by this x the local depth halfway down (0 = a flat card), and puffs up to 3 x billow wider while it swings | 0..0.3 | default 0.05 |
+| `rearSweep` | float | Fraction | - | the share of the sail's length (from the chest end) over which the edge sweeps up and the sheet thins into the chest skin (0 = a square rear end; under a heavy flight bob keep it >= ~0.5: 0.35 packs the shrinking rows into one span and folded them) | 0..1 | default 0.6 |
+| `coupling` | float | Fraction | - | how strongly each station's swing follows its neighbours' (0 = independent stations: under a heavy bob the rim turns over) | 0..1 | default 0.6 |
+| `maxTwistDeg` | float | Degrees | - | the most a link's swing, and its bend over the link above, may differ from the same link's at the neighbouring station, fore-aft and sideways (the rows' relative twist) | 1..60 | default 8 |
 
 ### LongNeck
 

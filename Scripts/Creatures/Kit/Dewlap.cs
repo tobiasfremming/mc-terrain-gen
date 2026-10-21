@@ -48,7 +48,7 @@ namespace CreatureKit
         [Param(ParamUnit.Count, "the body joint the sail's front (jaw) end hangs from", Min = 0, Max = 127, Example = "apex fixture 1")] public int fromJoint = 1;
         [Param(ParamUnit.Count, "the body joint its back (chest) end hangs from (> fromJoint)", Min = 1, Max = 127, Example = "apex fixture 7")] public int toJoint = 7;
         [Param(ParamUnit.Count, "stations along the sail (each a chain of links)", Min = 2, Max = 16, Default = "5")] public int stations = 5;
-        [Param(ParamUnit.Count, "links per station, root to edge", Min = 1, Max = 6, Default = "3")] public int links = 3;
+        [Param(ParamUnit.Count, "links per station, root to edge (under a heavy flight bob - the Apex's, ~13 % of the body - 3 or fewer: 4 folded the swept rear)", Min = 1, Max = 6, Default = "3")] public int links = 3;
         [Param(ParamUnit.Metres, "the sail's depth below the throat at each station (one per station, jaw end first)", Example = "apex fixture 0.12 0.2 0.24 0.22 0.16")] public float[] depthAt = { 0.12f, 0.2f, 0.24f, 0.22f, 0.16f };
         [Param(ParamUnit.Fraction, "0 = the edge follows depthAt (a curved belly) .. 1 = a straight lower edge from the first station's edge to the last's", Min = 0, Max = 1, Default = "0.8")] public float edgeStraightness = 0.8f;
         [Param(ParamUnit.Metres, "radius of the soft round rim along the lower edge (>= thickness / 2)", Default = "0.012")] public float rim = 0.012f;
@@ -57,9 +57,9 @@ namespace CreatureKit
         [Param(ParamUnit.Fraction, "the links' damping ratio (< 0.7: the edge overshoots a little)", Min = 0.05f, Max = 2, Default = "0.35")] public float swingDamping = 0.35f;
         [Param(ParamUnit.Degrees, "the most the drive leans a station and a link bends over the one above it, either way (0 = a stiff sail)", Min = 0, Max = 60, Default = "25")] public float maxSwingDeg = 25f;
         [Param(ParamUnit.Degrees, "gravity: each link bends this much x sin(its angle to the down direction) toward hanging", Min = -90, Max = 90, Default = "6")] public float gravityDeg = 6f;
-        [Param(ParamUnit.Metres, "the sheet's thickness where it leaves the throat (>= thickness): it thins toward the rim", Default = "0.012")] public float rootThickness = 0.012f;
+        [Param(ParamUnit.Metres, "the sheet's thickness where it leaves the throat (>= thickness): it thins toward the rim. Keep it under ~0.02: a wider root sits inside the body's facets, which its two-bone skin follows only to first order, and the root row leaves the bending throat by more than 2.5 mm", Default = "0.012")] public float rootThickness = 0.012f;
         [Param(ParamUnit.Fraction, "the pouch's belly: each face bulges outward by this x the local depth halfway down (0 = a flat card), and puffs up to 3 x billow wider while it swings", Min = 0, Max = 0.3f, Default = "0.05")] public float billow = 0.05f;
-        [Param(ParamUnit.Fraction, "the share of the sail's length (from the chest end) over which the edge sweeps up and the sheet thins into the chest skin (0 = a square rear end)", Min = 0, Max = 1, Default = "0.6")] public float rearSweep = 0.6f;
+        [Param(ParamUnit.Fraction, "the share of the sail's length (from the chest end) over which the edge sweeps up and the sheet thins into the chest skin (0 = a square rear end; under a heavy flight bob keep it >= ~0.5: 0.35 packs the shrinking rows into one span and folded them)", Min = 0, Max = 1, Default = "0.6")] public float rearSweep = 0.6f;
         [Param(ParamUnit.Fraction, "how strongly each station's swing follows its neighbours' (0 = independent stations: under a heavy bob the rim turns over)", Min = 0, Max = 1, Default = "0.6")] public float coupling = 0.6f;
         [Param(ParamUnit.Degrees, "the most a link's swing, and its bend over the link above, may differ from the same link's at the neighbouring station, fore-aft and sideways (the rows' relative twist)", Min = 1, Max = 60, Default = "8")] public float maxTwistDeg = 8f;
 
@@ -345,8 +345,9 @@ namespace CreatureKit
         // One column of the sail at station place sigma in the bind rest: its profile down the right face (+x) from the
         // root, round the rim under the edge and up the left face - positions, and (nrm not null) the normals square to
         // the profile and the skins. arc: the body arc it hangs at; x, d: its lateral and down (root to edge) axes.
+        // depths (tests, F + 2 long): the face rows' depths below the root (0 .. F), then the depth its links' chain spans.
         void Column(FlowBody body, PartMeshEmitter m, int start, float sigma, Vector3[] pos, Vector3[] nrm, Vector4[] skins,
-                    out float arc, out Vector3 x, out Vector3 d, out Quaternion q)
+                    out float arc, out Vector3 x, out Vector3 d, out Quaternion q, float[] depths = null)
         {
             Vector3[] J = m.Rest.Joints; Quaternion[] R = m.Rest.Rotations;
             int S = stations, L = links, F = RowsPerLink * L, B = RimSegments;
@@ -374,6 +375,7 @@ namespace CreatureKit
             var hs = new float[F + 1];
             if (cs < 1f) RowDepths(hF, cs, Dv, L, hs);
             else for (int r = 1; r <= F; r++) hs[r] = hF * r / F;
+            if (depths != null) { for (int r = 0; r <= F; r++) depths[r] = hs[r]; depths[F + 1] = Dv; }
             int s0 = Mathf.Min((int)sigma, S - 2);
             float f = sigma - s0;
             // the root rows sit in the drawn throat at x = +-rootHalf (phi off the midline), a hair under its facets - on
@@ -420,6 +422,21 @@ namespace CreatureKit
         }
 
         static readonly string[] kKinds = { "dewlap" };
+
+        // Tests: station k's column in the bind rest - its face rows' depths below the root (0 .. F) and, last, the depth
+        // its links' chain spans (metres at scale 1).
+        internal float[] RowDepthsForTest(CreatureSpecies sp, int k)
+        {
+            FlowBody body = FindBody(KitView.Parts(sp));
+            PartMeshEmitter m;
+            buildingRest = true;
+            try { m = PartMeshEmitter.ForBind(sp); }
+            finally { buildingRest = false; }
+            int F = RowsPerLink * links, prof = 2 * (F + 1) + (RimSegments - 1);
+            var depths = new float[F + 2];
+            Column(body, m, 0, k, new Vector3[prof], null, null, out _, out _, out _, out _, depths);
+            return depths;
+        }
 
         ulong CacheKey(FlowBody body, PartMeshEmitter m, int start)
         {
@@ -763,7 +780,7 @@ namespace CreatureKit
         // bends at a link joint differing by b shear them there by about b x a quarter of the stations' spacing.
         void Couple(AngleChain[] ch, float[] hang, float h, float omega)
         {
-            float kap = 1f - Mathf.Exp(-CouplingRate * p.coupling * omega * h), mt = p.maxTwistDeg;
+            float kap = 1f - Mathf.Exp(-CouplingRate * p.coupling * omega * h);
             for (int s = 0; s < S; s++) above[s] = ch[s].Angle(0);   // link 0: the drive (no hang)
             for (int i = 1; i <= L; i++)
             {

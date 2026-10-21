@@ -268,6 +268,8 @@ MonoBehaviour:
         tipThickness: 0.012
         edgeRound: 0.5
         armBulk: 0.06
+        armChord: 3
+        armRollDeg: -55
         leadFlesh: 0.5
         rootSwell: 0.03
         stripes: 9
@@ -368,7 +370,7 @@ MonoBehaviour:
           slot: 0
         mirror: 0
         fromJoint: 1
-        toJoint: 6
+        toJoint: 7
         stations: 5
         links: 3
         depthAt:
@@ -377,13 +379,18 @@ MonoBehaviour:
         - 0.28
         - 0.25
         - 0.17
-        edgeStraightness: 0.8
+        edgeStraightness: 0.45
         rim: 0.012
         thickness: 0.008
         swingHz: 1.6
-        swingDamping: 0.8
-        maxSwingDeg: 16
+        swingDamping: 0.35
+        maxSwingDeg: 25
         gravityDeg: 6
+        rootThickness: 0.012
+        billow: 0.05
+        rearSweep: 0.6
+        coupling: 0.6
+        maxTwistDeg: 8
     - rid: 1007
       type: {class: PitRow, ns: CreatureKit, asm: TerrainGen.Runtime}
       data:

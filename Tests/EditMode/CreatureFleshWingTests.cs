@@ -14,7 +14,9 @@ namespace TerrainGen.Tests
     // 0.3, spanMaxDeg 20), mirrored DrakeLeg hind legs at the hips, Eyes; Walk + Fly + FlightExcursion; numbers from the
     // middle of the scanned passing region (see the task report). Invariants: the sail is thick (not a plane) with a
     // round rim and closed (no open edge); folded on the ground each blade stands well above the back and behind the
-    // shoulder, steep, broad, on its own side of the body; it stands on the drawn club; nothing inverts through the fold,
+    // shoulder, steep, broad, on its own side of the body, the arm buried in it (along the forearm the blade's section is a
+    // leaf several arm radii across, not a tube; the arm's flesh one closed surface through the elbow, no ball joint); it
+    // stands on the drawn club; nothing inverts through the fold,
     // a launch and a landing (rear attach at the default and at the hips; the body's triangles too); the outer wing lags
     // the root and the trailing rays the leading one; no GC; Froude-similar chains. Each has a RED. FlyModule() turns on
     // all three stance-bound flight flags (airNeckStance, launchHeadOnNeck, touchdownAtStance) and the segment-wise launch
@@ -96,14 +98,31 @@ namespace TerrainGen.Tests
             return null;
         }
 
-        // the bones of wing w: its flight bones and its own (the part's range), and its arm's leg bones
+        // the bones of wing w: its flight bones and its own (the part's range), and its arm's leg bones; the arm's flesh (the
+        // part's last bones after the fan sector: the leading edge's loft round the humerus and forearm) counts as the arm
         internal static bool WingBone(CreatureSpecies sp, int w, int bone, bool armToo)
         {
             int first = sp.WingBone(w, 0), count = Part(sp).FlightBones + Part(sp).ExtraBones;
-            if (bone >= first && bone < first + count) return true;
+            if (bone >= first && bone < first + count) return armToo || !FleshBone(sp, w, bone);
             if (!armToo) return false;
             int leg = sp.wings[w].leg;
             return bone >= sp.LegBone(leg, 0) && bone <= sp.LegBone(leg, 2);
+        }
+
+        // the arm's flesh bones of wing w (FleshWing.ArmFleshBone)
+        internal static bool FleshBone(CreatureSpecies sp, int w, int bone)
+        {
+            FleshWing p = Part(sp);
+            int extra = sp.WingBone(w, 0) + p.FlightBones;
+            return bone >= p.ArmFleshBone(extra, 0) && bone <= p.ArmFleshBone(extra, FleshWing.ArmFleshBones - 1);
+        }
+
+        // the arm's drawn flesh (the humerus and forearm, the elbow): on the flesh bones, or on the arm's upper and lower leg
+        // bones (not the hand's club)
+        internal static bool ArmFlesh(CreatureSpecies sp, int w, int bone)
+        {
+            int leg = sp.wings[w].leg;
+            return FleshBone(sp, w, bone) || bone == sp.LegBone(leg, 0) || bone == sp.LegBone(leg, 1);
         }
 
         // ------------------------------------------------------------ data
@@ -115,7 +134,7 @@ namespace TerrainGen.Tests
             Assert.AreEqual(2, sp.WingCount);
             FleshWing p = Part(sp);
             Assert.AreEqual(5, p.spec.FingerCount);
-            Assert.AreEqual(p.FlightBones + 5 * (p.spanSegments - 1) + 1, p.BoneCount(default), "the flight's, the span segments, the fan sector");
+            Assert.AreEqual(p.FlightBones + 5 * (p.spanSegments - 1) + 1 + 3, p.BoneCount(default), "the flight's, the span segments, the fan sector, the arm's flesh (humerus, elbow, forearm)");
             CompiledSpecies c = sp.Compiled;
             for (int i = 0; i < c.Parts.Count; i++)
                 if (c.Parts[i] is FleshWing fw)
@@ -833,6 +852,260 @@ namespace TerrainGen.Tests
                 Assert.Greater(open, 0);
             }
             finally { FleshWing.NoRimsForTest = false; }
+        }
+
+        // ------------------------------------------------------------ the arm buried in the blade's flesh (task 10c)
+
+        // The section of wing w's posed mesh (every triangle of the wing and its arm) by the plane through c with normal n: the
+        // points where its triangles' edges cross the plane. arm: only the arm's flesh (ArmFlesh).
+        static List<Vector3> Section(CreatureSpecies sp, CreaturePteroWingTests.Skinned m, int w, Vector3 c, Vector3 n, bool arm)
+        {
+            var pts = new List<Vector3>();
+            for (int k = 0; k < m.T.Length; k += 3)
+            {
+                int b = (int)m.Uv2[m.T[k]].x;
+                if (arm ? !ArmFlesh(sp, w, b) : !WingBone(sp, w, b, true)) continue;
+                for (int e = 0; e < 3; e++)
+                {
+                    Vector3 p0 = m.P[m.T[k + e]], p1 = m.P[m.T[k + (e + 1) % 3]];
+                    float d0 = Vector3.Dot(p0 - c, n), d1 = Vector3.Dot(p1 - c, n);
+                    if ((d0 < 0f) != (d1 < 0f)) pts.Add(Vector3.Lerp(p0, p1, d0 / (d0 - d1)));
+                }
+            }
+            return pts;
+        }
+
+        // Walking straight (3 s, every 5th frame after the first steps), each planted folded blade cut square to its forearm
+        // at stations from just above the club (the club's top along the forearm) to kLeafTop of the way to the elbow (where
+        // the leaf is full): the arm's own flesh there (ArmFlesh - not the sail's plies) reaches across the blade - square to
+        // the forearm, toward the folded sail's middle (the mean of its vertices) - >= kLeafWidth x the arm's drawn radius
+        // there (the flesh's nearest point to the forearm's line). A round tube is 2 radii across whichever way it lies; the
+        // leading edge's flesh rolled into the blade is a leaf lying in the blade (its rounded edge round the bone, its flesh
+        // running on toward the sail), and only a leaf turned into the blade's plane is that wide across it.
+        // worst: the smallest ratio; at: where.
+        internal const float kLeafWidth = 3.5f, kLeafTop = 0.6f;
+
+        internal static string ArmLeafProblem(CreatureSpecies sp, out float worst, out string at)
+        {
+            worst = float.MaxValue; at = null;
+            float s = sp.scale;
+            var m = new CreaturePteroWingTests.Skinned(sp);
+            var sim = FlowKit.Sim(sp, s);
+            int n = Mathf.RoundToInt(180f * Mathf.Sqrt(s)), settle = Mathf.RoundToInt(30f * Mathf.Sqrt(s));
+            string miss = null; int samples = 0;
+            for (int t = 0; t < n; t++)
+            {
+                sim.Tick(kDt, new Vector3(0f, 0f, 50f * s));
+                if (t < settle || t % 5 != 0) continue;
+                m.Pose(sim);
+                for (int w = 0; w < sp.WingCount; w++)
+                {
+                    LegState ls = sim.Legs[sp.wings[w].leg];
+                    if (ls.stepping && ls.stepT >= 0f) continue;
+                    WingState st = sim.Flight.Wings.State[w];
+                    Vector3 wr = st.wrist, fa = st.elbow - wr;
+                    float L = fa.magnitude; fa /= L;
+                    int hand = sp.LegBone(sp.wings[w].leg, 2), count = 0;
+                    float clubTop = 0f;
+                    Vector3 mid = Vector3.zero;
+                    for (int i = 0; i < m.P.Length; i++)
+                    {
+                        int b = (int)m.Uv2[i].x;
+                        if (WingBone(sp, w, b, false)) { mid += m.P[i]; count++; }
+                        if (b == hand && m.Uv2[i].z > 0.999f && m.Part(i) == PartMeshEmitter.PartBody) clubTop = Mathf.Max(clubTop, Vector3.Dot(m.P[i] - wr, fa));
+                    }
+                    Vector3 across = mid / Mathf.Max(1, count) - wr; across -= fa * Vector3.Dot(across, fa); across.Normalize();
+                    for (int k = 0; k <= 8; k++)
+                    {
+                        float d = Mathf.Lerp(clubTop + 0.02f * L, kLeafTop * L, k / 8f);
+                        Vector3 c = wr + fa * d;
+                        List<Vector3> armPts = Section(sp, m, w, c, fa, true);
+                        if (armPts.Count == 0) { miss ??= $"t={sim.Time:F2} s: wing {w} has no arm flesh {d / L:F2} of the way up its forearm"; continue; }
+                        float r = float.MaxValue, lo = 0f, hi = 0f;
+                        foreach (Vector3 q in armPts)
+                        {
+                            r = Mathf.Min(r, (q - c).magnitude);
+                            float x = Vector3.Dot(q - c, across);
+                            lo = Mathf.Min(lo, x); hi = Mathf.Max(hi, x);
+                        }
+                        float ratio = (hi - lo) / Mathf.Max(1e-6f, r);
+                        samples++;
+                        if (ratio < worst) { worst = ratio; at = $"t={sim.Time:F2} s wing {w}, {d / L:F2} up the forearm: the arm's flesh {hi - lo:F3} m across the blade, radius {r:F3} m"; }
+                        if (miss == null && ratio < kLeafWidth) miss = $"{at} ({ratio:F2} < {kLeafWidth}): a tube, not a leaf lying in the blade";
+                    }
+                }
+            }
+            TestContext.Out.WriteLine($"the arm's flesh across the folded blade: {samples} sections, narrowest {worst:F2} x its radius ({at})");
+            if (samples == 0) return "no planted blade sampled";
+            return miss;
+        }
+
+        [Test] public void FleshWing_FoldedBlade_ArmBuriedInTheLeaf()
+        {
+            string e = ArmLeafProblem(Species(), out _, out _);
+            Assert.IsNull(e, e);
+        }
+
+        // RED: the old arm - a round tube with a ball elbow, the sail's plies ending inside it
+        [Test] public void Red_FleshWing_TubeArm_IsATube()
+        {
+            FleshWing.TubeArmForTest = true;
+            try
+            {
+                string e = ArmLeafProblem(Species(), out float worst, out _);
+                TestContext.Out.WriteLine("RED: " + e);
+                Assert.IsNotNull(e);
+                Assert.Less(worst, 2.2f, "about two radii: a bare tube");
+            }
+            finally { FleshWing.TubeArmForTest = false; }
+        }
+
+        // The rest mesh of wing 0's arm flesh (ArmFlesh, welded by position): ONE closed surface - one connected piece, no open
+        // edge, and no face inside it (a point a hair outside each triangle, along its normal, lies outside the flesh: odd
+        // ray-crossing parity on 2 of 3 rays = inside). A separate ball elbow is a second (and third) piece whose faces lie
+        // inside the tubes'. pieces / open / inside: the counts.
+        internal static string ArmSurfaceProblem(CreatureSpecies sp, out int pieces, out int open, out int inside)
+        {
+            pieces = 0; open = 0; inside = 0;
+            var m = new CreaturePteroWingTests.Skinned(sp);
+            Vector3[] N = NormalsOf(sp);
+            var tris = new List<int>();
+            for (int k = 0; k < m.T.Length; k += 3) if (ArmFlesh(sp, 0, (int)m.Uv2[m.T[k]].x)) tris.Add(k);
+            if (tris.Count == 0) return "no arm flesh";
+            var id = new Dictionary<(int, int, int), int>();
+            int Weld(Vector3 p)
+            {
+                var key = (Mathf.RoundToInt(p.x * 1e5f), Mathf.RoundToInt(p.y * 1e5f), Mathf.RoundToInt(p.z * 1e5f));
+                if (!id.TryGetValue(key, out int v)) id[key] = v = id.Count;
+                return v;
+            }
+            var wv = new int[tris.Count * 3];
+            for (int t = 0; t < tris.Count; t++) for (int e = 0; e < 3; e++) wv[3 * t + e] = Weld(m.V[m.T[tris[t] + e]]);
+            // pieces: union-find over the welded vertices
+            var parent = new int[id.Count];
+            for (int i = 0; i < parent.Length; i++) parent[i] = i;
+            int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
+            for (int t = 0; t < tris.Count; t++) { parent[Find(wv[3 * t + 1])] = Find(wv[3 * t]); parent[Find(wv[3 * t + 2])] = Find(wv[3 * t]); }
+            var roots = new HashSet<int>();
+            for (int t = 0; t < tris.Count; t++) roots.Add(Find(wv[3 * t]));
+            pieces = roots.Count;
+            var edges = new Dictionary<long, int>();
+            for (int t = 0; t < tris.Count; t++)
+                for (int e = 0; e < 3; e++)
+                {
+                    int a = wv[3 * t + e], b = wv[3 * t + (e + 1) % 3];
+                    if (a == b) continue;
+                    long key = a < b ? ((long)a << 32) | (uint)b : ((long)b << 32) | (uint)a;
+                    edges.TryGetValue(key, out int c); edges[key] = c + 1;
+                }
+            foreach (int c in edges.Values) if (c < 2) open++;
+            // faces inside: a point 1 mm outside each triangle's centre along its normal
+            var dirs = new[] { new Vector3(1f, 0.13f, 0.07f).normalized, new Vector3(-0.11f, 1f, 0.05f).normalized, new Vector3(0.09f, -0.17f, -1f).normalized };
+            string first = null;
+            for (int t = 0; t < tris.Count; t++)
+            {
+                int k = tris[t];
+                Vector3 a = m.V[m.T[k]], b = m.V[m.T[k + 1]], c = m.V[m.T[k + 2]];
+                if (Vector3.Cross(b - a, c - a).sqrMagnitude < 1e-14f) continue;
+                Vector3 nn = (N[m.T[k]] + N[m.T[k + 1]] + N[m.T[k + 2]]).normalized;
+                Vector3 o = (a + b + c) / 3f + nn * 1e-3f;
+                int odd = 0;
+                foreach (Vector3 d in dirs)
+                {
+                    int x = 0;
+                    foreach (int u in tris) if (Crosses(o, d, m.V[m.T[u]], m.V[m.T[u + 1]], m.V[m.T[u + 2]])) x++;   // (its own face too: the point is off it)
+                    if ((x & 1) == 1) odd++;
+                }
+                if (odd >= 2) { inside++; if (first == null) first = $"a face at {o} lies inside the arm's flesh"; }
+            }
+            TestContext.Out.WriteLine($"arm flesh: {tris.Count} triangles, {pieces} piece(s), {open} open edges, {inside} faces inside");
+            if (pieces != 1) return $"the arm's flesh is {pieces} separate solids (one continuous surface expected)";
+            if (open > 0) return $"the arm's flesh has {open} open edges";
+            if (inside > 0) return $"{inside} faces of the arm's flesh lie inside it ({first})";
+            return null;
+        }
+
+        [Test] public void FleshWing_Elbow_OneContinuousSurface()
+        {
+            string e = ArmSurfaceProblem(Species(), out _, out _, out _);
+            Assert.IsNull(e, e);
+        }
+
+        // RED: the old arm - a humerus tube, a ball elbow and a forearm tube: three solids, the ball's faces inside the tubes
+        [Test] public void Red_FleshWing_BallElbow_SeparateSolids()
+        {
+            FleshWing.TubeArmForTest = true;
+            try
+            {
+                string e = ArmSurfaceProblem(Species(), out int pieces, out _, out int inside);
+                TestContext.Out.WriteLine("RED: " + e);
+                Assert.IsNotNull(e);
+                Assert.AreEqual(3, pieces, "the humerus, the ball, the forearm");
+                Assert.Greater(inside, 0, "the ball's faces inside the tubes");
+            }
+            finally { FleshWing.TubeArmForTest = false; }
+        }
+
+        // Through the sweep (walk, launch and climb, the fold 0 -> 1 -> 0 in the air, a landing with its touchdown blend, the
+        // wing-walk after; every frame) the arm's flesh keeps its shoulder end at the true shoulder: the humerus flesh frame's
+        // origin within kShoulderDrift x armBulk x s of the upper leg bone's (the flesh's bend is capped at 160 deg - the
+        // touchdown's blend folds the arm flat - and there the flesh's humerus turns about the elbow; its shoulder end must stay
+        // inside the chest). worst: the largest drift (m); at: where.
+        internal const float kShoulderDrift = 1.5f;
+
+        internal static string FleshShoulderProblem(CreatureSpecies sp, out float worst, out string at)
+        {
+            worst = 0f; at = null;
+            float s = sp.scale, T = Mathf.Sqrt(s), lim = kShoulderDrift * Part(sp).armBulk * s;
+            var sim = FlowKit.Sim(sp, s);
+            var bones = new Matrix4x4[sp.BoneCount];
+            float w0 = 0f; string a0 = null;
+            void Check(string phase)
+            {
+                sim.WriteBoneWorld(bones, 0);
+                for (int w = 0; w < sp.WingCount; w++)
+                {
+                    FleshWing p = Part(sp);
+                    int h = p.ArmFleshBone(sp.WingBone(w, 0) + p.FlightBones, 0), bu = sp.LegBone(sp.wings[w].leg, 0);
+                    float d = ((Vector3)bones[h].GetColumn(3) - (Vector3)bones[bu].GetColumn(3)).magnitude;
+                    if (d > w0) { w0 = d; a0 = $"{phase} {sim.Mode} wing {w}"; }
+                }
+            }
+            for (int t = 0; t < 60; t++) { sim.Tick(kDt, Ahead(sim, s)); Check("walk"); }
+            sim.Flight.Launch(6f * s);
+            for (int t = 0; t < 240; t++) { sim.Flight.SetGoals(6f * s, sp.flight.cruiseSpeed * T, 0f); sim.Tick(kDt, sim.Joints[0]); Check("air"); }
+            for (int k = 0; k <= 40; k++)
+            {
+                float fold = k <= 20 ? k / 20f : (40 - k) / 20f;
+                for (int t = 0; t < 6; t++) { sim.Flight.DiveFold = fold; sim.Flight.SetGoals(6f * s, sp.flight.cruiseSpeed * T, 0f); sim.Tick(kDt, sim.Joints[0]); Check("fold"); }
+            }
+            sim.Flight.DiveFold = 0f;
+            for (int t = 0; t < 120; t++) { sim.Flight.SetGoals(6f * s, sp.flight.cruiseSpeed * T, 0f); sim.Tick(kDt, sim.Joints[0]); }
+            sim.Flight.Land(sim.Flight.Model.Position + sim.Flight.Model.Forward * (8f * s) - Vector3.up * sim.Flight.Model.Altitude);
+            for (int t = 0; t < 7200 && sim.Mode != FlightMode.Ground; t++) { sim.Tick(kDt, sim.Joints[0]); Check("landing"); }
+            for (int t = 0; t < 120; t++) { sim.Tick(kDt, Ahead(sim, s)); Check("after"); }
+            worst = w0; at = a0;
+            TestContext.Out.WriteLine($"the flesh's shoulder end drifts at most {w0:F3} m = {w0 / (Part(sp).armBulk * s):F2} x armBulk ({a0})");
+            return w0 <= lim ? null : $"{a0}: the flesh's shoulder end drifts {w0:F3} m from the shoulder (> {kShoulderDrift} x armBulk)";
+        }
+
+        [Test] public void FleshWing_Touchdown_FleshShoulderStaysPut()
+        {
+            string e = FleshShoulderProblem(Species(), out _, out _);
+            Assert.IsNull(e, e);
+        }
+
+        // RED: the flesh's bend capped at 120 deg - its humerus swings the shoulder end out of the chest
+        [Test] public void Red_FleshWing_LowBendCap_ShoulderWanders()
+        {
+            FleshWingRuntime.FleshBendForTest = 120f;
+            try
+            {
+                string e = FleshShoulderProblem(Species(), out _, out _);
+                TestContext.Out.WriteLine("RED: " + e);
+                Assert.IsNotNull(e);
+            }
+            finally { FleshWingRuntime.FleshBendForTest = 0f; }
         }
 
         // ------------------------------------------------------------ every bone skinned (task 10)

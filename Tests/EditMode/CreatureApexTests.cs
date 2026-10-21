@@ -13,11 +13,11 @@ namespace TerrainGen.Tests
     // FleshWing blades on Leg2Bone wing arms, DrakeLeg hind legs, Eyes, TailFlourish last. Invariants: it composes from
     // its own parts only (no pterosaur part); its walking stance is the picture's (the head highest, the neck raised
     // steeply, the folded blades' tips high above the hump and behind the shoulder, steep, side by side and broad, the
-    // clubs ahead of the hind feet, no stance segment steeper than 65 deg); in steady flight the girdle bobs >= 6 % of the body length with each beat, the
-    // bob travels down the tail and the head rides steadier (<= 1/3); under its own brain in the aviary it walks, takes
-    // off, beats, glides, flares, lands and walks again; the gates: no body skin seen inside the open mouth in a walking
-    // pose, the standing tail loop turns >= 120 deg. The REDs: a beating flyer whose girdle barely heaves; a tail wave that
-    // leads or jumps half a beat.
+    // clubs ahead of the hind feet, no stance segment steeper than 65 deg); in steady flight the girdle bobs >= 6 % of the
+    // body length with each beat, the bob travels down the tail and the head rides steadier (<= 1/3); under its own brain
+    // in the aviary it walks, takes off, beats, glides, flares, lands and walks again; the gates: no body skin seen inside
+    // the open mouth in a walking pose, the standing tail loop turns >= 120 deg; the arm buried in the folded blade's
+    // flesh (task 10c). The REDs: a beating flyer whose girdle barely heaves; a tail wave that leads or jumps half a beat.
     public class CreatureApexTests
     {
         const float kDt = 1f / 60f;
@@ -167,6 +167,21 @@ namespace TerrainGen.Tests
             float walk = CreatureFleshWingTests.MaxWalkPitch(sp, out string where);
             TestContext.Out.WriteLine($"steepest walking segment {walk:F1} deg ({where})");
             Assert.Less(walk, CreatureFleshWingTests.kMaxWalkPitch, where);
+        }
+
+        // The arm buried in the blade (task 10c, CreatureFleshWingTests' checks on the Apex itself): folded, the arm's own
+        // flesh along the forearm from the club up reaches >= kLeafWidth x its radius across the blade (a leaf lying in
+        // it, not a tube), its flesh is one closed surface through the elbow (no ball joint), and its shoulder end stays put
+        // through a touchdown.
+        [Test] public void Apex_ArmBuriedInTheBlade()
+        {
+            CreatureSpecies sp = Apex();
+            string e = CreatureFleshWingTests.ArmLeafProblem(sp, out _, out _);
+            Assert.IsNull(e, e);
+            string f = CreatureFleshWingTests.ArmSurfaceProblem(sp, out _, out _, out _);
+            Assert.IsNull(f, f);
+            string g = CreatureFleshWingTests.FleshShoulderProblem(sp, out _, out _);
+            Assert.IsNull(g, g);
         }
 
         // ------------------------------------------------------------ the bob

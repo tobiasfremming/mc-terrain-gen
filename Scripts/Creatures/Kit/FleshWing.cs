@@ -5,7 +5,10 @@
 //              rear flank rib, the forearm) and its flank patches to the body, drawn as two skins (dorsal, ventral) offset
 //              +- half the thickness law (ThicknessAt: thick at the root and along the arm, thin toward the tip and the
 //              trailing edge) and joined by a soft rounded rim along the leading edge and the smooth trailing edge;
-//   arm        a fleshy loft along the humerus and forearm inside the leading edge (the body's dorsal colour), no bone tube;
+//   arm        the leading edge's flesh round the humerus and forearm (the body's dorsal colour), no bone tube nor ball
+//              elbow: one loft from the shoulder through a soft bend at the elbow to the club, rounded round the bones and
+//              running on into the sheet as a leaf (armChord x its radius toward the sail; folded, the blade's lower half is
+//              the sheet rolled round the forearm down to the club), on three flesh frames of its own;
 //   pad        the wrist's blunt soft club - what it walks on (WingSpec.thumbPlant: CreatureWings.ThumbTip, the walked
 //              contact, is the pad's lowest point);
 //   colour     the inner (arm) half in the body's dorsal colour, the outer half the `wingfan` kind with dark `wingstripe`
@@ -13,7 +16,8 @@
 // Bones: the flight's (WingBoneLayout.Bones(spec)), then spanSegments - 1 per finger: each finger is a span chain (segment
 // 0 is the flight's finger bone, the rest follow it with a lag: the outer wing whips at the stroke's turn), and the rays
 // behind the leading finger are a chord chain (the trailing edge feathers on the beat and billows in a glide). The sail
-// between two rays is skinned to the two rays' bones at the same span segment (the shared membrane's rule). The bind pose
+// between two rays is skinned to the two rays' bones at the same span segment (the shared membrane's rule); then the fan
+// sector and the arm's three flesh frames (ArmFleshBone). The bind pose
 // is the spread wing, optionally part-folded (bindFold). Off by default: a species without a FleshWing is unchanged.
 // Allocation-free after construction; main thread.
 using System;
@@ -22,8 +26,8 @@ using UnityEngine;
 namespace CreatureKit
 {
     [Serializable]
-    [Part("FleshWing", PartKind.Wing, Bones = "as Wing + fingers x (spanSegments - 1) + 1 (the fan sector)",
-          Summary = "A soft, thick, folding wing on an arm limb (a Leg2Bone it names), flown, folded and walked on like a Wing (CreatureFlight + CreatureWings): two skins offset by a thickness law (thick root and arm, thin tip and trailing edge) joined by a rounded rim, a fleshy arm inside the leading edge, a blunt soft pad at the wrist that it walks on, lengthwise stripes along the rays; span chains along the fingers and a chord chain across the rays (the outer wing lags and whips, the trailing edge feathers and billows).",
+    [Part("FleshWing", PartKind.Wing, Bones = "as Wing + fingers x (spanSegments - 1) + 1 (the fan sector) + 3 (the arm's flesh: humerus, elbow, forearm)",
+          Summary = "A soft, thick, folding wing on an arm limb (a Leg2Bone it names), flown, folded and walked on like a Wing (CreatureFlight + CreatureWings): two skins offset by a thickness law (thick root and arm, thin tip and trailing edge) joined by a rounded rim, the arm buried in the leading edge's flesh (one soft loft bending at the elbow, a leaf running on into the sheet: folded, the sheet rolled round the forearm), a blunt soft pad at the wrist that it walks on, lengthwise stripes along the rays; span chains along the fingers and a chord chain across the rays (the outer wing lags and whips, the trailing edge feathers and billows).",
           System = "CreatureFlight + CreatureWings (beat, fold, wing-walk) + FleshWingRuntime (span and chord chains; stage Late) + FleshWingMesh",
           MaterialLayers = new[] { 0 }, MaterialKinds = new[] { "wingfan", "wingstripe" }, KitOnly = true,
           UseWhen = "meaty manta-like wings that fold into tall soft blades and are walked on (the Apex); not a membrane between bony fingers. The steep folded blades come from the arm's proportions: a short humerus and a long forearm (upper << lower, e.g. 0.2 / 0.5 on a 0.5 m chest), the wrist's restOffset behind the shoulder (z ~ -0.22) and close in (x ~ 0.06), pole (0.2, 1, -0.4): the forearm stands near vertical and the folded fingers run up along it, side by side over the back")]
@@ -37,6 +41,10 @@ namespace CreatureKit
         public float edgeRound = 0.5f;
         [Param(ParamUnit.Metres, "the fleshy arm's radius at the shoulder (it tapers to the wrist)", Example = "apex 0.06")]
         public float armBulk = 0.06f;
+        [Param(ParamUnit.Fraction, "the leading edge's flesh round the forearm runs on into the sheet as a leaf: its section reaches this x its radius from the bone toward the sail (1 = a round tube; folded, the blade's lower half is this broad down to the club)", Min = 1, Max = 4, Example = "apex 3")]
+        public float armChord = 3f;
+        [Param(ParamUnit.Degrees, "the leaf's rest roll about the forearm, from the elbow's hinge axis toward the sail (the elbow and the leaf's upper part keep it; down the forearm the leaf turns on to face the sail, at most a radian either way): between the spread wing's sail side and the folded blade's", Min = -180, Max = 180, Example = "apex -55")]
+        public float armRollDeg = -55f;
         [Param(ParamUnit.Fraction, "the leading edge's flesh, part of the sail's thickness: the arm's flesh runs on along the leading finger, this x armBulk extra half thickness at the root's leading edge, tapering with the span (0 = the plain thickness law)", Min = 0, Max = 1.5f)]
         public float leadFlesh = 0.5f;
         [Param(ParamUnit.Metres, "extra thickness swelling the root next to the body (the wing muscles), fading out by a quarter of the span", Example = "apex 0.03")]
@@ -99,8 +107,9 @@ namespace CreatureKit
             groundFlankRise = 0.6f, flankPatches = 6, thumbLength = 0.045f, membraneRearJoint = 9, membraneFrontJoint = 4,
             trailingRib = 0.5f, area = 3f, scallop = 0f,
         };
-        // the span segments (spanSegments - 1 per finger), then the fan sector (FanSector)
-        public int ExtraBones => spec.FingerCount * (Segments - 1) + 1;
+        // the span segments (spanSegments - 1 per finger), then the fan sector (FanSector), then the arm's flesh (ArmFleshBone)
+        public int ExtraBones => spec.FingerCount * (Segments - 1) + 1 + ArmFleshBones;
+        internal const int ArmFleshBones = 3;
         public override int BoneCount(in SpeciesCtx c) => FlightBones + ExtraBones;
         public override int MeshOrder => 100;   // a new type: after every shipped vertex
 
@@ -121,6 +130,8 @@ namespace CreatureKit
             if (!(rootThickness > 0f) || !(tipThickness > 0f)) return $"{id}: rootThickness and tipThickness > 0";
             if (!(armBulk > 0f) || !(padRadius > 0f) || rootSwell < 0f || stripeDepth < 0f || leadFlesh < 0f) return $"{id}: armBulk, padRadius > 0; rootSwell, stripeDepth, leadFlesh >= 0";
             if (!(clubLength > 0f) || hookLength < 0f) return $"{id}: clubLength > 0, hookLength >= 0";
+            if (!(armChord >= 1f) || armChord > 4f) return $"{id}: armChord in 1..4 (x the arm's radius)";
+            if (!(armRollDeg >= -180f) || armRollDeg > 180f) return $"{id}: armRollDeg in -180..180";
             if (edgeRound < 0.4f) return $"{id}: edgeRound >= 0.4 (a rounded rim)";
             if (stripes < 0) return $"{id}: stripes >= 0";
             if (innerColour < 0f || innerColour > 1f) return $"{id}: innerColour in 0..1";
@@ -155,6 +166,15 @@ namespace CreatureKit
         // whose one ray stretches while the other does not turns its trailing edge over; an affine bone maps its triangle
         // exactly whatever the stretch.
         internal int FanSectorBone(int extra) => extra + spec.FingerCount * (Segments - 1);
+        // The arm's flesh frames (the leading edge's loft rides them, FleshWingMesh.LeafArm), k: 0 the humerus (at the
+        // shoulder, +Z to the elbow), 1 the elbow (at the elbow, +Z down the forearm), both +X the elbow's hinge axis turned
+        // armRollDeg about their own +Z (one roll both sides of the joint: their blend is a pure hinge - the soft bend never
+        // twists); 2 the forearm (at the elbow, +Z down the forearm, +X the elbow's turned on toward the sail: the fingers'
+        // side square to the forearm, by sin(that angle off armRollDeg) radians - the sail's side within ~10 deg over +-50
+        // deg, never more than a radian off the elbow's, continuous whatever the sail does). Rigid, uniformly scaled; their
+        // rolls never flip with the arm's leg bones' (whose pole rule turns them over in a beat). Mirrored wings mirror the
+        // angles.
+        internal int ArmFleshBone(int extra, int k) => FanSectorBone(extra) + 1 + k;
 
         // The rays a chord chain turns about the wrist, behind the leading finger: fingers 1.., then the trailing rib.
         internal int ChordRays => spec.FingerCount;
@@ -245,6 +265,12 @@ namespace CreatureKit
 
         public void WriteBones(Matrix4x4[] dst, int offset) => Write(dst, offset, true);
 
+        // the arm's flesh frames: the IK plane's share in the hinge axis, the flesh's largest elbow bend (deg)
+        const float kPoleHinge = 0.25f, kFleshBendDeg = 160f;
+        // RED hook (CreatureFleshWingTests.Red_FleshWing_LowBendCap_ShoulderWanders): the flesh's bend cap (deg;
+        // 0 = kFleshBendDeg)
+        internal static float FleshBendForTest;
+
         // the bind: the spread wing (part-folded by bindFold: its arm and flight bones rewritten), no chains
         public void AfterSpreadWings(Matrix4x4[] bones, int offset)
         {
@@ -285,6 +311,40 @@ namespace CreatureKit
                     f = Quaternion.AngleAxis(a * sp.wings[w].trailingRib, n) * d4;
                 }
                 dst[trail] = Matrix4x4.TRS(B.GetColumn(3), Quaternion.LookRotation(f, n), new Vector3(s, s, s));
+            }
+            // the arm's flesh frames (FleshWing.ArmFleshBone), from the arm's joints as its leg bones carry them and the fingers'
+            // directions before the chains
+            {
+                Vector3 sh = dst[o + sp.LegBone(leg, 0)].GetColumn(3), el = dst[o + sp.LegBone(leg, 1)].GetColumn(3), wr = dst[o + sp.LegBone(leg, 2)].GetColumn(3);
+                Vector3 uz = PartMeshEmitter.Unit(el - sh, Vector3.forward), fz = PartMeshEmitter.Unit(wr - el, uz);
+                Vector3 sum = Vector3.zero;
+                for (int k = 0; k < fingers; k++) sum += PartMeshEmitter.Unit(dst[o + sp.WingBone(w, k)].GetColumn(2), fz);
+                Vector3 q = sum - fz * Vector3.Dot(sum, fz);
+                float side = sim.Flight.Wings.Side(w) < 0 ? 1f : -1f;   // (the angles' sense: the right wing's mirrored)
+                // the hinge axis: the bones' cross, steadied by the arm's IK plane (shoulder -> wrist x the pole: the same
+                // direction wherever the elbow stands on the pole's side) - an arm folded flat or straight keeps a hinge
+                Vector3 reach = wr - sh;
+                Vector3 plane = PartMeshEmitter.Unit(Vector3.Cross(reach, sim.Flight.Wings.ArmPole(w)), Vector3.zero);
+                Vector3 hinge = (Vector3.Cross(fz, uz) + kPoleHinge * plane) * side;
+                // (the fingers never lie along the forearm - spread they sweep out from it, folded they stand 10-25 deg off it)
+                q = PartMeshEmitter.Unit(q, PartMeshEmitter.Unit(hinge, Vector3.right));
+                hinge = PartMeshEmitter.Unit(hinge, PartMeshEmitter.Unit(Vector3.Cross(q, fz), Vector3.right));
+                // the flesh's elbow bends at most kFleshBendDeg (an arm folded flat in a touchdown's blend: the flesh's humerus
+                // turns about the elbow instead, its shoulder end inside the chest)
+                float bend = Vector3.Angle(uz, fz), cap = FleshBendForTest > 0f ? FleshBendForTest : kFleshBendDeg;
+                if (bend > cap)
+                {
+                    float lu = (el - sh).magnitude;
+                    uz = Quaternion.AngleAxis(bend - cap, -side * hinge) * uz;
+                    sh = el - uz * lu;
+                }
+                float roll = p.armRollDeg, tau = side * Vector3.SignedAngle(hinge, q, fz);
+                float turn = roll + Mathf.Rad2Deg * Mathf.Sin((tau - roll) * Mathf.Deg2Rad);
+                Vector3 xu = Quaternion.AngleAxis(side * roll, uz) * hinge, xe = Quaternion.AngleAxis(side * roll, fz) * hinge, xf = Quaternion.AngleAxis(side * turn, fz) * hinge;
+                Vector3 sc = new Vector3(s, s, s);
+                dst[o + p.ArmFleshBone(extra, 0)] = Matrix4x4.TRS(sh, Quaternion.LookRotation(uz, Vector3.Cross(uz, xu)), sc);
+                dst[o + p.ArmFleshBone(extra, 1)] = Matrix4x4.TRS(el, Quaternion.LookRotation(fz, Vector3.Cross(fz, xe)), sc);
+                dst[o + p.ArmFleshBone(extra, 2)] = Matrix4x4.TRS(el, Quaternion.LookRotation(fz, Vector3.Cross(fz, xf)), sc);
             }
             // the chord chain: each ray behind the leading finger pitched about the wrist across the sail (+ lifts its far
             // end - the trailing edge - toward the dorsal side)

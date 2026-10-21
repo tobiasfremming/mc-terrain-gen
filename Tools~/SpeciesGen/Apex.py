@@ -137,7 +137,11 @@ sp.add_part('FleshWing', {
         'scallop': 0, 'scallopByChord': 0, 'membraneBillow': 0, 'membraneDetail': 0, 'fingerKnuckles': 0,
         'wristKnuckle': 0, 'armMuscle': 0, 'forearmTwin': 0, 'thumbRadius': 0,
     },
-    'rootThickness': 0.07, 'tipThickness': 0.012, 'edgeRound': 0.5, 'armBulk': 0.06, 'leadFlesh': 0.5,
+    # the arm buried in the blade (task 10c): the leading edge's flesh a leaf 3 x its radius toward the sail (folded: the
+    # sheet rolled round the forearm down to the club), its rest roll -55 deg off the elbow's hinge (between the spread
+    # wing's sail side, ~-25 .. -40, and the folded blade's, ~-80; the scan's -55 .. -75 all pass)
+    'rootThickness': 0.07, 'tipThickness': 0.012, 'edgeRound': 0.5, 'armBulk': 0.06, 'armChord': 3, 'armRollDeg': -55,
+    'leadFlesh': 0.5,
     'rootSwell': 0.03, 'stripes': 9, 'stripeDepth': 0.003,
     'padRadius': 0.06, 'clubLength': 0.16, 'hookLength': 0, 'innerColour': 0.45,
     'spanSegments': 3, 'bindFold': 0.3,
@@ -176,20 +180,21 @@ sp.add_part('CrestBeakHead', {
 })
 
 # ---------------------------------------------------------------- the throat
-# The throat sail: from just behind the jaw (joint 1) back down the neck to joint 6, just ahead of the chest, deeper
-# than the neck (§11), its lower edge nearly straight; its own chain of 5 stations x 3 links swings behind the neck.
-# The heavy flyer's bob heaves the shoulders ~1 g every beat: a station hung from the chest itself (joint 7, the
-# girdle) swung apart from its neighbour until the rim turned over, and so did the part's default swing (25 deg,
-# damping 0.35) - stopped one joint short and damped (16 deg, 0.8) the sail stays whole over six sweep seeds (kit
-# check 13). INTERIM (controller ruling, task 10 review): a Dewlap part task follows (volume, a rounded rear into the
-# chest, a rim that never turns over under a heavy bob); then toJoint goes back to 7 (SHOULDER) and the swing to the
-# part's defaults.
+# The throat sail (Dewlap, task 10b): a deep pale pouch from just behind the jaw (joint 1) back INTO the chest (joint 7,
+# SHOULDER: the girdle), deeper than the neck (§11), its lower edge bellied (edgeStraightness 0.45: between depthAt's
+# curve and the straight line), sweeping up into the chest over the last 60 % (rearSweep); thick where it leaves the
+# throat, bellied halfway down, puffing a little as it swings; its own chain of 5 stations x 3 links swings behind the
+# neck with the part's default swing (25 deg, damping 0.35). The heavy flyer's bob heaves the girdle ~1 g every beat:
+# the part's coupled stations (coupling 0.6, maxTwistDeg 8) keep the station on the girdle with its neighbours, so the
+# rim never turns over (CreatureDewlapTests.Dewlap_HeavyBob_RimNeverTurnsOver; kit check 13 on six sweep seeds).
+# Every value below is the part's default except the neck's joints and depths and the bellied edge.
 sp.add_part('Dewlap', {
     'id': 'throat', 'at': at(), 'mirror': 0,
-    'fromJoint': 1, 'toJoint': SHOULDER - 1, 'stations': 5, 'links': 3,
+    'fromJoint': 1, 'toJoint': SHOULDER, 'stations': 5, 'links': 3,
     'depthAt': [0.14, 0.24, 0.28, 0.25, 0.17],
-    'edgeStraightness': 0.8, 'rim': 0.012, 'thickness': 0.008,
-    'swingHz': 1.6, 'swingDamping': 0.8, 'maxSwingDeg': 16, 'gravityDeg': 6,
+    'edgeStraightness': 0.45, 'rim': 0.012, 'thickness': 0.008,
+    'swingHz': 1.6, 'swingDamping': 0.35, 'maxSwingDeg': 25, 'gravityDeg': 6,
+    'rootThickness': 0.012, 'billow': 0.05, 'rearSweep': 0.6, 'coupling': 0.6, 'maxTwistDeg': 8,
 })
 
 # Five breathing holes each side in the front third of the neck (body fraction 0.08 - 0.16, just behind the skull),

@@ -223,9 +223,9 @@ namespace TerrainGen.Tests
 
         // null, or where the rest link bones leave the drawn sail: at each station's mesh column, every link's root (the
         // rest bone's origin) within 1 mm of the column's midline (the two faces' rows 1.. averaged, the creases' sideways
-        // ripple taken out, carried up past h = 0 - and, at a station the rear sweep cuts short, on down past the full
-        // row) and the last link's end within 1 mm of the rim's lowest point (a swept station: that point within 1 mm of
-        // its links). worst: the largest miss (m).
+        // ripple taken out, carried up to h = 0 by the column's row depths - and, at a station the rear sweep cuts short
+        // of its links' chain, on down to the chain's depth) and the last link's end within 1 mm of the rim's lowest
+        // point (a swept station between the ends: that point within 1 mm of its links). worst: the largest miss (m).
         static string RowsProblem(CreatureSpecies sp, int first, out float worst)
         {
             Dewlap d = Part(sp);
@@ -244,11 +244,17 @@ namespace TerrainGen.Tests
                 Vector3 x = q * Vector3.right;
                 var mid = new Vector3[F + 1];
                 for (int r = 1; r <= F; r++) mid[r] = Vector3.ProjectOnPlane(0.5f * (v[col + r] + v[col + prof - 1 - r]), x);
-                // the rows' line carried up past h = 0 (row 0 itself sits on the throat's facets) and, where the rear sweep
-                // cuts the drawn row short (its links are the full row's), on down past the full row's end
-                Vector3 up = (mid[1] - mid[2]).normalized;
-                mid[0] = mid[1] + up;                                    // (1 m: past any root)
-                if (d.RearScale(k) < 1f) mid[F] = mid[F - 1] - up;       // (past any row's end)
+                // the rows' line carried up to h = 0 (row 0 itself sits on the throat's facets): one even row step, or -
+                // where the rear sweep lays the rows out unevenly (RowDepths) - by the column's own row depths; and where
+                // the sweep cuts the drawn row short of its links' chain, carried on down to the chain's depth
+                if (d.RearScale(k) < 1f)
+                {
+                    float[] hs = d.RowDepthsForTest(sp, k);
+                    Vector3 step = (mid[2] - mid[1]) / (hs[2] - hs[1]);   // per metre of depth
+                    mid[0] = mid[1] - step * hs[1];
+                    if (hs[F + 1] > hs[F]) mid[F] = mid[F - 1] + step * (hs[F + 1] - hs[F - 1]);
+                }
+                else mid[0] = 2f * mid[1] - mid[2];
                 for (int l = 0; l < L; l++)
                 {
                     Vector3 o = Vector3.ProjectOnPlane(bones[start + k * L + l].GetColumn(3), x);
@@ -268,9 +274,10 @@ namespace TerrainGen.Tests
                 Vector3 tip = (Vector3)lastB.GetColumn(3) - ((Vector3)lastB.GetColumn(1)).normalized * len;
                 Vector3 low = v[col + F + B / 2];
                 float miss;
-                if (d.RearScale(k) < 1f)
+                if (d.RearScale(k) < 1f && k < d.stations - 1)
                 {
-                    // the swept rear is the full row cut short: its rim's lowest point lies on the station's links
+                    // a swept station between the ends: the full row cut short - its rim's lowest point lies on its links
+                    // (the chest end's own chain spans its drawn row: its last link ends at the rim, below)
                     miss = float.MaxValue;
                     for (int l = 0; l < L; l++)
                     {
@@ -678,8 +685,8 @@ namespace TerrainGen.Tests
         // null, or the first frame in which the sail turns over: a launch from a short walk, the climb-out and a beating
         // cruise (goals: altitude 6 x s, the cruise speed; `seconds` x sqrt s in all), every 2nd frame: no sail triangle
         // inverted (skinned winding against its bind winding) and no sail vertex normal turned away from a triangle it
-        // belongs to (the rim's shading flip), on triangles clean at bind. frames: frames judged; minDot: the least
-        // normal-to-face dot seen (unit vectors).
+        // belongs to (the rim's shading flip), on triangles clean at bind (each corner normal within 72 deg of its
+        // face). frames: frames judged; minDot: the least normal-to-face dot seen (unit vectors).
         internal static string HeavyBobProblem(CreatureSpecies sp, float seconds, out int frames, out float minDot)
         {
             frames = 0; minDot = 1f;
@@ -690,6 +697,7 @@ namespace TerrainGen.Tests
             Object.DestroyImmediate(mesh);
             var m = new CreaturePteroWingTests.Skinned(sp);
             var tris = new List<int>();
+            int excluded = 0;
             for (int k = 0; k < m.T.Length; k += 3)
             {
                 int i0 = m.T[k], i1 = m.T[k + 1], i2 = m.T[k + 2];
@@ -697,9 +705,11 @@ namespace TerrainGen.Tests
                 Vector3 f = Vector3.Cross(m.V[i1] - m.V[i0], m.V[i2] - m.V[i0]);
                 if (f.sqrMagnitude < 1e-20f) continue;
                 f.Normalize();
-                if (Vector3.Dot(n0[i0], f) > 0.5f && Vector3.Dot(n0[i1], f) > 0.5f && Vector3.Dot(n0[i2], f) > 0.5f) { tris.Add(i0); tris.Add(i1); tris.Add(i2); }
+                if (Vector3.Dot(n0[i0], f) > 0.3f && Vector3.Dot(n0[i1], f) > 0.3f && Vector3.Dot(n0[i2], f) > 0.3f) { tris.Add(i0); tris.Add(i1); tris.Add(i2); }
+                else excluded++;
             }
             Assert.Greater(tris.Count, 3000, "the sail's triangles clean at bind");
+            TestContext.Out.WriteLine($"normals judged on {tris.Count / 3} sail triangles; {excluded} not clean at bind (a corner normal > 72 deg off its face: the rim's coarse turns, the caps)");
             var nrm = new Vector3[m.V.Length];
             CreatureSim sim = FlowKit.Sim(sp, s);
             for (int t = 0; t < 30; t++) sim.Tick(dt, sim.Joints[0] + sim.Rotations[0] * Vector3.forward * (2f * s));

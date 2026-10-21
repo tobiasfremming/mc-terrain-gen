@@ -1,9 +1,9 @@
 // Creature kit: FleshWing's mesh (see FleshWing.cs), drawn once on the emitter's spread rest pose (the bind, part-folded
 // by bindFold): the sail (the flight's fan from the wrist and the flank patches, as two skins offset by the thickness law
 // along each zone's normal), the rounded rim along the free edge (leading edge on the first finger, the smooth trailing
-// edge to the flank), the fleshy arm and the wrist pad. Each region's thickness comes from its place on the SPREAD wing
-// (span from the body out to the tip, chord from the leading to the trailing edge), so the law reads the same at any
-// bindFold. Build-time only: it allocates.
+// edge to the flank), the arm's flesh (one loft round the humerus and forearm, LeafArm) and the wrist pad. Each region's
+// thickness comes from its place on the SPREAD wing (span from the body out to the tip, chord from the leading to the
+// trailing edge), so the law reads the same at any bindFold. Build-time only: it allocates.
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -20,6 +20,9 @@ namespace CreatureKit
         // the club: the forearm swells to this x padRadius at the wrist; the cone's tip radius x padRadius and its half
         // angle (blunt: it stays the lowest point while the planted hand turns ~30 deg); the hook's root radius x padRadius
         const float kClubArm = 0.8f, kClubTip = 0.1f, kClubConeDeg = 58f, kHookRoot = 0.18f;
+        // the maroon / teal boundary's stagger between stripes (x the rays' reach); the leaf's sail side (its section's
+        // cos beyond this) coloured as the sail
+        const float kColourBlend = 0.08f, kLeafSailSide = 0.2f;
 
         // test hook (CreatureFleshWingTests): the uv0.y offset that marks the rim's vertices
         internal const float RimMark = 4f;
@@ -33,6 +36,8 @@ namespace CreatureKit
         internal const float KnuckleRadius = 0.25f;
         // RED hook (CreatureFleshWingTests.Red_FleshWing_BigKnuckles_ShowOutsideTheClub): the knuckles this much larger
         internal static float KnuckleScaleForTest = 1f;
+        // RED hook (CreatureFleshWingTests.Red_FleshWing_TubeArm_IsATube, Red_FleshWing_BallElbow_SeparateSolids): the old arm
+        internal static bool TubeArmForTest;
 
         public override void EmitMesh(PartMeshEmitter m, in PartCtx c)
         {
@@ -45,7 +50,7 @@ namespace CreatureKit
             // (RestMeshCache - ~0.5 ms a wing)
             ulong key = RestMeshCache.Mix(RestMeshCache.MixData(RestMeshCache.Mix(RestMeshCache.Seed, 0xF1E5), this), w);
             foreach (CreaturePart q in KitView.Parts(m.Species)) key = RestMeshCache.MixData(key, q);
-            key = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(key, extra), FlatForTest), NoRimsForTest), NoKnucklesForTest);
+            key = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(key, extra), FlatForTest), NoRimsForTest), NoKnucklesForTest), TubeArmForTest);
             key = RestMeshCache.MixBones(RestMeshCache.MixRest(RestMeshCache.Mix(key, KnuckleScaleForTest), m), m);
             string[] kinds = stripes > 0 ? kKindsStriped : kKinds;
             if (RestMeshCache.TryReplay(m, key, kinds)) return;
@@ -172,7 +177,7 @@ namespace CreatureKit
                 EmitSheet(free); EmitSheet(aft); EmitSheet(arm);
                 foreach (Sheet q in pats) EmitSheet(q);
                 Rims(free, aft, arm, pats);
-                Arm(shoulder, elbow, wrist, arm);
+                if (TubeArmForTest) TubeArm(shoulder, elbow, wrist, arm); else LeafArm(shoulder, elbow, wrist, arm);
                 Club();
                 if (!NoKnucklesForTest) Knuckles(first);
             }
@@ -315,12 +320,21 @@ namespace CreatureKit
             // the skins close onto a pole hidden inside the pad or the arm: 0 within r0 of it, full from r1
             static float Ramp(float d, float r0, float r1) => Mathf.SmoothStep(0f, 1f, (d - r0) / Mathf.Max(1e-5f, r1 - r0));
 
-            int FanKind(float xm, float vm)
+            int FanKind(float xm, float vm) => xm >= Z - 1 ? kindBody : ColourAt(xm / (Z - 1), vm);
+
+            // The sail's colour at g (across the rays: 0 the leading finger .. 1 the rear flank rib) and v (along them from
+            // the wrist, x the ray's reach): the dark stripes run the whole length, through the maroon too; between them the
+            // body's maroon inside innerColour, the teal fan beyond, their boundary staggered by +-kColourBlend between
+            // neighbouring stripes (teal tongues reaching down, maroon up: a blend at a distance, one kind a triangle).
+            int ColourAt(float g, float v)
             {
-                if (xm >= Z - 1 || vm < p.innerColour) return kindBody;
-                float g = xm / (Z - 1);
-                float x = g * p.stripes - Mathf.Floor(g * p.stripes) - 0.5f;
-                return p.stripes > 0 && Mathf.Abs(x) < StripeHalf * p.stripes ? kindStripe : kindFan;
+                if (p.stripes > 0)
+                {
+                    float x = g * p.stripes - Mathf.Floor(g * p.stripes) - 0.5f;
+                    if (Mathf.Abs(x) < StripeHalf * p.stripes) return kindStripe;
+                }
+                float stagger = p.stripes > 0 ? Mathf.Sin(Mathf.PI * g * p.stripes) : 0f;
+                return v < p.innerColour + kColourBlend * stagger ? kindBody : kindFan;
             }
 
             // The fan from the wrist as three sheets, each closed by rims where it ends: the free sail (finger 0 .. the
@@ -637,17 +651,13 @@ namespace CreatureKit
             static PartMeshEmitter.TubeSample S(Vector3 c, Vector3 t, float r, float dr, float s, Vector4 skin, bool pole = false)
                 => PartMeshEmitter.Sample(c, t, r, dr, s, skin, pole);
 
-            // the fleshy arm inside the leading edge: a thick humerus out of the chest, a round elbow, a forearm tapering to
-            // the pad (each rigid to its bone: a ball elbow, the skins' arm edges inside it)
-            void Arm(Vector3 S0, Vector3 E, Vector3 Wr, Sheet fan)
+            // the old arm (RED hook TubeArmForTest only): a round humerus tube out of the chest, a ball elbow, a round forearm
+            // tapering to the pad, each rigid to its leg bone - the tube the folded blade's lower half read as
+            void TubeArm(Vector3 S0, Vector3 E, Vector3 Wr, Sheet fan)
             {
                 float lu = Mathf.Max(1e-4f, (E - S0).magnitude), ll = Mathf.Max(1e-4f, (Wr - E).magnitude);
                 Vector3 du = (E - S0) / lu, dl = (Wr - E) / ll;
-                // never thinner than the sail's skins that end inside it
-                float hArm = 0f;
-                int nr = rowV.Length;
-                for (int j = 0; j < nr; j++) hArm = Mathf.Max(hArm, fan.H[fan.I(fan.Cols, j)]);
-                float r0 = Mathf.Max(p.armBulk, hArm + 0.004f), rE = Mathf.Max(0.8f * p.armBulk, hArm + 0.004f), rW = Mathf.Max(0.55f * p.armBulk, hArm + 0.004f);
+                ArmRadii(fan, out float r0, out float rE, out float rW, out float rC);
                 Vector3 dors = cw.State[w].handNormal;
                 {
                     var q = new List<PartMeshEmitter.TubeSample>();
@@ -671,7 +681,6 @@ namespace CreatureKit
                     // the forearm, its lower clubLength swelling into the club (the sail rolled round the arm's end), closed at
                     // the wrist itself (nothing of it below the wrist: the hand's club carries the end)
                     var q = new List<PartMeshEmitter.TubeSample>();
-                    float rC = Mathf.Max(rW, kClubArm * p.padRadius);
                     float cf = Mathf.Clamp(p.clubLength / ll, 0.1f, 0.9f);
                     float R(float f) => f <= 1f - cf ? Mathf.Lerp(rE, rW, f / (1f - cf)) : Mathf.Lerp(rW, rC, Mathf.SmoothStep(0f, 1f, (f - (1f - cf)) / cf));
                     float end = Mathf.Max(0.05f, 1f - 0.6f * rC / ll);   // the dome's start
@@ -688,6 +697,248 @@ namespace CreatureKit
                     q.Add(S(Wr, dl, 0f, 0f, 0.5f * rE + ll, PartMeshEmitter.Rigid(bl), true));
                     em.Tube(q, PartMeshEmitter.Unit(Vector3.Cross(dl, dors), Vector3.right), kArmSides, PartMeshEmitter.PartBody);
                 }
+            }
+
+            // The arm's radii (the old tube's): never thinner than the sail's skins that end inside it (the arm zone's
+            // forearm edge, its rim's bead): r0 at the shoulder, rE at the elbow, rW at the wrist, rC the club's swelling.
+            void ArmRadii(Sheet fan, out float r0, out float rE, out float rW, out float rC)
+            {
+                float hArm = 0f;
+                for (int j = 0; j < rowV.Length; j++) hArm = Mathf.Max(hArm, fan.H[fan.I(fan.Cols, j)]);
+                r0 = Mathf.Max(p.armBulk, hArm + 0.004f); rE = Mathf.Max(0.8f * p.armBulk, hArm + 0.004f); rW = Mathf.Max(0.55f * p.armBulk, hArm + 0.004f);
+                rC = Mathf.Max(rW, kClubArm * p.padRadius);
+            }
+
+            // the soft bend's tangent length a on either side of the elbow (x rE, at most these shares of the humerus / the
+            // forearm); the inner crease's radius x the bend's radius; the elbow's blend fades to the rings' own frames from
+            // (a + rE) to kElbowFade x that from the joint, and down the forearm by kForeFade x rE past the bend (where the
+            // leaf's roll toward the sail starts, turning on to the club's top: a shorter turn shears the leaf's tail through
+            // its triangles in a launch - scanned); the leaf grows to full over kGrow x rE below the bend; near the hinge axis
+            // (kAxisNear .. kAxisFar x rE off it) the rings' shares along the bend; the poles' hair of the arm's leg bones
+            const float kElbowRound = 1.3f, kElbowUpper = 0.45f, kElbowLower = 0.25f, kCrease = 0.85f, kElbowFade = 1.6f;
+            const float kForeFade = 0.5f, kGrow = 1.5f;
+            const float kAxisNear = 0.25f, kAxisFar = 0.75f, kLegHair = 1e-3f;
+            const int kLeafSides = 20;
+
+            struct ArmRing { public Vector3 c; public Quaternion q; public float r, chord, rin, warc, x, tw; public Vector3 inner; public bool fore, pole; public float s; }
+
+            // The arm's flesh: ONE loft from inside the chest (the shoulder's pole) along the humerus, round the elbow in a soft
+            // bend (a circular fillet of the two bones' lines, its inner side creased so the bend never folds through itself),
+            // down the forearm to a dome at the wrist inside the club. Its section is a leaf: a round edge of the arm's radius
+            // round the bone (r: the leading edge, and both faces) whose far side runs on toward the sail as a half ellipse
+            // (armChord x r from the bone): the leading edge's flesh rolled into the sheet; round along the humerus and the
+            // bend, growing into the leaf from the bend down the forearm (a leaf's rounded upper end), full from there to the
+            // club's top, rounding back into the club below it; its sail side coloured as the sail (ColourAt), its stripes
+            // running down it. It rides the three flesh frames (ArmFleshBone): the humerus,
+            // rigid; round the elbow a blend of the humerus and the elbow frames by the angle about the elbow's hinge axis (a
+            // point's share of the elbow frame grows with its angle round the joint from the humerus' side to the forearm's: the
+            // pair is a pure hinge, so the bend - whatever it does to the joint's angle - turns each point about the joint
+            // monotonically: no triangle turns over, the inner crease folds as one); down the forearm, below the elbow's blend,
+            // the elbow frame turning into the forearm's to the club's top (the leaf's roll on toward the sail, at most a radian),
+            // the forearm's from there. Its two poles lie on the humerus' and the forearm's axes and carry a hair (kLegHair) of
+            // the arm's upper and lower leg bones: every bone skinned (the kit's rule), nothing of their roll seen.
+            void LeafArm(Vector3 S0, Vector3 E, Vector3 Wr, Sheet fan)
+            {
+                float lu = Mathf.Max(1e-4f, (E - S0).magnitude), ll = Mathf.Max(1e-4f, (Wr - E).magnitude);
+                Vector3 du = (E - S0) / lu, dl = (Wr - E) / ll;
+                ArmRadii(fan, out float r0, out float rE, out float rW, out float rC);
+                int bH = p.ArmFleshBone(extra, 0), bE = p.ArmFleshBone(extra, 1), bF = p.ArmFleshBone(extra, 2);
+                Quaternion Rot(int b) => Quaternion.LookRotation(em.Bones[b].GetColumn(2), em.Bones[b].GetColumn(1));
+                Quaternion qH = Rot(bH), qE = Rot(bE), qF = Rot(bF);
+                // the bend: tangent length a on either line, the fillet's radius rho about O (the inside of the turn)
+                float beta = Vector3.Angle(du, dl) * Mathf.Deg2Rad;
+                float a = Mathf.Min(kElbowRound * rE, kElbowUpper * lu, kElbowLower * ll);
+                Vector3 A = E - du * a, B = E + dl * a;
+                Vector3 inA = PartMeshEmitter.Unit(dl - du * Vector3.Dot(dl, du), Vector3.Cross(du, Vector3.right));
+                float rho = beta > 1e-3f ? a / Mathf.Tan(0.5f * beta) : 1e3f;
+                Vector3 O = A + inA * rho, inB = PartMeshEmitter.Unit(O - B, inA);
+                Vector3 axis = PartMeshEmitter.Unit(Vector3.Cross(du, dl), Vector3.right);
+                float rinMin = Mathf.Min(rE, kCrease * rho);
+                // the club's top up the forearm from the wrist (the leaf rounds back into the club below it); the dome's length
+                GroundFrameInBind(out Vector3 cup, out _);
+                float Lc = Mathf.Max(p.clubLength, 2.2f * p.padRadius);
+                float dDome = Mathf.Min(0.6f * rC, 0.3f * ll);
+                float dTop = Mathf.Clamp(Vector3.Dot(cw.ThumbTip(w) + cup * Lc - Wr, -dl), dDome + 0.25f * rC, 0.5f * ll);
+                float Rf(float x)
+                {
+                    float f = x / ll, cf = Mathf.Clamp(p.clubLength / ll, 0.1f, 0.9f);
+                    return f <= 1f - cf ? Mathf.Lerp(rE, rW, f / (1f - cf)) : Mathf.Lerp(rW, rC, Mathf.SmoothStep(0f, 1f, (f - (1f - cf)) / cf));
+                }
+                float Rh(float x) { float f = x / lu; return Mathf.Lerp(r0, rE, f) * (1f + 0.15f * Mathf.Sin(Mathf.PI * Mathf.Clamp01(f))); }
+                // the inner crease's share near the bend: full on the fillet, easing out over rE along either line
+                float Crease(float dist) => 1f - Mathf.SmoothStep(0f, 1f, dist / Mathf.Max(1e-4f, rE));
+                var rings = new List<ArmRing>();
+                float arc = 0f; Vector3 last = S0 - du * r0;
+                void Add(Vector3 c, Quaternion q, float r, float chord, float crease, Vector3 inner, bool fore, bool pole = false, float warc = -1f, float x = -1f, float tw = 0f)
+                {
+                    arc += (c - last).magnitude; last = c;
+                    rings.Add(new ArmRing { c = c, q = q, r = r, chord = Mathf.Max(r, chord), rin = Mathf.Lerp(r, Mathf.Min(r, rinMin), crease), inner = inner, fore = fore, s = arc, pole = pole, warc = warc >= 0f ? warc : fore ? 1f : 0f, x = x, tw = tw });
+                }
+                // the shoulder's pole inside the chest, then the humerus, round
+                Add(S0 - du * r0, qH, 0f, 0f, 0f, inA, false, true);
+                Add(S0 - du * (0.6f * r0), qH, 0.8f * r0, 0f, 0f, inA, false);
+                const int nh = 4;
+                for (int i = 0; i <= nh; i++)
+                {
+                    float x = (lu - a) * i / nh;
+                    Add(S0 + du * x, qH, Rh(x), 0f, Crease(lu - a - x), inA, false);
+                }
+                // the bend: the fillet's rings turn about its axis, their frames the humerus' turned toward the forearm
+                const int nb = 6;
+                float rA = Rh(lu - a), rB = Rf(a);
+                for (int i = 1; i < nb; i++)
+                {
+                    float t = (float)i / nb;
+                    Quaternion turn = Quaternion.AngleAxis(beta * t * Mathf.Rad2Deg, axis);
+                    Vector3 c = O + turn * (A - O);
+                    Add(c, turn * qH, Mathf.Lerp(rA, rB, t), 0f, 1f, PartMeshEmitter.Unit(O - c, inA), t >= 0.5f, false, Mathf.SmoothStep(0f, 1f, t));
+                }
+                // the forearm: from the bend's end, the leaf growing out of the round over its rounded upper end, full down to
+                // the club's top, then rounding back into the club; the elbow frame turning into the forearm's from the elbow's
+                // blend's end (x0) to the club's top; the dome at the wrist (its pole on the lower leg bone's axis)
+                float psi = Mathf.PI - beta, d1 = a + rE, d2 = kElbowFade * d1;
+                float grow = Mathf.Min(kGrow * rE, 0.5f * ll);
+                float xEnd = ll - dDome, x0 = Mathf.Min(a + kForeFade * rE, 0.6f * ll), x1 = Mathf.Max(x0 + 0.1f * ll, ll - dTop);
+                const int nf = 14;
+                for (int i = 0; i <= nf; i++)
+                {
+                    float x = Mathf.Lerp(a, xEnd, (float)i / nf);
+                    float g = Mathf.SmoothStep(0f, 1f, (x - a) / grow) * Mathf.SmoothStep(0f, 1f, (ll - x - dDome) / Mathf.Max(1e-4f, dTop - dDome));
+                    float tw = Mathf.SmoothStep(0f, 1f, (x - x0) / (x1 - x0));
+                    float r = Rf(x);
+                    Add(E + dl * x, Quaternion.Slerp(qE, qF, tw), r, r * Mathf.Lerp(1f, p.armChord, g), Crease(x - a), inB, true, false, -1f, x, tw);
+                }
+                float rEnd = Rf(xEnd);
+                foreach (float deg in new[] { 40f, 65f, 82f })
+                {
+                    float th = deg * Mathf.Deg2Rad;
+                    Add(E + dl * (xEnd + dDome * Mathf.Sin(th)), qF, rEnd * Mathf.Cos(th), 0f, 0f, inB, true, false, -1f, ll, 1f);
+                }
+                Add(Wr, qF, 0f, 0f, 0f, inB, true, true, -1f, ll, 1f);
+                // the elbow's blend: the elbow frame's share of a point by its angle about the hinge axis through the joint,
+                // from the humerus' side (-du, 0) to the forearm's (dl, 1) both ways round (the inner wedge psi, the outer
+                // 2 pi - psi); near the hinge axis itself (where that angle is ill-defined; the hinge barely moves such a point)
+                // the ring's share along the bend instead; fading to the ring's own frame from d1 = (a + rE) to d2 = kElbowFade
+                // x that from the joint, and by ring along either bone (the humerus' back to half its straight part, the
+                // forearm's to x0: below x0 every point is on the elbow frame, the roll toward the sail starts there - never
+                // mixed with the humerus, two bones a vertex)
+                Vector3 e0 = -du, e1 = PartMeshEmitter.Unit(dl - e0 * Vector3.Dot(dl, e0), inA);
+                Vector4 Skin(Vector3 v, ArmRing g)
+                {
+                    if (g.fore && g.x >= x0) return g.tw <= 0f ? PartMeshEmitter.Rigid(bE) : g.tw >= 1f ? PartMeshEmitter.Rigid(bF) : PartMeshEmitter.Blend(bE, bF, g.tw);
+                    float own = g.fore ? 1f : 0f;
+                    Vector3 d = v - E; d -= axis * Vector3.Dot(d, axis);
+                    float wf = g.warc;
+                    if (d.sqrMagnitude > 1e-12f && psi > 1e-3f)
+                    {
+                        float th = Mathf.Atan2(Vector3.Dot(d, e1), Vector3.Dot(d, e0));
+                        float polar = th >= 0f && th <= psi ? th / psi : (th < 0f ? -th : 2f * Mathf.PI - th) / (2f * Mathf.PI - psi);
+                        wf = Mathf.Lerp(g.warc, polar, Mathf.SmoothStep(0f, 1f, (d.magnitude - kAxisNear * rE) / Mathf.Max(1e-5f, (kAxisFar - kAxisNear) * rE)));
+                    }
+                    float fade = Mathf.SmoothStep(0f, 1f, ((v - E).magnitude - d1) / Mathf.Max(1e-4f, d2 - d1));
+                    if (!g.fore) fade = Mathf.Max(fade, Mathf.SmoothStep(0f, 1f, (Vector3.Dot(E - g.c, du) - a) / Mathf.Max(1e-4f, 0.5f * (lu - a))));
+                    else if (g.x >= 0f) fade = Mathf.Max(fade, Mathf.SmoothStep(0f, 1f, (g.x - a) / Mathf.Max(1e-4f, x0 - a)));
+                    wf = Mathf.Lerp(wf, own, fade);
+                    return wf <= 1e-4f ? PartMeshEmitter.Rigid(bH) : wf >= 1f - 1e-4f ? PartMeshEmitter.Rigid(bE) : PartMeshEmitter.Blend(bH, bE, wf);
+                }
+                // the leaf's sail side coloured as the sail at the same distance from the wrist (v x the leading finger's
+                // length), its stripes running down it (a third of the sail's across its tail)
+                float L0 = Mathf.Max(1e-4f, ws.fingerLengths[0]);
+                int leafStripes = Mathf.Max(1, Mathf.RoundToInt(p.stripes / 3f));
+                int KindOf(int i, float cs)
+                {
+                    ArmRing g0 = rings[i], g1 = rings[i + 1];
+                    if (!g0.fore || !g1.fore || g0.pole || g1.pole || cs <= kLeafSailSide) return kindBody;
+                    if (0.5f * (g0.chord + g1.chord) < 1.2f * 0.5f * (g0.r + g1.r)) return kindBody;
+                    float u = (cs - kLeafSailSide) / (1f - kLeafSailSide);
+                    float d = ll - 0.5f * (g0.x + g1.x);
+                    return ColourAt(p.stripes > 0 ? u * leafStripes / p.stripes : 0f, d / L0);
+                }
+                EmitLoft(rings, (v, i) => rings[i].pole ? PartMeshEmitter.Blend(i == 0 ? bH : bF, i == 0 ? bu : bl, kLegHair) : Skin(v, rings[i]), KindOf);
+            }
+
+            // the loft's rings: each a leaf section in its frame (+X: chord there, r the other way; +-Y the faces, r), its half
+            // facing the bend's inside pressed to rin along that direction (the inner crease), vertex normals from the grid,
+            // both ends poles; skin per vertex; a triangle starts at its vertex weighted most to the bone its vertices weigh
+            // most in all
+            void EmitLoft(List<ArmRing> rings, System.Func<Vector3, int, Vector4> skinOf, System.Func<int, float, int> kindOf)
+            {
+                int n = rings.Count, M = kLeafSides;
+                var P = new Vector3[n, M];
+                for (int i = 0; i < n; i++)
+                {
+                    ArmRing g = rings[i];
+                    Vector3 X = g.q * Vector3.right, Y = g.q * Vector3.up;
+                    // the inner crease: the half facing the bend's inside pressed toward the axis along that direction (to rin)
+                    Vector3 inn = PartMeshEmitter.Unit(g.inner - g.q * Vector3.forward * Vector3.Dot(g.inner, g.q * Vector3.forward), Y);
+                    float press = g.r > 1e-6f ? 1f - g.rin / g.r : 0f;
+                    for (int k = 0; k < M; k++)
+                    {
+                        float ph = 2f * Mathf.PI * k / M, cs = Mathf.Cos(ph), sn = Mathf.Sin(ph);
+                        Vector3 o = X * ((cs > 0f ? g.chord : g.r) * cs) + Y * (g.r * sn);
+                        float into = Vector3.Dot(o, inn);
+                        if (into > 0f) o -= inn * (into * press);
+                        P[i, k] = g.pole ? g.c : g.c + o;
+                    }
+                }
+                // per grid vertex: normal (from the grid) and skin; a vertex per kind of the cells around it
+                var N = new Vector3[n, M];
+                var S = new Vector4[n, M];
+                for (int i = 0; i < n; i++)
+                {
+                    ArmRing g = rings[i];
+                    Vector3 t = rings[Mathf.Min(n - 1, i + 1)].c - rings[Mathf.Max(0, i - 1)].c;
+                    for (int k = 0; k < M; k++)
+                    {
+                        Vector3 nn;
+                        if (g.pole) nn = PartMeshEmitter.Unit(i == 0 ? -t : t, Vector3.up);
+                        else
+                        {
+                            Vector3 around = P[i, (k + 1) % M] - P[i, (k + M - 1) % M];
+                            Vector3 along = P[Mathf.Min(n - 1, i + 1), k] - P[Mathf.Max(0, i - 1), k];
+                            nn = PartMeshEmitter.Unit(Vector3.Cross(along, around), P[i, k] - g.c);
+                            if (Vector3.Dot(nn, P[i, k] - g.c) < 0f) nn = -nn;
+                        }
+                        N[i, k] = nn; S[i, k] = skinOf(P[i, k], i);
+                    }
+                }
+                var made = new Dictionary<long, int>();
+                int V(int i, int k, int kind)
+                {
+                    long key = ((long)(i * (M + 1) + k) << 8) | (long)kind;
+                    if (made.TryGetValue(key, out int idx)) return idx;
+                    int kk = k % M;
+                    idx = em.VertexCount;
+                    em.Vertex(P[i, kk], N[i, kk], rings[i].s, (float)k / M, kind, 1f, S[i, kk]);
+                    made[key] = idx;
+                    return idx;
+                }
+                // the bone a triangle's vertices weigh most in all
+                int Home(int a, int b, int c)
+                {
+                    int best = -1; float most = -1f;
+                    foreach (int v in new[] { a, b, c })
+                    {
+                        Vector4 s = em.Lists.uv2[v];
+                        foreach (int bone in new[] { (int)s.x, (int)s.y })
+                        {
+                            float sum = Weight(a, bone) + Weight(b, bone) + Weight(c, bone);
+                            if (sum > most) { most = sum; best = bone; }
+                        }
+                    }
+                    return best;
+                }
+                for (int i = 0; i < n - 1; i++)
+                    for (int k = 0; k < M; k++)
+                    {
+                        int kind = kindOf(i, Mathf.Cos(2f * Mathf.PI * (k + 0.5f) / M));
+                        int a = V(i, k, kind), b = V(i, k + 1, kind), d = V(i + 1, k, kind), e = V(i + 1, k + 1, kind);
+                        Vector3 mid = 0.25f * (em.Position(a) + em.Position(b) + em.Position(d) + em.Position(e));
+                        Vector3 c = Vector3.Lerp(rings[i].c, rings[i + 1].c, 0.5f);
+                        Vector3 o = PartMeshEmitter.Unit(em.Normal(a) + em.Normal(b) + em.Normal(d) + em.Normal(e), mid - c);
+                        if (!rings[i].pole) Tri(a, b, d, o, Home(a, b, d));
+                        if (!rings[i + 1].pole) Tri(b, e, d, o, Home(b, e, d));
+                    }
             }
 
             // The club the folded wing stands on: the hand's end of the rolled sail, rigid to the hand bone, along the rest

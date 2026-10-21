@@ -3320,13 +3320,13 @@
       "name": "FleshWing",
       "kind": "Wing",
       "status": "exists",
-      "bones": "as Wing + fingers x (spanSegments - 1) + 1 (the fan sector)",
+      "bones": "as Wing + fingers x (spanSegments - 1) + 1 (the fan sector) + 3 (the arm's flesh: humerus, elbow, forearm)",
       "materialLayers": [
         0
       ],
       "system": "CreatureFlight + CreatureWings (beat, fold, wing-walk) + FleshWingRuntime (span and chord chains; stage Late) + FleshWingMesh",
       "useWhen": "meaty manta-like wings that fold into tall soft blades and are walked on (the Apex); not a membrane between bony fingers. The steep folded blades come from the arm's proportions: a short humerus and a long forearm (upper << lower, e.g. 0.2 / 0.5 on a 0.5 m chest), the wrist's restOffset behind the shoulder (z ~ -0.22) and close in (x ~ 0.06), pole (0.2, 1, -0.4): the forearm stands near vertical and the folded fingers run up along it, side by side over the back",
-      "summary": "A soft, thick, folding wing on an arm limb (a Leg2Bone it names), flown, folded and walked on like a Wing (CreatureFlight + CreatureWings): two skins offset by a thickness law (thick root and arm, thin tip and trailing edge) joined by a rounded rim, a fleshy arm inside the leading edge, a blunt soft pad at the wrist that it walks on, lengthwise stripes along the rays; span chains along the fingers and a chord chain across the rays (the outer wing lags and whips, the trailing edge feathers and billows).",
+      "summary": "A soft, thick, folding wing on an arm limb (a Leg2Bone it names), flown, folded and walked on like a Wing (CreatureFlight + CreatureWings): two skins offset by a thickness law (thick root and arm, thin tip and trailing edge) joined by a rounded rim, the arm buried in the leading edge's flesh (one soft loft bending at the elbow, a leaf running on into the sheet: folded, the sheet rolled round the forearm), a blunt soft pad at the wrist that it walks on, lengthwise stripes along the rays; span chains along the fingers and a chord chain across the rays (the outer wing lags and whips, the trailing edge feathers and billows).",
       "usedBy": [
         "Apex"
       ],
@@ -3447,6 +3447,24 @@
           "meaning": "the fleshy arm's radius at the shoulder (it tapers to the wrist)",
           "range": "",
           "example": "apex 0.06"
+        },
+        {
+          "name": "armChord",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the leading edge's flesh round the forearm runs on into the sheet as a leaf: its section reaches this x its radius from the bone toward the sail (1 = a round tube; folded, the blade's lower half is this broad down to the club)",
+          "range": "1..4",
+          "example": "apex 3"
+        },
+        {
+          "name": "armRollDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the leaf's rest roll about the forearm, from the elbow's hinge axis toward the sail (the elbow and the leaf's upper part keep it; down the forearm the leaf turns on to face the sail, at most a radian either way): between the spread wing's sail side and the folded blade's",
+          "range": "-180..180",
+          "example": "apex -55"
         },
         {
           "name": "leadFlesh",
@@ -4407,7 +4425,7 @@
       "materialLayers": [],
       "system": "DewlapRuntime (part runtime, stage AfterLimbs: two AngleChains per station) + Dewlap.EmitMesh",
       "useWhen": "a dewlap, throat fan, pelican pouch or throat sail hanging under a FlowBody's neck",
-      "summary": "A broad pale throat sail hanging from a FlowBody's neck joints (fromJoint..toJoint, jaw end first) on its own little chain: `stations` stations of `links` links, a nearly straight lower edge (edgeStraightness), a thin double-sided sheet with faint lengthwise creases and a soft round rim along the edge. It swings behind the neck's motion (each station's acceleration drives two damped AngleChains, gravity pulls toward hanging) and never rises above the neck.",
+      "summary": "A broad pale throat sail or pouch hanging from a FlowBody's neck joints (fromJoint..toJoint, jaw end first, the last may be the chest) on its own little chain: `stations` stations of `links` links, a lower edge from curved to straight (edgeStraightness), a soft sheet thick at the root and bellied (rootThickness, billow) with faint lengthwise creases and a round rim, its rear sweeping up into the chest (rearSweep). It swings behind the neck's motion (each station's acceleration drives two damped AngleChains, gravity pulls toward hanging), the stations coupled so even a heavy flight bob never turns the rim over (coupling, maxTwistDeg); it never rises above the neck.",
       "usedBy": [
         "Apex"
       ],
@@ -4507,7 +4525,7 @@
           "type": "int",
           "unit": "Count",
           "size": "-",
-          "meaning": "links per station, root to edge",
+          "meaning": "links per station, root to edge (under a heavy flight bob - the Apex's, ~13 % of the body - 3 or fewer: 4 folded the swept rear)",
           "range": "1..6",
           "example": "default 3"
         },
@@ -4582,6 +4600,51 @@
           "meaning": "gravity: each link bends this much x sin(its angle to the down direction) toward hanging",
           "range": "-90..90",
           "example": "default 6"
+        },
+        {
+          "name": "rootThickness",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the sheet's thickness where it leaves the throat (>= thickness): it thins toward the rim. Keep it under ~0.02: a wider root sits inside the body's facets, which its two-bone skin follows only to first order, and the root row leaves the bending throat by more than 2.5 mm",
+          "range": "",
+          "example": "default 0.012"
+        },
+        {
+          "name": "billow",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the pouch's belly: each face bulges outward by this x the local depth halfway down (0 = a flat card), and puffs up to 3 x billow wider while it swings",
+          "range": "0..0.3",
+          "example": "default 0.05"
+        },
+        {
+          "name": "rearSweep",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the share of the sail's length (from the chest end) over which the edge sweeps up and the sheet thins into the chest skin (0 = a square rear end; under a heavy flight bob keep it >= ~0.5: 0.35 packs the shrinking rows into one span and folded them)",
+          "range": "0..1",
+          "example": "default 0.6"
+        },
+        {
+          "name": "coupling",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "how strongly each station's swing follows its neighbours' (0 = independent stations: under a heavy bob the rim turns over)",
+          "range": "0..1",
+          "example": "default 0.6"
+        },
+        {
+          "name": "maxTwistDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "the most a link's swing, and its bend over the link above, may differ from the same link's at the neighbouring station, fore-aft and sideways (the rows' relative twist)",
+          "range": "1..60",
+          "example": "default 8"
         }
       ]
     },
@@ -16110,7 +16173,7 @@
       "name": "Apex",
       "kitVersion": 1,
       "plan": "Spine",
-      "bones": 109,
+      "bones": 115,
       "parts": [
         "FlowBody:body",
         "Leg2Bone:arm.L",
