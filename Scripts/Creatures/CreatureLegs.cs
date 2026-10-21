@@ -93,6 +93,7 @@ sealed class CreatureLegs
     readonly float[] trunkKeep, trunkStep; // keep-out and step distances from the trunk outline, unscaled
     readonly int[] trunkLo, trunkHi;       // the spine segments a leg's foot can reach: [lo, hi)
     readonly float[] trunkHalfWidth;       // the widest half-width of those segments' joints, unscaled
+    readonly float maxSegment;             // the longest spine segment, unscaled (per-joint spacing; uniform: spacing)
     readonly float[] trunkSlack;           // planted foot: how far the trunk may close in before a re-check (0 = check)
     readonly float[] swingSlack, aimSlack; // the same for the swinging foot and its landing point
     readonly Vector3[] swingPrev, aimPrev; // ... and where those were at the last sub-step
@@ -194,6 +195,7 @@ sealed class CreatureLegs
         fwdLimit = new float[c]; backLimit = new float[c]; kneeRange = new float[c]; kneeFlex = new float[c];
         trunkKeep = new float[c]; trunkStep = new float[c]; trunkLo = new int[c]; trunkHi = new int[c]; trunkSlack = new float[c];
         trunkHalfWidth = new float[c];
+        maxSegment = sp.MaxSegmentLength;
         swingSlack = new float[c]; aimSlack = new float[c]; swingPrev = new Vector3[c]; aimPrev = new Vector3[c];
         for (int l = 0; l < c; l++) { prevSwing[l] = -1f; prevKnee[l] = -1f; }
         models = new ArthropodLegModel[c]; reachLen = new float[c]; ankleH = new float[c]; gaitElbow = new Vector3[c]; restUpperRot = new Quaternion[c]; restYaw = new Vector3[c]; liftDelayT = new float[c];
@@ -252,8 +254,10 @@ sealed class CreatureLegs
             }
             float gap = Mathf.Max(0f, Mathf.Abs(s.restOffset.x) - sp.joints[s.attachJoint].halfWidth);
             trunkKeep[l] = kTrunkKeepFrac * gap; trunkStep[l] = kTrunkStepFrac * gap;
-            // the spine segments within the foot's reach along the body, +1 for the segment it starts in
-            int span = sp.spacing > 0f ? Mathf.CeilToInt((reachLen[l] + s.overshoot + Mathf.Abs(s.shoulderOffset.z)) / sp.spacing) + 1 : 0;
+            // the spine segments within the foot's reach along the body, +1 for the segment it starts in (per-joint
+            // spacing: counted in the shortest segment, a superset; uniform: spacing)
+            float shortest = sp.MinSegmentLength;
+            int span = shortest > 0f ? Mathf.CeilToInt((reachLen[l] + s.overshoot + Mathf.Abs(s.shoulderOffset.z)) / shortest) + 1 : 0;
             trunkLo[l] = Mathf.Max(0, s.attachJoint - span); trunkHi[l] = Mathf.Min(joints.Length - 1, s.attachJoint + span);
             for (int i = trunkLo[l]; i <= trunkHi[l]; i++) trunkHalfWidth[l] = Mathf.Max(trunkHalfWidth[l], sp.joints[i].halfWidth);
             if (models[l] != null) continue;
@@ -922,7 +926,7 @@ sealed class CreatureLegs
         // from the girdle outward, so the nearest segments come first and the far ones are rejected cheaply:
         // a segment whose start is further than best + its length (+10 %) + the widest half-width cannot be nearer
         int lo = trunkLo[l], hi = trunkHi[l], at = Mathf.Clamp(specs[l].attachJoint, lo, hi), up = hi - at;
-        float pad = (1.1f * sp.spacing + trunkHalfWidth[l]) * scale;
+        float pad = (1.1f * maxSegment + trunkHalfWidth[l]) * scale;   // per-joint spacing: the longest segment (uniform: spacing)
         for (int k = 0, count = hi - lo; k < count; k++)
         {
             int i = k < up ? at + k : at - 1 - (k - up);

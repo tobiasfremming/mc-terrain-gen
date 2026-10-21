@@ -216,6 +216,15 @@
           "example": "default 0"
         },
         {
+          "name": "profile[].spacing",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "per-joint spacing: the segment length here (interpolated at each segment's midpoint; varies smoothly, neighbours <= 1.25x apart); 0 = the body's spacing. Every key 0 = one spacing everywhere",
+          "range": "0..",
+          "example": "default 0 (the body's)"
+        },
+        {
           "name": "rigidHeadJoints",
           "type": "int",
           "unit": "Count",

@@ -44,6 +44,10 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     readonly Func<Vector3, Vector3> upAt;
     readonly int n, girdle;
     readonly float scale, T;
+    // Per-joint spine spacing (CreatureSpecies.segmentLengths, opt-in): segment i's length x scale; null = one spacing
+    // (every shipped flyer keeps its single `seg`, bit-identical). SegAt: segment i's length, given the uniform `seg`.
+    readonly float[] segLen;
+    float SegAt(float seg, int i) => segLen == null ? seg : segLen[i];
     readonly bool[] wingLeg;             // per leg: driven by a wing
     readonly Vector3[] air;              // the air chain's joints
     readonly Vector3[] snapshot;         // touchdown: the body when it touched down
@@ -88,6 +92,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         this.sim = sim; this.ground = ground; this.upAt = upAt;
         sp = sim.Species; f = sp.flight;
         n = sp.JointCount; scale = sim.SizeScale; T = sim.TimeScale;
+        segLen = sp.ScaledSegmentLengths(scale);
         girdle = sp.legs[sp.wings[0].leg].attachJoint;
         wingLeg = new bool[sp.legs.Length];
         for (int w = 0; w < sp.WingCount; w++) wingLeg[sp.wings[w].leg] = true;
@@ -820,13 +825,13 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             sim.Joints[girdle] = LandPoint + up * (sp.joints[girdle].clearance * scale);
             for (int i = girdle + 1; i < n; i++)
             {
-                float dh = (sp.joints[i].clearance - sp.joints[i - 1].clearance) * scale;
-                sim.Joints[i] = sim.Joints[i - 1] - axis * Mathf.Sqrt(Mathf.Max(0f, seg * seg - dh * dh)) + up * dh;
+                float dh = (sp.joints[i].clearance - sp.joints[i - 1].clearance) * scale, sg = SegAt(seg, i - 1);
+                sim.Joints[i] = sim.Joints[i - 1] - axis * Mathf.Sqrt(Mathf.Max(0f, sg * sg - dh * dh)) + up * dh;
             }
             for (int i = girdle - 1; i >= 0; i--)
             {
-                float dh = (sp.joints[i].clearance - sp.joints[i + 1].clearance) * scale;
-                sim.Joints[i] = sim.Joints[i + 1] + axis * Mathf.Sqrt(Mathf.Max(0f, seg * seg - dh * dh)) + up * dh;
+                float dh = (sp.joints[i].clearance - sp.joints[i + 1].clearance) * scale, sg = SegAt(seg, i);
+                sim.Joints[i] = sim.Joints[i + 1] + axis * Mathf.Sqrt(Mathf.Max(0f, sg * sg - dh * dh)) + up * dh;
             }
             touchSpeed = 0f;
         }
@@ -842,9 +847,9 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             axis.Normalize();
             float seg = sp.spacing * scale;
             for (int i = girdle + 1; i < n; i++)
-                sim.Joints[i] = sim.Joints[i - 1] - axis * CreatureSim.RestRun(sp, i, seg, scale) + up * ((sp.joints[i].clearance - sp.joints[i - 1].clearance) * scale);
+                sim.Joints[i] = sim.Joints[i - 1] - axis * CreatureSim.RestRun(sp, i, SegAt(seg, i - 1), scale) + up * ((sp.joints[i].clearance - sp.joints[i - 1].clearance) * scale);
             for (int i = girdle - 1; i >= 0; i--)
-                sim.Joints[i] = sim.Joints[i + 1] + axis * CreatureSim.RestRun(sp, i + 1, seg, scale) + up * ((sp.joints[i].clearance - sp.joints[i + 1].clearance) * scale);
+                sim.Joints[i] = sim.Joints[i + 1] + axis * CreatureSim.RestRun(sp, i + 1, SegAt(seg, i), scale) + up * ((sp.joints[i].clearance - sp.joints[i + 1].clearance) * scale);
             touchSpeed = 0f;
         }
         sim.SetGrip(f.perchGrip && landSource != 0);   // perched: the feet close round the branch
@@ -912,7 +917,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
                     {
                         Vector3 d = SlerpDir(offset[i], air[i] - air[i - 1], AirWeight[i]);
                         if (i > girdle + 1 && !NoLaunchTailConeForTest) d = Chain.ConeAt(i - 1, prev, d);
-                        J[i] = J[i - 1] + d * seg;
+                        J[i] = J[i - 1] + d * SegAt(seg, i - 1);
                         prev = d;
                     }
                 }
@@ -1052,7 +1057,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
                     // FlightSpec.drapeOwnHeading: each hanging segment pitches down in its own vertical plane (the walked
                     // segment's heading, blended with the one before's: a nearly vertical one keeps it), so a change of the edge
                     // joint or of the reference segment's heading no longer swings the whole hanging run about the edge
-                    Vector3 hp = Vector3.ProjectOnPlane(d, upF) + h * minPlanar;
+                    Vector3 hp = Vector3.ProjectOnPlane(d, upF) + h * (segLen == null ? minPlanar : kDrapeMinPlanar * segLen[i - 1]);
                     if (hp.sqrMagnitude > 1e-12f) h = hp.normalized;
                 }
                 float pitch = d.sqrMagnitude > 1e-12f ? Mathf.Asin(Mathf.Clamp(Vector3.Dot(d.normalized, down), -1f, 1f)) * Mathf.Rad2Deg : prevPitch;
@@ -1061,7 +1066,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
                 pitch = Mathf.Clamp(pitch, prevPitch - lim, prevPitch + lim);
                 if (pass == 1 && b < n) pitch = Mathf.Min(pitch, lim * (b - i));
                 float pr = pitch * Mathf.Deg2Rad;
-                Vector3 p = prev + (h * Mathf.Cos(pr) + down * Mathf.Sin(pr)) * seg;
+                Vector3 p = prev + (h * Mathf.Cos(pr) + down * Mathf.Sin(pr)) * SegAt(seg, i - 1);
                 float clear = sp.joints[i].clearance * scale;
                 if (pass == 0)
                 {
@@ -1262,9 +1267,9 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         Vector3[] P = offset;   // scratch (the offsets are not used by this blend)
         P[girdle] = Vector3.Lerp(snapshot[girdle], J[girdle], g);
         for (int i = girdle + 1; i < n; i++)
-            P[i] = P[i - 1] + SlerpDir(snapshot[i] - snapshot[i - 1], J[i] - J[i - 1], g) * seg;
+            P[i] = P[i - 1] + SlerpDir(snapshot[i] - snapshot[i - 1], J[i] - J[i - 1], g) * SegAt(seg, i - 1);
         for (int i = girdle - 1; i >= 0; i--)
-            P[i] = P[i + 1] + SlerpDir(snapshot[i] - snapshot[i + 1], J[i] - J[i + 1], g) * seg;
+            P[i] = P[i + 1] + SlerpDir(snapshot[i] - snapshot[i + 1], J[i] - J[i + 1], g) * SegAt(seg, i);
         for (int i = 0; i < n; i++) { J[i] = P[i]; AirWeight[i] = 1f - g; }
     }
 
@@ -1283,13 +1288,13 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         {
             Vector3 d = J[i] - J[i - 1];
             float m = d.magnitude;
-            J[i] = J[i - 1] + (m > 1e-9f ? d / m : -Model.Forward) * seg;
+            J[i] = J[i - 1] + (m > 1e-9f ? d / m : -Model.Forward) * SegAt(seg, i - 1);
         }
         for (int i = girdle - 1; i >= 0; i--)
         {
             Vector3 d = J[i] - J[i + 1];
             float m = d.magnitude;
-            J[i] = J[i + 1] + (m > 1e-9f ? d / m : Model.Forward) * seg;
+            J[i] = J[i + 1] + (m > 1e-9f ? d / m : Model.Forward) * SegAt(seg, i);
         }
     }
 

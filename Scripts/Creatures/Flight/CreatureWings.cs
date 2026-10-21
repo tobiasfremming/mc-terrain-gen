@@ -134,7 +134,7 @@ public sealed class CreatureWings
         int g0 = c > 0 ? attach[0] : 0;
         for (int i = 0; i < restJ.Length; i++)
         {
-            restJ[i] = new Vector3(0f, straight ? lowest : sp.joints[i].clearance, -sp.spacing * (i - g0));
+            restJ[i] = new Vector3(0f, straight ? lowest : sp.joints[i].clearance, sp.UniformSpacing ? -sp.spacing * (i - g0) : -(sp.ArcToJoint(i) - sp.ArcToJoint(g0)));
             restR[i] = Quaternion.identity;
         }
         // CreatureSpecies.restAtSpacing (opt-in; FlowBody.restAtStance): the bind keeps the stance - each rest segment one
@@ -145,7 +145,7 @@ public sealed class CreatureWings
             float run = 0f;
             for (int i = 0; i < restJ.Length; i++)
             {
-                if (i > 0) run += CreatureSim.RestRun(sp, i, sp.spacing, 1f);
+                if (i > 0) run += CreatureSim.RestRun(sp, i, sp.SegmentLength(i - 1), 1f);
                 restJ[i] = new Vector3(0f, sp.joints[i].clearance, -run);
             }
             for (int i = 1; i < restJ.Length; i++)

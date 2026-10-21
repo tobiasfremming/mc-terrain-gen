@@ -49,7 +49,8 @@ namespace CreatureKit
         // rings over the head cap (sine-spaced, rigid to joint 0), rps per segment (smoothstep blend of the segment's two
         // joints), the last joint, kTailRings over the tail tip (rigid to the last joint), stitched front to tail with the
         // flip a ring frame x = cross(y, t) along -t needs. lh = head cap length, spine = spacing x (n - 1).
-        internal static void RingSequence<R>(PartMeshEmitter m, in R r, int n, float lh, float spacing, float spine, float tailLen, int rps, int segs)
+        // seg: per-joint spacing (FlowBody's spacing channel: segment i's length, spine = their sum); null = `spacing`.
+        internal static void RingSequence<R>(PartMeshEmitter m, in R r, int n, float lh, float spacing, float spine, float tailLen, int rps, int segs, float[] seg = null)
             where R : struct, IBodyRings
         {
             var rings = new List<int>();
@@ -59,12 +60,16 @@ namespace CreatureKit
                 float theta = 0.5f * Mathf.PI * k / (kHeadCapRings + 1);
                 rings.Add(r.Ring(lh - lh * Mathf.Sin(theta), PartMeshEmitter.Rigid(0), segs));
             }
+            float arc = 0f;
             for (int i = 0; i < n - 1; i++)
+            {
                 for (int q = 0; q < rps; q++)
                 {
                     float f = (float)q / rps;
-                    rings.Add(r.Ring(lh + spacing * (i + f), SegmentSkin(i, f), segs));
+                    rings.Add(r.Ring(seg == null ? lh + spacing * (i + f) : lh + arc + seg[i] * f, SegmentSkin(i, f), segs));
                 }
+                if (seg != null) arc += seg[i];
+            }
             rings.Add(r.Ring(lh + spine, PartMeshEmitter.Rigid(n - 1), segs));
             for (int k = 1; k <= kTailRings; k++)
                 rings.Add(r.Ring(lh + spine + tailLen * k / (kTailRings + 1), PartMeshEmitter.Rigid(n - 1), segs));

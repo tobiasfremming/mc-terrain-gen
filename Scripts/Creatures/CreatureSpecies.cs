@@ -261,6 +261,12 @@ public class CreatureSpecies : ScriptableObject
     [Tooltip("Overall size multiplier; everything - body, legs, gait timing (sqrt(scale)), enclosure - follows it.")]
     [Min(0.05f)] public float scale = 1f;
     public float spacing;
+    // Per-joint spine spacing (opt-in; the kit's FlowBody `spacing` profile channel, Vesper rev 2): segment i (joint i to
+    // i + 1) is segmentLengths[i] long at scale 1, joints.Length - 1 of them. null or empty = every segment `spacing`
+    // (every shipped species: the readers keep their literal uniform arithmetic, bit-identical). Read it through
+    // SegmentLength / ArcToJoint, never `spacing` as a segment's length.
+    [Tooltip("Per-segment spine lengths (scale 1, joint i to i+1). Empty = every segment `spacing`.")]
+    public float[] segmentLengths;
     public SpineJoint[] joints;
     public float headCapLength, tailTipLength;
     // Rigid head (user 2026-10-19): the first rigidHeadJoints spine joints move as one rigid body - their layout and
@@ -432,7 +438,50 @@ public class CreatureSpecies : ScriptableObject
     public int WingBone(int wing, int k) => Layout.WingBone(wing, k);
     public int EyeBone(int eye) => Layout.EyeBone(eye);
     public int AntennaBone(int antenna, int k) => Layout.ChainBone(antenna, k);
-    public float BodyLength => headCapLength + spacing * (JointCount - 1) + tailTipLength;
+    public float BodyLength => headCapLength + ArcToJoint(JointCount - 1) + tailTipLength;
+
+    // ---- per-joint spine spacing (segmentLengths; uniform = the literal `spacing` arithmetic, to the bit)
+    public bool UniformSpacing => segmentLengths == null || segmentLengths.Length == 0;
+    // Segment i (joint i to i + 1) at scale 1.
+    public float SegmentLength(int i) => UniformSpacing ? spacing : segmentLengths[Mathf.Clamp(i, 0, segmentLengths.Length - 1)];
+    // The arc from joint 0 to joint k along the chain at scale 1 (uniform: spacing x k).
+    public float ArcToJoint(int k)
+    {
+        if (UniformSpacing) return spacing * k;
+        float a = 0f;
+        for (int i = 0, e = Mathf.Min(k, segmentLengths.Length); i < e; i++) a += segmentLengths[i];
+        return a;
+    }
+    // The shortest / longest segment at scale 1 (uniform: spacing).
+    public float MinSegmentLength
+    {
+        get
+        {
+            if (UniformSpacing) return spacing;
+            float m = float.MaxValue;
+            for (int i = 0; i < segmentLengths.Length; i++) m = Mathf.Min(m, segmentLengths[i]);
+            return m;
+        }
+    }
+    public float MaxSegmentLength
+    {
+        get
+        {
+            if (UniformSpacing) return spacing;
+            float m = 0f;
+            for (int i = 0; i < segmentLengths.Length; i++) m = Mathf.Max(m, segmentLengths[i]);
+            return m;
+        }
+    }
+    // Every segment's length x scale, for a reader that keeps them per instance (allocated once, at construction);
+    // null when uniform - the reader then keeps its single `spacing x scale`.
+    public float[] ScaledSegmentLengths(float scale)
+    {
+        if (UniformSpacing) return null;
+        var r = new float[segmentLengths.Length];
+        for (int i = 0; i < r.Length; i++) r[i] = segmentLengths[i] * scale;
+        return r;
+    }
 
     public float MaxLateralReach
     {
@@ -480,6 +529,12 @@ public class CreatureSpecies : ScriptableObject
         if (!(scale > 0f)) return "scale must be > 0";
         if (eyeJoint < 0 || eyeJoint >= n) return "eyeJoint out of range";
         if (rigidHeadJoints < 0 || rigidHeadJoints > n - 1) return $"rigidHeadJoints {rigidHeadJoints} out of range 0..{n - 1}";
+        if (!UniformSpacing)
+        {
+            if (segmentLengths.Length != n - 1) return $"segmentLengths: {segmentLengths.Length} entries, need one per segment ({n - 1}) or none";
+            for (int i = 0; i < segmentLengths.Length; i++) if (!(segmentLengths[i] > 0f)) return $"segmentLengths[{i}] must be > 0";
+            if (climb.canClimb) return "segmentLengths: climbing assumes one spacing (CreatureClimb); varying spine spacing is not supported with it";
+        }
         for (int i = 0; i < LegCount; i++)
         {
             LegSpec l = legs[i];

@@ -25,8 +25,9 @@ internal sealed class RigidHead
         rot[0] = Quaternion.identity;
         for (int i = 1; i < k; i++)
         {
-            Vector3 d = new Vector3(0f, sp.joints[i].clearance - sp.joints[i - 1].clearance, -sp.spacing).normalized;
-            w[i] = w[i - 1] + d * sp.spacing;
+            float L = sp.SegmentLength(i - 1);   // per-joint spacing: this segment's own (uniform: spacing)
+            Vector3 d = new Vector3(0f, sp.joints[i].clearance - sp.joints[i - 1].clearance, -L).normalized;
+            w[i] = w[i - 1] + d * L;
             rot[i] = CreatureSim.Basis(-d, Ortho(Vector3.up, -d));
         }
         Vector3 f = (w[0] - w[k - 1]).normalized;

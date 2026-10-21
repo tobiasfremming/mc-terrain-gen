@@ -43,6 +43,7 @@ namespace CreatureKit
         [Param(ParamUnit.Metres, "flank masses: this much extra width at the sides")] public float flank;
         [Param(ParamUnit.Fraction, "0 = the oval .. 1 = the full ribbon (superellipse bladeExponent, the full halfHeight)", Min = 0, Max = 1)] public float blade;
         [Param(ParamUnit.Metres, "keel forward: the keel's lowest point moved this far toward the head, level in the bind (the sternum jutting forward and down; the keel term's share of it, 0 at the flanks); 0 = straight down", Min = 0, Default = "0")] public float keelForward;
+        [Param(ParamUnit.Metres, "per-joint spacing: the segment length here (interpolated at each segment's midpoint; varies smoothly, neighbours <= 1.25x apart); 0 = the body's spacing. Every key 0 = one spacing everywhere", Min = 0, Default = "0 (the body's)")] public float spacing;
     }
 
     [Serializable]
@@ -99,13 +100,87 @@ namespace CreatureKit
 
         float HeadLen => Mathf.Max(headCapLength, 1e-3f);
         float TailLen => Mathf.Max(tailTipLength, 1e-3f);
-        float SpineLen => spacing * (jointCount - 1);
+        float SpineLen
+        {
+            get
+            {
+                float[] s = Segs();
+                if (s == null) return spacing * (jointCount - 1);
+                float a = 0f;
+                for (int i = 0; i < s.Length; i++) a += s[i];
+                return a;
+            }
+        }
         public float BodyLength => HeadLen + SpineLen + TailLen;
         // The body fraction where the full rings start (joint 0): ahead of it the surface only closes into a small pole,
         // inside the head part sitting on joint 0.
         public float FrontRingU => HeadLen / BodyLength;
-        // The body fraction of joint k (0 head joint .. jointCount - 1).
-        public float UAtJoint(float k) => (HeadLen + spacing * k) / BodyLength;
+        // The body fraction of joint k (0 head joint .. jointCount - 1; fractional: along its segment).
+        public float UAtJoint(float k)
+        {
+            float[] s = Segs();
+            return s == null ? (HeadLen + spacing * k) / BodyLength : (HeadLen + ArcAt(s, k)) / BodyLength;
+        }
+
+        // ------------------------------------------------------------ per-joint spacing (the profile's `spacing` channel)
+
+        // True when a profile key sets its own spacing (> 0): the segments then vary (SegmentLengths).
+        public bool HasSpacingChannel
+        {
+            get
+            {
+                if (profile != null) for (int i = 0; i < profile.Length; i++) if (profile[i].spacing != 0f) return true;
+                return false;
+            }
+        }
+
+        // The segment lengths (scale 1; segment i = joint i to i + 1): the `spacing` channel (a key's 0 = the body's
+        // spacing) by the profile's monotone cubic at each segment's midpoint. null without the channel (one spacing:
+        // CreatureSpecies.segmentLengths stays empty). A fresh array (CompiledSpecies keeps it).
+        public float[] SegmentLengths()
+        {
+            if (!HasSpacingChannel) return null;
+            int n = Mathf.Max(jointCount, 2);
+            var r = new float[n - 1];
+            var keys = new Keys(profile, ChSpacing, spacing);
+            for (int i = 0; i < r.Length; i++) r[i] = MonotoneCubic.Eval(keys, (i + 0.5f) / (n - 1f));
+            return r;
+        }
+
+        // SegmentLengths for this body's own readers (the arc <-> joint mapping, the mesh): kept while the data it comes
+        // from (joint count, spacing, each key's t and spacing) is unchanged; never handed out (nothing writes it).
+        [NonSerialized] float[] segCache, segCacheOf;
+        float[] Segs()
+        {
+            if (!HasSpacingChannel) return null;
+            int m = 2 + 2 * profile.Length;
+            bool same = segCache != null && segCacheOf != null && segCacheOf.Length == m && segCacheOf[0] == jointCount && segCacheOf[1] == spacing;
+            for (int i = 0; same && i < profile.Length; i++) same = segCacheOf[2 + 2 * i] == profile[i].t && segCacheOf[3 + 2 * i] == profile[i].spacing;
+            if (same) return segCache;
+            var of = new float[m];
+            of[0] = jointCount; of[1] = spacing;
+            for (int i = 0; i < profile.Length; i++) { of[2 + 2 * i] = profile[i].t; of[3 + 2 * i] = profile[i].spacing; }
+            segCache = SegmentLengths(); segCacheOf = of;
+            return segCache;
+        }
+
+        // The arc from joint 0 to (fractional) joint k over segment lengths s.
+        static float ArcAt(float[] s, float k)
+        {
+            int i = Mathf.Clamp(Mathf.FloorToInt(k), 0, s.Length - 1);
+            float a = 0f;
+            for (int j = 0; j < i; j++) a += s[j];
+            return a + (k - i) * s[i];
+        }
+
+        // The (fractional) joint at arc a from joint 0 over segment lengths s (ArcAt's inverse; past the ends: carried on
+        // along the end segments' lengths).
+        static float JointAt(float[] s, float a)
+        {
+            int i = 0;
+            while (i < s.Length - 1 && a >= s[i]) { a -= s[i]; i++; }
+            return i + a / s[i];
+        }
 
         public override int BoneCount(in SpeciesCtx c) => jointCount;
         public override int MeshOrder => 100;
@@ -149,13 +224,53 @@ namespace CreatureKit
                 // than RestRunFloor x spacing: a segment rising steeper than asin(sqrt(1 - floor^2)) (75.5 deg) is
                 // stretched in the bind and pops to its length on the first walking tick. Reported once the stretch passes
                 // MaxRestStretch (1 %: ~78.1 deg) - the fixtures' steep neck stands at 76 deg, stretched 0.03 %
+                // (per-joint spacing: each segment against its own length)
                 SpineJoint[] js = BuildJoints();
+                float[] segs = Segs();
                 float limit = Mathf.Sqrt(MaxRestStretch * MaxRestStretch - RestRunFloor * RestRunFloor) * spacing;
                 for (int i = 1; i < js.Length; i++)
                 {
+                    float L = segs == null ? spacing : segs[i - 1];
+                    float lim = segs == null ? limit : Mathf.Sqrt(MaxRestStretch * MaxRestStretch - RestRunFloor * RestRunFloor) * L;
                     float rise = Mathf.Abs(js[i].clearance - js[i - 1].clearance);
-                    if (rise > limit) return $"{id}: restAtStance: stance segment {i - 1}-{i} rises {Mathf.Asin(Mathf.Min(1f, rise / spacing)) * Mathf.Rad2Deg:F0} deg ({rise:F3} m over a {spacing:F3} m segment; > {MaxStanceSegmentDeg:F1} deg the rest run's floor stretches it > 1 %)";
+                    if (rise > lim) return $"{id}: restAtStance: stance segment {i - 1}-{i} rises {Mathf.Asin(Mathf.Min(1f, rise / L)) * Mathf.Rad2Deg:F0} deg ({rise:F3} m over a {L:F3} m segment; > {MaxStanceSegmentDeg:F1} deg the rest run's floor stretches it > 1 %)";
                 }
+            }
+            return HasSpacingChannel ? ValidateSpacing(c) : null;
+        }
+
+        // Per-joint spacing: neighbouring segments at most MaxSpacingStep x apart (no visible kink where the spacing
+        // changes), and composed only with parts and modules that honour it. The rest read `spacing` as every segment's
+        // length (a mesh part laid out at joint x spacing, the climb, a twisting air chain, a soaring glide) and would
+        // silently misdraw or misplace: refused here, naming the part.
+        internal const float MaxSpacingStep = 1.25f;
+        static readonly HashSet<string> kHonoursSpacing = new HashSet<string> { "FlowBody", "Leg2Bone", "DrakeLeg", "DigitWing", "Eyes", "AttachedChain" };
+        static readonly HashSet<string> kModuleRefusesSpacing = new HashSet<string> { "Climb", "ClimbExcursion", "Soar" };
+
+        string ValidateSpacing(in SpeciesCtx c)
+        {
+            for (int i = 0; i < profile.Length; i++) if (profile[i].spacing < 0f) return $"{id}: profile[{i}] spacing must be >= 0 (0 = the body's spacing)";
+            float[] s = Segs();
+            for (int i = 0; i < s.Length; i++)
+            {
+                if (!(s[i] > 0f)) return $"{id}: per-joint spacing: segment {i} is {s[i]} m (must be > 0)";
+                if (i > 0 && Mathf.Max(s[i], s[i - 1]) > MaxSpacingStep * Mathf.Min(s[i], s[i - 1]))
+                    return $"{id}: per-joint spacing jumps between segments {i - 1} and {i} ({s[i - 1]:F4} -> {s[i]:F4} m; neighbours at most {MaxSpacingStep}x apart): spread the change over more joints";
+            }
+            for (int i = 0; i < c.Parts.Count; i++)
+            {
+                CreaturePart p = c.Parts[i];
+                if (p != null && !kHonoursSpacing.Contains(p.Meta.Name))
+                    return $"{p.id}: a {p.Meta.Name} supports only a uniformly spaced spine; {id} has per-joint spacing (its profile's spacing channel) - leave the channel at 0 or drop {p.id}";
+            }
+            for (int i = 0; i < c.Modules.Count; i++)
+            {
+                CreatureModule m = c.Modules[i];
+                if (m == null) continue;
+                if (kModuleRefusesSpacing.Contains(m.Meta.Name))
+                    return $"module {m.Meta.Name} supports only a uniformly spaced spine; {id} has per-joint spacing (its profile's spacing channel)";
+                if (m is Fly f && f.twist.Enabled)
+                    return $"module Fly: the twisting air chain (twist) supports only a uniformly spaced spine; {id} has per-joint spacing (its profile's spacing channel)";
             }
             return null;
         }
@@ -167,12 +282,13 @@ namespace CreatureKit
 
         // ------------------------------------------------------------ the chain
 
-        public const int ChHalfWidth = 0, ChHalfHeight = 1, ChClearance = 2, ChBend = 3, ChHump = 4, ChKeel = 5, ChFlank = 6, ChBlade = 7, ChKeelForward = 8;
+        public const int ChHalfWidth = 0, ChHalfHeight = 1, ChClearance = 2, ChBend = 3, ChHump = 4, ChKeel = 5, ChFlank = 6, ChBlade = 7, ChKeelForward = 8, ChSpacing = 9;
 
         readonly struct Keys : MonotoneCubic.IKeys
         {
             readonly FlowKey[] k; readonly int ch;
-            public Keys(FlowKey[] k, int ch) { this.k = k; this.ch = ch; }
+            readonly float bodySpacing;   // ChSpacing: a key's 0 reads this
+            public Keys(FlowKey[] k, int ch, float bodySpacing = 0f) { this.k = k; this.ch = ch; this.bodySpacing = bodySpacing; }
             public int Count => k.Length;
             public float X(int i) => k[i].t;
             public float Y(int i)
@@ -187,6 +303,7 @@ namespace CreatureKit
                     case ChKeel: return k[i].keel;
                     case ChFlank: return k[i].flank;
                     case ChKeelForward: return k[i].keelForward;
+                    case ChSpacing: return k[i].spacing > 0f ? k[i].spacing : bodySpacing;
                     default: return k[i].blade;
                 }
             }
@@ -310,7 +427,8 @@ namespace CreatureKit
             int n = jointCount;
             float tPrev = (n - 2f) / (n - 1f);
             float end = Profile(1f, ChHalfWidth) + Profile(1f, ChHalfHeight), prev = Profile(tPrev, ChHalfWidth) + Profile(tPrev, ChHalfHeight);
-            float perMetre = 0.5f * (end - prev) / spacing;
+            float[] segs = Segs();
+            float perMetre = 0.5f * (end - prev) / (segs == null ? spacing : segs[segs.Length - 1]);
             return Mathf.Clamp(perMetre * TailLen / Mathf.Max(end, PartMeshEmitter.MinRadius), SpineBody.kTailTipSlope, 0f);
         }
 
@@ -338,7 +456,7 @@ namespace CreatureKit
                 kindTail = tailColourFrom < 1f ? m.Slot(tailKind) : -1,
                 kindStripe = dorsalStripeTo > 0f ? m.Slot(dorsalStripeKind) : -1,
             };
-            SpineBody.RingSequence(m, rings, jointCount, HeadLen, spacing, SpineLen, TailLen, Mathf.Max(1, ringsPerSegment), ringSegments);
+            SpineBody.RingSequence(m, rings, jointCount, HeadLen, spacing, SpineLen, TailLen, Mathf.Max(1, ringsPerSegment), ringSegments, Segs());
             }
             finally { memoOn = false; frameMemoOf = null; }
             RestMeshCache.Store(m, key, firstVertex, firstTri, kinds);
@@ -400,7 +518,7 @@ namespace CreatureKit
             Vector3 shift = Vector3.zero;
             if (s < lh) { q = m.SpineAt(0f); shift = q.t * (lh - s); }
             else if (s > tailStart) { q = m.SpineAt(jointCount - 1); shift = -q.t * (s - tailStart); }
-            else q = m.SpineAt((s - lh) / spacing);
+            else { float[] segs = Segs(); q = m.SpineAt(segs == null ? (s - lh) / spacing : JointAt(segs, s - lh)); }
             return new Frame { c = q.c + shift, t = q.t, x = q.x, y = q.y };
         }
 
@@ -448,7 +566,8 @@ namespace CreatureKit
             float lh = HeadLen, tailStart = lh + SpineLen;
             if (s <= lh) return PartMeshEmitter.Rigid(0);
             if (s >= tailStart) return PartMeshEmitter.Rigid(jointCount - 1);
-            float k = (s - lh) / spacing;
+            float[] segs = Segs();
+            float k = segs == null ? (s - lh) / spacing : JointAt(segs, s - lh);
             int i = Mathf.Min((int)k, jointCount - 2);
             return SpineBody.SegmentSkin(i, k - i);
         }

@@ -330,6 +330,8 @@ namespace CreatureKit
             // written on every compile (the runtime view is reused: CreatureSpecies.CompileKit), so a body switched in
             // the Inspector never keeps the previous body's rest or rings
             dst.restAtSpacing = Body is FlowBody restFlow && restFlow.restAtStance;   // bind the raised neck as it stands (CreatureSim, opt-in)
+            // per-joint spine spacing (FlowBody's spacing channel, opt-in): null = one spacing (every other body; bit-identical)
+            dst.segmentLengths = Body is FlowBody spacedFlow ? spacedFlow.SegmentLengths() : null;
             if (Soft)
             {
                 dst.bodyPlan = CreatureBodyPlan.Cephalopod;

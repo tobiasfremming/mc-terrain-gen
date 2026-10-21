@@ -67,7 +67,7 @@ namespace CreatureKit
             float len = Mathf.Max(sp.BodyLength, 1e-3f);
             int hip = -1;
             for (int l = 0; l < (sp.legs != null ? sp.legs.Length : 0); l++) hip = Mathf.Max(hip, sp.legs[l].attachJoint);
-            float tailStart = hip >= 0 ? sp.headCapLength + sp.spacing * hip : 0.5f * len;
+            float tailStart = hip >= 0 ? sp.headCapLength + sp.ArcToJoint(hip) : 0.5f * len;   // the arc to the hips (per-joint spacing; uniform: spacing x hip)
             BodyParams = new Vector4(len, 1f / len, tailStart, 0f);
         }
     }

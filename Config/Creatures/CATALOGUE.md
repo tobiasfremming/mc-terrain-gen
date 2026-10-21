@@ -170,6 +170,7 @@ One chain from the head to the tail tip (the sim runs it like a SpineBody's) dra
 | `profile[].flank` | float | Metres | x s | flank masses: this much extra width at the sides |  |  |
 | `profile[].blade` | float | Fraction | - | 0 = the oval .. 1 = the full ribbon (superellipse bladeExponent, the full halfHeight) | 0..1 |  |
 | `profile[].keelForward` | float | Metres | x s | keel forward: the keel's lowest point moved this far toward the head, level in the bind (the sternum jutting forward and down; the keel term's share of it, 0 at the flanks); 0 = straight down | 0.. | default 0 |
+| `profile[].spacing` | float | Metres | x s | per-joint spacing: the segment length here (interpolated at each segment's midpoint; varies smoothly, neighbours <= 1.25x apart); 0 = the body's spacing. Every key 0 = one spacing everywhere | 0.. | default 0 (the body's) |
 | `rigidHeadJoints` | int | Count | - | rigid head: the first N joints move as one rigid body; -1 = auto from the profile (FlowBody.AutoHead: the joints before the neck narrows, if it narrows before the body widens), 0 = off | -1..16 | default -1 (auto) |
 | `humpSharpness` | float | Fraction | - | hump exponent on max(0, sin phi): higher = a sharper ridge | 1..64 | default 8 |
 | `keelSharpness` | float | Fraction | - | keel exponent on max(0, -sin phi): higher = a narrower keel | 1..64 | default 6 |

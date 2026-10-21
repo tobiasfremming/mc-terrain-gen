@@ -88,6 +88,9 @@ public sealed class CreatureSim
     readonly CreatureLegs legs;
     readonly CreatureClimb climb;    // null: this species cannot climb, or the ground is not an ISurfaceProbe
     readonly int n;
+    // Per-joint spine spacing (CreatureSpecies.segmentLengths, opt-in): segment i's length x sizeScale; null = one spacing
+    // (every shipped species: the chain keeps its single `seg`, bit-identical).
+    readonly float[] segLen;
     // The rigid head (species rigidHeadJoints; null = off: every joint grounded and bent on its own, bit-identical).
     readonly RigidHead rigidHead;
     readonly int headK;              // its joint count, 0 when off
@@ -173,11 +176,12 @@ public sealed class CreatureSim
         Vector3 up = Norm(upAt(position), Vector3.up);
         heading = Tangent(forward, up);
         headUp = up;
+        segLen = sp.ScaledSegmentLengths(sizeScale);
         float step = sp.spacing * sizeScale, run = 0f;
         for (int i = 0; i < n; i++)
         {
-            if (sp.restAtSpacing && i > 0) run += RestRun(sp, i, step, sizeScale);
-            Vector3 p = position - heading * (sp.restAtSpacing ? run : step * i);
+            if (sp.restAtSpacing && i > 0) run += RestRun(sp, i, segLen == null ? step : segLen[i - 1], sizeScale);
+            Vector3 p = position - heading * (sp.restAtSpacing ? run : segLen == null ? step * i : sp.ArcToJoint(i) * sizeScale);
             Vector3 u = Norm(upAt(p), up);
             float clear = sp.joints[i].clearance * sizeScale;
             if (!ground.Probe(p, u, kGroundWindow * sizeScale, out Vector3 g, out Vector3 nrm)) { g = p - u * clear; nrm = u; }
@@ -205,7 +209,15 @@ public sealed class CreatureSim
             if (g > 0) d = Mathf.Min(d, girdles[g] - girdles[g - 1]);
             if (g + 1 < girdles.Length) d = Mathf.Min(d, girdles[g + 1] - girdles[g]);
             // smoothstep between nodes peaks at slope 1.5 * 2A / D = tan(gaitSwayDeg)
-            swayAmp[g] = d * step * tanSway / 3f;
+            if (segLen == null) swayAmp[g] = d * step * tanSway / 3f;
+            else
+            {
+                // per-joint spacing: the same nearest node, by arc
+                float at = sp.ArcToJoint(girdles[g]), D = at;
+                if (g > 0) D = Mathf.Min(D, at - sp.ArcToJoint(girdles[g - 1]));
+                if (g + 1 < girdles.Length) D = Mathf.Min(D, sp.ArcToJoint(girdles[g + 1]) - at);
+                swayAmp[g] = D * sizeScale * tanSway / 3f;
+            }
         }
         if (sp.climb.canClimb && ground is ISurfaceProbe surface) climb = new CreatureClimb(sp, surface, sizeScale, TimeScale);
         if (climb != null)
@@ -602,7 +614,8 @@ public sealed class CreatureSim
             }
             float len = Mathf.Sqrt(run * run + rise * rise);
             float sp1 = len > 1e-6f ? rise / len : 0f, cp = len > 1e-6f ? run / len : 1f;
-            Path[i] = new Vector3(a.x + (d.x * cp + u.x * sp1) * seg, a.y + (d.y * cp + u.y * sp1) * seg, a.z + (d.z * cp + u.z * sp1) * seg);
+            float sg = segLen == null ? seg : segLen[i - 1];
+            Path[i] = new Vector3(a.x + (d.x * cp + u.x * sp1) * sg, a.y + (d.y * cp + u.y * sp1) * sg, a.z + (d.z * cp + u.z * sp1) * sg);
             prevBack = d;
             // the rigid head: laid out as one body along the chord the chain gave it, before the neck follows
             if (i == headK - 1) rigidHead.Place(Path, rigidHead.Frame(Path[0], Path[i], HeadPathUp(), 0f), 0, SizeScale);
@@ -718,7 +731,7 @@ public sealed class CreatureSim
             Vector3 p = pathStart[i] + u * out_ + mc * (bound / Mathf.Sqrt(d2));
             Vector3 v = p - Path[i - 1];
             float l = v.magnitude;
-            Path[i] = l > 1e-6f ? Path[i - 1] + v * (seg / l) : p;
+            Path[i] = l > 1e-6f ? Path[i - 1] + v * ((segLen == null ? seg : segLen[i - 1]) / l) : p;
         }
     }
 
@@ -883,7 +896,7 @@ public sealed class CreatureSim
             // the rigid head is not swayed (its girdles' sway starts at the neck)
             if (i < headK) { Joints[i] = Path[i]; prevPath = d; continue; }
             // moving joint i to the right of joint i-1 turns the backward segment toward -right
-            float turn = -Mathf.Rad2Deg * Mathf.Asin(Mathf.Clamp((swayY[i] - swayY[i - 1]) / seg, -0.5f, 0.5f));
+            float turn = -Mathf.Rad2Deg * Mathf.Asin(Mathf.Clamp((swayY[i] - swayY[i - 1]) / (segLen == null ? seg : segLen[i - 1]), -0.5f, 0.5f));
             float slack = 0f;
             if (!sp.joints[i].rigid)
             {
@@ -919,10 +932,11 @@ public sealed class CreatureSim
     // climbing: a short segment nearly along its joint's up (CreatureClimb.RunTrust) is lengthened along itself -
     // keeping its rise would stretch a tiny, arbitrary run to most of a segment and shove the joint sideways (into
     // the bark, or reversed in its plane, which the next chain step's bend cone then swung the whole body back from)
-    void RestoreLengths(float seg, bool climbing = false, int from = 1)
+    void RestoreLengths(float segAll, bool climbing = false, int from = 1)
     {
         for (int i = from; i < n; i++)
         {
+            float seg = segLen == null ? segAll : segLen[i - 1];   // per-joint spacing: this segment's own
             Vector3 a = Path[i - 1], v = Path[i] - a;
             float m2 = v.x * v.x + v.y * v.y + v.z * v.z;
             if (!(m2 > 1e-18f)) continue;

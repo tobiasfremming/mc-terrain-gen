@@ -24,6 +24,11 @@ public sealed class AirChain
 
     readonly int n, girdle;
     readonly float seg, timeScale, scale;
+    // Per-joint spine spacing (CreatureSpecies.segmentLengths, opt-in): segment i's length x scale, and the neck's (joint 0
+    // to the girdle); null = one spacing `seg` (every shipped flyer: the literal arithmetic, bit-identical).
+    readonly float[] segLen;
+    readonly float neckLen;
+    float Seg(int i) => segLen == null ? seg : segLen[i];
     readonly float[] cosLimit, sinLimit; // per joint bend cone (rigid = 0)
     // FlightSpec.airNeckStance: per neck joint, the cone's centre - the share of the stance's bend there (cos, sin of
     // the pitch turn toward the up); null = off (the shipped chain: the cones around a straight neck).
@@ -58,6 +63,8 @@ public sealed class AirChain
         n = sp.JointCount; girdle = Mathf.Clamp(girdleJoint, 0, n - 1);
         scale = Mathf.Max(1e-3f, sizeScale); timeScale = Mathf.Sqrt(scale);
         seg = sp.spacing * scale;
+        segLen = sp.ScaledSegmentLengths(scale);
+        neckLen = sp.ArcToJoint(girdle) * scale;
         cosLimit = new float[n]; sinLimit = new float[n];
         for (int i = 0; i < n; i++)
         {
@@ -73,7 +80,7 @@ public sealed class AirChain
             // toward the head by p[k] (segment k = joint k-1 to k); the bend at joint j turns p[j+1] into p[j]
             var p = new float[n];
             for (int k = 1; k < n; k++)
-                p[k] = Mathf.Atan2(sp.joints[k - 1].clearance - sp.joints[k].clearance, CreatureSim.RestRun(sp, k, sp.spacing, 1f));
+                p[k] = Mathf.Atan2(sp.joints[k - 1].clearance - sp.joints[k].clearance, CreatureSim.RestRun(sp, k, sp.SegmentLength(k - 1), 1f));
             restCos = new float[n]; restSin = new float[n];
             for (int j = 0; j < n; j++)
             {
@@ -146,7 +153,7 @@ public sealed class AirChain
             Vector3 d = Norm(joints[i] - joints[i - 1], prevDir);
             // bend at joint i-1 (the leader segment: the cone of the girdle joint around the flight line)
             d = Cone(prevDir, d, cosLimit[i - 1], sinLimit[i - 1]);
-            joints[i] = joints[i - 1] + d * seg;
+            joints[i] = joints[i - 1] + d * Seg(i - 1);
             prevDir = d;
         }
 
@@ -182,7 +189,7 @@ public sealed class AirChain
                 // (still inside the head's cone round the trunk's line)
                 if (f.headStabiliseBounded) dir = Cone(trunkDir, dir, kMaxHeadTurnCos, kMaxHeadTurnSin);
             }
-            Vector3 target = smoothPos + dir * (kNeckSlack * seg * girdle);
+            Vector3 target = smoothPos + dir * (segLen == null ? kNeckSlack * seg * girdle : kNeckSlack * neckLen);
             // the neck's sagittal plane: across it the girdle's banked side (airNeckStance turns the neck up in it)
             Vector3 across = restCos != null ? Norm(Vector3.Cross(vh, bankedUp), side) : side;
             HeadTarget = target;
@@ -191,7 +198,7 @@ public sealed class AirChain
             // each at the exact segment length toward its sample on the curve, inside its bend cone; a rigid
             // joint keeps its two segments in line. (A plain FABRIK buckles into a zigzag against the rigid
             // head joint; this cannot, and costs one pass.)
-            Vector3 ctrl = girdlePos + trunkDir * (0.5f * seg * girdle);
+            Vector3 ctrl = girdlePos + trunkDir * (segLen == null ? 0.5f * seg * girdle : 0.5f * neckLen);
             Vector3 pd = trunkDir;
             for (int i = girdle - 1; i >= 0; i--)
             {
@@ -205,11 +212,11 @@ public sealed class AirChain
                     // swept past (behind the head, inside the neck's reach) left the cone below to pick a side from a
                     // near-backward aim: the front of the neck flipped from side to side tick by tick (Vesper's head
                     // 0.5-0.7 m a tick back and forth as a turn's target swept past it)
-                    float along = Vector3.Dot(to, pd);
-                    if (along < kAimAhead * seg)
+                    float along = Vector3.Dot(to, pd), sg = Seg(i);
+                    if (along < kAimAhead * sg)
                     {
-                        float w = Mathf.Clamp01((along + seg) / ((1f + kAimAhead) * seg));
-                        to = pd * (kAimAhead * seg) + (to - pd * along) * w;
+                        float w = Mathf.Clamp01((along + sg) / ((1f + kAimAhead) * sg));
+                        to = pd * (kAimAhead * sg) + (to - pd * along) * w;
                     }
                 }
                 Vector3 d = Norm(to, pd);
@@ -218,7 +225,7 @@ public sealed class AirChain
                 if (restCos != null && restSin[i + 1] != 0f)
                     axis = Norm(pd * restCos[i + 1] + Norm(Vector3.Cross(across, pd), up) * restSin[i + 1], pd);
                 d = Cone(axis, d, cosLimit[i + 1], sinLimit[i + 1]);
-                joints[i] = joints[i + 1] + d * seg;
+                joints[i] = joints[i + 1] + d * Seg(i);
                 pd = d;
             }
         }
@@ -251,7 +258,7 @@ public sealed class AirChain
         smoothVel += accV * kV + accH * kH;
         smoothPos += smoothVel * h;
         smoothPos += (girdlePos - smoothPos) * Mathf.Min(1f, kDriftRate / timeScale * h);
-        float r = kMaxOffset * seg * girdle;
+        float r = segLen == null ? kMaxOffset * seg * girdle : kMaxOffset * neckLen;
         Vector3 e = smoothPos - girdlePos;
         float m = e.magnitude;
         if (m > r) smoothPos = girdlePos + e * (r / m);
