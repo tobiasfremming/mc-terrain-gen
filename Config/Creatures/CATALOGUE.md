@@ -137,7 +137,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | TestSnake | legacy | Spine | SpineBody, Eyes | Walk, Slither, Wander, Skin | 42 |
 | TreeOctopus | legacy | Soft | 8x Tentacle, SoftBody, Eyes, RigidCone | Ambush, Skin, Cloak, Chromatophore | 201 |
 | TreeSpider | legacy | Spine | SpineBody, 10x ArthropodLeg, Eyes, RigidCone | Walk (Tetrapod), Climb, Wander, ClimbExcursion, Skin, Chitin | 75 |
-| Vesper | kit | Spine | FlowBody, 2x Leg2Bone, 2x DrakeLeg, 2x DigitWing, Eyes | Walk (Diagonal), Fly, QuadLaunch, Wander, FlightExcursion, SkeletonOnly | 108 |
+| Vesper | kit | Spine | FlowBody, 2x Leg2Bone, 2x DrakeLeg, 2x DigitWing, Eyes | Walk (Diagonal), Fly, QuadLaunch, Wander, FlightExcursion, SkeletonOnly | 116 |
 | WingedSerpent | legacy | Spine | SpineBody, 4x Leg2Bone, 2x Wing, Eyes | Walk (Diagonal), Slither, Fly, Wander, FlightExcursion, Skin, Membrane | 73 |
 
 ## Parameters
@@ -452,6 +452,7 @@ Slim dragon hind leg: walks as a Leg2Bone (TwoBoneIK, pole, limits, a raised hoc
 | `lowerRadius` | float | Metres | x s | shin radius (slim: the hock, metatarsus and toes follow it) |  |  |
 | `pole` | Vector3 | Direction | - | knee direction hint in the attach frame (x mirrored); a hind leg's knee points forward (z > 0) |  |  |
 | `ankleHeight` | float | Metres | x s | the hock's height above the toes' contact point (the metatarsus' drop; the gait's ankle height), 0 = 0.3 x (upperLength + lowerLength) | 0.. |  |
+| `walkOnHock` | bool | Flag | - | the gait's limb ends on the hock (LegSpec.hockInReach): the metatarsus counts in the reach - for a hip higher than thigh + shin; off = the gait's limb ends on the toes' contact (the hock only drawn) |  |  |
 | `toes` | int | Count | - | forward toes | 2..4 | default 3 |
 | `hallux` | bool | Flag | - | a hallux: a short toe at the back of the metatarsus, off the ground |  |  |
 | `talonLength` | float | Metres | x s | talon length (the middle toe's), 0 = 0.3 x footLength |  |  |
@@ -2150,7 +2151,7 @@ Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlig
 
 | field | type | unit | size | meaning | range | example |
 |---|---|---|---|---|---|---|
-| `spec` | FlightSpec | Spec | - | flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, headStabiliseBounded, trunkTurnBounded, airNeckStance, launchHeadOnNeck, touchdownAtStance, launchTailBySegment, touchdownFromHover, perchTubeOnApproach, drapeOwnHeading, perchFrontLevel, floorLiftEased, containTurns, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain, legTuckOut, legTuckDown, legTuckReach, touchdownTogether, airLevel, glideEnergy, approachBleedsSpeed |  |  |
+| `spec` | FlightSpec | Spec | - | flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, headStabiliseBounded, trunkTurnBounded, airNeckStance, launchHeadOnNeck, touchdownAtStance, launchTailBySegment, touchdownFromHover, perchTubeOnApproach, drapeOwnHeading, drapeCapKeepsLength, perchFrontLevel, floorLiftEased, containTurns, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain, legTuckOut, legTuckDown, legTuckReach, touchdownTogether, airLevel, glideEnergy, approachBleedsSpeed |  |  |
 | `twist` | AirTwistSpec | Struct | - | twisting flight (AirTwist, Chinese dragon): the body follows the head's path; 3D swimming, corkscrews, barrel rolls, loops, slow rolls that travel head to tail. All 0 = the serpent's trailing air chain |  |  |
 | `twist.swimAmplitude` | float | Metres | x s | always-on swimming: the head's 3D S-curve amplitude (0 = no swimming) |  | dragon 0.12 |
 | `twist.swimHz` | float | Hz | / sqrt(s) | swimming wave frequency; wavelength along the body = speed / Hz |  | dragon 0.9 |

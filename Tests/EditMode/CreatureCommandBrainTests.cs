@@ -40,7 +40,12 @@ namespace TerrainGen.Tests
         const float kLandBound = 50f;
         const float kCircleBound = 20f;
         const float kPerchBound = 60f;
-        const float kGiveUpBound = 100f;    // kPerchFailsMax (2) perch attempts of 30 s x sqrt s, then an open-ground landing
+        // A perch given up: kPerchFailsMax (2) perch attempts of at most kPerchTimeout (30 s x sqrt s) each, then an
+        // open-ground landing held to the Land command's own bound (kLandBound) - 2 x 30 + 50. (It was 100, leaving that
+        // landing 40 of Land's 50: in Unity (Mono) Command_Perch_FromAir seed 3 was still landing on open ground at the 100
+        // mark, t = 209.2 s. Offline (rev 2, Perch_Unreachable_GivesUp's sweep, seeds 1-12 from the air and the ground) the
+        // landing after the give-up takes 2.3-16.1 s x sqrt s, the whole run 62-77: at most 0.70 of this bound.)
+        const float kGiveUpBound = 110f;
 
         internal sealed class Rig
         {
@@ -487,13 +492,18 @@ namespace TerrainGen.Tests
             return null;
         }
 
+        // (seeds 1-4 from the air and the ground: the give-up's open-ground landing is chaotic - see kGiveUpBound)
         [Test] public void Perch_Unreachable_GivesUp()
         {
-            Rig r = Start(true, Rock(Vesper().scale));
-            r.brain.perchUnreachable = true;
-            string e = GiveUpProblem(r, out float took); Report("Perch never lined up (hook; from the air)", r, took);
-            Assert.IsNull(e, e);
-            Assert.AreEqual(0, r.brain.PerchMisses);
+            foreach (bool fromAir in new[] { true, false })
+                for (int seed = 1; seed <= 4; seed++)
+                {
+                    Rig r = Start(fromAir, Rock(Vesper().scale), seed);
+                    r.brain.perchUnreachable = true;
+                    string e = GiveUpProblem(r, out float took); Report($"Perch never lined up (hook; from the {(fromAir ? "air" : "ground")}, seed {seed})", r, took);
+                    Assert.IsNull(e, $"from the {(fromAir ? "air" : "ground")}, seed {seed}: {e}");
+                    Assert.AreEqual(0, r.brain.PerchMisses);
+                }
         }
 
         // Perch whose touchdowns land beside the rock (hook: the landing asked for 1.75 m x s short of it on its final): a
@@ -647,17 +657,24 @@ namespace TerrainGen.Tests
             StringAssert.Contains("on open ground", e);
         }
 
-        // Perched on the 0.5 m Rock (2 m at scale 4: higher than Vesper's hind legs are long), WalkTo a point on the ground:
-        // it hops down (takes off, lands on open ground near the point, "hopping down") and walks there - arriving within
-        // kLandBound, the girdle never below the rock's top while over the rock on the ground, no girdle step > kSnap L.
-        // RED (noHopDown): it tries to walk off the edge - creeps, sinks into the rock, never arrives.
+        // Perched on the 0.5 m Rock (2 m at scale 4), WalkTo a point on the ground: it hops down (takes off, lands on open
+        // ground near the point, "hopping down") and walks there - arriving within kLandBound, the girdle never below the
+        // rock's top while over the rock on the ground, no girdle step > kSnap L.
+        // RED (noHopDown) on TallRock (higher than Vesper's hind legs are long): it tries to walk off the edge - creeps,
+        // sinks into the rock, never arrives. (Vesper rev 2's hind legs reach 0.9 m at scale 1, thigh + shin + metatarsus:
+        // off the 0.5 m Rock it now walks down and arrives - "never said hopping down" - so the RED's rock is taller.)
         internal static string HopDownProblem(Rig r, out float took) => HopDownProblem(r, out took, out _);
 
-        // sunk: the girdle went below the rock's top while over it on the ground (the RED's own clause)
-        internal static string HopDownProblem(Rig r, out float took, out bool sankIn)
+        internal const float kTallRockHeight = 1.1f;   // m at scale 1: TallRock, above rev 2's hind-leg reach (0.9)
+        internal static WingedTestSurfaces TallRock(float s) =>
+            new WingedTestSurfaces().AddRock(new Vector3(2.5f, 0f, 1.25f) * s, new Vector3(1.2f, kTallRockHeight, 1.2f) * s, 11);
+
+        // sunk: the girdle went below the rock's top while over it on the ground (the RED's own clause); height: the rock's
+        // (Rock's 0.5, TallRock's kTallRockHeight), m at scale 1
+        internal static string HopDownProblem(Rig r, out float took, out bool sankIn, float height = 0.5f)
         {
             took = -1f; sankIn = false;
-            Vector3 lo = new Vector3(2.5f - 0.6f, 0f, 1.25f - 0.6f) * r.s, hi = new Vector3(2.5f + 0.6f, 0.5f, 1.25f + 0.6f) * r.s;   // Rock's box
+            Vector3 lo = new Vector3(2.5f - 0.6f, 0f, 1.25f - 0.6f) * r.s, hi = new Vector3(2.5f + 0.6f, height, 1.25f + 0.6f) * r.s;   // the rock's box
             string sunk = null; bool hopped = false;
             Vector3 off = r.area.center - new Vector3(2.5f, 0f, 1.25f).normalized * (0.3f * r.area.safeRadius);
             r.brain.Command(CreatureCommand.WalkTo, off);
@@ -688,10 +705,10 @@ namespace TerrainGen.Tests
 
         [Test] public void Red_CommandBrain_NoHopDown()
         {
-            Rig r = PerchedRig(Rock(Vesper().scale), out string why);
+            Rig r = PerchedRig(TallRock(Vesper().scale), out string why);
             Assert.IsNotNull(r, why);
             r.brain.noHopDown = true;
-            string e = HopDownProblem(r, out _, out bool sank);
+            string e = HopDownProblem(r, out _, out bool sank, kTallRockHeight);
             TestContext.Out.WriteLine("RED: " + e);
             Assert.IsTrue(sank || (e != null && e.Contains("never reached")), "walked off the edge: sank into the rock or never arrived");
         }

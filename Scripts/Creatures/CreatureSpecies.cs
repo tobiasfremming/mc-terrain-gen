@@ -45,6 +45,12 @@ public class LegSpec
     // lowerRadius), < 0 = none (the lower bone ends on the ground, the pose before 2026-10-19).
     [Tooltip("Two-bone limb: ankle height above the foot's contact point, metres (0 = auto 1.2 x lowerRadius, < 0 = none).")]
     public float ankleHeight;
+    // Two-bone limb with an ankle (opt-in, off = the gait as before): the gait reads the limb ending on the HOCK - the
+    // contact raised AnkleHeight - so a long metatarsus counts in the leg's reach (its steps, stretch, droop, throttle,
+    // joint limits and the stride speed). Off, the gait's limb ends on the contact and the ankle only changes the look:
+    // a leg whose hip stands higher than upper + lower could not reach the ground (the hip drooped, the foot hung).
+    [Tooltip("Two-bone limb with an ankle: the gait's limb ends on the hock (the metatarsus counts in the reach). Off = on the contact.")]
+    public bool hockInReach;
     [Tooltip("Two-bone limb: claw length, metres (0 = auto 0.16 x footLength).")]
     public float clawLength;
     [Tooltip("Two-bone limb: how far a claw curls down over its length, degrees (0 = 75).")]

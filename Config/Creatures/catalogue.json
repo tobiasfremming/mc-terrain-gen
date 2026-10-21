@@ -2471,6 +2471,15 @@
           "example": ""
         },
         {
+          "name": "walkOnHock",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "the gait's limb ends on the hock (LegSpec.hockInReach): the metatarsus counts in the reach - for a hip higher than thigh + shin; off = the gait's limb ends on the toes' contact (the hock only drawn)",
+          "range": "",
+          "example": ""
+        },
+        {
           "name": "toes",
           "type": "int",
           "unit": "Count",
@@ -14981,7 +14990,7 @@
           "type": "FlightSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, headStabiliseBounded, trunkTurnBounded, airNeckStance, launchHeadOnNeck, touchdownAtStance, launchTailBySegment, touchdownFromHover, perchTubeOnApproach, drapeOwnHeading, perchFrontLevel, floorLiftEased, containTurns, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain, legTuckOut, legTuckDown, legTuckReach, touchdownTogether, airLevel, glideEnergy, approachBleedsSpeed",
+          "meaning": "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, headStabiliseBounded, trunkTurnBounded, airNeckStance, launchHeadOnNeck, touchdownAtStance, launchTailBySegment, touchdownFromHover, perchTubeOnApproach, drapeOwnHeading, drapeCapKeepsLength, perchFrontLevel, floorLiftEased, containTurns, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain, legTuckOut, legTuckDown, legTuckReach, touchdownTogether, airLevel, glideEnergy, approachBleedsSpeed",
           "range": "",
           "example": ""
         },
@@ -17476,7 +17485,7 @@
       "name": "Vesper",
       "kitVersion": 1,
       "plan": "Spine",
-      "bones": 108,
+      "bones": 116,
       "parts": [
         "FlowBody:body",
         "Leg2Bone:arm.L",

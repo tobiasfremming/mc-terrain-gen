@@ -1032,11 +1032,11 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             float support = Vector3.Dot(groundPoint[i - 1], u);
             if (!sup[i] || Vector3.Dot(probed[i], u) < support - drop) { a = i; break; }
         }
-        if (a < 0) return (f.drapeOwnHeading && !NoStepCapsForTest && CapSettling(path, pathUp, groundPoint, n, n, dt)) || moved;
+        if (a < 0) return (f.drapeOwnHeading && !NoStepCapsForTest && CapSettling(path, pathUp, groundPoint, n, n, dt, seg)) || moved;
         Vector3 upF = pathUp[a];
         Vector3 hb = Vector3.ProjectOnPlane(path[a - 1] - path[a - 2], upF);
         if (hb.sqrMagnitude < 1e-10f) hb = Vector3.ProjectOnPlane(path[a] - path[a - 1], upF);
-        if (hb.sqrMagnitude < 1e-10f) return (f.drapeOwnHeading && !NoStepCapsForTest && CapSettling(path, pathUp, groundPoint, n, n, dt)) || moved;
+        if (hb.sqrMagnitude < 1e-10f) return (f.drapeOwnHeading && !NoStepCapsForTest && CapSettling(path, pathUp, groundPoint, n, n, dt, seg)) || moved;
         hb.Normalize();
         Vector3 down = -upF;
         float pitch0 = Mathf.Asin(Mathf.Clamp(Vector3.Dot((path[a - 1] - path[a - 2]).normalized, down), -1f, 1f)) * Mathf.Rad2Deg;
@@ -1081,7 +1081,18 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
                         Vector3 from = hung[i] ? hangAt[i] : path[i];
                         Vector3 dd = p - from;
                         float dm = dd.magnitude, capS = StepCap(dt);
-                        if (dm > capS) p = from + dd * (capS / dm);
+                        if (dm > capS)
+                        {
+                            p = from + dd * (capS / dm);
+                            // FlightSpec.drapeCapKeepsLength: the capped joint laid again at its segment's length from the
+                            // joint before it (the length restore after the drape then has nothing to relay)
+                            if (f.drapeCapKeepsLength)
+                            {
+                                Vector3 v = p - prev;
+                                float vm = v.magnitude;
+                                if (vm > 1e-6f) p = prev + v * (SegAt(seg, i - 1) / vm);
+                            }
+                        }
                     }
                     path[i] = p;
                     groundPoint[i] = p - pathUp[i] * clear;
@@ -1090,7 +1101,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
                 prev = p; prevPitch = pitch;
             }
         }
-        if (own && !NoStepCapsForTest) CapSettling(path, pathUp, groundPoint, a, b, dt);
+        if (own && !NoStepCapsForTest) CapSettling(path, pathUp, groundPoint, a, b, dt, seg);
         return true;
     }
 
@@ -1098,7 +1109,7 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
     // and joints that were hanging and are supported again, move at most StepCap a sub-step from where they were until
     // they are back - the edge or the run's end moving to another joint relaid the run behind it at once (over a rock's
     // corner the tail 0.5-1.4 m in a tick). a, b: the hanging run [a, b) just laid (a = b = n: none). True when it moved one.
-    bool CapSettling(Vector3[] path, Vector3[] pathUp, Vector3[] groundPoint, int a, int b, float dt)
+    bool CapSettling(Vector3[] path, Vector3[] pathUp, Vector3[] groundPoint, int a, int b, float dt, float seg)
     {
         float capS = StepCap(dt);
         bool moved = false;
@@ -1114,6 +1125,13 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
                 if (dm > capS)
                 {
                     path[i] = hangAt[i] + dd * (capS / dm);
+                    if (f.drapeCapKeepsLength)
+                    {
+                        // FlightSpec.drapeCapKeepsLength: laid again at its segment's length from the joint before it
+                        Vector3 v = path[i] - path[i - 1];
+                        float vm = v.magnitude;
+                        if (vm > 1e-6f) path[i] = path[i - 1] + v * (SegAt(seg, i - 1) / vm);
+                    }
                     groundPoint[i] = path[i] - pathUp[i] * (sp.joints[i].clearance * scale);
                     hung[i] = true;   // (still on its way)
                     moved = true;

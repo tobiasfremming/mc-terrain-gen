@@ -292,7 +292,9 @@ namespace TerrainGen.Tests
             float took = lab.Until(Ended, kPerchBound);
             TestContext.Out.WriteLine($"Perch in the lab layout: {(took >= 0f ? $"{took:F1} s ({took / lab.T:F1} s x sqrt s)" : "never")}; on the perch {lab.brain.OnPerch}, gave up {lab.brain.PerchGaveUp}, no perch {lab.brain.NoPerch}, misses {lab.brain.PerchMisses}; {lab.State}");
             Assert.GreaterOrEqual(took, 0f, "Perch neither perched nor gave up (" + lab.State + ")");
-            Assert.IsFalse(lab.brain.NoPerch, "the scan found the lab's rocks");
+            // (NoPerch alone is "no perch in reach" - the scan found none; the give-up sets it too, with PerchGaveUp: rev 2's
+            // run here gives up after two timed-out line-ups, step 1's perched)
+            Assert.IsFalse(lab.brain.NoPerch && !lab.brain.PerchGaveUp, "the scan found the lab's rocks");
             Assert.IsTrue(lab.brain.OnPerch ? lab.brain.Doing == "perched" : lab.brain.Doing.StartsWith("could not reach the perch"), "Doing says how it ended: " + lab.brain.Doing);
         }
     }

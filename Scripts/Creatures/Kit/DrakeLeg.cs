@@ -31,6 +31,7 @@ namespace CreatureKit
         [Param(ParamUnit.Metres, "shin radius (slim: the hock, metatarsus and toes follow it)")] public float lowerRadius;
         [Param(ParamUnit.Direction, "knee direction hint in the attach frame (x mirrored); a hind leg's knee points forward (z > 0)")] public Vector3 pole;
         [Param(ParamUnit.Metres, "the hock's height above the toes' contact point (the metatarsus' drop; the gait's ankle height), 0 = 0.3 x (upperLength + lowerLength)", Min = 0f)] public float ankleHeight;
+        [Param(ParamUnit.Flag, "the gait's limb ends on the hock (LegSpec.hockInReach): the metatarsus counts in the reach - for a hip higher than thigh + shin; off = the gait's limb ends on the toes' contact (the hock only drawn)")] public bool walkOnHock;
         [Param(ParamUnit.Count, "forward toes", Min = 2, Max = 4, Default = "3")] public int toes = 3;
         [Param(ParamUnit.Flag, "a hallux: a short toe at the back of the metatarsus, off the ground")] public bool hallux;
         [Param(ParamUnit.Metres, "talon length (the middle toe's), 0 = 0.3 x footLength")] public float talonLength;
@@ -46,7 +47,7 @@ namespace CreatureKit
         {
             LegSpec l = BaseSpec();
             l.upperLength = upperLength; l.lowerLength = lowerLength; l.upperRadius = upperRadius; l.lowerRadius = lowerRadius;
-            l.pole = pole; l.kneeBlend = 0f; l.ankleHeight = Hock;
+            l.pole = pole; l.kneeBlend = 0f; l.ankleHeight = Hock; l.hockInReach = walkOnHock;
             l.clawLength = TalonLength; l.clawCurveDeg = talonCurveDeg;
             l.toeCount = toes + (hallux ? 1 : 0);
             l.digitigrade = false;   // the Leg2Bone digitigrade mesh is not this part's (DrakeLeg.EmitMesh draws it)

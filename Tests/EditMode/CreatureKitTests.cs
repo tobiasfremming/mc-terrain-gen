@@ -556,7 +556,8 @@ namespace TerrainGen.Tests
                         if (slide >= 1e-5f * s) return $"weave t={sim.Time:F2}: planted foot {l} slid {slide * 1000f:F3} mm";
                         planted++;
                     }
-                    float reach = (st.foot - st.shoulder).magnitude, max = sp.legs[l].TotalLength * s * 1.001f;
+                    // (LegSpec.hockInReach: the limb reaches the contact through the hock - its metatarsus, AnkleHeight, counts)
+                    float reach = (st.foot - st.shoulder).magnitude, max = (sp.legs[l].TotalLength + (sp.legs[l].hockInReach ? sp.legs[l].AnkleHeight : 0f)) * s * 1.001f;
                     if (reach > max) return $"weave t={sim.Time:F2}: leg {l} reaches {reach:F4} m > its length {max:F4} m";
                     prev[l] = st.foot; prevPlanted[l] = now;
                 }

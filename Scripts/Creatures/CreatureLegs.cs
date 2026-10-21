@@ -126,6 +126,10 @@ sealed class CreatureLegs
     readonly ArthropodLegModel[] models;
     readonly float[] reachLen;
     readonly float[] ankleH;       // two-bone: ankle height above the contact point, metres at scale 1 (0 = none)
+    // two-bone with an ankle and LegSpec.hockInReach: the gait's limb ends on the hock, the contact raised ankleH along
+    // the leg's up - i.e. it runs from GaitShoulder (the shoulder lowered by ankleH) to the contact. Off: GaitShoulder is
+    // the shoulder itself (every expression the literal old one).
+    readonly bool[] hockReach;
     readonly Vector3[] gaitElbow;  // two-bone: the knee of the limb ending on the contact point (the gait's limb)
     readonly Quaternion[] restUpperRot; // two-bone: the upper bone's rest rotation in the attach frame (UpperRot)
     readonly Vector3[] restYaw;    // arthropod: rest outward direction in the attach frame
@@ -198,7 +202,7 @@ sealed class CreatureLegs
         maxSegment = sp.MaxSegmentLength;
         swingSlack = new float[c]; aimSlack = new float[c]; swingPrev = new Vector3[c]; aimPrev = new Vector3[c];
         for (int l = 0; l < c; l++) { prevSwing[l] = -1f; prevKnee[l] = -1f; }
-        models = new ArthropodLegModel[c]; reachLen = new float[c]; ankleH = new float[c]; gaitElbow = new Vector3[c]; restUpperRot = new Quaternion[c]; restYaw = new Vector3[c]; liftDelayT = new float[c];
+        models = new ArthropodLegModel[c]; reachLen = new float[c]; ankleH = new float[c]; hockReach = new bool[c]; gaitElbow = new Vector3[c]; restUpperRot = new Quaternion[c]; restYaw = new Vector3[c]; liftDelayT = new float[c];
         poses = new ArthropodLegPose[c]; PointOffset = new int[c]; PlaneNormal = new Vector3[c];
         int points = 0;
         for (int l = 0; l < c; l++)
@@ -207,6 +211,7 @@ sealed class CreatureLegs
             reachLen[l] = sp.LegReach(l);
             ankleH[l] = specs[l].AnkleHeight;
             for (int w = 0; w < sp.WingCount; w++) if (sp.wings[w] != null && sp.wings[w].leg == l) ankleH[l] = 0f;   // a wing arm walks on its wrist
+            hockReach[l] = specs[l].hockInReach && ankleH[l] > 0f && models[l] == null;
             PointOffset[l] = points;
             if (models[l] != null) points += models[l].PointCount;
             Vector3 ry = Mirror(specs[l].restOffset, l); ry.y = 0f;
@@ -239,6 +244,7 @@ sealed class CreatureLegs
             fwdLimit[l] = s.ForwardSwingLimit; backLimit[l] = s.BackSwingLimit; kneeRange[l] = s.KneeRange; kneeFlex[l] = s.KneeFlex;
             Vector3 sh = Mirror(s.shoulderOffset, l);
             Vector3 rs = Mirror(s.restOffset, l); rs.y = -sp.joints[s.attachJoint].clearance;
+            if (hockReach[l]) rs.y += ankleH[l];   // the gait's limb ends on the hock
             if (models[l] != null)
             {
                 restReach[l] = Mathf.Min((rs - sh).magnitude, reachLen[l]);
@@ -342,6 +348,7 @@ sealed class CreatureLegs
             Vector3 sh = Mirror(s.shoulderOffset, l) * scale;
             Vector3 rs = Mirror(s.restOffset, l) * scale;
             rs.y = -sp.joints[s.attachJoint].clearance * scale;
+            if (hockReach[l]) rs.y += ankleH[l] * scale;
             Vector3 v = rs - sh;
             float along = v.z;
             float perp2 = Mathf.Max(0f, v.sqrMagnitude - along * along);
@@ -374,6 +381,7 @@ sealed class CreatureLegs
             Vector3 sh = Mirror(s.shoulderOffset, l) * scale;
             Vector3 rs = Mirror(s.restOffset, l) * scale;
             rs.y = -sp.joints[s.attachJoint].clearance * scale;
+            if (hockReach[l]) rs.y += ankleH[l] * scale;
             Vector3 v = rs - sh;
             float along = Mathf.Abs(v.x);
             float perp2 = v.y * v.y + v.z * v.z;
@@ -396,7 +404,7 @@ sealed class CreatureLegs
             LegSpec s = specs[l];
             if (s.feeler) continue;
             Vector3 fwd = rotations[s.attachJoint] * Vector3.forward;
-            Vector3 v = rest[l] - State[l].shoulder;
+            Vector3 v = rest[l] - GaitShoulder(l);
             float along = Vector3.Dot(v, fwd);
             float perp2 = Mathf.Max(0f, v.sqrMagnitude - along * along);
             float reach = kStrideReach * reachLen[l] * scale;
@@ -661,9 +669,9 @@ sealed class CreatureLegs
             // Also step when the planted foot nears full extension: with short-limbed rear legs the
             // reach runs out before stepThreshold does, and the IK would drag the foot.
             float reach = reachLen[l] * scale * kOverextend;
-            float now = (target[l] - State[l].shoulder).magnitude;
+            float now = (target[l] - GaitShoulder(l)).magnitude;
             // only if stepping to the rest point would actually shorten the reach (else it is a zero-length step loop)
-            bool stretched = now > reach && (rest[l] - State[l].shoulder).magnitude < now - kStepGain * scale;
+            bool stretched = now > reach && (rest[l] - GaitShoulder(l)).magnitude < now - kStepGain * scale;
             // an arthropod's planted foot out of the solver's reach (the leg could not follow it)
             if (models[l] != null && !State[l].stepping && poses[l].clamped && dist > kStepGain * scale) stretched = true;
             bool overFlexed = !State[l].stepping && jointLimited[l]; // from the last IK solve
@@ -671,7 +679,7 @@ sealed class CreatureLegs
             eligible[l] = !State[l].stepping && (dist > thr || stretched || overFlexed || underTrunk || (idle && dist > kIdleTidyFraction * thr));
             // climbing, a planted foot about to be dragged out of its reach steps now, out of turn (see kClimbUrgent)
             urgent[l] = Climbing && eligible[l] && now > kClimbUrgent / kOverextend * reach
-                     && (rest[l] - State[l].shoulder).magnitude < now - kStepGain * scale;
+                     && (rest[l] - GaitShoulder(l)).magnitude < now - kStepGain * scale;
         }
 
         // start steps
@@ -809,7 +817,7 @@ sealed class CreatureLegs
                 LegSpec s = specs[l];
                 if (s.attachJoint != j || s.feeler) continue;
                 any = true;
-                Vector3 v = rest[l] - State[l].shoulder;
+                Vector3 v = rest[l] - GaitShoulder(l);
                 float d = v.magnitude;
                 if (d < 1e-5f) { need = Mathf.Max(need, -1f); continue; }
                 float reach = reachLen[l] * scale;
@@ -852,7 +860,7 @@ sealed class CreatureLegs
         float over = speed < kIdleSpeed * timeScale ? 0f : s.overshoot * scale;
         if (Climbing) over *= Factor(sp.climb.StrideFactor, Steep(l));
         float maxDist = kLandReach * reachLen[l] * scale;
-        for (int i = 0; i < 6 && over > 1e-4f && (rest[l] + fwd * over - State[l].shoulder).sqrMagnitude > maxDist * maxDist; i++)
+        for (int i = 0; i < 6 && over > 1e-4f && (rest[l] + fwd * over - GaitShoulder(l)).sqrMagnitude > maxDist * maxDist; i++)
             over *= 0.6f;
         stepOver[l] = over;
         State[l].stepFrom = target[l];
@@ -878,9 +886,9 @@ sealed class CreatureLegs
             // the overshoot trimmed (as at lift-off) to the rest point it has now: on a trunk the rest point moves
             // about under the turning stance, and a landing past the reach left the planted foot dragged by the IK
             float maxDist = kLandReach * reachLen[l] * scale;
-            for (int i = 0; i < 6 && over > 1e-4f && (rest[l] + fwd * over - State[l].shoulder).sqrMagnitude > maxDist * maxDist; i++)
+            for (int i = 0; i < 6 && over > 1e-4f && (rest[l] + fwd * over - GaitShoulder(l)).sqrMagnitude > maxDist * maxDist; i++)
                 over *= 0.6f;
-            if ((rest[l] + fwd * over - State[l].shoulder).sqrMagnitude > maxDist * maxDist) over = 0f;
+            if ((rest[l] + fwd * over - GaitShoulder(l)).sqrMagnitude > maxDist * maxDist) over = 0f;
         }
         Vector3 goal = rest[l] + fwd * (travel + over);
         Vector3 u = Up(l);
@@ -903,7 +911,7 @@ sealed class CreatureLegs
     // allows, pushing it outward horizontally (the vertical lift is kept).
     Vector3 KeepOutOfFlex(int l, Vector3 p)
     {
-        Vector3 sh = State[l].shoulder;
+        Vector3 sh = GaitShoulder(l);
         Vector3 v = p - sh;
         float dMin = minReach[l] * scale;
         if (v.sqrMagnitude >= dMin * dMin) return p;
@@ -1012,7 +1020,7 @@ sealed class CreatureLegs
             State[l].shoulder = shoulder;
             if (models[l] != null) { SolveArthropod(l, shoulder, r); continue; }
             float l1 = s.upperLength * scale, l2 = s.lowerLength * scale;
-            Vector3 elbow = gaitElbow[l] = TwoBoneIK.Solve(shoulder, target[l], l1, l2, pole, out Vector3 foot);
+            Vector3 elbow = gaitElbow[l] = TwoBoneIK.Solve(hockReach[l] ? GaitShoulder(l) : shoulder, target[l], l1, l2, pole, out Vector3 foot);
             State[l].foot = foot;
             if (ankleH[l] > 0f) State[l].elbow = TwoBoneIK.Solve(shoulder, foot + AnkleLift(l), l1, l2, pole, out State[l].ankle);
             else { State[l].elbow = elbow; State[l].ankle = foot; }
@@ -1059,9 +1067,9 @@ sealed class CreatureLegs
             if (Climbing) jt = Mathf.Lerp(jt, 1f, Steep(l) > 0f || climb.AheadWeight > 0f ? kClimbJointRelax : 0f);
             jointThrottle = Mathf.Min(jointThrottle, jt);
             float reach = reachLen[l] * scale;
-            float now = (target[l] - State[l].shoulder).magnitude;
+            float now = (target[l] - GaitShoulder(l)).magnitude;
             // a stretch no step can cure (rest point itself out of reach) must not stop the body for good
-            if ((rest[l] - State[l].shoulder).magnitude >= now - kStepGain * scale) continue;
+            if ((rest[l] - GaitShoulder(l)).magnitude >= now - kStepGain * scale) continue;
             worst = Mathf.Max(worst, now / reach);
             if (Climbing) margin = Mathf.Min(margin, kStopAt * reach - now);
         }
@@ -1096,7 +1104,8 @@ sealed class CreatureLegs
     float JointThrottle(int l, float dt)
     {
         LegState st = State[l];
-        JointAngles(l, st.shoulder, gaitElbow[l], st.foot, out float swing, out float knee, out float swingLim, out float kneeLim);
+        Vector3 gs = GaitShoulder(l);
+        JointAngles(l, gs, gaitElbow[l], st.foot, out float swing, out float knee, out float swingLim, out float kneeLim);
         float ps = prevSwing[l], pk = prevKnee[l];
         prevSwing[l] = swing; prevKnee[l] = knee;
         float lead = dt > 0f && ps >= 0f ? kJointLeadSec * timeScale / dt : 0f;
@@ -1105,9 +1114,9 @@ sealed class CreatureLegs
         if (swingP <= swingLim && kneeP <= kneeLim) return 1f;
 
         LegSpec s = specs[l];
-        Vector3 er = TwoBoneIK.Solve(st.shoulder, rest[l], s.upperLength * scale, s.lowerLength * scale,
+        Vector3 er = TwoBoneIK.Solve(gs, rest[l], s.upperLength * scale, s.lowerLength * scale,
                                      rotations[s.attachJoint] * Mirror(s.pole, l), out Vector3 fr);
-        JointAngles(l, st.shoulder, er, fr, out float swingR, out float kneeR, out float unusedS, out float unusedK);
+        JointAngles(l, gs, er, fr, out float swingR, out float kneeR, out float unusedS, out float unusedK);
         jointLimited[l] = (swing > swingLim && swingR < swing - kJointGainDeg)
                        || (knee > kneeLim && kneeR < knee - kJointGainDeg);
         float excess = 0f;
@@ -1181,6 +1190,11 @@ sealed class CreatureLegs
 
     // Ankle height of leg l, metres at scale 1 (0 = the lower bone ends on the ground).
     internal float AnkleHeight(int l) => ankleH[l];
+
+    // The gait limb's root (SolveIK's shoulder this sub-step): the shoulder itself, or with LegSpec.hockInReach the
+    // shoulder lowered by the ankle height along the leg's up - the limb from there to the contact is the limb from the
+    // shoulder to the hock, so the metatarsus counts in every reach the gait measures.
+    Vector3 GaitShoulder(int l) => hockReach[l] ? State[l].shoulder - Up(l) * (ankleH[l] * scale) : State[l].shoulder;
 
     // Writes every leg's bones as world matrices: upper, lower, foot for a two-bone leg; one per segment for
     // an arthropod leg (ArthropodLegIK.WriteBones).

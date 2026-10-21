@@ -43,73 +43,124 @@ MonoBehaviour:
         spacing: 0.1
         headCapLength: 0.06
         tailTipLength: 0.14
-        jointCount: 30
+        jointCount: 38
         profile:
         - t: 0
           halfWidth: 0.025
           halfHeight: 0.03
-          clearance: 0.93
+          clearance: 0.86
           bendLimitDeg: 5
+          spacing: 0.05
           hump: 0
           keel: 0
           flank: 0
           blade: 0
           keelForward: 0
-        - t: 0.103448
+        - t: 0.081081
           halfWidth: 0.045
           halfHeight: 0.055
-          clearance: 0.95
+          clearance: 0.88
           bendLimitDeg: 5
+          spacing: 0.05
           hump: 0
           keel: 0
           flank: 0
           blade: 0
           keelForward: 0
-        - t: 0.189655
+        - t: 0.121622
           halfWidth: 0.04
-          halfHeight: 0.05
-          clearance: 0.83
+          halfHeight: 0.048
+          clearance: 0.88
           bendLimitDeg: 14
+          spacing: 0.058
           hump: 0
           keel: 0
           flank: 0
           blade: 0
           keelForward: 0
-        - t: 0.293103
+        - t: 0.256757
           halfWidth: 0.06
           halfHeight: 0.075
-          clearance: 0.69
+          clearance: 0.855
           bendLimitDeg: 12
+          spacing: 0.062
           hump: 0
           keel: 0
           flank: 0
           blade: 0
           keelForward: 0
-        - t: 0.37931
+        - t: 0.283784
+          halfWidth: 0.09
+          halfHeight: 0.11
+          clearance: 0.85
+          bendLimitDeg: 11
+          spacing: 0.0765
+          hump: 0
+          keel: 0
+          flank: 0
+          blade: 0
+          keelForward: 0
+        - t: 0.297297
           halfWidth: 0.12
           halfHeight: 0.14
-          clearance: 0.52
+          clearance: 0.85
           bendLimitDeg: 10
+          spacing: 0.085
           hump: 0
           keel: 0
           flank: 0
           blade: 0
           keelForward: 0
-        - t: 0.5
+        - t: 0.310811
+          halfWidth: 0.12
+          halfHeight: 0.142
+          clearance: 0.87
+          bendLimitDeg: 10
+          spacing: 0.094
+          hump: 0
+          keel: 0
+          flank: 0
+          blade: 0
+          keelForward: 0
+        - t: 0.351351
+          halfWidth: 0.115
+          halfHeight: 0.135
+          clearance: 0.92
+          bendLimitDeg: 10
+          spacing: 0.1
+          hump: 0
+          keel: 0
+          flank: 0
+          blade: 0
+          keelForward: 0
+        - t: 0.432432
           halfWidth: 0.1
           halfHeight: 0.11
-          clearance: 0.43
+          clearance: 0.8
           bendLimitDeg: 12
+          spacing: 0.1
           hump: 0
           keel: 0
           flank: 0
           blade: 0
           keelForward: 0
-        - t: 0.568966
-          halfWidth: 0.07
+        - t: 0.513514
+          halfWidth: 0.075
           halfHeight: 0.09
-          clearance: 0.4
+          clearance: 0.64
           bendLimitDeg: 18
+          spacing: 0.1
+          hump: 0
+          keel: 0
+          flank: 0
+          blade: 0
+          keelForward: 0
+        - t: 0.702703
+          halfWidth: 0.045
+          halfHeight: 0.055
+          clearance: 0.3
+          bendLimitDeg: 19
+          spacing: 0.1
           hump: 0
           keel: 0
           flank: 0
@@ -118,8 +169,9 @@ MonoBehaviour:
         - t: 1
           halfWidth: 0.012
           halfHeight: 0.02
-          clearance: 0.3
+          clearance: 0.08
           bendLimitDeg: 20
+          spacing: 0.1
           hump: 0
           keel: 0
           flank: 0
@@ -145,24 +197,24 @@ MonoBehaviour:
         at:
           joint: 11
           side: 0
-          offset: {x: 0.1, y: 0.02, z: 0}
+          offset: {x: 0.1, y: -0.12, z: 0}
           slot: 0
         mirror: 1
         role: 0
         gaitGroup: -1
-        restOffset: {x: 0.06, y: 0, z: -0.22}
-        stepThreshold: 0.14
-        stepDuration: 0.3
-        stepLift: 0.06
-        overshoot: 0
+        restOffset: {x: 0.38, y: 0, z: 0.6}
+        stepThreshold: 0.32
+        stepDuration: 0.45
+        stepLift: 0.1
+        overshoot: 0.08
         footLength: 0
         toeCount: 0
         forwardSwingLimitDeg: 0
         backSwingLimitDeg: 0
         kneeRangeDeg: 0
         kneeFlexDeg: 0
-        upperLength: 0.2
-        lowerLength: 0.5
+        upperLength: 0.25
+        lowerLength: 0.9
         upperRadius: 0.04
         lowerRadius: 0.03
         pole: {x: 0.2, y: 1, z: -0.4}
@@ -180,30 +232,31 @@ MonoBehaviour:
       data:
         id: hind
         at:
-          joint: 15
+          joint: 16
           side: 0
-          offset: {x: 0.08, y: -0.05, z: 0}
+          offset: {x: 0.08, y: -0.1, z: 0}
           slot: 0
         mirror: 1
         role: 0
         gaitGroup: -1
-        restOffset: {x: 0.18, y: 0, z: -0.1}
-        stepThreshold: 0.16
-        stepDuration: 0.25
-        stepLift: 0.06
-        overshoot: 0
+        restOffset: {x: 0.18, y: 0, z: 0.1}
+        stepThreshold: 0.4
+        stepDuration: 0.45
+        stepLift: 0.1
+        overshoot: 0.2
         footLength: 0.12
         toeCount: 0
         forwardSwingLimitDeg: 0
-        backSwingLimitDeg: 0
-        kneeRangeDeg: 0
+        backSwingLimitDeg: 90
+        kneeRangeDeg: 60
         kneeFlexDeg: 0
-        upperLength: 0.24
-        lowerLength: 0.26
+        upperLength: 0.28
+        lowerLength: 0.32
         upperRadius: 0.034
         lowerRadius: 0.02
         pole: {x: 0.3, y: 0.2, z: 0.9}
-        ankleHeight: 0.14
+        ankleHeight: 0.3
+        walkOnHock: 1
         toes: 3
         hallux: 1
         talonLength: 0
@@ -222,7 +275,7 @@ MonoBehaviour:
         arm: arm
         spec:
           leg: 0
-          restTip: {x: 0.6, y: 0.06, z: 0.04}
+          restTip: {x: 0.6, y: -0.08, z: 0.04}
           comfortUp: 0.5
           comfortDown: 0.6
           strokePlaneDeg: 10
@@ -249,7 +302,7 @@ MonoBehaviour:
           - 127.5
           fingerMinGapDeg: 2
           fingerFoldGapDeg: 3.5
-          groundLiftDeg: 82
+          groundLiftDeg: 35
           groundTallStance: 1
           flankPatches: 6
           groundWristLift: 0.08
@@ -259,7 +312,7 @@ MonoBehaviour:
           fingerRadius: 0.014
           thumbLength: 0.08
           membraneRearJoint: 13
-          membraneFrontJoint: 8
+          membraneFrontJoint: 6
           trailingRib: 0.5
           membraneInset: 0.8
           area: 3
@@ -343,7 +396,7 @@ MonoBehaviour:
           demandFloor: 0.12
           descendCutoff: -0.3
           glideDemand: 0.14
-          amplitudeMin: 0.4
+          amplitudeMin: 0.3
           strokeRateMin: 1.5
           strokeRateMax: 10
           glideRelax: 6
@@ -373,6 +426,7 @@ MonoBehaviour:
           perchTubeOnApproach: 1
           drapeOwnHeading: 1
           perchFrontLevel: 1
+          drapeCapKeepsLength: 1
           floorLiftEased: 1
           containTurns: 0
           avoidLookahead: 2.4

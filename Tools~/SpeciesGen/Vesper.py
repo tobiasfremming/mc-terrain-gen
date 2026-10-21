@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Vesper: species generator (Vesper step 1 - the skeleton only).
+"""Vesper: species generator (Vesper step 1 - the skeleton only; rev 2: the humpbacked proportions).
 
 Vesper is the Apex's animal (docs/superpowers/specs/assets/2026-10-20-apex-anatomy.jpg, -reference-hires.jpg) built
 skeleton-first (docs/superpowers/specs/2026-10-21-vesper-skeleton-design.md): ONE FlowBody chain from the head's tip to
@@ -7,6 +7,10 @@ the tail's tip (the head = its first four joints, stiff but jointed), Leg2Bone w
 forearm to the ground) carrying DigitWing wings (four long jointed finger chains + a forward thumb claw), DrakeLeg
 digitigrade hind legs, Eyes. No skin: the SkeletonOnly module (F3 shows the skeleton; the per-joint radii below are the
 future skin's).
+
+Rev 2 (docs/superpowers/specs/2026-10-21-vesper-proportions-design.md): high hips, the hump the highest point, the neck
+nearly level to a short head (closer joints: the profile's `spacing` channel), a very long tail reaching the ground, a long
+metatarsus, the knuckles planted ahead of the chest and out wide, long strides. NOT a pterosaur (the spec's anti-goal list).
 
 THE NUMBERS ARE FOR TUNING: every number below is at scale 1 in metres (lengths x SCALE in the game, times x sqrt SCALE).
 Change one, run this file, and the asset is rewritten (editing Config/Creatures/Vesper.asset in play mode respawns
@@ -32,40 +36,61 @@ import kityaml as K  # noqa: E402
 SCALE = 4.0                 # the whole animal x this: ~12.4 m from the snout to the tail tip
 
 # ================================================================ the spine: ONE chain, head tip .. tail tip (FlowBody)
-N = 30                      # joints, head to tail
-SPACING = 0.1               # metres between joints (the same everywhere along the chain)
+# Rev 2 (docs/superpowers/specs/2026-10-21-vesper-proportions-design.md; the user: "the backside sits high, there is a
+# hump, and then it is quite flat to the head"): a humpbacked build - high hips, the hump the highest point just behind
+# the shoulders, the neck to the head nearly level, a short head and neck by CLOSER joints (not fewer: per-joint spacing,
+# the profile's `spacing` channel), a very long tail reaching the ground. NOT a pterosaur (the spec's anti-goal list):
+# never high shoulders with the back sloping to low hips and the head the peak.
+#
+#   part                       joints   spacing   length
+#   head (snout .. skull)      0..3     0.05      ~0.2 with the cap
+#   neck                       4..10    0.06      ~0.42
+#   trunk (shoulder..hump..hips) 11..16 0.1       ~0.6
+#   tail                       17..37   0.1       ~2.2 with the tip (over half the animal)
+N = 38                      # joints, head to tail
+SPACING = 0.1               # metres between joints where a key gives no spacing of its own (the trunk and tail)
 HEAD_CAP = 0.06             # the chain closes this far ahead of joint 0 (the snout's tip)
 TAIL_TIP = 0.14             # the tail's last bit behind the last joint
 HEAD_JOINTS = 4             # joints 0..3 are the head: stiff (HEAD_BEND) but jointed - not a rigid block
 HEAD_BEND = 5               # deg: the head joints' bend limit (cone half-angle; the tests demand <= 6)
-SHOULDER = 11               # the chest joint: the wing arms hang here (and the flight's girdle)
-HIPS = 15                   # the hind legs hang here
-TAIL_ROOT = 16              # the tail starts here: 14 joints + the tip = 1.54 m of the 3.1 m body (~half)
+SHOULDER = 11               # the chest joint: the wing arms hang here (and the flight's girdle); the neck is 4..10
+HIPS = 16                   # the hind legs hang here (the trunk is 11..16: shoulder, hump, hips)
+TAIL_ROOT = 17              # the tail starts here: 21 joints + the tip
 
 
 def at(joint=0, offset=(0, 0, 0)):
     return {'joint': joint, 'side': 0, 'offset': K.V(*offset), 'slot': 0}
 
 
-def key(j, half_width, half_height, height, bend):
-    """A profile key at joint j: the joint's radii (half width, half height - the future skin), its height above the
-    ground when standing (metres), its bend limit (deg). Joints between keys are interpolated smoothly."""
+def key(j, half_width, half_height, height, bend, spacing):
+    """A profile key at joint j (fractional: between joints): the joint's radii (half width, half height - the future
+    skin), its height above the ground when standing (metres), its bend limit (deg), and the segment length here
+    (metres; each segment takes the curve's value at its midpoint, j + 0.5 for the segment j -> j + 1). Joints and
+    segments between keys are interpolated smoothly (a monotone cubic: no overshoot)."""
     return {'t': round(j / (N - 1), 6), 'halfWidth': half_width, 'halfHeight': half_height, 'clearance': height,
-            'bendLimitDeg': bend, 'hump': 0, 'keel': 0, 'flank': 0, 'blade': 0, 'keelForward': 0}
+            'bendLimitDeg': bend, 'spacing': spacing,
+            'hump': 0, 'keel': 0, 'flank': 0, 'blade': 0, 'keelForward': 0}
 
 
-# The stance (the anatomy picture): the head held high and level, the neck rising steeply from the chest (as the Apex's:
-# 0.43 m over 7 segments, no segment steeper than ~45 deg), the trunk falling gently to the hips, the long tail low.
+# The stance: the head carried forward at about the shoulders' height and level (~0.86-0.88), the neck nearly flat, the
+# trunk rising from the shoulders (0.85) to the hump (~0.92, joints 12-14) and falling to the high hips (0.80), the long
+# tail sweeping down to the ground (its tip ~0.08). The spacing: 0.05 in the head, 0.06 in the neck, then ramped up to
+# the trunk's 0.1 over the neck's base and the chest (0.062 -> 0.0765 -> 0.094 -> 0.1: neighbours at most 1.25 x apart,
+# FlowBody.MaxSpacingStep - no visible kink), the keys at those segments' midpoints (j + 0.5).
 PROFILE = [
-    #     joint          width  height  standing height  bend limit
-    key(0,              0.025, 0.030, 0.93, HEAD_BEND),   # the snout's tip
-    key(HEAD_JOINTS - 1, 0.045, 0.055, 0.95, HEAD_BEND),  # the back of the skull (the head's last joint)
-    key(HEAD_JOINTS + 1.5, 0.040, 0.050, 0.83, 14),       # the upper neck: slim and supple
-    key(SHOULDER - 2.5, 0.060, 0.075, 0.69, 12),          # the lower neck widening into the chest
-    key(SHOULDER,       0.120, 0.140, 0.52, 10),          # the chest (the widest point)
-    key(HIPS - 0.5,     0.100, 0.110, 0.43, 12),          # the trunk narrowing to the hips
-    key(TAIL_ROOT + 0.5, 0.070, 0.090, 0.40, 18),         # the tail root: long and thick
-    key(N - 1,          0.012, 0.020, 0.30, 20),          # the tail's tip
+    #   joint              width  height standing  bend limit spacing
+    key(0,                 0.025, 0.030, 0.86 , HEAD_BEND, 0.05  ),  # the snout's tip
+    key(HEAD_JOINTS - 1,   0.045, 0.055, 0.88 , HEAD_BEND, 0.05  ),  # the back of the skull (the head's last joint)
+    key(HEAD_JOINTS + 0.5, 0.040, 0.048, 0.88 , 14       , 0.058 ),  # the upper neck: slim and supple
+    key(SHOULDER - 1.5,    0.060, 0.075, 0.855, 12       , 0.062 ),  # the lower neck widening into the chest
+    key(SHOULDER - 0.5,    0.090, 0.110, 0.85 , 11       , 0.0765),  # the neck's base (the spacing ramp)
+    key(SHOULDER,          0.120, 0.140, 0.85 , 10       , 0.085 ),  # the chest / shoulders (the widest point)
+    key(SHOULDER + 0.5,    0.120, 0.142, 0.87 , 10       , 0.094 ),  # (the spacing ramp's last step)
+    key(SHOULDER + 2,      0.115, 0.135, 0.92 , 10       , 0.1   ),  # the hump: the highest point, just behind the shoulders
+    key(HIPS,              0.100, 0.110, 0.80 , 12       , 0.1   ),  # the high hips
+    key(TAIL_ROOT + 2,     0.075, 0.090, 0.64 , 18       , 0.1   ),  # the tail root: long and thick
+    key(26,                0.045, 0.055, 0.30 , 19       , 0.1   ),  # the tail sweeping down
+    key(N - 1,             0.012, 0.020, 0.08 , 20       , 0.1   ),  # the tail's tip on the ground
 ]
 
 sp = K.Species('Vesper', scale=SCALE)
@@ -78,19 +103,29 @@ sp.add_part('FlowBody', {
     'humpSharpness': 8, 'keelSharpness': 6, 'bladeExponent': 4, 'ringSegments': 24, 'ringsPerSegment': 3,
     'tailColourFrom': 1, 'dorsalStripeTo': 0, 'dorsalStripeWidthDeg': 30, 'tailKind': 'tailfan',
     'dorsalStripeKind': 'dorsalstripe', 'ovalMaxAspect': 2,
-    'restAtStance': 1,      # bound as it stands (the raised neck)
+    'restAtStance': 1,      # bound as it stands (the hump, the high hips, the tail sweeping down)
 })
 
 # ================================================================ the wing arms (walked on, folded) - Leg2Bone
-# The anatomy picture: a short upper arm, a very long forearm to the ground (upper = 0.4 x forearm). The Apex's proven
-# placement: the wrist rests 0.22 m behind the shoulder and 0.06 m out, the elbow high and back (pole).
-ARM_UPPER = 0.2             # upper arm (shoulder -> elbow)
-ARM_FOREARM = 0.5           # forearm (elbow -> wrist, which is the foot it walks on)
+# The anatomy picture: a short upper arm, a very long forearm to the ground. Rev 2: the knuckles carry all the front
+# weight, planted well AHEAD of the shoulders and out to each side (the chest hangs between the arms: a heavy, broad,
+# low-slung front - not a pterosaur's upright narrow stance), the elbow up and back (pole). The forearm grew with the
+# shoulders' height (0.52 -> 0.85) so it reaches the ground ahead: 0.9 (the spec's "~0.8"), and the socket sits 0.12 below
+# the shoulder joint on the chest's side (0.02 above it in step 1). The planted knuckles' range along the body is what the
+# reach leaves ahead of the socket; with the forearm 0.8 and the socket at -0.06 the knuckles could plant at most ~0.47
+# ahead (91 % of the reach), too little for knuckles ~0.45 ahead on average AND long strides around them; 0.9 and -0.12
+# give ~0.70 (CreatureVesperTests: knuckles 0.46 ahead, 0.38 out; strides 0.55).
+ARM_UPPER = 0.25            # upper arm (shoulder -> elbow)
+ARM_FOREARM = 0.9           # forearm (elbow -> wrist, which is the foot it walks on)
 sp.add_part('Leg2Bone', {
-    'id': 'arm', 'at': at(SHOULDER, (0.1, 0.02, 0)), 'mirror': 1,
+    'id': 'arm', 'at': at(SHOULDER, (0.1, -0.12, 0)), 'mirror': 1,
     'role': 0, 'gaitGroup': -1,
-    'restOffset': K.V(0.06, 0, -0.22),   # where the planted wrist rests from the shoulder (out, up, forward)
-    'stepThreshold': 0.14, 'stepDuration': 0.3, 'stepLift': 0.06, 'overshoot': 0,   # the walking step
+    'restOffset': K.V(0.38, 0, 0.6),    # where the planted knuckles rest from the shoulder joint (out, up, forward)
+    # the walking step: long strides (step 1: threshold 0.14, 0.3 s, lift 0.06, strides 0.25 m) - the knuckles lift 0.32
+    # behind their rest and land a little ahead of it (overshoot). Scanned with the hind legs' (Vesper_Strides_Longer,
+    # m at scale 1, arms / legs): rest z 0.45 + no overshoot 0.55 / 0.28 (knuckles 0.25 ahead); z 0.55 0.58 / 0.61 (0.40
+    # ahead); z 0.6 + overshoot 0.08 0.55 / 0.59 (0.46 ahead: chosen); z 0.65 0.44 / 0.52 (the reach's end throttles it)
+    'stepThreshold': 0.32, 'stepDuration': 0.45, 'stepLift': 0.1, 'overshoot': 0.08,
     'footLength': 0, 'toeCount': 0,
     'forwardSwingLimitDeg': 0, 'backSwingLimitDeg': 0, 'kneeRangeDeg': 0, 'kneeFlexDeg': 0,
     'upperLength': ARM_UPPER, 'lowerLength': ARM_FOREARM,
@@ -102,18 +137,32 @@ sp.add_part('Leg2Bone', {
 })
 
 # ================================================================ the hind legs (digitigrade) - DrakeLeg
-# The Apex's: a raised hock, a long metatarsus, three toes and a hallux; the feet 0.1 m behind the hips.
+# Rev 2: the high hips (0.80) stand on long legs - a longer thigh and shin and a much longer metatarsus (the hock raised
+# 0.30 off the toes); the foot plants under the hip (0.1 ahead of the hip joint: its stride runs from ~0.3 ahead to ~0.3
+# behind). The socket sits 0.1 below the hip joint (0.05 in step 1): the leg's reach along the body grows with the drop
+# it does not have to cover (the stride).
 sp.add_part('DrakeLeg', {
-    'id': 'hind', 'at': at(HIPS, (0.08, -0.05, 0)), 'mirror': 1,
+    'id': 'hind', 'at': at(HIPS, (0.08, -0.1, 0)), 'mirror': 1,
     'role': 0, 'gaitGroup': -1,
-    'restOffset': K.V(0.18, 0, -0.1),     # where the foot rests from the hip (out, up, forward)
-    'stepThreshold': 0.16, 'stepDuration': 0.25, 'stepLift': 0.06, 'overshoot': 0,
+    'restOffset': K.V(0.18, 0, 0.1),        # where the foot rests from the hip (out, up, forward): under the hip
+    # the walking step: long strides (step 1: threshold 0.16, 0.25 s, lift 0.06, strides 0.25 m); it lands well ahead
+    # (overshoot 0.2) since the stride's back end is the thigh's swing limit
+    'stepThreshold': 0.4, 'stepDuration': 0.45, 'stepLift': 0.1, 'overshoot': 0.2,
     'footLength': 0.12, 'toeCount': 0,
-    'forwardSwingLimitDeg': 0, 'backSwingLimitDeg': 0, 'kneeRangeDeg': 0, 'kneeFlexDeg': 0,
-    'upperLength': 0.24, 'lowerLength': 0.26,    # thigh, shin
+    # the joint limits: the hump falls to the hips, so the hip joint's frame is pitched ~31 deg nose-up and the thigh's
+    # rest direction measured in it is already ~39 deg off the flat reference; a 0.3 m stride behind the rest swings it
+    # ~60 deg more. At the default 55 deg the swing limit lifted every hind foot ~0.16 behind its rest (strides 0.28 m;
+    # back 65, the foot resting 0.05 ahead: 0.34); back 90: 0.59 (chosen; the foot lifts ~0.31 behind, the limb at 85-90 % of its reach); the
+    # knee deviates up to ~43 deg there (the default 35 lifted it early too: 60)
+    'forwardSwingLimitDeg': 0, 'backSwingLimitDeg': 90, 'kneeRangeDeg': 60, 'kneeFlexDeg': 0,
+    'upperLength': 0.28, 'lowerLength': 0.32,    # thigh, shin
     'upperRadius': 0.034, 'lowerRadius': 0.02,
     'pole': K.V(0.3, 0.2, 0.9),                  # the knee points forward and out
-    'ankleHeight': 0.14,                         # the raised hock (digitigrade: the metatarsus)
+    'ankleHeight': 0.30,                         # the raised hock (digitigrade: the long metatarsus)
+    # the gait's limb ends on the hock (DrakeLeg.walkOnHock -> LegSpec.hockInReach): the hip socket stands 0.7 high,
+    # more than thigh + shin (0.6); off, the gait (which read the limb ending on the toes) could not reach the ground -
+    # the hips drooped to 0.66 and the planted feet slid (CreatureVesperTests.Red_Vesper_HockNotInReach)
+    'walkOnHock': 1,
     'toes': 3, 'hallux': 1, 'talonLength': 0, 'talonCurveDeg': 110, 'haunch': 1.5,
 })
 
@@ -128,22 +177,35 @@ FINGER_SPREAD = [20, 42, 64, 86]             # deg behind the forearm, wing spre
 # CreatureVesperTests.Vesper_FoldedWingsStaySeparate wants >= 0 / >= 120): fold 160 lift 68: -494 / -744; lift 82 / 88
 # alone: -365 / -311; fold 140 + lift 82: -143 / 65; fold 130 + lift 82: 2 / 363; fold 120 + lift 82: 118 / 520 (chosen);
 # fold 125 + lift 88: 149 / 613. Moving the elbow (pole x 0 / 0.5) or the wrist (restOffset x 0 / 0.15) only made it worse.
+# Rev 2 (the knuckles 0.6 ahead and 0.38 out, the forearm 0.9, the shoulders 0.85 and a hump behind them): the step-1
+# fold 120 + lift 82 crossed again (-1073 / -136: a left tip 679 mm across the spine, walking) - the fingers stood up off
+# a forearm that now leans forward from the shoulder, so standing up steeply tipped them in over the back. Rescanned
+# (the same measures): fold 120 / 140 / 160 + lift 70: -826 / 223, -697 / -10, -411 / -124; + lift 55: -427 / 656,
+# -351 / 368, -183 / 124; + lift 40: 32 / 1082, 44 / 751, 38 / 320; lift 45 with fold 110 / 120 / 130: -125 / 1073,
+# -125 / 943, -113 / 791; lift 35: 149 / 1300, 147 / 1174 (chosen: fold 120 + lift 35), 142 / 1015; lift 25: 150 / 1235,
+# 148 / 1116, 145 / 968. The fingers lie back along the forearm, standing up 35 deg, their tips behind the shoulders.
 FINGER_FOLD = [120, 122.5, 125, 127.5]
 sp.add_part('DigitWing', {
     'id': 'wing', 'at': at(SHOULDER), 'mirror': 1, 'arm': 'arm',
     'spec': {
         'leg': 0,
-        'restTip': K.V(0.6, 0.06, 0.04),     # the wrist's rest in the spread glide pose (out, up, forward)
+        # the wrist's rest in the spread glide pose (out, up, forward), from the shoulder joint. Rev 2 lowered the arm's
+        # socket 0.14 (0.02 -> -0.12, the knuckles' reach ahead) and the wrist with it, so the wing's stroke circle is the
+        # step-1 one (wrist - socket = (0.5, 0.04, 0.04)): left at 0.06 up the circle tilted up (its dihedral 4 -> 20 deg),
+        # each downstroke's rise pushed harder and the cruise hung at the glide/beat boundary (one beat in 20 s x sqrt s,
+        # Vesper_Bob). The longer arm (1.15 m) is folded more at the elbow in the spread pose.
+        'restTip': K.V(0.6, -0.08, 0.04),
         'comfortUp': 0.5, 'comfortDown': 0.6, 'strokePlaneDeg': 10, 'pronationDeg': 18, 'overshootUp': 0.08,
         'upstrokeDuration': 0.3, 'upstrokeFold': 0.5, 'foldReach': 0.3, 'beatGroup': 0,
         'fingerLengths': FINGER_LENGTHS, 'fingerSpreadDeg': FINGER_SPREAD, 'fingerFoldDeg': FINGER_FOLD,
         'fingerMinGapDeg': 2, 'fingerFoldGapDeg': 3.5,
-        'groundLiftDeg': 82,                 # folded: how steeply the fingers stand up off the forearm (the Apex's 82; see FINGER_FOLD)
+        'groundLiftDeg': 35,                 # folded: how steeply the fingers stand up off the forearm (step 1: the Apex's 82; see FINGER_FOLD)
         'groundTallStance': 1, 'flankPatches': 6, 'groundWristLift': 0.08,
         'thumbPlant': 1,                     # it walks on the thumb claw's tip
         'fanRearRollsWithFan': 1, 'groundFlankRise': 0.6,
         'fingerRadius': 0.014, 'thumbLength': 0.08,
-        'membraneRearJoint': SHOULDER + 2, 'membraneFrontJoint': SHOULDER - 3,   # the (future) membrane's body span
+        # the (future) membrane's body span: ~0.2 m behind the shoulders to ~0.3 m ahead (the neck's closer joints: 5)
+        'membraneRearJoint': SHOULDER + 2, 'membraneFrontJoint': SHOULDER - 5,
         'trailingRib': 0.5, 'membraneInset': 0.8,
         'area': 3,                           # aerodynamic wing area factor (lift)
         'scallop': 0, 'scallopByChord': 0, 'membraneBillow': 0, 'membraneDetail': 0, 'fingerKnuckles': 0,
@@ -186,7 +248,12 @@ sp.add_module('Fly', {
         'upstrokeArea': 0.15, 'featherDeg': 8.6,
         'climbGain': 0.6, 'climbDamping': 0.5, 'climbIntegral': 0.8, 'climbIntegralLimit': 0.3,
         'thrustGain': 0.5, 'demandFloor': 0.12, 'descendCutoff': -0.3, 'glideDemand': 0.14,
-        'amplitudeMin': 0.4,                                    # the weakest beat's amplitude
+        # the weakest beat's amplitude. Rev 2 (0.4 -> 0.3): the neck is 0.64 m, not 1.1, and the head stabiliser keeps
+        # the head within a quarter of the neck's length of the girdle (AirChain.kMaxOffset); at 0.4 the girdle bobbed
+        # 1.99 m p-p (14.5 % of the body) and the head 0.47 x that (Vesper_Bob: <= 1/3; headStabilise 1.2 .. 2.5 changed
+        # nothing: 0.45-0.47; a faster beat - strokeRateMin 2 / 2.5 / 3 - glided instead: 0 beats). 0.3: girdle 1.31 m
+        # (9.6 %), head 0.18 x; 0.25: 9.3 %, 0.15 x; 0.2 never held its cruise altitude
+        'amplitudeMin': 0.3,
         'strokeRateMin': 1.5, 'strokeRateMax': 10,              # wingbeat rate range (Hz at scale 1)
         'glideRelax': 6,
         'maxBankDeg': 35, 'bankGain': 3, 'bankDamping': 0.5, 'maxAsymmetry': 0.4, 'rollGain': 0.7, 'rollDamping': 4,
@@ -227,7 +294,10 @@ sp.add_module('Fly', {
         # and neck held out past the edge keep the rock's ground (FlightSpec.perchFrontLevel; off, the head was grounded
         # on the floor, the neck followed and the body sank into the rock: the girdle from 4.07 to 1.72 m)
         # (CreatureVesperTests.Vesper_Touchdown_NoGirdleJump, Vesper_Perched_StaysOnTheRock)
-        'drapeOwnHeading': 1, 'perchFrontLevel': 1,
+        # (rev 2, FlightSpec.drapeCapKeepsLength: the drape's step cap keeps the hanging run's lengths - the long tail,
+        # hanging from the rock's edge to the floor, whipped its tip 0.75-0.96 m in a tick as the edge moved a joint:
+        # the length restore after the drape relaid the capped run; 0.36-0.53 m with it. Red_Vesper_DrapeCapLength)
+        'drapeOwnHeading': 1, 'perchFrontLevel': 1, 'drapeCapKeepsLength': 1,
         # flown low past a rock's edge (a launch beside it), the air floor lifts the girdle at most 4 m/s x sqrt s
         # (FlightSpec.floorLiftEased); off, it snapped up by the rock's height in one sub-step: 1.4-1.5 m in a tick
         # (CreatureVesperTests.Vesper_LowOverRock_NoGirdleJump)

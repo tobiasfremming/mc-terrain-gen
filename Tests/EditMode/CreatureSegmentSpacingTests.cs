@@ -50,13 +50,17 @@ namespace TerrainGen.Tests
 
         // ------------------------------------------------------------ uniform: nothing changes
 
+        // (every shipped asset but Vesper: Vesper rev 2 is the species with per-joint spacing - its profile's spacing
+        // channel - and is checked to be the only one)
         [Test] public void UniformSpecies_SegmentLengthsEmpty()
         {
             int n = 0;
+            var varying = new List<string>();
             foreach (string name in CreatureKitAssets.Species())
             {
                 CreatureSpecies sp = CreatureKitAssets.Load(name);
                 if (sp == null) continue;
+                if (!sp.UniformSpacing) { varying.Add(name); continue; }
                 n++;
                 Assert.IsTrue(sp.segmentLengths == null || sp.segmentLengths.Length == 0, $"{name}: segmentLengths emitted ({sp.segmentLengths?.Length})");
                 Assert.IsTrue(sp.UniformSpacing, name);
@@ -74,6 +78,7 @@ namespace TerrainGen.Tests
                 }
             }
             Assert.Greater(n, 10, "the shipped species");
+            Assert.AreEqual("Vesper", string.Join(", ", varying), "the species with per-joint spacing");
         }
 
         // ------------------------------------------------------------ the channel compiles
@@ -244,8 +249,13 @@ namespace TerrainGen.Tests
 
         [Test] public void VaryingSpacing_UnsupportedPartRefused()
         {
-            // a Swell (a mesh part laid out at uniform joint spacing) is fine on the uniform Vesper ...
-            CompiledSpecies uniform = Compile(ps => ps.Add(Hump()));
+            // a Swell (a mesh part laid out at uniform joint spacing) is fine on the uniform Vesper (rev 2's asset with its
+            // spacing channel off) ...
+            CompiledSpecies uniform = Compile(ps =>
+            {
+                foreach (CreaturePart p in ps) if (p is FlowBody fb) for (int k = 0; k < fb.profile.Length; k++) fb.profile[k].spacing = 0f;
+                ps.Add(Hump());
+            });
             Assert.IsNull(uniform.Error, uniform.Error);
             // ... and refused on the varying one, naming the part
             CompiledSpecies varying = Compile(ps => { SetSpacing(ps, kHeadSpacing, kTailSpacing); ps.Add(Hump()); });
