@@ -24,7 +24,12 @@ namespace CreatureKit
         // test hook (CreatureFleshWingTests): the uv0.y offset that marks the rim's vertices
         internal const float RimMark = 4f;
         internal static bool FlatForTest;
-        internal static bool NoRimsForTest;   // RED hook (CreatureFleshWingTests.Red_FleshWing_OpenWithoutRims): the rims left out   // diagnostics: zero thickness (the mid-surface alone: is a flip the skins' or the fold's?)
+        internal static bool NoRimsForTest;
+        // RED hook (CreatureFleshWingTests.Red_FleshWing_NoKnuckles_BonesWithoutSkin): the wrist knuckles left out
+        internal static bool NoKnucklesForTest;
+        // the knuckles' radius x padRadius (Knuckles: the bones the sail does not ride, hidden in the club)
+        internal const float KnuckleRadius = 0.25f;
+        internal static float KnuckleScaleForTest = 1f;   // RED hook (Red_FleshWing_BigKnuckles_ShowOutsideTheClub)   // RED hook (CreatureFleshWingTests.Red_FleshWing_OpenWithoutRims): the rims left out   // diagnostics: zero thickness (the mid-surface alone: is a flip the skins' or the fold's?)
 
         public override void EmitMesh(PartMeshEmitter m, in PartCtx c)
         {
@@ -137,6 +142,7 @@ namespace CreatureKit
 
             public void Build()
             {
+                int first = em.VertexCount;
                 Rays(cw, true, out Vector3[] ray, out Vector3 wrist, out Vector3 elbow, out Vector3 shoulder);
                 Rays(spreadW, false, out Vector3[] sRay, out Vector3 sWrist, out Vector3 sElbow, out _);
                 // the fan's points: bind and spread
@@ -152,6 +158,26 @@ namespace CreatureKit
                 Rims(free, aft, arm, pats);
                 Arm(shoulder, elbow, wrist, arm);
                 Club();
+                if (!NoKnucklesForTest) Knuckles(first);
+            }
+
+            // Every flight bone the sail does not ride - the rear flank rib and the tall stance's fan-side copy of it (the
+            // aft zone rides the fan sector, the arm zone the arm sector) - carries a small knuckle at its origin: the wrist,
+            // inside the club. No bone is left without skin (CreatureKitTests 3, Layout); a rib's frame only turns about the
+            // wrist and stretches with its rib (CreatureWings.WriteBones), so the knuckle stays inside the club in any pose.
+            void Knuckles(int first)
+            {
+                var used = new HashSet<int>();
+                List<Vector4> uv2 = em.Lists.uv2;
+                for (int i = first; i < uv2.Count; i++) { Vector4 s = uv2[i]; if (s.z > 0f) used.Add((int)s.x); if (s.w > 0f) used.Add((int)s.y); }
+                float r = KnuckleRadius * KnuckleScaleForTest * p.padRadius;
+                for (int k = 0; k < p.FlightBones; k++)
+                {
+                    int b = sp.WingBone(w, k);
+                    if (used.Contains(b)) continue;
+                    Vector3 c = em.Bones[b].GetColumn(3);
+                    em.Ellipsoid(Matrix4x4.TRS(c, Quaternion.identity, Vector3.one), Vector3.zero, r, r, r, 8, 4, PartMeshEmitter.PartBody, b);
+                }
             }
 
             // ---------------------------------------------------------- rays

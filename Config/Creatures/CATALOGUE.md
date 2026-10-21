@@ -34,6 +34,7 @@ part (<id>.L then <id>.R), `Repeat` (rows of parts), `SpineBody.profile` (keys i
 | **Antenna** | Chain | exists | = segments | 8 | whiskers, barbels, antennae, feelers, cerci, ribbon-like streamers | GiantCentipede, Scolopendra, SkyDragon |
 | **Dewlap** | Chain | exists | = stations x links |  | a dewlap, throat fan, pelican pouch or throat sail hanging under a FlowBody's neck | - |
 | **LongNeck** | Chain | exists | = segments (the last is the head's bone) | 0 | long necks that are carried, not dragged: pterosaurs, giraffes, sauropods, swans, plesiosaurs; any head held up off the body | Pterodactyl |
+| **TailFlourish** | Chain | exists | 0 (re-poses the body's tail bones) |  | a long decorative tail that should look alive without steering anything: ribbon tails, plumes, a dragon's tail in flight | - |
 | **Tendril** | Chain | exists | = segments | 1, 9 | tentacles, feeding arms, feelers that touch the ground; on a spine body (soft bodies: Tentacle) | StriderMatriarch, TentacleCrab |
 | **Tentacle** | Chain | exists | = spec.segments (0 = 24) | 4 | octopus arms; grabbing arms on any body (after T5.9) | Swinger, TreeOctopus |
 | **Tongue** | Chain | exists | = segments | 14 | monitor lizards, snakes: a tongue that flicks in and out; any quick extensible feeler that hides in the head | KomodoDragon |
@@ -169,9 +170,11 @@ One chain from the head to the tail tip (the sim runs it like a SpineBody's) dra
 | `bladeExponent` | float | Fraction | - | superellipse exponent at blade 1 (2 = ellipse; 4 = a rounded ribbon) | 2..12 | default 4 |
 | `ringSegments` | int | Count | - | mesh: vertices around each ring | 8..64 | default 24 |
 | `ringsPerSegment` | int | Count | - | mesh: rings per spine segment | 1..8 | default 3 |
-| `tailColourFrom` | float | Fraction | - | body fraction (0 front tip .. 1 tail tip) from which the surface is the `tailfan` kind; >= 1 = off | 0..1 | default 1 (off) |
-| `dorsalStripeTo` | float | Fraction | - | body fraction up to which a `dorsalstripe` band runs along the top from the head; 0 = off | 0..1 | default 0 (off) |
+| `tailColourFrom` | float | Fraction | - | body fraction (0 front tip .. 1 tail tip) from which the surface is tailKind (default `tailfan`); >= 1 = off | 0..1 | default 1 (off) |
+| `dorsalStripeTo` | float | Fraction | - | body fraction up to which a dorsalStripeKind band (default `dorsalstripe`) runs along the top from the head; 0 = off | 0..1 | default 0 (off) |
 | `dorsalStripeWidthDeg` | float | Degrees | - | dorsal stripe width around the section (centred on the top) | 0..180 | default 30 |
+| `tailKind` | string | Text | - | the material kind of the tail behind tailColourFrom: tailfan (a kit slot of its own, styled by a species Layers row naming it), or a kind the species already draws (a FleshWing's wingfan: the tail in the wing's colour, one slot for both) |  | default tailfan |
+| `dorsalStripeKind` | string | Text | - | the material kind of the dorsal stripe: dorsalstripe (a kit slot of its own), or a kind the species already draws (one slot for both) |  | default dorsalstripe |
 | `ovalMaxAspect` | float | Fraction | - | an oval (blade 0) is at most this many times as tall as wide; blade 1 stretches it to the key's full halfHeight | 1..8 | default 2 |
 | `restAtStance` | bool | Flag | - | bind the body as it stands: each rest segment spacing long between the joints' clearances (a raised neck bound as steep as it walks); off = joints one spacing apart along the ground (SpineBody's rest) |  | default on |
 
@@ -760,6 +763,29 @@ A long neck on bones of its own from a spine joint (the chest), held in a postur
 | `ringSides` | int | Count | - | mesh: vertices round each ring | 8..32 |  |
 | `ringsPerSegment` | int | Count | - | mesh: rings per neck segment | 1..8 |  |
 
+### TailFlourish
+
+The living tail: a pose drawn over the sim's tail joints (the walk and the flight untouched). Standing, the tail rises in a calm loop above the hips and drifts; in the air (eased in by the flight's air weight) a travelling roll about each bone's own axis, growing to the tip, and a lazy curl travelling down it. Added bend clamped to each joint's bend limit. System: TailFlourishRuntime (part runtime, stage Late; the LAST part: writes over the body's tail bones).
+
+| field | type | unit | size | meaning | range | example |
+|---|---|---|---|---|---|---|
+| `id` | string | Text | - | unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index) |  |  |
+| `at` | PartSocket | Struct | - | where it attaches: spine joint, side, offset in the joint frame |  |  |
+| `at.joint` | int | Joint | - | spine joint the part hangs from (soft bodies: unused) |  |  |
+| `at.side` | int | Count | - | -1 left, +1 right, 0 on the midline; set by mirror | -1..1 |  |
+| `at.offset` | Vector3 | Metres | x s | offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre) |  |  |
+| `at.slot` | int | Count | - | ring slot on a soft body (octopus web), 0 = the first |  |  |
+| `mirror` | bool | Flag | - | authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order |  |  |
+| `fromJoint` | int | Joint | - | the tail root: the first joint of the tail (it and the one behind it stay as the sim has them on the ground) |  | fixture 12 |
+| `airRollDeg` | float | Degrees | - | air: the tip's roll amplitude about its own long axis (grows linearly from 0 at the root) | 0..180 | default 70 |
+| `airCurlDeg` | float | Degrees | - | air: the travelling curl's amplitude per joint (sideways, in the ribbon's rolled frame) | 0..45 | default 9 |
+| `airHz` | float | Hz | / sqrt(s) | air: the roll and curl frequency | 0..5 | default 0.35 |
+| `waveLength` | float | Fraction | - | the travelling wave's length, in tail lengths (the tip lags the root by 1 / waveLength cycles) | 0.05..10 | default 0.6 |
+| `groundLoopDeg` | float | Degrees | - | ground: the upward curl per joint (behind the first two tail joints) building the loop | 0..45 | default 7 |
+| `groundDriftDeg` | float | Degrees | - | ground: the slow drift's amplitude per joint (up-down on the loop and sideways) | 0..30 | default 2 |
+| `groundHz` | float | Hz | / sqrt(s) | ground: the drift's frequency | 0..5 | default 0.12 |
+| `easeSeconds` | float | Seconds | x sqrt(s) | time to blend between the ground loop and the air motion (the flight's air weight at the tail root, eased) | 0..10 | default 0.6 |
+
 ### Tendril
 
 Muscular tentacle rooted on a spine joint (TentacleChain physics: gravity, muscle tone toward a rest curl, a travelling writhe, exact length and bend limits). Hangs and swings while the body moves; when it stops, reaches out and holds its tip on the ground ahead (an eased pin: no tremble), feeling about, and lets go when the body walks on. System: TendrilRuntime (part runtime, stage Late) + TentacleChain.
@@ -1229,7 +1255,7 @@ The beaked serpent head: a long, slightly flattened SDF skull flowing into a poi
 | `crests[].thickness` | float | Metres | x s | blade half thickness at its widest (its root; with flare, where it flares out) - it tapers to a point at the tip |  |  |
 | `crests[].chord` | float | Metres | x s | blade half chord (its width seen from the side) at its widest; 0 = 0.35 x length; chord / thickness is capped at 4 (it follows the thickness) |  |  |
 | `crests[].flare` | float | Fraction | - | a sickle: the blade rises from a narrow prong and flares out to its widest (at flareAt of its length) this many times its root's width, then sweeps to the point; 0 = a plain taper from the root (a horn) | 0..6 |  |
-| `crests[].flareAt` | float | Fraction | - | where along the blade it is widest (with flare): toward its end, a crescent (0 = 0.4) | 0..0.9 |  |
+| `crests[].flareAt` | float | Fraction | - | where along the blade it is widest (with flare): toward its end, a crescent (0 = 0.4). The Apex's 0.62 is the latest that keeps the outline smooth: past it the fall to the point is steeper, and with outside's arch (widest at 0.5) the measured widest moves from 0.61 toward the point as this grows | 0..0.9 |  |
 | `crests[].outside` | float | Fraction | - | the blade's width shifted to the outside (front, convex side) of its curl: its axis arches out from the centre line by up to this share of the widest half chord (sin(pi u): none at the root and the point) - a broad crescent outside, a thin inner edge hooking to the point (0 = symmetric) | 0..0.8 |  |
 | `crests[].hookDeg` | float | Degrees | - | the tip hooks back by this much more over the last quarter of the blade (on top of curlDeg) | 0..120 |  |
 | `crests[].splayDeg` | float | Degrees | - | the blade leans out from upright by this much (toward +x; a mirrored pair: each away from the midline - a V from the front) | 0..75 |  |
@@ -1243,13 +1269,15 @@ The beaked serpent head: a long, slightly flattened SDF skull flowing into a poi
 | `chinDepth` | float | Fraction | - | the lower jaw's depth at its chin, x skullDepth | 0..2 |  |
 | `throatDepth` | float | Fraction | - | the lower jaw's depth at the gape's corner, where its underside runs back into the throat, x skullDepth | 0..2 |  |
 | `cheekWeb` | float | Fraction | - | cheek webs: skin from the upper lip to the lower one, reaching this far (x skullLength) forward from the gape's corner, stretched between the head and the jaw when it gapes (0 = none: the open mouth is a slot at the corner) | 0..0.5 |  |
+| `throatRadius` | float | Metres | x s | the throat: a pink plug at the back of the mouth hiding the body's front end (the neck's front rings and cap run into the head; an open mouth would show them) - its half size, about the neck's half height at the head joint (0 = none) |  |  |
+| `throatReach` | float | Metres | x s | how far ahead of the head joint the body's front end reaches (the FlowBody's front ring plus its headCapLength): the throat plug covers it to here |  |  |
 | `gapeDeg` | float | Degrees | - | the jaw's widest gape (a call): the lower jaw drops this far about the hinge | 0..80 |  |
 | `callPitchDeg` | float | Degrees | - | on a call the upper head (skull, beak, crests) tips up this far at the full gape, about the skull's back | 0..30 |  |
 | `restGapeDeg` | float | Degrees | - | the mouth hangs this far open at rest, showing the teeth (< gapeDeg) | 0..30 |  |
 | `teeth` | int | Count | - | teeth in each row (upper and lower, each side): small pointed teeth along the lip line, the lower row between the upper's, showing even at rest | 0..40 |  |
 | `toothLength` | float | Metres | x s | tooth length (the ones near the gape's corner shorter) |  |  |
 | `toothRadius` | float | Metres | x s | tooth base radius |  |  |
-| `toothKind` | string | Text | - | the material kind of the teeth and fangs: ivory-teeth (the kit's ivory keratin row), or any kind the species styles (a species short of material slots can share one, e.g. dewlap) |  |  |
+| `toothKind` | string | Text | - | the material kind of the teeth and fangs: ivory-teeth (the kit's ivory keratin row, a kit slot of its own). A species short of kit slots uses the legacy "teeth" (registry row 13: no kit slot) with a Layers row restyling 13 to ivory Claw. Validate: a registry / NamedKinds kind or one a Layers row names |  |  |
 | `toothRakeDeg` | float | Degrees | - | the teeth lean back toward the throat by this much (both rows) | -45..60 |  |
 | `fangPairs` | int | Count | - | fang pairs at the lower jaw's tip (0..2: up to four small fangs) | 0..2 |  |
 | `fangLength` | float | Metres | x s | fang length (the second pair 0.85 x) |  |  |
@@ -2052,7 +2080,7 @@ Ground -> Launch -> Air <-> Glide -> Flare -> Touchdown -> Perched (CreatureFlig
 
 | field | type | unit | size | meaning | range | example |
 |---|---|---|---|---|---|---|
-| `spec` | FlightSpec | Spec | - | flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, airNeckStance, launchHeadOnNeck, touchdownAtStance, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain, legTuckOut, legTuckDown, legTuckReach, touchdownTogether, airLevel, glideEnergy, approachBleedsSpeed |  |  |
+| `spec` | FlightSpec | Spec | - | flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, airNeckStance, launchHeadOnNeck, touchdownAtStance, launchTailBySegment, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain, legTuckOut, legTuckDown, legTuckReach, touchdownTogether, airLevel, glideEnergy, approachBleedsSpeed |  |  |
 | `twist` | AirTwistSpec | Struct | - | twisting flight (AirTwist, Chinese dragon): the body follows the head's path; 3D swimming, corkscrews, barrel rolls, loops, slow rolls that travel head to tail. All 0 = the serpent's trailing air chain |  |  |
 | `twist.swimAmplitude` | float | Metres | x s | always-on swimming: the head's 3D S-curve amplitude (0 = no swimming) |  | dragon 0.12 |
 | `twist.swimHz` | float | Hz | / sqrt(s) | swimming wave frequency; wavelength along the body = speed / Hz |  | dragon 0.9 |

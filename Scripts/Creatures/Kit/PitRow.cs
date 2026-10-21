@@ -92,6 +92,11 @@ namespace CreatureKit
             if (m.Rest == null) return;
             FlowBody body = FindBody(KitView.Parts(m.Species));
             if (body == null) return;
+            // the mesh only depends on this row's data, the body's shape and the rest pose: built once, then replayed
+            // (RestMeshCache - the per-vertex surface queries cost ~0.4 ms a pit)
+            ulong key = CacheKey(body, m);
+            if (RestMeshCache.TryReplay(m, key, kKinds)) return;
+            int firstVertex = m.VertexCount, firstTri = m.Lists.tris.Count;
             int cup = m.Slot("pit"), segs = Segs;
             for (int k = 0; k < count; k++)
             {
@@ -148,6 +153,19 @@ namespace CreatureKit
                 }
                 Stitch(m, lip, RimRings, segs, false);
             }
+            RestMeshCache.Store(m, key, firstVertex, firstTri, kKinds);
+        }
+
+        static readonly string[] kKinds = { "pit" };
+
+        ulong CacheKey(FlowBody body, PartMeshEmitter m)
+        {
+            ulong h = RestMeshCache.Mix(RestMeshCache.Seed, 0x5017);   // PitRow
+            h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, fromU), toU), angleDeg), count), radius);
+            h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, depth), rim), aspect), slantDeg), sizeGrowth);
+            h = RestMeshCache.Mix(RestMeshCache.Mix(h, at.side), mirror);
+            h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, ReverseWindingForTest), RigidSkinForTest), TornSkinForTest), SurfaceBiasForTest);
+            return RestMeshCache.MixRest(body.ShapeKey(h), m);
         }
 
         static Vector4 Skin(Vector4 skin, FlowBody body, int ring) => TornSkinForTest && (ring & 1) == 1 ? PartMeshEmitter.Rigid(body.jointCount - 1) : skin;

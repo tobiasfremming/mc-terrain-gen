@@ -18,7 +18,9 @@
 //             puts the joints one spacing apart along the ground, so a steeply raised neck is bound much flatter than it
 //             stands, and the inside of the neck-root bend - the back, under the hump - folds in the standing pose.
 //   colour    named kinds: `tailfan` behind tailColourFrom (the teal, striped tail), `dorsalstripe` - a narrow band
-//             along the top from the head back to dorsalStripeTo. Both off by default.
+//             along the top from the head back to dorsalStripeTo. Both off by default; a kind (and its material slot) is
+//             wanted only while its colour is on, and tailKind / dorsalStripeKind can name a kind the species already
+//             draws (one slot for both: a species short of kit slots).
 // Kit-only, no runtime of its own (the sim and the locomotion modes move the joints). Mesh only; allocation at build.
 using System;
 using System.Collections.Generic;
@@ -43,9 +45,9 @@ namespace CreatureKit
 
     [Serializable]
     [Part("FlowBody", PartKind.Body, Bones = "= jointCount", Summary = "One chain from the head to the tail tip (the sim runs it like a SpineBody's) drawn as one flowing surface with a shaped section: superellipse from oval to tall ribbon (blade), a sharp dorsal hump, a keel, flank masses. The neck and the tail are the same chain as the trunk; a head part sits on joint 0.",
-          System = "CreatureSim chain (ISpineChainBody) + FlowBody.EmitMesh", MaterialLayers = new[] { 0 }, MaterialKinds = new[] { "tailfan", "dorsalstripe" }, KitOnly = true,
+          System = "CreatureSim chain (ISpineChainBody) + FlowBody.EmitMesh", MaterialLayers = new[] { 0 }, KitOnly = true,
           UseWhen = "a body whose neck, trunk and tail flow into each other with a section an ellipse cannot draw: humped backs, keeled chests, ribbon or paddle tails")]
-    public sealed class FlowBody : CreaturePart, ISpineChainBody
+    public sealed class FlowBody : CreaturePart, ISpineChainBody, IMaterialKinds
     {
         [Param(ParamUnit.Metres, "joint spacing (fine in the neck for a smooth S)", Example = "fixture 0.1")] public float spacing = 0.1f;
         [Param(ParamUnit.Metres, "the surface closes with a small pole this far ahead of joint 0 (inside the head part)")] public float headCapLength = 0.05f;
@@ -58,9 +60,11 @@ namespace CreatureKit
         [Param(ParamUnit.Fraction, "superellipse exponent at blade 1 (2 = ellipse; 4 = a rounded ribbon)", Min = 2, Max = 12, Default = "4")] public float bladeExponent = 4f;
         [Param(ParamUnit.Count, "mesh: vertices around each ring", Min = 8, Max = 64, Default = "24")] public int ringSegments = 24;
         [Param(ParamUnit.Count, "mesh: rings per spine segment", Min = 1, Max = 8, Default = "3")] public int ringsPerSegment = 3;
-        [Param(ParamUnit.Fraction, "body fraction (0 front tip .. 1 tail tip) from which the surface is the `tailfan` kind; >= 1 = off", Min = 0, Max = 1, Default = "1 (off)")] public float tailColourFrom = 1f;
-        [Param(ParamUnit.Fraction, "body fraction up to which a `dorsalstripe` band runs along the top from the head; 0 = off", Min = 0, Max = 1, Default = "0 (off)")] public float dorsalStripeTo = 0f;
+        [Param(ParamUnit.Fraction, "body fraction (0 front tip .. 1 tail tip) from which the surface is tailKind (default `tailfan`); >= 1 = off", Min = 0, Max = 1, Default = "1 (off)")] public float tailColourFrom = 1f;
+        [Param(ParamUnit.Fraction, "body fraction up to which a dorsalStripeKind band (default `dorsalstripe`) runs along the top from the head; 0 = off", Min = 0, Max = 1, Default = "0 (off)")] public float dorsalStripeTo = 0f;
         [Param(ParamUnit.Degrees, "dorsal stripe width around the section (centred on the top)", Min = 0, Max = 180, Default = "30")] public float dorsalStripeWidthDeg = 30f;
+        [Param(ParamUnit.Text, "the material kind of the tail behind tailColourFrom: tailfan (a kit slot of its own, styled by a species Layers row naming it), or a kind the species already draws (a FleshWing's wingfan: the tail in the wing's colour, one slot for both)", Default = "tailfan")] public string tailKind = "tailfan";
+        [Param(ParamUnit.Text, "the material kind of the dorsal stripe: dorsalstripe (a kit slot of its own), or a kind the species already draws (one slot for both)", Default = "dorsalstripe")] public string dorsalStripeKind = "dorsalstripe";
         [Param(ParamUnit.Fraction, "an oval (blade 0) is at most this many times as tall as wide; blade 1 stretches it to the key's full halfHeight", Min = 1, Max = 8, Default = "2")] public float ovalMaxAspect = 2f;
         [Param(ParamUnit.Flag, "bind the body as it stands: each rest segment spacing long between the joints' clearances (a raised neck bound as steep as it walks); off = joints one spacing apart along the ground (SpineBody's rest)", Default = "on")] public bool restAtStance = true;
 
@@ -105,6 +109,32 @@ namespace CreatureKit
         public override int MeshOrder => 100;
         protected override void CopyArrays() { profile = (FlowKey[])profile?.Clone(); }
 
+        // The data the drawn surface depends on (RestMeshCache: parts that sample it - PitRow, Dewlap - key their cached
+        // meshes on it, with the rest pose and their own data).
+        internal ulong ShapeKey(ulong h)
+        {
+            h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, jointCount), spacing), headCapLength), tailTipLength);
+            h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, humpSharpness), keelSharpness), bladeExponent), ovalMaxAspect);
+            h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, ringSegments), ringsPerSegment), rigidHeadJoints);
+            int n = profile?.Length ?? 0;
+            h = RestMeshCache.Mix(h, n);
+            for (int i = 0; i < n; i++)
+            {
+                FlowKey k = profile[i];
+                h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, k.t), k.halfWidth), k.halfHeight), k.clearance), k.bendLimitDeg);
+                h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, k.hump), k.keel), k.flank), k.blade);
+            }
+            return h;
+        }
+
+        // IMaterialKinds: the kinds this body draws (data) - a slot only for a colour it uses, so a species short of kit
+        // slots can draw the tail and the stripe in a kind it already has (tailKind / dorsalStripeKind).
+        public void Kinds(List<string> into)
+        {
+            if (tailColourFrom < 1f && !string.IsNullOrEmpty(tailKind)) into.Add(tailKind);
+            if (dorsalStripeTo > 0f && !string.IsNullOrEmpty(dorsalStripeKind)) into.Add(dorsalStripeKind);
+        }
+
         public override string Validate(in SpeciesCtx c)
         {
             if (c.Soft) return $"{id}: a FlowBody is a spine body, not with a SoftBody";
@@ -126,6 +156,8 @@ namespace CreatureKit
             if (ringSegments < 8 || ringSegments > 64) return $"{id}: ringSegments must be 8..64";
             if (ringsPerSegment < 1 || ringsPerSegment > 8) return $"{id}: ringsPerSegment must be 1..8";
             if (ovalMaxAspect < 1f || ovalMaxAspect > 8f) return $"{id}: ovalMaxAspect must be 1..8";
+            if (tailColourFrom < 1f && string.IsNullOrEmpty(tailKind)) return $"{id}: tailKind is empty (tailColourFrom < 1 draws the tail in it)";
+            if (dorsalStripeTo > 0f && string.IsNullOrEmpty(dorsalStripeKind)) return $"{id}: dorsalStripeKind is empty (dorsalStripeTo > 0 draws the stripe in it)";
             return null;
         }
 
@@ -247,6 +279,12 @@ namespace CreatureKit
         public override void EmitMesh(PartMeshEmitter m, in PartCtx c)
         {
             if (m.Rest == null) return;
+            // the rings only depend on this body's data and the rest pose: built once, then replayed (RestMeshCache)
+            string[] kinds = tailColourFrom < 1f && dorsalStripeTo > 0f ? new[] { tailKind, dorsalStripeKind }
+                           : tailColourFrom < 1f ? new[] { tailKind } : dorsalStripeTo > 0f ? new[] { dorsalStripeKind } : new string[0];
+            ulong key = CacheKey(m);
+            if (RestMeshCache.TryReplay(m, key, kinds)) return;
+            int firstVertex = m.VertexCount, firstTri = m.Lists.tris.Count;
             ClearShapeMemo();
             frameMemoCount = 0; frameMemoNext = 0; frameMemoOf = m;
             memoOn = true;
@@ -255,12 +293,21 @@ namespace CreatureKit
             var rings = new Rings
             {
                 b = this, m = m,
-                kindTail = tailColourFrom < 1f ? m.Slot("tailfan") : -1,
-                kindStripe = dorsalStripeTo > 0f ? m.Slot("dorsalstripe") : -1,
+                kindTail = tailColourFrom < 1f ? m.Slot(tailKind) : -1,
+                kindStripe = dorsalStripeTo > 0f ? m.Slot(dorsalStripeKind) : -1,
             };
             SpineBody.RingSequence(m, rings, jointCount, HeadLen, spacing, SpineLen, TailLen, Mathf.Max(1, ringsPerSegment), ringSegments);
             }
             finally { memoOn = false; frameMemoOf = null; }
+            RestMeshCache.Store(m, key, firstVertex, firstTri, kinds);
+        }
+
+        ulong CacheKey(PartMeshEmitter m)
+        {
+            ulong h = RestMeshCache.Mix(RestMeshCache.Seed, 0xF10B);   // FlowBody
+            h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, tailColourFrom), dorsalStripeTo), dorsalStripeWidthDeg), FlipNormalsForTest);
+            h = RestMeshCache.Mix(RestMeshCache.Mix(h, (tailKind ?? "").GetHashCode()), (dorsalStripeKind ?? "").GetHashCode());
+            return RestMeshCache.MixRest(ShapeKey(h), m);
         }
 
         struct Rings : SpineBody.IBodyRings

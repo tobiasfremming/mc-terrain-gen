@@ -806,6 +806,11 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             // a twisting chain (AirTwist) starts as the grounded body and follows its own head up: it is the body at
             // once (the weights still hand the legs and wings over); a trailing chain is blended in head first
             bool follow = Chain.Twist != null;
+            // FlightSpec.launchTailBySegment: the walking trunk + tail's segment directions, kept before the blend below
+            // (offset is touchdown scratch, unused while launching)
+            bool bySegment = f.launchTailBySegment && !follow;
+            if (bySegment)
+                for (int i = girdle + 1; i < n; i++) offset[i] = J[i] - J[i - 1];
             for (int i = 0; i < n; i++)
             {
                 float lag = kHeadLead * i / Mathf.Max(1, n - 1);
@@ -818,6 +823,23 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
             if (!follow)
             {
                 Relength(J);
+                if (bySegment)
+                {
+                    // from the blended girdle back, each segment turned from the walking body's direction toward the air
+                    // chain's by its joint's air weight (exact lengths): the lerp of two far-apart tails (one curled from
+                    // a circling walk, one trailing the vault) shrank segments to nothing and Relength folded them back.
+                    // Joints whose weights differ turn by different shares, so each bend behind the girdle is also kept
+                    // inside its joint's cone (the air chain's limits).
+                    float seg = sp.spacing * scale;
+                    Vector3 prev = Vector3.zero;
+                    for (int i = girdle + 1; i < n; i++)
+                    {
+                        Vector3 d = SlerpDir(offset[i], air[i] - air[i - 1], AirWeight[i]);
+                        if (i > girdle + 1 && !NoLaunchTailConeForTest) d = Chain.ConeAt(i - 1, prev, d);
+                        J[i] = J[i - 1] + d * seg;
+                        prev = d;
+                    }
+                }
                 UpFrames(J);
             }
         }
@@ -848,12 +870,22 @@ public sealed class CreatureFlight : CreatureKit.ILocomotionMode
         }
     }
 
+    // Test-only (REDs of FlightSpec.launchTailBySegment): the segment blend without its bend cones / the tail's walking frames.
+    internal static bool NoLaunchTailConeForTest, WalkingLaunchTailFramesForTest;
+
     // After the walking sub-step's frames: a twisting chain's launch body is the air chain itself (BeforeLegs), so
     // its frames are the chain's (the walking frames' head follows the ground heading, not the rising head).
     internal void AfterFrames()
     {
         if (Mode == FlightMode.Launch && Chain.Twist != null) { Chain.WriteRotations(sim.Rotations); sim.RigidHeadFromRotations(); }
-        else if (Mode == FlightMode.Launch && f.launchHeadOnNeck && sp.RigidHead < 2 && n > 1 && AirWeight[0] > 0f)
+        else if (Mode == FlightMode.Launch && f.launchTailBySegment && !WalkingLaunchTailFramesForTest)
+        {
+            // FlightSpec.launchTailBySegment: behind the girdle the launch's own frames (BeforeLegs' UpFrames: up carried
+            // down the blended body), not the walking frames' - their up is the ground's projected across each segment
+            // and rolled a tail segment over as the rising tail swept it through vertical
+            for (int i = girdle + 1; i < n; i++) sim.Rotations[i] = CreatureSim.Basis(Chain.Forward[i], Chain.Up[i]);
+        }
+        if (Mode == FlightMode.Launch && Chain.Twist == null && f.launchHeadOnNeck && sp.RigidHead < 2 && n > 1 && AirWeight[0] > 0f)
         {
             // FlightSpec.launchHeadOnNeck: the walking frames keep the head on the ground heading; it turns with its
             // rising neck as the air takes it (the air chain's head frame: along its front segment), so the steep

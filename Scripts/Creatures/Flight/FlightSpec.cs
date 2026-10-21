@@ -63,6 +63,8 @@ public class FlightSpec
     public bool launchHeadOnNeck;
     [Tooltip("A touchdown on the ground starts the walking body at its stance (the girdle where it is, the other joints laid along the heading at their clearances, each segment spacing long: CreatureSim.RestRun's layout) instead of at the hovering pose, which the walking chain then hauled up to a steeply raised neck's clearances in a few ticks (the chest kinked, a neck segment tipped over). The eased touchdown carries the hovering body there. Off = the shipped touchdown.")]
     public bool touchdownAtStance;
+    [Tooltip("Launching, the trunk and tail behind the girdle are handed to the air chain segment by segment: each segment's direction is turned from the walking body's toward the air chain's by its air weight, from the blended girdle back (exact lengths), instead of lerping the two bodies' joint positions. A tail curled from a circling walk (or standing after one) lies far from the air chain's tail trailing the vault; the position blend between them shortened segments to nothing and re-lengthening folded the tail back on itself (bends up to 178 deg). Off = the shipped launch.")]
+    public bool launchTailBySegment;
 
     [Header("Obstacle avoidance (FlightAvoidance)")]
     [Tooltip("s at scale 1: predicted flight paths this far ahead are swept by rays against real geometry (bark, rocks) and the turn is changed early when one is blocked. 0 = off.")]

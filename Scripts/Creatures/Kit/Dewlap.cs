@@ -235,6 +235,11 @@ namespace CreatureKit
             FlowBody body = FindBody(KitView.Parts(m.Species));
             if (body == null) return;
             int kind = m.Slot("dewlap"), start = m.Species.Layout.Start(c.Index);
+            // the mesh only depends on this sail's data, its first bone, the body's shape and the rest pose: built once,
+            // then replayed (RestMeshCache - its surface queries cost ~0.8 ms)
+            ulong key = CacheKey(body, m, start);
+            if (RestMeshCache.TryReplay(m, key, kKinds)) return;
+            int firstVertex = m.VertexCount, firstTri = m.Lists.tris.Count;
             Vector3[] J = m.Rest.Joints; Quaternion[] R = m.Rest.Rotations;
             int S = stations, L = links, F = RowsPerLink * L, B = RimSegments;
             int cols = (S - 1) * ColumnsPerSpan + 1, prof = 2 * (F + 1) + (B - 1);
@@ -306,6 +311,21 @@ namespace CreatureKit
                 if (ci == 0) Cap(m, pos, skins, PartMeshEmitter.Unit(Vector3.Cross(d, x), q * Vector3.forward), true, kind);
                 if (ci == cols - 1) Cap(m, pos, skins, PartMeshEmitter.Unit(Vector3.Cross(x, d), q * Vector3.back), false, kind);
             }
+            RestMeshCache.Store(m, key, firstVertex, firstTri, kKinds);
+        }
+
+        static readonly string[] kKinds = { "dewlap" };
+
+        ulong CacheKey(FlowBody body, PartMeshEmitter m, int start)
+        {
+            ulong h = RestMeshCache.Mix(RestMeshCache.Seed, 0xDE71);   // Dewlap
+            h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, fromJoint), toJoint), stations), links), start);
+            h = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(h, edgeStraightness), rim), thickness);
+            int n = depthAt?.Length ?? 0;
+            h = RestMeshCache.Mix(h, n);
+            for (int i = 0; i < n; i++) h = RestMeshCache.Mix(h, depthAt[i]);
+            h = RestMeshCache.Mix(RestMeshCache.Mix(h, NoPlaneClampForTest), PlainRestForTest);
+            return RestMeshCache.MixRest(body.ShapeKey(h), m);
         }
 
         // Where the rows (and the links) hang from at station place sigma in the bind rest: the throat's drawn midline

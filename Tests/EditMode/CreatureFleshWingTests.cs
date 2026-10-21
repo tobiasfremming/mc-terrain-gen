@@ -17,8 +17,9 @@ namespace TerrainGen.Tests
     // shoulder, steep, broad, on its own side of the body; it stands on the drawn club; nothing inverts through the fold,
     // a launch and a landing (rear attach at the default and at the hips; the body's triangles too); the outer wing lags
     // the root and the trailing rays the leading one; no GC; Froude-similar chains. Each has a RED. FlyModule() turns on
-    // all three stance-bound flight flags (airNeckStance, launchHeadOnNeck, touchdownAtStance), so every test here flies
-    // with them; with them the Apex's own body traits - the steep raised neck and the keel - fly, fold and land without a
+    // all three stance-bound flight flags (airNeckStance, launchHeadOnNeck, touchdownAtStance) and the segment-wise launch
+    // tail (launchTailBySegment: a launch from standing or a circling walk no longer folds the tail), so every test here
+    // flies with them; with them the Apex's own body traits - the steep raised neck and the keel - fly, fold and land without a
     // body flip, the head no less steady (FlowBody_Winged_SteepNeckKeel_*). With the flags off a winged FlowBody still
     // shows the flips - even this plain body's neck front in the launch - which only the REDs cover.
     public class CreatureFleshWingTests
@@ -62,6 +63,9 @@ namespace TerrainGen.Tests
             // the steep-neck scan's flip-free 0.2 - 0.9, where the head bob is least - see the task-8b report), the launching
             // head turns with its neck, the touchdown starts the walking body at its stance
             s.airNeckStance = kAirNeckStance; s.launchHeadOnNeck = true; s.touchdownAtStance = true;
+            // (task 9b) the launch hands the trunk and tail to the air chain segment by segment: a tail curled from a
+            // circling walk no longer folds back on itself (Launch_From*_TailNeverFolds)
+            s.launchTailBySegment = true;
             return f;
         }
 
@@ -829,6 +833,112 @@ namespace TerrainGen.Tests
             finally { FleshWing.NoRimsForTest = false; }
         }
 
+        // ------------------------------------------------------------ every bone skinned (task 10)
+
+        // The kit's layout rule (CreatureKitTests 3): every wing bone carries skin. The sail rides the fan and arm sectors,
+        // not the rear flank rib (wing bone FirstRib + 1) nor the tall stance's fan-side copy of it (FanRearRib); those carry
+        // the wrist knuckles, which must stay hidden in the club: through a walk, a launch and the flight (every 5th frame),
+        // each knuckle vertex lies inside the club (a ray from it crosses the club's closed surface an odd number of times).
+        internal static string KnuckleProblem(CreatureSpecies sp, out int checkedVerts)
+        {
+            int nChecked = 0;
+            string e = KnuckleRun(sp, ref nChecked);
+            checkedVerts = nChecked;
+            return e;
+        }
+
+        static string KnuckleRun(CreatureSpecies sp, ref int checkedOut)
+        {
+            int checkedVerts = 0;
+            float s = sp.scale, T = Mathf.Sqrt(s);
+            var m = new CreaturePteroWingTests.Skinned(sp);
+            var sim = FlowKit.Sim(sp, s);
+            WingSpec ws = sp.wings[0];
+            int rear = sp.WingBone(0, WingBoneLayout.FirstRibOf(ws) + 1), fanRear = sp.WingBone(0, WingBoneLayout.FanRearRib(ws)), hand = sp.LegBone(ws.leg, 2);
+            var knuckle = new List<int>(); var club = new List<int>();
+            for (int i = 0; i < m.V.Length; i++) { int b = (int)m.Uv2[i].x; if (b == rear || b == fanRear) knuckle.Add(i); }
+            for (int k = 0; k < m.T.Length; k += 3)
+            {
+                int i0 = m.T[k];
+                if ((int)m.Uv2[i0].x == hand && m.Uv2[i0].z == 1f && m.Part(i0) == PartMeshEmitter.PartBody) club.Add(k);
+            }
+            if (knuckle.Count == 0) return "no knuckle vertices";
+            string Check(string when)
+            {
+                m.Pose(sim);
+                foreach (int i in knuckle)
+                {
+                    checkedVerts++;
+                    int odd = 0;
+                    foreach (Vector3 d in new[] { new Vector3(1f, 0.13f, 0.07f), new Vector3(-0.11f, 1f, 0.05f), new Vector3(0.09f, -0.17f, -1f) })
+                    {
+                        int n = 0;
+                        foreach (int k in club) if (Crosses(m.P[i], d.normalized, m.P[m.T[k]], m.P[m.T[k + 1]], m.P[m.T[k + 2]])) n++;
+                        if ((n & 1) == 1) odd++;
+                    }
+                    if (odd < 2) return $"{when} t={sim.Time:F2} s: knuckle vertex {i} is outside the club";
+                }
+                return null;
+            }
+            string miss = null;
+            for (int t = 0; t < 120 && miss == null; t++) { sim.Tick(kDt, Ahead(sim, s)); if (t % 5 == 0) miss = Check("walk"); }
+            if (miss == null) sim.Flight.Launch(6f * s);
+            for (int t = 0; t < 240 && miss == null; t++)
+            {
+                sim.Flight.SetGoals(6f * s, sp.flight.cruiseSpeed * T, 0f); sim.Tick(kDt, sim.Joints[0]);
+                if (t % 5 == 0) miss = Check(sim.Mode.ToString());
+            }
+            checkedOut = checkedVerts;
+            return miss;
+        }
+
+        static bool Crosses(Vector3 o, Vector3 d, Vector3 a, Vector3 b, Vector3 c)
+        {
+            Vector3 e1 = b - a, e2 = c - a, pv = Vector3.Cross(d, e2);
+            float det = Vector3.Dot(e1, pv);
+            if (Mathf.Abs(det) < 1e-14f) return false;
+            float inv = 1f / det; Vector3 tv = o - a;
+            float u = Vector3.Dot(tv, pv) * inv; if (u < 0f || u > 1f) return false;
+            Vector3 qv = Vector3.Cross(tv, e1);
+            float v = Vector3.Dot(d, qv) * inv; if (v < 0f || u + v > 1f) return false;
+            return Vector3.Dot(e2, qv) * inv > 0f;
+        }
+
+        [Test] public void FleshWing_EveryBoneSkinned_KnucklesHiddenInTheClub()
+        {
+            CreatureSpecies sp = Species();
+            Assert.IsNull(KitChecks.LayoutProblem(sp));
+            string e = KnuckleProblem(sp, out int n);
+            TestContext.Out.WriteLine($"{n} knuckle vertex samples inside the club");
+            Assert.IsNull(e, e);
+        }
+
+        // RED: the knuckles left out - two wing bones per wing carry no skin
+        [Test] public void Red_FleshWing_NoKnuckles_BonesWithoutSkin()
+        {
+            FleshWing.NoKnucklesForTest = true;
+            try
+            {
+                string e = KitChecks.LayoutProblem(Species());
+                TestContext.Out.WriteLine("RED: " + e);
+                StringAssert.Contains("wing 0 bone", e);
+            }
+            finally { FleshWing.NoKnucklesForTest = false; }
+        }
+
+        // RED: knuckles four times as large stick out of the club
+        [Test] public void Red_FleshWing_BigKnuckles_ShowOutsideTheClub()
+        {
+            FleshWing.KnuckleScaleForTest = 4f;
+            try
+            {
+                string e = KnuckleProblem(Species(), out _);
+                TestContext.Out.WriteLine("RED: " + e);
+                StringAssert.Contains("outside the club", e);
+            }
+            finally { FleshWing.KnuckleScaleForTest = 1f; }
+        }
+
         // ------------------------------------------------------------ the Apex's body in flight (task 8b)
 
         // The Apex's own body traits - the steep raised neck (CrestBeakHead's) and the sharp keel - bound at their stance
@@ -1027,6 +1137,115 @@ namespace TerrainGen.Tests
             float p = MaxWalkPitch(Species(withBody: body, name: "FleshWingSteeperNeck"), out string at);
             TestContext.Out.WriteLine($"largest walking segment pitch {p:F1} deg ({at})");
             Assert.GreaterOrEqual(p, kMaxWalkPitch, "the steeper neck tips a segment over");
+        }
+
+        // ------------------------------------------------------------ the launch's tail (task 9b)
+
+        // A launch out of 15 s of circling walk (fromStanding: then 10 s standing still): through the launch and the first
+        // 0.5 s of the air (x sqrt s), every tail joint behind the hips bends at most its limit (+ 0.5 deg) and, at 10 Hz,
+        // no triangle of the posed mesh inverts. The shipped launch (launchTailBySegment off) lerped the walking body's
+        // positions toward the air chain's: the curled walking tail and the air tail trailing the vault lie far apart and
+        // the blend folded the tail back on itself (bends up to 178 deg, hundreds of inverted tail triangles).
+        internal static string LaunchTailProblem(CreatureSpecies sp, bool fromStanding, out float worstExcess, out int inverted)
+        {
+            float s = sp.scale, T = Mathf.Sqrt(s);
+            worstExcess = float.MinValue; inverted = 0;
+            var sim = FlowKit.Sim(sp, s);
+            int n = sp.JointCount;
+            Vector3 c = sim.Joints[0];
+            for (int k = 0; k < 900; k++)
+            {
+                float a = k * kDt * 0.8f;
+                sim.Tick(kDt * T, c + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * (1.5f * s));
+            }
+            if (fromStanding) { Vector3 stand = sim.Joints[0]; for (int k = 0; k < 600; k++) sim.Tick(kDt * T, stand); }
+            if (!sim.Flight.Launch(6f * s)) return "no launch";
+            string first = null, inv = null;
+            int air = 0;
+            for (int k = 0; k < 600 && air < 30; k++)
+            {
+                sim.Flight.SetGoals(6f * s, sp.flight.cruiseSpeed * T, 0f);
+                sim.Tick(kDt * T, sim.Joints[0]);
+                if (sim.Mode != FlightMode.Launch) air++;
+                Vector3[] J = sim.Joints;
+                for (int j = kHips + 1; j < n - 1; j++)
+                {
+                    float ex = Vector3.Angle(J[j] - J[j - 1], J[j + 1] - J[j]) - sp.joints[j].bendLimitDeg;
+                    if (ex > worstExcess) worstExcess = ex;
+                    if (ex > 0.5f && first == null) first = $"tick {k} ({sim.Mode}): tail joint {j} bends {ex + sp.joints[j].bendLimitDeg:F1} deg > its limit {sp.joints[j].bendLimitDeg:F1}";
+                }
+                if (k % 6 == 5)
+                {
+                    int bad = FlowKit.InvertedTriangles(sp, sim, out string w);
+                    if (bad > 0 && inv == null) inv = $"tick {k} ({sim.Mode}): {bad} inverted ({w})";
+                    inverted += bad;
+                }
+            }
+            if (first != null) return first;
+            if (inverted > 0) return $"{inverted} inverted triangles; first {inv}";
+            return null;
+        }
+
+        [Test] public void Launch_FromStanding_TailNeverFolds()
+        {
+            string e = LaunchTailProblem(Species(), true, out float ex, out int inv);
+            TestContext.Out.WriteLine($"launch from standing (after a circling walk): worst tail bend - limit {ex:F2} deg, {inv} inverted triangles");
+            Assert.IsNull(e, e);
+        }
+
+        [Test] public void Launch_FromCircling_TailNeverFolds()
+        {
+            string e = LaunchTailProblem(Species(), false, out float ex, out int inv);
+            TestContext.Out.WriteLine($"launch out of a circling walk: worst tail bend - limit {ex:F2} deg, {inv} inverted triangles");
+            Assert.IsNull(e, e);
+        }
+
+        // RED: the shipped launch (launchTailBySegment off) folds the tail back on itself.
+        [Test] public void Red_Launch_FromStanding_PositionBlend_TailFolds()
+        {
+            string e = LaunchTailProblem(Species(fly: f => f.launchTailBySegment = false), true, out float ex, out int inv);
+            TestContext.Out.WriteLine($"RED: {e}");
+            Assert.IsNotNull(e);
+            Assert.Greater(ex, 90f, "the tail folds back (bend far past its limit)");
+        }
+
+        [Test] public void Red_Launch_FromCircling_PositionBlend_TailFolds()
+        {
+            string e = LaunchTailProblem(Species(fly: f => f.launchTailBySegment = false), false, out float ex, out int inv);
+            TestContext.Out.WriteLine($"RED: {e}");
+            Assert.IsNotNull(e);
+            Assert.Greater(ex, 90f, "the tail folds back (bend far past its limit)");
+        }
+
+        // RED: the segment blend without its bend cones - joints whose air weights differ turn by different shares and the
+        // tail bends past its limits (no fold, but 16 deg over).
+        [Test] public void Red_Launch_FromStanding_NoCones_TailOverBends()
+        {
+            CreatureFlight.NoLaunchTailConeForTest = true;
+            try
+            {
+                string e = LaunchTailProblem(Species(), true, out float ex, out _);
+                TestContext.Out.WriteLine($"RED: {e}");
+                TestContext.Out.WriteLine($"worst tail bend - limit {ex:F2} deg");
+                Assert.IsNotNull(e);
+                Assert.Greater(ex, 10f, "the blend itself bends the tail well past its limits (not only the walking body's own 1.3 deg)");
+            }
+            finally { CreatureFlight.NoLaunchTailConeForTest = false; }
+        }
+
+        // RED: the segment blend with the walking frames on the tail - a rising tail segment swept through vertical rolls its
+        // frame over and the tail's skin inverts.
+        [Test] public void Red_Launch_FromStanding_WalkingFrames_TailSkinInverts()
+        {
+            CreatureFlight.WalkingLaunchTailFramesForTest = true;
+            try
+            {
+                string e = LaunchTailProblem(Species(), true, out float ex, out int inv);
+                TestContext.Out.WriteLine($"RED: {e}");
+                Assert.IsNotNull(e);
+                Assert.Greater(inv, 0, "the tail's skin inverts");
+            }
+            finally { CreatureFlight.WalkingLaunchTailFramesForTest = false; }
         }
 
         static bool Has(SortedSet<string> flips, string prefix)

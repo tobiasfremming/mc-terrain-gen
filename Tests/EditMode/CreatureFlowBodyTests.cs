@@ -389,5 +389,65 @@ namespace TerrainGen.Tests
             }
             Assert.Greater(tails, 0); Assert.Greater(stripes, 0);
         }
+
+        // The body's kinds are data (tailKind, dorsalStripeKind) and take a material slot only while their colour is on:
+        // the plain body wants none; a tail and a stripe drawn in one kind (here the wing's `wingfan`, as the Apex does - it
+        // is short of kit slots) share its one slot, every tail vertex behind tailColourFrom and every stripe vertex on it.
+        static int NamedSlots(CreatureSpecies sp)
+        {
+            int n = 0;
+            foreach (string k in MaterialSlots.For(sp).KindOfSlot) if (k != null) n++;
+            return n;
+        }
+
+        [Test] public void FlowBody_ColourKinds_OnlyWhenDrawn_OneSlotWhenShared()
+        {
+            CreatureSpecies plain = Species(Body());
+            Assert.AreEqual(0, NamedSlots(plain), "colours off: no kit slot");
+            Assert.AreEqual(-1, MaterialSlots.For(plain).SlotOf("tailfan")); Assert.AreEqual(-1, MaterialSlots.For(plain).SlotOf("dorsalstripe"));
+
+            FlowBody body = Body();
+            body.tailColourFrom = 0.6f; body.dorsalStripeTo = 0.2f; body.tailKind = "wingfan"; body.dorsalStripeKind = "wingfan";
+            CreatureSpecies sp = Species(body);
+            MaterialSlots slots = MaterialSlots.For(sp);
+            int shared = slots.SlotOf("wingfan");
+            Assert.GreaterOrEqual(shared, PartLayers.LegacyIds);
+            Assert.AreEqual(1, NamedSlots(sp), "one slot for the tail and the stripe");
+            Assert.AreEqual(-1, slots.SlotOf("tailfan"), "tailfan not wanted");
+            Mesh mesh = FlowKit.Mesh(sp);
+            var uv0 = new List<Vector2>(); var uv1 = new List<Vector2>();
+            mesh.GetUVs(0, uv0); mesh.GetUVs(1, uv1);
+            Object.DestroyImmediate(mesh);
+            FlowBody f = Part(sp);
+            float len = f.headCapLength + f.spacing * (kJoints - 1) + f.tailTipLength;
+            int tails = 0, stripes = 0;
+            for (int i = 0; i < uv0.Count; i++)
+            {
+                int part = Mathf.RoundToInt(uv1[i].x);
+                float u = uv0[i].x / len;
+                if (u > 0.6f + 1e-3f && (part == 0 || part == shared)) { Assert.AreEqual(shared, part, "the tail behind tailColourFrom"); tails++; }
+                if (u < 0.2f - 1e-3f && part == shared) stripes++;
+            }
+            Assert.Greater(tails, 0); Assert.Greater(stripes, 0);
+        }
+
+        // RED: the default kinds draw the same two colours in two kit slots (tailfan and dorsalstripe)
+        [Test] public void Red_ColourKinds_DefaultKinds_TwoSlots()
+        {
+            FlowBody body = Body();
+            body.tailColourFrom = 0.6f; body.dorsalStripeTo = 0.2f;
+            Assert.AreEqual(2, NamedSlots(Species(body)));
+        }
+
+        [Test] public void FlowBody_Validate_ColourKindNamed()
+        {
+            var ctx = new SpeciesCtx(new CreaturePart[0], new CreatureModule[0], kJoints, false);
+            FlowBody b = Body(); b.tailColourFrom = 0.6f; b.tailKind = "";
+            StringAssert.Contains("tailKind", b.Validate(ctx));
+            b = Body(); b.dorsalStripeTo = 0.2f; b.dorsalStripeKind = null;
+            StringAssert.Contains("dorsalStripeKind", b.Validate(ctx));
+            b = Body(); b.tailKind = ""; b.dorsalStripeKind = "";
+            Assert.IsNull(b.Validate(ctx), "colours off: the kinds are not used");
+        }
     }
 }

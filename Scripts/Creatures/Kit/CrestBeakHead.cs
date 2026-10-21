@@ -834,6 +834,14 @@ namespace CreatureKit
             if (rts != null) foreach (IPartRuntime r in rts) if (r is CrestBeakHeadRuntime h && h.JawBone == jaw) tilt = h.Tilt;   // the bones' own
             Matrix4x4 B = Matrix4x4.TRS(o, m.Rest.Rotations[j] * tilt, Vector3.one);
             float uBase = sp.headCapLength + sp.spacing * j;   // the body's uv0.x at the head joint (metres from the front tip)
+            // the emitted head only depends on the parameters (Key), its frame and bones: replayed after the first build
+            // (RestMeshCache - copying ~24k vertices through the transforms took ~2 ms of the species' 5 ms mesh budget)
+            string[] kinds = string.IsNullOrEmpty(toothKind) ? new[] { "mouth", "crest" } : new[] { "mouth", "crest", toothKind };
+            ulong ekey = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(Key(), jaw), upper), uBase), j);
+            for (int r = 0; r < 4; r++) ekey = RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(RestMeshCache.Mix(ekey, B[r, 0]), B[r, 1]), B[r, 2]), B[r, 3]);
+            ekey = RestMeshCache.Mix(ekey, (toothKind ?? "").GetHashCode());
+            if (RestMeshCache.TryReplay(m, ekey, kinds)) return;
+            int firstVertex = m.VertexCount, firstTri = m.Lists.tris.Count;
             Built g = Geo();
             if (g.dorsal == null) g.dorsal = new float[2 + g.bladeDef.Length][];
             int mouth = m.Slot("mouth");
@@ -863,6 +871,7 @@ namespace CreatureKit
                 }
             }
             if (g.webTop != null) EmitWebs(m, g, B, jawRest, upper, jaw, mouth, uBase);
+            RestMeshCache.Store(m, ekey, firstVertex, firstTri, kinds);
         }
 
         // The cheek webs, both sides: kWebRows + 1 rows from the upper edge (the upper head's bone) to the lower (the jaw's,

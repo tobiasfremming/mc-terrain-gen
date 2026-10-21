@@ -201,6 +201,9 @@ public sealed class AirChain
         for (int i = 0; i < n; i++) rotations[i] = CreatureSim.Basis(Forward[i], Up[i]);
     }
 
+    // d (unit) limited to joint j's bend cone around the unit axis a (FlightSpec.launchTailBySegment's launch blend).
+    internal Vector3 ConeAt(int j, Vector3 a, Vector3 d) => Cone(a, d, cosLimit[j], sinLimit[j]);
+
     // d limited to the cone of half-angle acos(c) around the unit axis a.
     static Vector3 Cone(Vector3 a, Vector3 d, float c, float s)
     {

@@ -262,7 +262,7 @@
           "type": "float",
           "unit": "Fraction",
           "size": "-",
-          "meaning": "body fraction (0 front tip .. 1 tail tip) from which the surface is the `tailfan` kind; >= 1 = off",
+          "meaning": "body fraction (0 front tip .. 1 tail tip) from which the surface is tailKind (default `tailfan`); >= 1 = off",
           "range": "0..1",
           "example": "default 1 (off)"
         },
@@ -271,7 +271,7 @@
           "type": "float",
           "unit": "Fraction",
           "size": "-",
-          "meaning": "body fraction up to which a `dorsalstripe` band runs along the top from the head; 0 = off",
+          "meaning": "body fraction up to which a dorsalStripeKind band (default `dorsalstripe`) runs along the top from the head; 0 = off",
           "range": "0..1",
           "example": "default 0 (off)"
         },
@@ -283,6 +283,24 @@
           "meaning": "dorsal stripe width around the section (centred on the top)",
           "range": "0..180",
           "example": "default 30"
+        },
+        {
+          "name": "tailKind",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "the material kind of the tail behind tailColourFrom: tailfan (a kit slot of its own, styled by a species Layers row naming it), or a kind the species already draws (a FleshWing's wingfan: the tail in the wing's colour, one slot for both)",
+          "range": "",
+          "example": "default tailfan"
+        },
+        {
+          "name": "dorsalStripeKind",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "the material kind of the dorsal stripe: dorsalstripe (a kit slot of its own), or a kind the species already draws (one slot for both)",
+          "range": "",
+          "example": "default dorsalstripe"
         },
         {
           "name": "ovalMaxAspect",
@@ -4908,6 +4926,163 @@
       ]
     },
     {
+      "name": "TailFlourish",
+      "kind": "Chain",
+      "status": "exists",
+      "bones": "0 (re-poses the body's tail bones)",
+      "materialLayers": [],
+      "system": "TailFlourishRuntime (part runtime, stage Late; the LAST part: writes over the body's tail bones)",
+      "useWhen": "a long decorative tail that should look alive without steering anything: ribbon tails, plumes, a dragon's tail in flight",
+      "summary": "The living tail: a pose drawn over the sim's tail joints (the walk and the flight untouched). Standing, the tail rises in a calm loop above the hips and drifts; in the air (eased in by the flight's air weight) a travelling roll about each bone's own axis, growing to the tip, and a lazy curl travelling down it. Added bend clamped to each joint's bend limit.",
+      "usedBy": [],
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "unit": "Text",
+          "size": "-",
+          "meaning": "unique within the species; other parts reference it (mirror appends .L / .R, Repeat its index)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at",
+          "type": "PartSocket",
+          "unit": "Struct",
+          "size": "-",
+          "meaning": "where it attaches: spine joint, side, offset in the joint frame",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.joint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "spine joint the part hangs from (soft bodies: unused)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.side",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "-1 left, +1 right, 0 on the midline; set by mirror",
+          "range": "-1..1",
+          "example": ""
+        },
+        {
+          "name": "at.offset",
+          "type": "Vector3",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "offset in the joint frame, x mirrored by side (a leg's shoulder, the eyes' centre)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "at.slot",
+          "type": "int",
+          "unit": "Count",
+          "size": "-",
+          "meaning": "ring slot on a soft body (octopus web), 0 = the first",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "mirror",
+          "type": "bool",
+          "unit": "Flag",
+          "size": "-",
+          "meaning": "authoring sugar: expand into <id>.L (side -1) then <id>.R (side +1), the shipped leg order",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "fromJoint",
+          "type": "int",
+          "unit": "Joint",
+          "size": "-",
+          "meaning": "the tail root: the first joint of the tail (it and the one behind it stay as the sim has them on the ground)",
+          "range": "",
+          "example": "fixture 12"
+        },
+        {
+          "name": "airRollDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "air: the tip's roll amplitude about its own long axis (grows linearly from 0 at the root)",
+          "range": "0..180",
+          "example": "default 70"
+        },
+        {
+          "name": "airCurlDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "air: the travelling curl's amplitude per joint (sideways, in the ribbon's rolled frame)",
+          "range": "0..45",
+          "example": "default 9"
+        },
+        {
+          "name": "airHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "air: the roll and curl frequency",
+          "range": "0..5",
+          "example": "default 0.35"
+        },
+        {
+          "name": "waveLength",
+          "type": "float",
+          "unit": "Fraction",
+          "size": "-",
+          "meaning": "the travelling wave's length, in tail lengths (the tip lags the root by 1 / waveLength cycles)",
+          "range": "0.05..10",
+          "example": "default 0.6"
+        },
+        {
+          "name": "groundLoopDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "ground: the upward curl per joint (behind the first two tail joints) building the loop",
+          "range": "0..45",
+          "example": "default 7"
+        },
+        {
+          "name": "groundDriftDeg",
+          "type": "float",
+          "unit": "Degrees",
+          "size": "-",
+          "meaning": "ground: the slow drift's amplitude per joint (up-down on the loop and sideways)",
+          "range": "0..30",
+          "example": "default 2"
+        },
+        {
+          "name": "groundHz",
+          "type": "float",
+          "unit": "Hz",
+          "size": "/ sqrt(s)",
+          "meaning": "ground: the drift's frequency",
+          "range": "0..5",
+          "example": "default 0.12"
+        },
+        {
+          "name": "easeSeconds",
+          "type": "float",
+          "unit": "Seconds",
+          "size": "x sqrt(s)",
+          "meaning": "time to blend between the ground loop and the air motion (the flight's air weight at the tail root, eased)",
+          "range": "0..10",
+          "example": "default 0.6"
+        }
+      ]
+    },
+    {
       "name": "Tendril",
       "kind": "Chain",
       "status": "exists",
@@ -8455,7 +8630,7 @@
           "type": "float",
           "unit": "Fraction",
           "size": "-",
-          "meaning": "where along the blade it is widest (with flare): toward its end, a crescent (0 = 0.4)",
+          "meaning": "where along the blade it is widest (with flare): toward its end, a crescent (0 = 0.4). The Apex's 0.62 is the latest that keeps the outline smooth: past it the fall to the point is steeper, and with outside's arch (widest at 0.5) the measured widest moves from 0.61 toward the point as this grows",
           "range": "0..0.9",
           "example": ""
         },
@@ -8577,6 +8752,24 @@
           "example": ""
         },
         {
+          "name": "throatRadius",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "the throat: a pink plug at the back of the mouth hiding the body's front end (the neck's front rings and cap run into the head; an open mouth would show them) - its half size, about the neck's half height at the head joint (0 = none)",
+          "range": "",
+          "example": ""
+        },
+        {
+          "name": "throatReach",
+          "type": "float",
+          "unit": "Metres",
+          "size": "x s",
+          "meaning": "how far ahead of the head joint the body's front end reaches (the FlowBody's front ring plus its headCapLength): the throat plug covers it to here",
+          "range": "",
+          "example": ""
+        },
+        {
           "name": "gapeDeg",
           "type": "float",
           "unit": "Degrees",
@@ -8635,7 +8828,7 @@
           "type": "string",
           "unit": "Text",
           "size": "-",
-          "meaning": "the material kind of the teeth and fangs: ivory-teeth (the kit's ivory keratin row), or any kind the species styles (a species short of material slots can share one, e.g. dewlap)",
+          "meaning": "the material kind of the teeth and fangs: ivory-teeth (the kit's ivory keratin row, a kit slot of its own). A species short of kit slots uses the legacy \"teeth\" (registry row 13: no kit slot) with a Layers row restyling 13 to ivory Claw. Validate: a registry / NamedKinds kind or one a Layers row names",
           "range": "",
           "example": ""
         },
@@ -14275,7 +14468,7 @@
           "type": "FlightSpec",
           "unit": "Spec",
           "size": "-",
-          "meaning": "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, airNeckStance, launchHeadOnNeck, touchdownAtStance, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain, legTuckOut, legTuckDown, legTuckReach, touchdownTogether, airLevel, glideEnergy, approachBleedsSpeed",
+          "meaning": "flight (FlightSpec: speeds, lift/drag, altitude PID, stroke, banking, flare, air undulation) - fields: cruiseSpeed, minSpeed, maxSpeed, kGrip, vGripMin, kLift, kDrag, upstrokeArea, featherDeg, climbGain, climbDamping, climbIntegral, climbIntegralLimit, thrustGain, demandFloor, descendCutoff, glideDemand, amplitudeMin, strokeRateMin, strokeRateMax, glideRelax, maxBankDeg, bankGain, bankDamping, maxAsymmetry, rollGain, rollDamping, glideAlphaDeg, flareAlphaDeg, launchSpeed, flareDistance, minAltitude, cruiseAltitudeFrac, airUndulationDeg, airUndulationHz, tailSag, headStabilise, airNeckStance, launchHeadOnNeck, touchdownAtStance, launchTailBySegment, avoidLookahead, avoidMargin, perchGrip, perchMinRadius, pursuitGain, legTuckOut, legTuckDown, legTuckReach, touchdownTogether, airLevel, glideEnergy, approachBleedsSpeed",
           "range": "",
           "example": ""
         },
