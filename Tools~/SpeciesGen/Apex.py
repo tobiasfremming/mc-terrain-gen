@@ -31,6 +31,7 @@ SCALE = 3.5                 # x the scale-1 numbers below: ~9.5 m from the beak 
 # shoulder: the wing arms), the trunk to the hips at joint 11 (the hind legs), the tail from joint 12 to the tip -
 # the tail is 0.1 x 14 + the tip 0.14 = 1.54 m of the 2.7 m body (57 %).
 N, SPACING = 26, 0.1
+KEEL_FORWARD = 0.05   # the chest key's keelForward (scanned 0.03 / 0.05 / 0.08: the lowest point -0.007 / +0.009 / +0.033 m ahead)
 SHOULDER, HIPS, TAIL_ROOT = 7, 11, 12
 
 
@@ -38,10 +39,10 @@ def at(joint=0, offset=(0, 0, 0)):
     return {'joint': joint, 'side': 0, 'offset': K.V(*offset), 'slot': 0}
 
 
-def key(j, hw, hh, clearance, bend, hump=0, keel=0, flank=0, blade=0):
+def key(j, hw, hh, clearance, bend, hump=0, keel=0, flank=0, blade=0, keel_forward=0):
     """A profile key at joint j (t = j / (N - 1))."""
     return {'t': round(j / (N - 1), 6), 'halfWidth': hw, 'halfHeight': hh, 'clearance': clearance, 'bendLimitDeg': bend,
-            'hump': hump, 'keel': keel, 'flank': flank, 'blade': blade}
+            'hump': hump, 'keel': keel, 'flank': flank, 'blade': blade, 'keelForward': keel_forward}
 
 
 # The neck rises 0.41 m from the chest to the head joint over seven segments, spread evenly (no stance segment steeper
@@ -55,7 +56,10 @@ PROFILE = [
     key(0.0, 0.040, 0.052, 0.93, 8),
     key(2.5, 0.037, 0.050, 0.83, 14),
     key(4.5, 0.060, 0.075, 0.69, 12),
-    key(SHOULDER, 0.12, 0.14, 0.52, 10, hump=0.06, keel=0.08, flank=0.02),
+    # keelForward: the keel's bottom jutting forward (the sternum, spec 5.1). Without it the trunk's lowest point lay
+    # 0.031 m behind the chest joint (the trunk descends to the hips faster than the keel fades behind the chest); with
+    # it 0.009 m ahead (CreatureApexTests.Apex_Keel_BelowAndAheadOfTheChest).
+    key(SHOULDER, 0.12, 0.14, 0.52, 10, hump=0.06, keel=0.08, flank=0.02, keel_forward=KEEL_FORWARD),
     key(10.5, 0.10, 0.11, 0.43, 12),
     key(12.5, 0.03, 0.12, 0.40, 18, blade=1),
     key(N - 1, 0.01, 0.04, 0.30, 20, blade=1),
@@ -170,7 +174,9 @@ sp.add_part('CrestBeakHead', {
     }],
     'grooves': 0, 'grooveDepth': 0.004,
     'jawFraction': 0.5, 'mouthCornerAt': -0.15, 'hingeBehind': 0.15,
-    'jawDepth': 1.1, 'chinDepth': 0.65, 'throatDepth': 0.8, 'cheekWeb': 0.16,
+    # throatDepth 0.7 (was 0.8): the jaw's underside runs into the throat without a step in the outline (0.0111 m at
+    # 0.8 > the 0.0101 limit, 0.0078 at 0.7; CreatureApexTests.Apex_Head_FlowsIntoTheNeck)
+    'jawDepth': 1.1, 'chinDepth': 0.65, 'throatDepth': 0.7, 'cheekWeb': 0.16,
     'throatRadius': 0.055, 'throatReach': 0.065,
     'gapeDeg': 62, 'callPitchDeg': 6, 'restGapeDeg': 7,
     'teeth': 16, 'toothLength': 0.014, 'toothRadius': 0.003, 'toothKind': 'band', 'toothRakeDeg': 18,

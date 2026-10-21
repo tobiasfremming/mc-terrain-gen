@@ -1405,10 +1405,14 @@ namespace TerrainGen.Tests
         }
 
         // RED: a steeper neck (the head 0.25 m higher over the same chest) - a neck segment tips past vertical on the ground.
+        // Since the final fix wave FlowBody.Validate rejects it with restAtStance on (a stance segment past the rest run's
+        // floor); the walk does not depend on the bind, so the RED walks it bound along the ground (restAtStance off).
         [Test] public void Red_SteeperNeck_SegmentTipsOver()
         {
             FlowBody body = CreatureCrestBeakHeadTests.Neck();
             body.profile[0].clearance += 0.25f; body.profile[1].clearance += 0.2f;
+            StringAssert.Contains("restAtStance", body.Validate(new SpeciesCtx(new CreaturePart[0], new CreatureModule[0], body.jointCount, false)), "the guard reports the steeper neck");
+            body.restAtStance = false;
             float p = MaxWalkPitch(Species(withBody: body, name: "FleshWingSteeperNeck"), out string at);
             TestContext.Out.WriteLine($"largest walking segment pitch {p:F1} deg ({at})");
             Assert.GreaterOrEqual(p, kMaxWalkPitch, "the steeper neck tips a segment over");

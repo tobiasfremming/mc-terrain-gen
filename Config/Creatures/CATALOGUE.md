@@ -165,6 +165,7 @@ One chain from the head to the tail tip (the sim runs it like a SpineBody's) dra
 | `profile[].keel` | float | Metres | x s | keel: the sternum jutting this far below the section's bottom |  |  |
 | `profile[].flank` | float | Metres | x s | flank masses: this much extra width at the sides |  |  |
 | `profile[].blade` | float | Fraction | - | 0 = the oval .. 1 = the full ribbon (superellipse bladeExponent, the full halfHeight) | 0..1 |  |
+| `profile[].keelForward` | float | Metres | x s | keel forward: the keel's lowest point moved this far toward the head, level in the bind (the sternum jutting forward and down; the keel term's share of it, 0 at the flanks); 0 = straight down | 0.. | default 0 |
 | `rigidHeadJoints` | int | Count | - | rigid head: the first N joints move as one rigid body; -1 = auto from the profile (FlowBody.AutoHead: the joints before the neck narrows, if it narrows before the body widens), 0 = off | -1..16 | default -1 (auto) |
 | `humpSharpness` | float | Fraction | - | hump exponent on max(0, sin phi): higher = a sharper ridge | 1..64 | default 8 |
 | `keelSharpness` | float | Fraction | - | keel exponent on max(0, -sin phi): higher = a narrower keel | 1..64 | default 6 |
@@ -714,7 +715,7 @@ A broad pale throat sail or pouch hanging from a FlowBody's neck joints (fromJoi
 | `stations` | int | Count | - | stations along the sail (each a chain of links) | 2..16 | default 5 |
 | `links` | int | Count | - | links per station, root to edge (under a heavy flight bob - the Apex's, ~13 % of the body - 3 or fewer: 4 folded the swept rear) | 1..6 | default 3 |
 | `depthAt` | float[] | Metres | x s | the sail's depth below the throat at each station (one per station, jaw end first) |  | apex fixture 0.12 0.2 0.24 0.22 0.16 |
-| `edgeStraightness` | float | Fraction | - | 0 = the edge follows depthAt (a curved belly) .. 1 = a straight lower edge from the first station's edge to the last's | 0..1 | default 0.8 |
+| `edgeStraightness` | float | Fraction | - | 0 = the edge follows depthAt (a curved belly) .. 1 = a straight lower edge from the first station's edge to the last's. A straight edge under a strongly curved neck (or a shallow station between deep ones) tilts a station's rest hang toward its lateral plane: within PlaneMarginDeg (20 deg) of it the plane stop holds that station still - the bind warns (Dewlap.RestPlaneProblem) | 0..1 | default 0.8 |
 | `rim` | float | Metres | x s | radius of the soft round rim along the lower edge (>= thickness / 2) |  | default 0.012 |
 | `thickness` | float | Metres | x s | the sheet's thickness |  | default 0.008 |
 | `swingHz` | float | Hz | / sqrt(s) | natural frequency of a link following the one above it (x 1/sqrt size) |  | default 1.6 |

@@ -4,7 +4,8 @@
 // limits, a rigid head auto from the profile), but it draws its own mesh (RayBody is the precedent):
 //   section   a superellipse of (halfWidth, halfHeight) whose exponent runs from 2 (the trunk's oval) to bladeExponent
 //             as `blade` goes 0 -> 1, plus a sharp dorsal hump (hump x max(0, sin phi)^humpSharpness), a keel below
-//             (keel x max(0, -sin phi)^keelSharpness) and flank masses (flank x cos^2 phi, sideways). An oval is at most
+//             (keel x max(0, -sin phi)^keelSharpness; keelForward moves that term's points toward the head, level in the
+//             bind, by keelForward x the same weight - the sternum jutting forward) and flank masses (flank x cos^2 phi, sideways). An oval is at most
 //             ovalMaxAspect times as tall as it is wide; `blade` stretches the height to the key's full halfHeight, so
 //             a ribbon tail (height / width >= 3) needs blade 1 and an oval trunk keeps its authored height.
 //             The SpineJoint the sim gets carries the key's halfWidth / halfHeight only: it is NOT the drawn section
@@ -41,6 +42,7 @@ namespace CreatureKit
         [Param(ParamUnit.Metres, "keel: the sternum jutting this far below the section's bottom")] public float keel;
         [Param(ParamUnit.Metres, "flank masses: this much extra width at the sides")] public float flank;
         [Param(ParamUnit.Fraction, "0 = the oval .. 1 = the full ribbon (superellipse bladeExponent, the full halfHeight)", Min = 0, Max = 1)] public float blade;
+        [Param(ParamUnit.Metres, "keel forward: the keel's lowest point moved this far toward the head, level in the bind (the sternum jutting forward and down; the keel term's share of it, 0 at the flanks); 0 = straight down", Min = 0, Default = "0")] public float keelForward;
     }
 
     [Serializable]
@@ -132,6 +134,7 @@ namespace CreatureKit
                 if (!(k.halfWidth > 0f) || !(k.halfHeight > 0f)) return $"{id}: profile[{i}] halfWidth and halfHeight must be > 0";
                 if (k.hump < 0f || k.keel < 0f || k.flank < 0f) return $"{id}: profile[{i}] hump, keel and flank must be >= 0";
                 if (k.blade < 0f || k.blade > 1f) return $"{id}: profile[{i}] blade must be 0..1";
+                if (k.keelForward < 0f || k.keelForward > spacing) return $"{id}: profile[{i}] keelForward must be 0..spacing ({spacing})";
             }
             if (humpSharpness < 1f || keelSharpness < 1f) return $"{id}: humpSharpness and keelSharpness must be >= 1";
             if (bladeExponent < 2f || bladeExponent > 12f) return $"{id}: bladeExponent must be 2..12";
@@ -164,7 +167,7 @@ namespace CreatureKit
 
         // ------------------------------------------------------------ the chain
 
-        public const int ChHalfWidth = 0, ChHalfHeight = 1, ChClearance = 2, ChBend = 3, ChHump = 4, ChKeel = 5, ChFlank = 6, ChBlade = 7;
+        public const int ChHalfWidth = 0, ChHalfHeight = 1, ChClearance = 2, ChBend = 3, ChHump = 4, ChKeel = 5, ChFlank = 6, ChBlade = 7, ChKeelForward = 8;
 
         readonly struct Keys : MonotoneCubic.IKeys
         {
@@ -183,6 +186,7 @@ namespace CreatureKit
                     case ChHump: return k[i].hump;
                     case ChKeel: return k[i].keel;
                     case ChFlank: return k[i].flank;
+                    case ChKeelForward: return k[i].keelForward;
                     default: return k[i].blade;
                 }
             }
@@ -221,9 +225,45 @@ namespace CreatureKit
             return offset.magnitude;
         }
 
+        // keelForward's direction at a ring: the body's forward levelled in the bind (the rest stands on level ground, up
+        // +y) - a keel jutting forward under a chest pitched up by its raised neck moves forward, not up the neck.
+        static Vector3 Level(Vector3 t)
+        {
+            var l = new Vector3(t.x, 0f, t.z);
+            return l.sqrMagnitude > 1e-8f ? l.normalized : t;
+        }
+
+        // The section point with its keel's forward shift (z: metres toward the head along the levelled forward, Level;
+        // keelForward - 0 without it).
+        public Vector3 Section3(float u, float phi)
+        {
+            Section(u, phi, out Vector2 o);
+            float fwd = 0f;
+            if (hasKeelForward)
+            {
+                // the section's own scale (the front pole and the tail tip shrink it) and spine place, as Section
+                float s = Mathf.Clamp01(u) * BodyLength, scale = 1f;
+                float lh = HeadLen, tailStart = lh + SpineLen;
+                if (s < lh) { float q = (lh - s) / lh; scale = Mathf.Sqrt(Mathf.Max(0f, 1f - q * q)); }
+                else if (s > tailStart) scale = SpineBody.TailTipProfile(Mathf.Min(1f, (s - tailStart) / TailLen), TailSlope());
+                float t = SpineLen > 0f ? Mathf.Clamp01((s - lh) / SpineLen) : 0f;
+                fwd = scale * ShapeParams(t).keelFwd * Mathf.Pow(Mathf.Max(0f, -Mathf.Sin(phi)), keelSharpness);
+            }
+            return new Vector3(o.x, o.y, fwd);
+        }
+
+        bool hasKeelForward
+        {
+            get
+            {
+                if (profile != null) for (int i = 0; i < profile.Length; i++) if (profile[i].keelForward != 0f) return true;
+                return false;
+            }
+        }
+
         // The section's profile values at spine place t (six monotone cubics - most of a mesh build's cost: a ring asks
         // for the same three t for every vertex, so the last few are memoised; the values are exactly the same).
-        struct ShapeAt { public float t, a, b, e, hump, keel, flank; }
+        struct ShapeAt { public float t, a, b, e, hump, keel, flank, keelFwd; }
         [NonSerialized] readonly ShapeAt[] shapeMemo = new ShapeAt[4];
         int shapeMemoCount, shapeMemoNext;
 
@@ -238,6 +278,7 @@ namespace CreatureKit
             {
                 t = t, a = a, b = Mathf.Lerp(Mathf.Min(hh, ovalMaxAspect * a), hh, blade), e = 2f / n,
                 hump = Mathf.Max(0f, Profile(t, ChHump)), keel = Mathf.Max(0f, Profile(t, ChKeel)), flank = Mathf.Max(0f, Profile(t, ChFlank)),
+                keelFwd = hasKeelForward ? Mathf.Max(0f, Profile(t, ChKeelForward)) : 0f,
             };
             if (memoOn) { shapeMemo[shapeMemoNext] = r; shapeMemoNext = (shapeMemoNext + 1) & 3; shapeMemoCount = Mathf.Min(4, shapeMemoCount + 1); }
             return r;
@@ -366,8 +407,9 @@ namespace CreatureKit
         Vector3 Point(PartMeshEmitter m, float s, float phi)
         {
             Frame f = FrameAt(m, s);
-            Section(s / BodyLength, phi, out Vector2 o);
-            return f.c + f.x * o.x + f.y * o.y;
+            Vector3 o = Section3(s / BodyLength, phi);
+            Vector3 p = f.c + f.x * o.x + f.y * o.y;
+            return o.z != 0f ? p + Level(f.t) * o.z : p;
         }
 
         // One vertex of the drawn surface at arc s, section angle phi, in the section frame f: the point, its outward
@@ -377,12 +419,14 @@ namespace CreatureKit
         {
             float L = BodyLength, u = s / L, h = PartMeshEmitter.DiffStep;
             float s0 = Mathf.Max(0f, s - h), s1 = Mathf.Min(L, s + h);
-            Section(u, phi, out Vector2 o);
+            Vector3 o = Section3(u, phi);
             Vector3 p = f.c + f.x * o.x + f.y * o.y;
-            // the surface's tangents: around the ring (in the section plane) and along the body (toward the tail)
-            Section(u, phi + h, out Vector2 oa); Section(u, phi - h, out Vector2 ob);
-            Vector2 d = oa - ob;
+            if (o.z != 0f) p += Level(f.t) * o.z;
+            // the surface's tangents: around the ring (in the section plane; keelForward: and along it) and along the body
+            // (toward the tail)
+            Vector3 d = Section3(u, phi + h) - Section3(u, phi - h);
             Vector3 around = f.x * d.x + f.y * d.y;
+            if (d.z != 0f) around += Level(f.t) * d.z;
             Vector3 along = Point(m, s1, phi) - Point(m, s0, phi);
             // outward: the ring runs counter-clockwise in (x, y), so cross(around, toward the head) points out
             normal = PartMeshEmitter.Unit(Vector3.Cross(around, -along), f.x * Mathf.Cos(phi) + f.y * Mathf.Sin(phi));

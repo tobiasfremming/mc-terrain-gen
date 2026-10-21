@@ -35,12 +35,37 @@ namespace TerrainGen.Tests
 
         static bool Same(PartLayer a, PartLayer b) => a.Equals(b) && a.tint.a == b.tint.a;
 
-        // Species built on the parts with named kinds (the Apex redesign's FlowBody, CrestBeakHead, PitRow, Dewlap,
-        // FleshWing): their named kinds take kit slots by design; every other check below holds for them too, every slot
-        // not holding a named kind keeps its legacy row, and every named slot has its kind's row (NamedSlotRowProblem).
-        static readonly HashSet<string> kNamedKindSpecies = new HashSet<string> { "Apex" };
+        // Species whose parts or Layers rows name a kind with no global id (the Apex redesign's FlowBody, CrestBeakHead,
+        // PitRow, Dewlap, FleshWing; a Layers row by kind): their named kinds take kit slots by design; every other check
+        // below holds for them too, every slot not holding a named kind keeps its legacy row, every named slot holds one of
+        // the kinds they name, and every named slot has its kind's row (NamedSlotRowProblem). Read from the species' own
+        // data (as MaterialSlots gathers it), not a list of names.
+        internal static HashSet<string> NamedKinds(CreatureSpecies sp)
+        {
+            var wanted = new List<string>();
+            foreach (CreaturePart p in KitView.Parts(sp) ?? (IReadOnlyList<CreaturePart>)new CreaturePart[0])
+            {
+                if (p == null) continue;
+                if (p.Meta != null) wanted.AddRange(p.Meta.MaterialKinds);
+                if (p is IMaterialKinds mk) mk.Kinds(wanted);
+            }
+            foreach (CreatureModule m in KitView.Modules(sp) ?? (IReadOnlyList<CreatureModule>)new CreatureModule[0])
+                if (m is Layers l && l.rows != null) foreach (LayerDef d in l.rows) if (!string.IsNullOrEmpty(d.kind)) wanted.Add(d.kind);
+            var named = new HashSet<string>();
+            foreach (string k in wanted)
+                if (!string.IsNullOrEmpty(k) && !(PartLayers.Find(k, out PartLayers.Entry e) && e.Id >= 0)) named.Add(k);
+            return named;
+        }
 
-        // Every shipped species: no named kind (but kNamedKindSpecies), the table exactly as before (but the named kinds'
+        [Test] public void NamedKinds_FromTheSpeciesData()
+        {
+            Assert.AreEqual(0, NamedKinds(CreatureKitAssets.Load("KitMonitor")).Count, "a plain kit species");
+            Assert.IsTrue(NamedKinds(WithGlow("test glow").Compiled.Runtime).Contains("test glow"), "a part's declared kind");
+            HashSet<string> apex = NamedKinds(CreatureKitAssets.Load("Apex"));
+            foreach (string k in new[] { "crest", "dewlap", "wingfan" }) Assert.IsTrue(apex.Contains(k), "the Apex's parts name " + k);
+        }
+
+        // Every shipped species: no named kind but those its own data names, the table exactly as before (but the named kinds'
         // slots), and every part id its mesh emits is a slot the species is known to use (the scan behind the free-slot
         // choice is complete).
         [Test] public void Shipped_SlotsAreTheLegacyIds_TablesUnchanged()
@@ -50,8 +75,9 @@ namespace TerrainGen.Tests
                 CreatureSpecies sp = CreatureKitAssets.Load(name);
                 MaterialSlots s = MaterialSlots.For(sp);
                 Assert.IsNull(s.Problem, name);
-                bool named = kNamedKindSpecies.Contains(name);
-                for (int i = 0; i < PartLayers.MaxParts; i++) if (!named) Assert.IsNull(s.KindOfSlot[i], $"{name}: slot {i} holds a named kind");
+                HashSet<string> kinds = NamedKinds(sp);
+                for (int i = 0; i < PartLayers.MaxParts; i++)
+                    if (s.KindOfSlot[i] != null) Assert.IsTrue(kinds.Contains(s.KindOfSlot[i]), $"{name}: slot {i} holds '{s.KindOfSlot[i]}', a kind its data does not name");
                 foreach (PartLayers.Entry e in PartLayers.Registry) Assert.AreEqual(e.Id, s.SlotOf(e.Kind), $"{name}: {e.Kind}");
                 PartLayer[] now = PartLayers.Rows(sp), old = OldRows(sp);
                 for (int i = 0; i < now.Length; i++) if (s.KindOfSlot[i] == null) Assert.IsTrue(Same(now[i], old[i]), $"{name}: row {i} {now[i]} vs {old[i]}");

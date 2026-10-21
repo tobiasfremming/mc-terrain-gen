@@ -260,10 +260,20 @@ namespace TerrainGen.Tests
             Assert.IsNull(e, e);
         }
 
-        // RED: the hips raised (the trunk tipping forward) - the trunk's highest point is the hips, not the hump.
+        // RED: the hips raised (keys 10.5 and 12.5 to 0.62 / 0.55 m: the trunk tipping forward, no segment too steep) - the
+        // trunk's highest point is over the hips, not the hump.
         [Test] public void Red_Apex_HipsHighest()
         {
-            CreatureSpecies sp = Apex(ps => { var b = (FlowBody)ps.Find(p => p is FlowBody); for (int i = 0; i < b.profile.Length; i++) if (Mathf.Abs(b.profile[i].t * (b.jointCount - 1) - 10.5f) < 0.01f) b.profile[i].clearance = 0.75f; });
+            CreatureSpecies sp = Apex(ps =>
+            {
+                var b = (FlowBody)ps.Find(p => p is FlowBody);
+                for (int i = 0; i < b.profile.Length; i++)
+                {
+                    float j = b.profile[i].t * (b.jointCount - 1);
+                    if (Mathf.Abs(j - 10.5f) < 0.01f) b.profile[i].clearance = 0.62f;
+                    if (Mathf.Abs(j - 12.5f) < 0.01f) b.profile[i].clearance = 0.55f;
+                }
+            });
             Assert.IsNotNull(TrunkTopProblem(sp, out _, out _), "raised hips must be the trunk's highest point");
         }
 

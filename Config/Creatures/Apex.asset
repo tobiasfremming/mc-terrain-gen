@@ -60,6 +60,7 @@ MonoBehaviour:
           keel: 0
           flank: 0
           blade: 0
+          keelForward: 0
         - t: 0.1
           halfWidth: 0.037
           halfHeight: 0.05
@@ -69,6 +70,7 @@ MonoBehaviour:
           keel: 0
           flank: 0
           blade: 0
+          keelForward: 0
         - t: 0.18
           halfWidth: 0.06
           halfHeight: 0.075
@@ -78,6 +80,7 @@ MonoBehaviour:
           keel: 0
           flank: 0
           blade: 0
+          keelForward: 0
         - t: 0.28
           halfWidth: 0.12
           halfHeight: 0.14
@@ -87,6 +90,7 @@ MonoBehaviour:
           keel: 0.08
           flank: 0.02
           blade: 0
+          keelForward: 0.05
         - t: 0.42
           halfWidth: 0.1
           halfHeight: 0.11
@@ -96,6 +100,7 @@ MonoBehaviour:
           keel: 0
           flank: 0
           blade: 0
+          keelForward: 0
         - t: 0.5
           halfWidth: 0.03
           halfHeight: 0.12
@@ -105,6 +110,7 @@ MonoBehaviour:
           keel: 0
           flank: 0
           blade: 1
+          keelForward: 0
         - t: 1
           halfWidth: 0.01
           halfHeight: 0.04
@@ -114,6 +120,7 @@ MonoBehaviour:
           keel: 0
           flank: 0
           blade: 1
+          keelForward: 0
         rigidHeadJoints: 2
         humpSharpness: 8
         keelSharpness: 6
@@ -338,7 +345,7 @@ MonoBehaviour:
         hingeBehind: 0.15
         jawDepth: 1.1
         chinDepth: 0.65
-        throatDepth: 0.8
+        throatDepth: 0.7
         cheekWeb: 0.16
         throatRadius: 0.055
         throatReach: 0.065

@@ -149,6 +149,53 @@ namespace TerrainGen.Tests
             Assert.IsNull(KeelProblem(Part(Species(Body()))));
         }
 
+        // keelForward (spec 5.1, the sternum jutting forward and down): the chest's lowest rest-mesh point moves toward the
+        // head, level in the bind, by about the channel's value (>= 0.8 x), as deep as before (within 2 mm); 0 = unchanged.
+        static Vector3 LowestNearChest(CreatureSpecies sp, out Vector3 fwd)
+        {
+            FlowBody b = Part(sp);
+            float chest = b.headCapLength + b.spacing * kChestT * (kJoints - 1);
+            Mesh mesh = FlowKit.Mesh(sp);
+            Vector3[] v = mesh.vertices;
+            var uv0 = new List<Vector2>(); var uv1 = new List<Vector2>(); var uv2 = new List<Vector4>();
+            mesh.GetUVs(0, uv0); mesh.GetUVs(1, uv1); mesh.GetUVs(2, uv2);
+            Object.DestroyImmediate(mesh);
+            Vector3 low = new Vector3(0f, float.MaxValue, 0f);
+            for (int i = 0; i < v.Length; i++)
+                if (IsBody(sp, uv1[i]) && uv2[i].x < kJoints && uv2[i].y < kJoints && Mathf.Abs(uv0[i].x - chest) <= 0.5f * b.spacing && v[i].y < low.y) low = v[i];
+            CreatureSim rest = CreatureRestPose.BindSim(sp, sp.wings);
+            int j = Mathf.RoundToInt(kChestT * (kJoints - 1));
+            fwd = Vector3.ProjectOnPlane(rest.Joints[j - 1] - rest.Joints[j + 1], Vector3.up).normalized;
+            return low;
+        }
+
+        internal static string KeelForwardProblem(float keelForward, out float moved)
+        {
+            Vector3 a = LowestNearChest(Species(Body()), out Vector3 fwd);
+            FlowBody jut = Body();
+            for (int i = 0; i < jut.profile.Length; i++) if (jut.profile[i].keel > 0f) jut.profile[i].keelForward = keelForward;
+            Vector3 b = LowestNearChest(Species(jut), out _);
+            moved = Vector3.Dot(b - a, fwd);
+            TestContext.Out.WriteLine($"keelForward {keelForward}: the chest's lowest point moved {moved:F4} m forward, {b.y - a.y:F4} m in height");
+            if (Mathf.Abs(b.y - a.y) > 0.002f) return $"the keel's depth changed by {b.y - a.y:F4} m";
+            if (moved < 0.8f * 0.05f) return $"the keel's lowest point moved only {moved:F4} m forward (< 0.8 x 0.05)";
+            return null;
+        }
+
+        [Test] public void FlowBody_KeelForward_JutsTheKeelForward()
+        {
+            Assert.IsNull(KeelForwardProblem(0.05f, out _));
+            var ctx = new SpeciesCtx(new CreaturePart[0], new CreatureModule[0], kJoints, false);
+            FlowBody bad = Body(); bad.profile[2].keelForward = 0.2f;   // > spacing
+            StringAssert.Contains("keelForward", bad.Validate(ctx));
+        }
+
+        // RED: the channel at 0 does not move the keel (the test's measure bites).
+        [Test] public void Red_KeelForward_Zero()
+        {
+            Assert.IsNotNull(KeelForwardProblem(0f, out float moved), $"no keelForward, no jut ({moved:F4})");
+        }
+
         [Test] public void Red_Keel_None()
         {
             FlowBody body = Body();
